@@ -13,6 +13,7 @@ data class PaneState(
     val canGoForward: Boolean,
     val detailsColumns: List<DetailsColumn>,
     val detailsSort: DetailsSort,
+    val selectedEntryId: String?,
     val entriesState: PaneEntriesState,
 )
 
@@ -46,4 +47,10 @@ interface PaneComponent {
     fun openEntry(entry: VFile)
 
     fun toggleSort(column: DetailsColumn)
+
+    fun selectEntry(entryId: String)
+
+    fun moveSelection(offset: Int)
+
+    fun openSelectedEntry()
 }

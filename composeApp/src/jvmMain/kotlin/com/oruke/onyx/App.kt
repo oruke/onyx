@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -31,6 +32,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -244,6 +247,14 @@ private fun PaneSurface(
     modifier: Modifier = Modifier,
     onActivate: () -> Unit,
 ) {
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(active) {
+        if (active) {
+            focusRequester.requestFocus()
+        }
+    }
+
     Column(
         modifier = modifier
             .border(
@@ -251,6 +262,31 @@ private fun PaneSurface(
                 color = if (active) Color(0xFF4D8DFF) else Color(0xFF616B75),
                 shape = RoundedCornerShape(8.dp),
             )
+            .focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                if (!active || event.type != KeyEventType.KeyDown) {
+                    return@onPreviewKeyEvent false
+                }
+                when (event.key) {
+                    Key.DirectionDown -> {
+                        component.moveSelection(1)
+                        true
+                    }
+
+                    Key.DirectionUp -> {
+                        component.moveSelection(-1)
+                        true
+                    }
+
+                    Key.Enter -> {
+                        component.openSelectedEntry()
+                        true
+                    }
+
+                    else -> false
+                }
+            }
             .clickable(onClick = onActivate)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -319,10 +355,12 @@ private fun PaneSurface(
             PaneEntriesContent(
                 columns = state.detailsColumns,
                 sort = state.detailsSort,
+                selectedEntryId = state.selectedEntryId,
                 state = state.entriesState,
                 onActivate = onActivate,
                 onOpenEntry = component::openEntry,
                 onToggleSort = component::toggleSort,
+                onSelectEntry = component::selectEntry,
             )
         }
     }
@@ -333,10 +371,12 @@ private fun PaneSurface(
 private fun PaneEntriesContent(
     columns: List<DetailsColumn>,
     sort: DetailsSort,
+    selectedEntryId: String?,
     state: PaneEntriesState,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onToggleSort: (DetailsColumn) -> Unit,
+    onSelectEntry: (String) -> Unit,
 ) {
     when (state) {
         PaneEntriesState.Idle,
@@ -407,8 +447,10 @@ private fun PaneEntriesContent(
                         EntryRow(
                             columns = columns,
                             entry = entry,
+                            selected = entry.id == selectedEntryId,
                             onActivate = onActivate,
                             onOpenEntry = onOpenEntry,
+                            onSelectEntry = onSelectEntry,
                         )
                     }
                 }
@@ -421,16 +463,26 @@ private fun PaneEntriesContent(
 private fun EntryRow(
     columns: List<DetailsColumn>,
     entry: VFile,
+    selected: Boolean,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
+    onSelectEntry: (String) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(
+                if (selected) Color(0x334D8DFF) else Color.Transparent,
+                RoundedCornerShape(6.dp),
+            )
             .combinedClickable(
-                onClick = { onActivate() },
+                onClick = {
+                    onActivate()
+                    onSelectEntry(entry.id)
+                },
                 onDoubleClick = {
                     onActivate()
+                    onSelectEntry(entry.id)
                     onOpenEntry(entry)
                 },
             )

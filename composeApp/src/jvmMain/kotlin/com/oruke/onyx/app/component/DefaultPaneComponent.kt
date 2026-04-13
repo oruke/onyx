@@ -41,6 +41,7 @@ class DefaultPaneComponent(
                 column = DetailsColumn.NAME,
                 direction = SortDirection.ASCENDING,
             ),
+            selectedEntryId = null,
             entriesState = PaneEntriesState.Idle,
         )
     )
@@ -59,8 +60,14 @@ class DefaultPaneComponent(
             mutableState.value = result.fold(
                 onSuccess = { entries ->
                     lastLoadedEntries = entries
+                    val sortedEntries = sortEntries(entries, mutableState.value.detailsSort)
+                    val nextSelectedEntryId = sortedEntries
+                        .firstOrNull { it.id == mutableState.value.selectedEntryId }
+                        ?.id
+                        ?: sortedEntries.firstOrNull()?.id
                     mutableState.value.copy(
-                        entriesState = PaneEntriesState.Ready(sortEntries(entries, mutableState.value.detailsSort))
+                        selectedEntryId = nextSelectedEntryId,
+                        entriesState = PaneEntriesState.Ready(sortedEntries)
                     )
                 },
                 onFailure = { failure ->
@@ -124,11 +131,41 @@ class DefaultPaneComponent(
 
         mutableState.value = mutableState.value.copy(
             detailsSort = nextSort,
+            selectedEntryId = currentVisibleEntries()
+                .firstOrNull { it.id == mutableState.value.selectedEntryId }
+                ?.id
+                ?: sortEntries(lastLoadedEntries, nextSort).firstOrNull()?.id,
             entriesState = when (val currentEntriesState = mutableState.value.entriesState) {
                 is PaneEntriesState.Ready -> PaneEntriesState.Ready(sortEntries(lastLoadedEntries, nextSort))
                 else -> currentEntriesState
             },
         )
+    }
+
+    override fun selectEntry(entryId: String) {
+        if (currentVisibleEntries().none { it.id == entryId }) {
+            return
+        }
+        mutableState.value = mutableState.value.copy(selectedEntryId = entryId)
+    }
+
+    override fun moveSelection(offset: Int) {
+        val entries = currentVisibleEntries()
+        if (entries.isEmpty()) {
+            return
+        }
+
+        val currentIndex = entries.indexOfFirst { it.id == mutableState.value.selectedEntryId }
+        val fallbackIndex = if (offset >= 0) 0 else entries.lastIndex
+        val baseIndex = if (currentIndex == -1) fallbackIndex else currentIndex
+        val nextIndex = (baseIndex + offset).coerceIn(0, entries.lastIndex)
+        mutableState.value = mutableState.value.copy(selectedEntryId = entries[nextIndex].id)
+    }
+
+    override fun openSelectedEntry() {
+        val selectedEntry =
+            currentVisibleEntries().firstOrNull { it.id == mutableState.value.selectedEntryId } ?: return
+        openEntry(selectedEntry)
     }
 
     private fun navigateTo(
@@ -151,9 +188,17 @@ class DefaultPaneComponent(
             location = normalizedLocation,
             canGoBack = backStack.isNotEmpty(),
             canGoForward = forwardStack.isNotEmpty(),
+            selectedEntryId = null,
             entriesState = PaneEntriesState.Loading,
         )
         refresh()
+    }
+
+    private fun currentVisibleEntries(): List<VFile> {
+        return when (val entriesState = mutableState.value.entriesState) {
+            is PaneEntriesState.Ready -> entriesState.entries
+            else -> emptyList()
+        }
     }
 
     private fun sortEntries(
