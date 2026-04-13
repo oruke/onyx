@@ -4,14 +4,21 @@
     <string name="action_layout_single">シングル</string>
     <string name="action_layout_dual_vertical">左右デュアル</string>
     <string name="action_layout_dual_horizontal">上下デュアル</string>
+    <string name="action_refresh_active">アクティブペインを更新</string>
+    <string name="action_go_up">上へ</string>
     <string name="pane_primary">メインペイン</string>
     <string name="pane_secondary">セカンダリペイン</string>
-    <string name="label_onyx_bootstrap">Phase 0 デスクトップシェル。Jewel テーマ基盤を接続済みです</string>
-    <string name="label_template_replaced">テンプレート UI は置き換え済みです。次は
-        VFile、Decompose、実際のペイン処理を接続します。
+    <string name="label_onyx_bootstrap">Phase 0 のローカルファイル閲覧シェル。RootComponent と PaneComponent
+        を接続済みです
     </string>
-    <string name="label_bootstrap_status">ブートストラップ状態</string>
-    <string name="label_placeholder_address">file:///home/oruke</string>
-    <string name="label_status_ready">LocalFileProvider、アドレスバー、詳細ビューを接続する準備ができています。</string>
+    <string name="label_active_pane">アクティブペイン:</string>
+    <string name="label_location">場所</string>
+    <string name="label_loading_entries">ディレクトリを読み込み中...</string>
+    <string name="label_items_prefix">項目数:</string>
+    <string name="label_hint_click_folder">フォルダー行をクリックするとそのディレクトリを開きます。</string>
+    <string name="label_empty_directory">このディレクトリは空です。</string>
+    <string name="label_error_prefix">エラー:</string>
+    <string name="label_directory_badge">DIR</string>
+    <string name="label_file_badge">FILE</string>
     <string name="label_mode_details">詳細</string>
 </resources>

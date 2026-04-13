@@ -4,14 +4,21 @@
     <string name="action_layout_single">Single</string>
     <string name="action_layout_dual_vertical">Dual Vertical</string>
     <string name="action_layout_dual_horizontal">Dual Horizontal</string>
+    <string name="action_refresh_active">Refresh Active Pane</string>
+    <string name="action_go_up">Up</string>
     <string name="pane_primary">Primary Pane</string>
     <string name="pane_secondary">Secondary Pane</string>
-    <string name="label_onyx_bootstrap">Phase 0 desktop shell with Jewel theme baseline</string>
-    <string name="label_template_replaced">Template UI has been replaced. The next step is wiring VFile, Decompose, and
-        the real pane workflow.
+    <string name="label_onyx_bootstrap">Phase 0 local file browsing shell with RootComponent and PaneComponent wired
+        in
     </string>
-    <string name="label_bootstrap_status">Bootstrap status</string>
-    <string name="label_placeholder_address">file:///home/oruke</string>
-    <string name="label_status_ready">Ready for LocalFileProvider, address bar, and details view integration.</string>
+    <string name="label_active_pane">Active pane:</string>
+    <string name="label_location">Location</string>
+    <string name="label_loading_entries">Loading directory...</string>
+    <string name="label_items_prefix">Items:</string>
+    <string name="label_hint_click_folder">Click a folder row to open it.</string>
+    <string name="label_empty_directory">Directory is empty.</string>
+    <string name="label_error_prefix">Error:</string>
+    <string name="label_directory_badge">DIR</string>
+    <string name="label_file_badge">FILE</string>
     <string name="label_mode_details">DETAILS</string>
 </resources>
