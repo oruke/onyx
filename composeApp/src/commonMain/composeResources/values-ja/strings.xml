@@ -5,6 +5,8 @@
     <string name="action_layout_dual_vertical">左右デュアル</string>
     <string name="action_layout_dual_horizontal">上下デュアル</string>
     <string name="action_refresh_active">アクティブペインを更新</string>
+    <string name="action_go_back">戻る</string>
+    <string name="action_go_forward">進む</string>
     <string name="action_go_up">上へ</string>
     <string name="pane_primary">メインペイン</string>
     <string name="pane_secondary">セカンダリペイン</string>
@@ -18,6 +20,9 @@
     <string name="label_hint_click_folder">フォルダー行をクリックするとそのディレクトリを開きます。</string>
     <string name="label_empty_directory">このディレクトリは空です。</string>
     <string name="label_error_prefix">エラー:</string>
+    <string name="label_column_name">名前</string>
+    <string name="label_column_type">種類</string>
+    <string name="label_column_size">サイズ</string>
     <string name="label_directory_badge">DIR</string>
     <string name="label_file_badge">FILE</string>
     <string name="label_mode_details">詳細</string>

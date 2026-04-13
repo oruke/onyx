@@ -5,6 +5,8 @@
     <string name="action_layout_dual_vertical">左右双面板</string>
     <string name="action_layout_dual_horizontal">上下双面板</string>
     <string name="action_refresh_active">刷新当前面板</string>
+    <string name="action_go_back">后退</string>
+    <string name="action_go_forward">前进</string>
     <string name="action_go_up">上级</string>
     <string name="pane_primary">主面板</string>
     <string name="pane_secondary">副面板</string>
@@ -16,6 +18,9 @@
     <string name="label_hint_click_folder">点击文件夹行即可进入该目录。</string>
     <string name="label_empty_directory">当前目录为空。</string>
     <string name="label_error_prefix">错误：</string>
+    <string name="label_column_name">名称</string>
+    <string name="label_column_type">类型</string>
+    <string name="label_column_size">大小</string>
     <string name="label_directory_badge">目录</string>
     <string name="label_file_badge">文件</string>
     <string name="label_mode_details">详情</string>

@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
+import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
@@ -18,10 +19,20 @@ class DefaultPaneComponent(
     private val localFileProvider: JvmLocalFileProvider,
     private val scope: CoroutineScope,
 ) : PaneComponent {
+    private val backStack = ArrayDeque<String>()
+    private val forwardStack = ArrayDeque<String>()
+
     private val mutableState = MutableStateFlow(
         PaneState(
             paneId = paneId,
             location = initialLocation,
+            canGoBack = false,
+            canGoForward = false,
+            detailsColumns = listOf(
+                DetailsColumn.NAME,
+                DetailsColumn.TYPE,
+                DetailsColumn.SIZE,
+            ),
             entriesState = PaneEntriesState.Idle,
         )
     )
@@ -48,22 +59,64 @@ class DefaultPaneComponent(
         }
     }
 
+    override fun goBack() {
+        val previousLocation = backStack.removeLastOrNull() ?: return
+        forwardStack.addLast(mutableState.value.location)
+        navigateTo(
+            location = previousLocation,
+            recordHistory = false,
+        )
+    }
+
+    override fun goForward() {
+        val nextLocation = forwardStack.removeLastOrNull() ?: return
+        backStack.addLast(mutableState.value.location)
+        navigateTo(
+            location = nextLocation,
+            recordHistory = false,
+        )
+    }
+
     override fun goUp() {
         val parentLocation = Path.of(mutableState.value.location).parent?.pathString ?: return
         openDirectory(parentLocation)
     }
 
     override fun openDirectory(location: String) {
-        mutableState.value = mutableState.value.copy(
+        navigateTo(
             location = location,
-            entriesState = PaneEntriesState.Loading,
+            recordHistory = true,
         )
-        refresh()
     }
 
     override fun openEntry(entry: VFile) {
         if (entry.kind == VFileKind.DIRECTORY) {
             openDirectory(entry.location)
         }
+    }
+
+    private fun navigateTo(
+        location: String,
+        recordHistory: Boolean,
+    ) {
+        val normalizedLocation = Path.of(location).normalize().toAbsolutePath().pathString
+        val currentLocation = mutableState.value.location
+        if (normalizedLocation == currentLocation) {
+            refresh()
+            return
+        }
+
+        if (recordHistory) {
+            backStack.addLast(currentLocation)
+            forwardStack.clear()
+        }
+
+        mutableState.value = mutableState.value.copy(
+            location = normalizedLocation,
+            canGoBack = backStack.isNotEmpty(),
+            canGoForward = forwardStack.isNotEmpty(),
+            entriesState = PaneEntriesState.Loading,
+        )
+        refresh()
     }
 }

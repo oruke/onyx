@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.flow.StateFlow
@@ -7,6 +8,9 @@ import kotlinx.coroutines.flow.StateFlow
 data class PaneState(
     val paneId: PaneId,
     val location: String,
+    val canGoBack: Boolean,
+    val canGoForward: Boolean,
+    val detailsColumns: List<DetailsColumn>,
     val entriesState: PaneEntriesState,
 )
 
@@ -28,6 +32,10 @@ interface PaneComponent {
     val state: StateFlow<PaneState>
 
     fun refresh()
+
+    fun goBack()
+
+    fun goForward()
 
     fun goUp()
 
