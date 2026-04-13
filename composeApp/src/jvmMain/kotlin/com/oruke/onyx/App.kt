@@ -31,15 +31,24 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -270,17 +279,37 @@ private fun PaneSurface(
                 }
                 when (event.key) {
                     Key.DirectionDown -> {
-                        component.moveSelection(1)
+                        component.moveSelection(
+                            offset = 1,
+                            extendSelection = event.isShiftPressed,
+                        )
                         true
                     }
 
                     Key.DirectionUp -> {
-                        component.moveSelection(-1)
+                        component.moveSelection(
+                            offset = -1,
+                            extendSelection = event.isShiftPressed,
+                        )
                         true
                     }
 
                     Key.Enter -> {
                         component.openSelectedEntry()
+                        true
+                    }
+
+                    Key.A -> {
+                        if (event.isCtrlPressed || event.isMetaPressed) {
+                            component.selectAll()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+
+                    Key.Escape -> {
+                        component.clearSelection()
                         true
                     }
 
@@ -355,7 +384,7 @@ private fun PaneSurface(
             PaneEntriesContent(
                 columns = state.detailsColumns,
                 sort = state.detailsSort,
-                selectedEntryId = state.selectedEntryId,
+                selectedEntryIds = state.selectedEntryIds,
                 state = state.entriesState,
                 onActivate = onActivate,
                 onOpenEntry = component::openEntry,
@@ -371,12 +400,12 @@ private fun PaneSurface(
 private fun PaneEntriesContent(
     columns: List<DetailsColumn>,
     sort: DetailsSort,
-    selectedEntryId: String?,
+    selectedEntryIds: Set<String>,
     state: PaneEntriesState,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onToggleSort: (DetailsColumn) -> Unit,
-    onSelectEntry: (String) -> Unit,
+    onSelectEntry: (String, Boolean, Boolean) -> Unit,
 ) {
     when (state) {
         PaneEntriesState.Idle,
@@ -447,7 +476,7 @@ private fun PaneEntriesContent(
                         EntryRow(
                             columns = columns,
                             entry = entry,
-                            selected = entry.id == selectedEntryId,
+                            selected = selectedEntryIds.contains(entry.id),
                             onActivate = onActivate,
                             onOpenEntry = onOpenEntry,
                             onSelectEntry = onSelectEntry,
@@ -459,6 +488,7 @@ private fun PaneEntriesContent(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun EntryRow(
     columns: List<DetailsColumn>,
@@ -466,11 +496,18 @@ private fun EntryRow(
     selected: Boolean,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
-    onSelectEntry: (String) -> Unit,
+    onSelectEntry: (String, Boolean, Boolean) -> Unit,
 ) {
+    var additiveSelection by remember { mutableStateOf(false) }
+    var rangeSelection by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .onPointerEvent(PointerEventType.Press) { event ->
+                additiveSelection = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
+                rangeSelection = event.keyboardModifiers.isShiftPressed
+            }
             .background(
                 if (selected) Color(0x334D8DFF) else Color.Transparent,
                 RoundedCornerShape(6.dp),
@@ -478,11 +515,19 @@ private fun EntryRow(
             .combinedClickable(
                 onClick = {
                     onActivate()
-                    onSelectEntry(entry.id)
+                    onSelectEntry(
+                        entry.id,
+                        additiveSelection,
+                        rangeSelection,
+                    )
                 },
                 onDoubleClick = {
                     onActivate()
-                    onSelectEntry(entry.id)
+                    onSelectEntry(
+                        entry.id,
+                        additiveSelection,
+                        rangeSelection,
+                    )
                     onOpenEntry(entry)
                 },
             )
