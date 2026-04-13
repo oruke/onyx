@@ -8,11 +8,17 @@
     <string name="action_go_back">Back</string>
     <string name="action_go_forward">Forward</string>
     <string name="action_go_up">Up</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_cut">Cut</string>
+    <string name="action_paste">Paste</string>
+    <string name="action_delete_selected">Delete Selected</string>
+    <string name="action_close_menu">Close</string>
     <string name="pane_primary">Primary Pane</string>
     <string name="pane_secondary">Secondary Pane</string>
     <string name="label_onyx_bootstrap">Phase 0 local file browsing shell with RootComponent and PaneComponent wired
         in
     </string>
+    <string name="label_context_menu">Context Menu</string>
     <string name="label_active_pane">Active pane:</string>
     <string name="label_location">Location</string>
     <string name="label_loading_entries">Loading directory...</string>
@@ -26,6 +32,11 @@
     <string name="label_column_modified">Modified</string>
     <string name="label_sort_ascending">Asc</string>
     <string name="label_sort_descending">Desc</string>
+    <string name="label_task_center">Task Center</string>
+    <string name="label_task_status_queued">Queued</string>
+    <string name="label_task_status_running">Running</string>
+    <string name="label_task_status_succeeded">Succeeded</string>
+    <string name="label_task_status_failed">Failed</string>
     <string name="label_directory_badge">DIR</string>
     <string name="label_file_badge">FILE</string>
     <string name="label_mode_details">DETAILS</string>

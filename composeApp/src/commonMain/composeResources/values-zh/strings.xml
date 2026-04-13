@@ -8,9 +8,15 @@
     <string name="action_go_back">后退</string>
     <string name="action_go_forward">前进</string>
     <string name="action_go_up">上级</string>
+    <string name="action_copy">复制</string>
+    <string name="action_cut">剪切</string>
+    <string name="action_paste">粘贴</string>
+    <string name="action_delete_selected">删除所选</string>
+    <string name="action_close_menu">关闭</string>
     <string name="pane_primary">主面板</string>
     <string name="pane_secondary">副面板</string>
     <string name="label_onyx_bootstrap">Phase 0 本地文件浏览壳体，已接通 RootComponent 与 PaneComponent</string>
+    <string name="label_context_menu">上下文菜单</string>
     <string name="label_active_pane">当前激活面板：</string>
     <string name="label_location">位置</string>
     <string name="label_loading_entries">正在加载目录...</string>
@@ -24,6 +30,11 @@
     <string name="label_column_modified">修改时间</string>
     <string name="label_sort_ascending">升序</string>
     <string name="label_sort_descending">降序</string>
+    <string name="label_task_center">任务中心</string>
+    <string name="label_task_status_queued">排队中</string>
+    <string name="label_task_status_running">执行中</string>
+    <string name="label_task_status_succeeded">已完成</string>
+    <string name="label_task_status_failed">失败</string>
     <string name="label_directory_badge">目录</string>
     <string name="label_file_badge">文件</string>
     <string name="label_mode_details">详情</string>
