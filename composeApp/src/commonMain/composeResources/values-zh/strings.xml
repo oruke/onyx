@@ -21,6 +21,9 @@
     <string name="label_column_name">名称</string>
     <string name="label_column_type">类型</string>
     <string name="label_column_size">大小</string>
+    <string name="label_column_modified">修改时间</string>
+    <string name="label_sort_ascending">升序</string>
+    <string name="label_sort_descending">降序</string>
     <string name="label_directory_badge">目录</string>
     <string name="label_file_badge">文件</string>
     <string name="label_mode_details">详情</string>

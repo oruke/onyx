@@ -2,7 +2,9 @@ package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
 import com.oruke.onyx.core.model.DetailsColumn
+import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +23,7 @@ class DefaultPaneComponent(
 ) : PaneComponent {
     private val backStack = ArrayDeque<String>()
     private val forwardStack = ArrayDeque<String>()
+    private var lastLoadedEntries: List<VFile> = emptyList()
 
     private val mutableState = MutableStateFlow(
         PaneState(
@@ -32,6 +35,11 @@ class DefaultPaneComponent(
                 DetailsColumn.NAME,
                 DetailsColumn.TYPE,
                 DetailsColumn.SIZE,
+                DetailsColumn.MODIFIED,
+            ),
+            detailsSort = DetailsSort(
+                column = DetailsColumn.NAME,
+                direction = SortDirection.ASCENDING,
             ),
             entriesState = PaneEntriesState.Idle,
         )
@@ -50,7 +58,10 @@ class DefaultPaneComponent(
             val result = localFileProvider.list(location)
             mutableState.value = result.fold(
                 onSuccess = { entries ->
-                    mutableState.value.copy(entriesState = PaneEntriesState.Ready(entries))
+                    lastLoadedEntries = entries
+                    mutableState.value.copy(
+                        entriesState = PaneEntriesState.Ready(sortEntries(entries, mutableState.value.detailsSort))
+                    )
                 },
                 onFailure = { failure ->
                     mutableState.value.copy(entriesState = PaneEntriesState.Failure(failure.message))
@@ -95,6 +106,31 @@ class DefaultPaneComponent(
         }
     }
 
+    override fun toggleSort(column: DetailsColumn) {
+        val currentSort = mutableState.value.detailsSort
+        val nextSort = if (currentSort.column == column) {
+            currentSort.copy(
+                direction = when (currentSort.direction) {
+                    SortDirection.ASCENDING -> SortDirection.DESCENDING
+                    SortDirection.DESCENDING -> SortDirection.ASCENDING
+                }
+            )
+        } else {
+            DetailsSort(
+                column = column,
+                direction = SortDirection.ASCENDING,
+            )
+        }
+
+        mutableState.value = mutableState.value.copy(
+            detailsSort = nextSort,
+            entriesState = when (val currentEntriesState = mutableState.value.entriesState) {
+                is PaneEntriesState.Ready -> PaneEntriesState.Ready(sortEntries(lastLoadedEntries, nextSort))
+                else -> currentEntriesState
+            },
+        )
+    }
+
     private fun navigateTo(
         location: String,
         recordHistory: Boolean,
@@ -118,5 +154,31 @@ class DefaultPaneComponent(
             entriesState = PaneEntriesState.Loading,
         )
         refresh()
+    }
+
+    private fun sortEntries(
+        entries: List<VFile>,
+        sort: DetailsSort,
+    ): List<VFile> {
+        val comparator = when (sort.column) {
+            DetailsColumn.NAME -> compareBy<VFile> { it.name.lowercase() }
+            DetailsColumn.TYPE -> compareBy<VFile> { it.kind.name }
+            DetailsColumn.SIZE -> compareBy<VFile> { it.sizeBytes ?: -1L }
+            DetailsColumn.MODIFIED -> compareBy<VFile> { it.modifiedAtEpochMillis ?: Long.MIN_VALUE }
+        }
+
+        val sorted = entries.sortedWith(
+            compareByDescending<VFile> { it.kind == VFileKind.DIRECTORY }
+                .then(comparator)
+        )
+
+        return when (sort.direction) {
+            SortDirection.ASCENDING -> sorted
+            SortDirection.DESCENDING -> {
+                val directories = sorted.filter { it.kind == VFileKind.DIRECTORY }.reversed()
+                val files = sorted.filter { it.kind == VFileKind.FILE }.reversed()
+                directories + files
+            }
+        }
     }
 }

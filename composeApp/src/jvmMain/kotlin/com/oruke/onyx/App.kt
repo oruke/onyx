@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +37,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -45,8 +47,10 @@ import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.core.model.DetailsColumn
+import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import onyx.composeapp.generated.resources.Res
@@ -59,6 +63,7 @@ import onyx.composeapp.generated.resources.action_layout_single
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_active_pane
+import onyx.composeapp.generated.resources.label_column_modified
 import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_size
 import onyx.composeapp.generated.resources.label_column_type
@@ -72,11 +77,17 @@ import onyx.composeapp.generated.resources.label_loading_entries
 import onyx.composeapp.generated.resources.label_location
 import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_onyx_bootstrap
+import onyx.composeapp.generated.resources.label_sort_ascending
+import onyx.composeapp.generated.resources.label_sort_descending
 import onyx.composeapp.generated.resources.pane_primary
 import onyx.composeapp.generated.resources.pane_secondary
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
+import java.nio.file.Path
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 @Preview
@@ -307,9 +318,11 @@ private fun PaneSurface(
         ) {
             PaneEntriesContent(
                 columns = state.detailsColumns,
+                sort = state.detailsSort,
                 state = state.entriesState,
                 onActivate = onActivate,
                 onOpenEntry = component::openEntry,
+                onToggleSort = component::toggleSort,
             )
         }
     }
@@ -319,9 +332,11 @@ private fun PaneSurface(
 @Composable
 private fun PaneEntriesContent(
     columns: List<DetailsColumn>,
+    sort: DetailsSort,
     state: PaneEntriesState,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
+    onToggleSort: (DetailsColumn) -> Unit,
 ) {
     when (state) {
         PaneEntriesState.Idle,
@@ -367,7 +382,11 @@ private fun PaneEntriesContent(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                DetailsHeader(columns = columns)
+                DetailsHeader(
+                    columns = columns,
+                    sort = sort,
+                    onToggleSort = onToggleSort,
+                )
                 Text(
                     text = "${stringResource(Res.string.label_items_prefix)} ${state.entries.size}",
                     modifier = Modifier.padding(horizontal = 12.dp),
@@ -408,10 +427,13 @@ private fun EntryRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable {
-                onActivate()
-                onOpenEntry(entry)
-            }
+            .combinedClickable(
+                onClick = { onActivate() },
+                onDoubleClick = {
+                    onActivate()
+                    onOpenEntry(entry)
+                },
+            )
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -419,7 +441,7 @@ private fun EntryRow(
             when (column) {
                 DetailsColumn.NAME -> {
                     Column(
-                        modifier = Modifier.weight(0.6f),
+                        modifier = Modifier.weight(0.45f),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
@@ -439,14 +461,21 @@ private fun EntryRow(
                             VFileKind.DIRECTORY -> stringResource(Res.string.label_directory_badge)
                             VFileKind.FILE -> stringResource(Res.string.label_file_badge)
                         },
-                        modifier = Modifier.weight(0.2f),
+                        modifier = Modifier.weight(0.15f),
                     )
                 }
 
                 DetailsColumn.SIZE -> {
                     Text(
                         text = formatFileSize(entry.sizeBytes),
-                        modifier = Modifier.weight(0.2f),
+                        modifier = Modifier.weight(0.15f),
+                    )
+                }
+
+                DetailsColumn.MODIFIED -> {
+                    Text(
+                        text = formatModifiedTime(entry.modifiedAtEpochMillis),
+                        modifier = Modifier.weight(0.25f),
                     )
                 }
             }
@@ -527,7 +556,7 @@ private fun HybridAddressBar(
                         else -> false
                     }
                 },
-            textStyle = androidx.compose.ui.text.TextStyle(color = Color.Unspecified),
+            textStyle = TextStyle(color = Color.Unspecified),
             singleLine = true,
         )
     } else {
@@ -577,6 +606,8 @@ private fun BreadcrumbAddressBar(
 @Composable
 private fun DetailsHeader(
     columns: List<DetailsColumn>,
+    sort: DetailsSort,
+    onToggleSort: (DetailsColumn) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -587,29 +618,68 @@ private fun DetailsHeader(
         columns.forEach { column ->
             when (column) {
                 DetailsColumn.NAME -> {
-                    Text(
+                    SortHeaderCell(
                         text = stringResource(Res.string.label_column_name),
-                        modifier = Modifier.weight(0.6f),
-                        fontWeight = FontWeight.SemiBold,
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.weight(0.45f),
+                        onClick = { onToggleSort(column) },
                     )
                 }
 
                 DetailsColumn.TYPE -> {
-                    Text(
+                    SortHeaderCell(
                         text = stringResource(Res.string.label_column_type),
-                        modifier = Modifier.weight(0.2f),
-                        fontWeight = FontWeight.SemiBold,
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.weight(0.15f),
+                        onClick = { onToggleSort(column) },
                     )
                 }
 
                 DetailsColumn.SIZE -> {
-                    Text(
+                    SortHeaderCell(
                         text = stringResource(Res.string.label_column_size),
-                        modifier = Modifier.weight(0.2f),
-                        fontWeight = FontWeight.SemiBold,
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.weight(0.15f),
+                        onClick = { onToggleSort(column) },
+                    )
+                }
+
+                DetailsColumn.MODIFIED -> {
+                    SortHeaderCell(
+                        text = stringResource(Res.string.label_column_modified),
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.weight(0.25f),
+                        onClick = { onToggleSort(column) },
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SortHeaderCell(
+    text: String,
+    sortHint: String?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = text,
+            fontWeight = FontWeight.SemiBold,
+        )
+        if (sortHint != null) {
+            Text(
+                text = sortHint,
+                color = Color(0xFF9AA4AF),
+            )
         }
     }
 }
@@ -620,7 +690,7 @@ private data class Breadcrumb(
 )
 
 private fun buildBreadcrumbs(location: String): List<Breadcrumb> {
-    val path = java.nio.file.Path.of(location).normalize().toAbsolutePath()
+    val path = Path.of(location).normalize().toAbsolutePath()
     val breadcrumbs = mutableListOf<Breadcrumb>()
     var current = path.root ?: path
     breadcrumbs += Breadcrumb(
@@ -655,4 +725,31 @@ private fun formatFileSize(sizeBytes: Long?): String {
         unitIndex += 1
     }
     return String.format("%.1f %s", value, units[unitIndex])
+}
+
+private fun formatModifiedTime(modifiedAtEpochMillis: Long?): String {
+    if (modifiedAtEpochMillis == null) {
+        return "-"
+    }
+
+    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+    return formatter.format(
+        Instant.ofEpochMilli(modifiedAtEpochMillis)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDateTime()
+    )
+}
+
+@Composable
+private fun sortHint(
+    column: DetailsColumn,
+    sort: DetailsSort,
+): String? {
+    if (sort.column != column) {
+        return null
+    }
+    return when (sort.direction) {
+        SortDirection.ASCENDING -> stringResource(Res.string.label_sort_ascending)
+        SortDirection.DESCENDING -> stringResource(Res.string.label_sort_descending)
+    }
 }

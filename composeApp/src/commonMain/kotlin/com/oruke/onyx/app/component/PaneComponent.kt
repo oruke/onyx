@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.DetailsColumn
+import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.flow.StateFlow
@@ -11,6 +12,7 @@ data class PaneState(
     val canGoBack: Boolean,
     val canGoForward: Boolean,
     val detailsColumns: List<DetailsColumn>,
+    val detailsSort: DetailsSort,
     val entriesState: PaneEntriesState,
 )
 
@@ -42,4 +44,6 @@ interface PaneComponent {
     fun openDirectory(location: String)
 
     fun openEntry(entry: VFile)
+
+    fun toggleSort(column: DetailsColumn)
 }

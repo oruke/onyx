@@ -4,4 +4,5 @@ enum class DetailsColumn {
     NAME,
     TYPE,
     SIZE,
+    MODIFIED,
 }

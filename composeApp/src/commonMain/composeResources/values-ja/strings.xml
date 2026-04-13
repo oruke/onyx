@@ -23,6 +23,9 @@
     <string name="label_column_name">名前</string>
     <string name="label_column_type">種類</string>
     <string name="label_column_size">サイズ</string>
+    <string name="label_column_modified">更新日時</string>
+    <string name="label_sort_ascending">昇順</string>
+    <string name="label_sort_descending">降順</string>
     <string name="label_directory_badge">DIR</string>
     <string name="label_file_badge">FILE</string>
     <string name="label_mode_details">詳細</string>

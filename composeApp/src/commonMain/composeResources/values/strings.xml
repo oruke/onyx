@@ -23,6 +23,9 @@
     <string name="label_column_name">Name</string>
     <string name="label_column_type">Type</string>
     <string name="label_column_size">Size</string>
+    <string name="label_column_modified">Modified</string>
+    <string name="label_sort_ascending">Asc</string>
+    <string name="label_sort_descending">Desc</string>
     <string name="label_directory_badge">DIR</string>
     <string name="label_file_badge">FILE</string>
     <string name="label_mode_details">DETAILS</string>
