@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Onyx</string>
+    <string name="action_layout_single">Single</string>
+    <string name="action_layout_dual_vertical">Dual Vertical</string>
+    <string name="action_layout_dual_horizontal">Dual Horizontal</string>
+    <string name="pane_primary">Primary Pane</string>
+    <string name="pane_secondary">Secondary Pane</string>
+    <string name="label_onyx_bootstrap">Phase 0 desktop shell with Jewel theme baseline</string>
+    <string name="label_template_replaced">Template UI has been replaced. The next step is wiring VFile, Decompose, and
+        the real pane workflow.
+    </string>
+    <string name="label_bootstrap_status">Bootstrap status</string>
+    <string name="label_placeholder_address">file:///home/oruke</string>
+    <string name="label_status_ready">Ready for LocalFileProvider, address bar, and details view integration.</string>
+    <string name="label_mode_details">DETAILS</string>
+</resources>

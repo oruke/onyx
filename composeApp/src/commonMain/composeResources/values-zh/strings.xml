@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Onyx</string>
+    <string name="action_layout_single">单面板</string>
+    <string name="action_layout_dual_vertical">左右双面板</string>
+    <string name="action_layout_dual_horizontal">上下双面板</string>
+    <string name="pane_primary">主面板</string>
+    <string name="pane_secondary">副面板</string>
+    <string name="label_onyx_bootstrap">Phase 0 桌面壳体，已接入 Jewel 主题基线</string>
+    <string name="label_template_replaced">模板 UI 已替换，下一步接入 VFile、Decompose 与真实面板工作流。</string>
+    <string name="label_bootstrap_status">引导状态</string>
+    <string name="label_placeholder_address">file:///home/oruke</string>
+    <string name="label_status_ready">已准备好接入 LocalFileProvider、地址栏与详情视图。</string>
+    <string name="label_mode_details">详情</string>
+</resources>
