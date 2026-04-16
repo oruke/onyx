@@ -9,6 +9,10 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -68,6 +72,7 @@ import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
+import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -84,23 +89,24 @@ import onyx.composeapp.generated.resources.action_copy
 import onyx.composeapp.generated.resources.action_cut
 import onyx.composeapp.generated.resources.action_go_back
 import onyx.composeapp.generated.resources.action_go_forward
+import onyx.composeapp.generated.resources.action_go_home
 import onyx.composeapp.generated.resources.action_go_up
 import onyx.composeapp.generated.resources.action_layout_dual_horizontal
 import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
+import onyx.composeapp.generated.resources.action_open_settings
 import onyx.composeapp.generated.resources.action_paste
 import onyx.composeapp.generated.resources.action_refresh_active
+import onyx.composeapp.generated.resources.action_toggle_hidden_files
 import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_column_modified
 import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_size
-import onyx.composeapp.generated.resources.label_column_type
-import onyx.composeapp.generated.resources.label_directory_badge
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
-import onyx.composeapp.generated.resources.label_file_badge
-import onyx.composeapp.generated.resources.label_items_prefix
 import onyx.composeapp.generated.resources.label_loading_entries
+import onyx.composeapp.generated.resources.label_mode_details
+import onyx.composeapp.generated.resources.label_mode_gallery
 import onyx.composeapp.generated.resources.label_task_center
 import onyx.composeapp.generated.resources.label_task_status_failed
 import onyx.composeapp.generated.resources.label_task_status_queued
@@ -116,6 +122,9 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.jetbrains.jewel.window.DecoratedWindowScope
+import org.jetbrains.jewel.window.TitleBar
+import org.jetbrains.jewel.window.newFullscreenControls
 import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneId
@@ -132,7 +141,7 @@ private fun rememberOnyxPalette(): OnyxPalette {
                 appBackground = Color(0xFF1E1F22),
                 titleBarBackground = Color(0xFF2B2D30),
                 surface = Color(0xFF2B2D30),
-                surfaceVariant = Color(0xFF3C3F41),
+                surfaceVariant = Color(0xFF313336),
                 floatingSurface = Color(0xFF3C3F41),
                 inputBackground = Color(0xFF1E1F22),
                 outline = Color(0xFF4E5157),
@@ -146,14 +155,18 @@ private fun rememberOnyxPalette(): OnyxPalette {
                 selectionForeground = Color(0xFFD4D4D8),
                 headerBackground = Color(0xFF353739),
                 rowHoverBackground = Color(0xFF2D4F80),
-                statusBarBackground = Color(0xFF3C3F41),
+                statusBarBackground = Color(0xFF26282C),
+                titleBarBorder = Color(0xFF43454A),
+                titleBarActiveBackground = Color(0xFF4C5052),
+                titleBarHoverBackground = Color(0xFF43454A),
+                titleBarPressedBackground = Color(0xFF5A5D63),
             )
         } else {
             OnyxPalette(
                 appBackground = Color(0xFFF3F5F8),
-                titleBarBackground = Color(0xFFFFFFFF),
+                titleBarBackground = Color(0xFFF7F8FA),
                 surface = Color(0xFFFFFFFF),
-                surfaceVariant = Color(0xFFF5F6F8),
+                surfaceVariant = Color(0xFFF7F8FA),
                 floatingSurface = Color(0xFFF8FAFD),
                 inputBackground = Color(0xFFFFFFFF),
                 outline = Color(0xFFD0D7E2),
@@ -168,6 +181,10 @@ private fun rememberOnyxPalette(): OnyxPalette {
                 headerBackground = Color(0xFFF0F2F5),
                 rowHoverBackground = Color(0xFFE8F0FE),
                 statusBarBackground = Color(0xFFE8EBF0),
+                titleBarBorder = Color(0xFFEBECF0),
+                titleBarActiveBackground = Color(0xFFE4E5E9),
+                titleBarHoverBackground = Color(0xFFEDEEF2),
+                titleBarPressedBackground = Color(0xFFD4D6D9),
             )
         }
     }
@@ -192,39 +209,64 @@ private data class OnyxPalette(
     val headerBackground: Color,
     val rowHoverBackground: Color,
     val statusBarBackground: Color,
+    val titleBarBorder: Color,
+    val titleBarActiveBackground: Color,
+    val titleBarHoverBackground: Color,
+    val titleBarPressedBackground: Color,
 )
 
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 @Composable
-fun App() {
+fun DecoratedWindowScope.WindowApp() {
     val rootComponent = rememberRootComponent()
-    App(rootComponent = rootComponent)
-}
-
-@Composable
-private fun App(
-    rootComponent: RootComponent,
-) {
     val state by rootComponent.state.collectAsState()
     val palette = rememberOnyxPalette()
     var uiScale by remember { mutableStateOf(100) }
+    val onUiScaleChange: (Int) -> Unit = { value -> uiScale = value }
 
+    TitleBar(modifier = Modifier.newFullscreenControls()) { _ ->
+        TitleBarContent(
+            rootComponent = rootComponent,
+            layoutMode = state.layoutMode,
+            uiScale = uiScale,
+            onUiScaleChange = onUiScaleChange,
+            palette = palette,
+        )
+    }
+
+    AppContent(
+        rootComponent = rootComponent,
+        state = state,
+        palette = palette,
+    )
+}
+
+@Composable
+fun App() {
+    val rootComponent = rememberRootComponent()
+    val state by rootComponent.state.collectAsState()
+    val palette = rememberOnyxPalette()
+
+    AppContent(
+        rootComponent = rootComponent,
+        state = state,
+        palette = palette,
+    )
+}
+
+@Composable
+private fun AppContent(
+    rootComponent: RootComponent,
+    state: RootState,
+    palette: OnyxPalette,
+) {
     IntUiTheme(isDark = isSystemInDarkTheme()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(palette.appBackground),
         ) {
-            // ── Immersive title bar ──────────────────────────────────────
-            TitleBar(
-                rootComponent = rootComponent,
-                layoutMode = state.layoutMode,
-                uiScale = uiScale,
-                onUiScaleChange = { uiScale = it },
-                palette = palette,
-            )
-
             // ── Task panel (if any) ─────────────────────────────────────
             if (state.tasks.isNotEmpty()) {
                 TaskPanel(
@@ -336,52 +378,55 @@ private fun App(
 // ── Title bar ───────────────────────────────────────────────────────────────
 
 @Composable
-private fun TitleBar(
+private fun TitleBarContent(
     rootComponent: RootComponent,
     layoutMode: PaneLayoutMode,
     uiScale: Int,
     onUiScaleChange: (Int) -> Unit,
     palette: OnyxPalette,
 ) {
+    // Jewel DecoratedWindow 的标题栏内容区域
+    // 注意：DecoratedWindow 会自动处理窗口拖拽和系统按钮区域
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
-            .background(palette.titleBarBackground)
-            .padding(horizontal = 12.dp),
+            .height(28.dp)
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left: App name
         Text(
             text = stringResource(Res.string.app_name),
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
             color = palette.foreground,
         )
 
-        Spacer(modifier = Modifier.width(16.dp))
+        Spacer(modifier = Modifier.width(14.dp))
 
-        // Center: Zoom percentage
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
             modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
         ) {
-            Text(
-                text = "$uiScale%",
-                fontSize = 12.sp,
-                color = palette.mutedForeground,
-            )
-            ZoomSlider(
-                value = uiScale,
-                onValueChange = onUiScaleChange,
-                palette = palette,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "$uiScale%",
+                    fontSize = 11.sp,
+                    color = palette.mutedForeground,
+                )
+                ZoomSlider(
+                    value = uiScale,
+                    onValueChange = onUiScaleChange,
+                    palette = palette,
+                )
+            }
         }
 
-        // Right: Layout toggles + Settings
         Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(1.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LayoutIconButton(
@@ -392,7 +437,7 @@ private fun TitleBar(
             ) {
                 Icon(
                     key = AllIconsKeys.General.Layout,
-                    contentDescription = stringResource(Res.string.action_layout_single)
+                    contentDescription = stringResource(Res.string.action_layout_single),
                 )
             }
             LayoutIconButton(
@@ -403,7 +448,7 @@ private fun TitleBar(
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.SplitVertically,
-                    contentDescription = stringResource(Res.string.action_layout_dual_vertical)
+                    contentDescription = stringResource(Res.string.action_layout_dual_vertical),
                 )
             }
             LayoutIconButton(
@@ -414,15 +459,20 @@ private fun TitleBar(
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.SplitHorizontally,
-                    contentDescription = stringResource(Res.string.action_layout_dual_horizontal)
+                    contentDescription = stringResource(Res.string.action_layout_dual_horizontal),
                 )
             }
 
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(3.dp))
 
-            IconButton(onClick = { /* TODO: Settings */ }) {
-                Icon(key = AllIconsKeys.General.GearPlain, contentDescription = "Settings")
+            TitleBarIconButton(onClick = { }, palette = palette) {
+                Icon(
+                    key = AllIconsKeys.General.GearPlain,
+                    contentDescription = stringResource(Res.string.action_open_settings)
+                )
             }
+
+            Spacer(modifier = Modifier.width(6.dp))
         }
     }
 }
@@ -435,14 +485,51 @@ private fun LayoutIconButton(
     tooltip: String,
     content: @Composable () -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val background = when {
+        selected -> palette.titleBarActiveBackground
+        isPressed -> palette.titleBarPressedBackground
+        isHovered -> palette.titleBarHoverBackground
+        else -> Color.Transparent
+    }
+
     Box(
         modifier = Modifier
+            .hoverable(interactionSource)
+            .background(background, RoundedCornerShape(4.dp))
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 5.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun TitleBarIconButton(
+    onClick: () -> Unit,
+    palette: OnyxPalette,
+    content: @Composable () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    Box(
+        modifier = Modifier
+            .hoverable(interactionSource)
             .background(
-                if (selected) palette.accentVariant else Color.Transparent,
+                when {
+                    isPressed -> palette.titleBarPressedBackground
+                    isHovered -> palette.titleBarHoverBackground
+                    else -> Color.Transparent
+                },
                 RoundedCornerShape(4.dp),
             )
-            .clickable(onClick = onClick)
-            .padding(4.dp),
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 5.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
         content()
@@ -476,7 +563,7 @@ private fun PaneSurface(
     Column(
         modifier = modifier
             .border(
-                width = if (active) 2.dp else 1.dp,
+                width = 1.dp,
                 color = if (active) palette.accent else palette.outlineVariant,
             )
             .background(palette.surface)
@@ -514,14 +601,19 @@ private fun PaneSurface(
                     else -> false
                 }
             }
-            .clickable(onClick = onActivate),
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onActivate
+            ),
     ) {
         // ── Navigation toolbar ─────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(palette.headerBackground)
-                .padding(horizontal = 4.dp, vertical = 2.dp),
+                .height(28.dp)
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(1.dp),
         ) {
@@ -548,7 +640,10 @@ private fun PaneSurface(
             IconButton(
                 onClick = { onActivate(); component.openDirectory(System.getProperty("user.home")) },
             ) {
-                Icon(key = AllIconsKeys.Nodes.HomeFolder, contentDescription = "Home")
+                Icon(
+                    key = AllIconsKeys.Nodes.HomeFolder,
+                    contentDescription = stringResource(Res.string.action_go_home)
+                )
             }
 
             Spacer(modifier = Modifier.width(4.dp))
@@ -576,7 +671,10 @@ private fun PaneSurface(
             IconButton(
                 onClick = { /* TODO: Toggle visibility */ },
             ) {
-                Icon(key = AllIconsKeys.Actions.ToggleVisibility, contentDescription = "Visibility")
+                Icon(
+                    key = AllIconsKeys.Actions.ToggleVisibility,
+                    contentDescription = stringResource(Res.string.action_toggle_hidden_files)
+                )
             }
         }
 
@@ -587,7 +685,11 @@ private fun PaneSurface(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .clickable(onClick = onActivate),
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onActivate
+                ),
         ) {
             PaneEntriesContent(
                 columns = state.detailsColumns,
@@ -623,7 +725,6 @@ private fun PaneSurface(
                     onPaste = { showContextMenu = false; onPaste() },
                     onRefresh = { showContextMenu = false; component.refresh() },
                     onClose = { showContextMenu = false },
-                    palette = palette,
                 )
             }
         }
@@ -654,7 +755,7 @@ private fun HybridAddressBar(
                 .fillMaxWidth()
                 .background(palette.inputBackground, RoundedCornerShape(4.dp))
                 .border(1.dp, palette.accent, RoundedCornerShape(4.dp))
-                .padding(horizontal = 6.dp, vertical = 4.dp)
+                .padding(horizontal = 6.dp, vertical = 3.dp)
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when (event.key) {
@@ -698,24 +799,23 @@ private fun BreadcrumbAddressBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(palette.inputBackground, RoundedCornerShape(4.dp))
-            .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
             .horizontalScroll(scrollState)
             .clickable(onClick = onEdit)
-            .padding(horizontal = 6.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         breadcrumbs.forEachIndexed { index, crumb ->
             if (index > 0) {
-                Text(
-                    text = "›",
-                    color = palette.mutedForeground,
-                    fontSize = 11.sp,
+                Icon(
+                    key = AllIconsKeys.General.ChevronRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
                 )
             }
             Text(
                 text = crumb.label,
-                color = if (index == breadcrumbs.lastIndex) palette.accent else palette.mutedForeground,
+                color = palette.accent,
                 fontSize = 12.sp,
                 modifier = Modifier.clickable {
                     onActivate()
@@ -798,13 +898,14 @@ private fun PaneEntriesContent(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 4.dp),
                 ) {
-                    items(
+                    itemsIndexed(
                         items = state.entries,
-                        key = { entry -> entry.id },
-                    ) { entry ->
+                        key = { _, entry -> entry.id },
+                    ) { index, entry ->
                         EntryRow(
                             columns = columns,
                             entry = entry,
+                            zebra = index % 2 == 1,
                             selected = selectedEntryIds.contains(entry.id),
                             onActivate = onActivate,
                             onOpenEntry = onOpenEntry,
@@ -832,23 +933,16 @@ private fun DetailsHeader(
         modifier = Modifier
             .fillMaxWidth()
             .background(palette.headerBackground)
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .height(24.dp)
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        columns.forEach { column ->
+        columns.filterNot { it == DetailsColumn.TYPE }.forEach { column ->
             when (column) {
                 DetailsColumn.NAME -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_name),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(0.50f),
-                    palette = palette,
-                    onClick = { onToggleSort(column) },
-                )
-
-                DetailsColumn.TYPE -> SortHeaderCell(
-                    text = stringResource(Res.string.label_column_type),
-                    sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(0.15f),
+                    modifier = Modifier.weight(0.58f),
                     palette = palette,
                     onClick = { onToggleSort(column) },
                 )
@@ -856,7 +950,7 @@ private fun DetailsHeader(
                 DetailsColumn.SIZE -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_size),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(0.15f),
+                    modifier = Modifier.weight(0.16f),
                     palette = palette,
                     onClick = { onToggleSort(column) },
                     textAlign = TextAlign.End,
@@ -865,11 +959,13 @@ private fun DetailsHeader(
                 DetailsColumn.MODIFIED -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_modified),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(0.20f),
+                    modifier = Modifier.weight(0.26f),
                     palette = palette,
                     onClick = { onToggleSort(column) },
                     textAlign = TextAlign.End,
                 )
+
+                DetailsColumn.TYPE -> Unit
             }
         }
     }
@@ -885,7 +981,7 @@ private fun SortHeaderCell(
     textAlign: TextAlign = TextAlign.Start,
 ) {
     Row(
-        modifier = modifier.clickable(onClick = onClick).padding(vertical = 2.dp),
+        modifier = modifier.clickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (textAlign == TextAlign.End) Arrangement.End else Arrangement.Start,
     ) {
@@ -895,15 +991,15 @@ private fun SortHeaderCell(
             fontSize = 11.sp,
             color = palette.mutedForeground,
             textAlign = textAlign,
-            modifier = Modifier.weight(1f),
         )
         if (sortHint != null) {
-            Text(
-                text = sortHint,
-                fontSize = 10.sp,
-                color = palette.accent,
+            Icon(
+                key = if (sortHint == "▲") AllIconsKeys.General.ArrowUp else AllIconsKeys.General.ArrowDown,
+                contentDescription = sortHint,
+                modifier = Modifier.size(12.dp),
             )
         }
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
@@ -914,6 +1010,7 @@ private fun SortHeaderCell(
 private fun EntryRow(
     columns: List<DetailsColumn>,
     entry: VFile,
+    zebra: Boolean,
     selected: Boolean,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
@@ -936,7 +1033,11 @@ private fun EntryRow(
                 }
             }
             .background(
-                if (selected) palette.selectionBackground else Color.Transparent,
+                when {
+                    selected -> palette.selectionBackground
+                    zebra -> palette.surfaceVariant
+                    else -> Color.Transparent
+                },
             )
             .combinedClickable(
                 onClick = {
@@ -949,14 +1050,15 @@ private fun EntryRow(
                     onOpenEntry(entry)
                 },
             )
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .padding(horizontal = 8.dp, vertical = 1.dp)
+            .height(22.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        columns.forEach { column ->
+        columns.filterNot { it == DetailsColumn.TYPE }.forEach { column ->
             when (column) {
                 DetailsColumn.NAME -> {
                     Row(
-                        modifier = Modifier.weight(0.50f),
+                        modifier = Modifier.weight(0.58f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -974,21 +1076,10 @@ private fun EntryRow(
                         )
                     }
                 }
-                DetailsColumn.TYPE -> {
-                    Text(
-                        text = when (entry.kind) {
-                            VFileKind.DIRECTORY -> stringResource(Res.string.label_directory_badge)
-                            VFileKind.FILE -> stringResource(Res.string.label_file_badge)
-                        },
-                        modifier = Modifier.weight(0.15f),
-                        fontSize = 12.sp,
-                        color = palette.mutedForeground,
-                    )
-                }
                 DetailsColumn.SIZE -> {
                     Text(
                         text = formatFileSize(entry.sizeBytes),
-                        modifier = Modifier.weight(0.15f),
+                        modifier = Modifier.weight(0.16f),
                         fontSize = 12.sp,
                         color = palette.mutedForeground,
                         textAlign = TextAlign.End,
@@ -997,12 +1088,14 @@ private fun EntryRow(
                 DetailsColumn.MODIFIED -> {
                     Text(
                         text = formatModifiedTime(entry.modifiedAtEpochMillis),
-                        modifier = Modifier.weight(0.20f),
+                        modifier = Modifier.weight(0.26f),
                         fontSize = 12.sp,
                         color = palette.mutedForeground,
                         textAlign = TextAlign.End,
                     )
                 }
+
+                DetailsColumn.TYPE -> Unit
             }
         }
     }
@@ -1019,25 +1112,49 @@ private fun BoxScope.ContextMenuCard(
     onPaste: () -> Unit,
     onRefresh: () -> Unit,
     onClose: () -> Unit,
-    palette: OnyxPalette,
 ) {
-    val menuWidth = 200.dp
+    val menuWidth = 220.dp
     Column(
         modifier = Modifier
             .align(Alignment.TopEnd)
             .width(menuWidth)
             .padding(4.dp)
-            .border(1.dp, palette.outline, RoundedCornerShape(4.dp))
-            .background(palette.floatingSurface, RoundedCornerShape(4.dp))
-            .padding(4.dp),
+            .border(1.dp, Color(0xFF4E5157), RoundedCornerShape(6.dp))
+            .background(Color(0xFF2B2D30), RoundedCornerShape(6.dp))
+            .padding(vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
-        ContextMenuItem(stringResource(Res.string.action_copy), canOperateOnSelection, palette, onCopySelection)
-        ContextMenuItem(stringResource(Res.string.action_cut), canOperateOnSelection, palette, onCutSelection)
-        ContextMenuItem(stringResource(Res.string.action_paste), canPaste, palette, onPaste)
+        ContextMenuItem(
+            text = stringResource(Res.string.action_copy),
+            enabled = canOperateOnSelection,
+            iconKey = AllIconsKeys.Actions.Copy,
+            onClick = onCopySelection,
+        )
+        ContextMenuItem(
+            text = stringResource(Res.string.action_cut),
+            enabled = canOperateOnSelection,
+            iconKey = AllIconsKeys.Actions.MenuCut,
+            onClick = onCutSelection,
+        )
+        ContextMenuItem(
+            text = stringResource(Res.string.action_paste),
+            enabled = canPaste,
+            iconKey = AllIconsKeys.Actions.MenuPaste,
+            onClick = onPaste,
+        )
         Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-        ContextMenuItem(stringResource(Res.string.action_refresh_active), true, palette, onRefresh)
-        ContextMenuItem(stringResource(Res.string.action_close_menu), true, palette, onClose)
+        ContextMenuItem(
+            text = stringResource(Res.string.action_refresh_active),
+            enabled = true,
+            iconKey = AllIconsKeys.Actions.Refresh,
+            onClick = onRefresh,
+        )
+        ContextMenuItem(
+            text = stringResource(Res.string.action_close_menu),
+            enabled = true,
+            iconKey = AllIconsKeys.Actions.Close,
+            onClick = onClose,
+        )
     }
 }
 
@@ -1045,20 +1162,26 @@ private fun BoxScope.ContextMenuCard(
 private fun ContextMenuItem(
     text: String,
     enabled: Boolean,
-    palette: OnyxPalette,
+    iconKey: org.jetbrains.jewel.ui.icon.IconKey,
     onClick: () -> Unit,
 ) {
-    Box(
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val background = if (enabled && isHovered) Color(0xFF43454A) else Color.Transparent
+    val contentColor = if (enabled) Color(0xFFDFE1E5) else Color(0xFF6E6E6E)
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .hoverable(interactionSource)
+            .background(background, RoundedCornerShape(4.dp))
+            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = text,
-            color = if (enabled) palette.foreground else palette.disabledForeground,
-            fontSize = 12.sp,
-        )
+        Icon(key = iconKey, contentDescription = null)
+        Text(text = text, fontSize = 12.sp, color = contentColor)
     }
 }
 
@@ -1127,7 +1250,6 @@ private fun StatusBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        // Left side: active pane stats
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1145,27 +1267,42 @@ private fun StatusBar(
                 val entries = activeState.entriesState.entries
                 val dirs = entries.count { it.kind == VFileKind.DIRECTORY }
                 val files = entries.count { it.kind == VFileKind.FILE }
+                Divider(
+                    orientation = Orientation.Vertical,
+                    modifier = Modifier.height(12.dp).width(1.dp),
+                )
                 Text(
-                    text = "${stringResource(Res.string.label_items_prefix)} $dirs dirs, $files files",
+                    text = "共 $dirs 个文件夹, $files 个文件",
                     fontSize = 11.sp,
                     color = palette.mutedForeground,
                 )
             }
         }
 
-        // Right side: layout mode indicator
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Icon(
-                key = when (layoutMode) {
-                    PaneLayoutMode.SINGLE -> AllIconsKeys.General.Layout
-                    PaneLayoutMode.DUAL_VERTICAL -> AllIconsKeys.Actions.SplitVertically
-                    PaneLayoutMode.DUAL_HORIZONTAL -> AllIconsKeys.Actions.SplitHorizontally
-                },
-                contentDescription = null,
-            )
+            Box(
+                modifier = Modifier
+                    .background(palette.titleBarActiveBackground, RoundedCornerShape(4.dp))
+                    .padding(3.dp),
+            ) {
+                Icon(
+                    key = AllIconsKeys.Actions.ListFiles,
+                    contentDescription = stringResource(Res.string.label_mode_details),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .background(Color.Transparent, RoundedCornerShape(4.dp))
+                    .padding(3.dp),
+            ) {
+                Icon(
+                    key = AllIconsKeys.General.Layout,
+                    contentDescription = stringResource(Res.string.label_mode_gallery),
+                )
+            }
         }
     }
 }
@@ -1256,7 +1393,7 @@ private fun ZoomSlider(
     Box(
         modifier = Modifier
             .width(sliderWidthDp.dp)
-            .height(20.dp)
+            .height(16.dp)
             .pointerInput(Unit) {
                 detectDragGestures { change, _ ->
                     val x = change.position.x.coerceIn(0f, sliderWidthPx)
