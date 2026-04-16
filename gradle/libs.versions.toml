@@ -4,6 +4,7 @@ decompose = "3.4.0"
 jcifs-ng = "2.1.9"
 jewel = "0.27.0"
 jewel-platform = "243"
+intellij-platform-build = "243.28141.18"
 junit = "4.13.2"
 koin = "4.1.1"
 kotlin = "2.3.20"
@@ -33,6 +34,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" 
 jcifs-ng = { module = "eu.agno3.jcifs:jcifs-ng", version.ref = "jcifs-ng" }
 sevenzipjbinding = { module = "net.sf.sevenzipjbinding:sevenzipjbinding", version.ref = "sevenzipjbinding" }
 jewel-int-ui-standalone = { module = "org.jetbrains.jewel:jewel-int-ui-standalone-243", version.ref = "jewel" }
+intellij-platform-icons = { module = "com.jetbrains.intellij.platform:icons", version.ref = "intellij-platform-build" }
 
 [plugins]
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

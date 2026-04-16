@@ -36,6 +36,7 @@ kotlin {
             implementation(libs.jcifs.ng)
             implementation(libs.sevenzipjbinding)
             implementation(libs.jewel.int.ui.standalone)
+            implementation(libs.intellij.platform.icons)
         }
     }
 }

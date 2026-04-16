@@ -1,41 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Onyx</string>
-    <string name="action_layout_single">单面板</string>
-    <string name="action_layout_dual_vertical">左右双面板</string>
-    <string name="action_layout_dual_horizontal">上下双面板</string>
-    <string name="action_refresh_active">刷新当前面板</string>
+
     <string name="action_go_back">后退</string>
     <string name="action_go_forward">前进</string>
     <string name="action_go_up">上级</string>
+    <string name="action_go_home">主页</string>
+    <string name="action_refresh_active">刷新</string>
+    <string name="action_open_settings">设置</string>
+    <string name="action_close_menu">关闭菜单</string>
+    <string name="action_toggle_hidden_files">显示隐藏项</string>
+    <string name="action_toggle_sidebar">显示/隐藏侧栏</string>
+    <string name="action_toggle_status_bar">显示/隐藏状态栏</string>
+    <string name="action_toggle_fullscreen">切换全屏</string>
+    <string name="action_zoom_reset">100%</string>
+    <string name="action_zoom_increase">放大</string>
+    <string name="action_zoom_decrease">缩小</string>
+    <string name="action_window_minimize">最小化</string>
+    <string name="action_window_maximize">最大化</string>
+    <string name="action_window_restore">还原</string>
+    <string name="action_window_close">关闭窗口</string>
     <string name="action_copy">复制</string>
     <string name="action_cut">剪切</string>
     <string name="action_paste">粘贴</string>
     <string name="action_delete_selected">删除所选</string>
-    <string name="action_close_menu">关闭</string>
-    <string name="pane_primary">主面板</string>
-    <string name="pane_secondary">副面板</string>
-    <string name="label_onyx_bootstrap">Phase 0 本地文件浏览壳体，已接通 RootComponent 与 PaneComponent</string>
-    <string name="label_context_menu">上下文菜单</string>
-    <string name="label_active_pane">当前激活面板：</string>
+
+    <string name="action_layout_single">单栏</string>
+    <string name="action_layout_dual_vertical">左右双栏</string>
+    <string name="action_layout_dual_horizontal">上下双栏</string>
+    <string name="action_view_details">详情视图</string>
+    <string name="action_view_gallery">画廊视图</string>
+
+    <string name="pane_primary">左侧</string>
+    <string name="pane_secondary">右侧</string>
+    <string name="label_left_pane">左侧</string>
+    <string name="label_right_pane">右侧</string>
+    <string name="label_active_pane">当前面板</string>
+
+    <string name="label_context_menu">菜单</string>
     <string name="label_location">位置</string>
-    <string name="label_loading_entries">正在加载目录...</string>
-    <string name="label_items_prefix">项目数：</string>
-    <string name="label_hint_click_folder">点击文件夹行即可进入该目录。</string>
-    <string name="label_empty_directory">当前目录为空。</string>
-    <string name="label_error_prefix">错误：</string>
+    <string name="label_loading_entries">正在加载...</string>
+    <string name="label_empty_directory">文件夹为空</string>
+    <string name="label_error_prefix">错误</string>
+    <string name="label_items_prefix">项目</string>
+    <string name="label_home">主页</string>
+    <string name="label_status_bar">状态栏</string>
+    <string name="label_navigation_bar">导航栏</string>
+    <string name="label_title_bar">标题栏</string>
+    <string name="label_zoom_percent">100%</string>
+
     <string name="label_column_name">名称</string>
     <string name="label_column_type">类型</string>
     <string name="label_column_size">大小</string>
     <string name="label_column_modified">修改时间</string>
+    <string name="label_column_date">日期</string>
+    <string name="label_column_ext">扩展名</string>
+
     <string name="label_sort_ascending">升序</string>
     <string name="label_sort_descending">降序</string>
+
     <string name="label_task_center">任务中心</string>
     <string name="label_task_status_queued">排队中</string>
     <string name="label_task_status_running">执行中</string>
     <string name="label_task_status_succeeded">已完成</string>
     <string name="label_task_status_failed">失败</string>
-    <string name="label_directory_badge">目录</string>
+
+    <string name="label_directory_badge">文件夹</string>
     <string name="label_file_badge">文件</string>
-    <string name="label_mode_details">详情</string>
+    <string name="label_mode_details">详情视图</string>
+    <string name="label_mode_gallery">画廊视图</string>
+    <string name="label_show_hidden_items">隐藏项</string>
+    <string name="label_folder_count">文件夹：%1$d</string>
+    <string name="label_file_count">文件：%1$d</string>
+    <string name="label_item_count">项目：%1$d</string>
+    <string name="label_selection_count">已选择：%1$d</string>
+
+    <string name="label_onyx_bootstrap">专业桌面文件管理器</string>
+    <string name="label_hint_click_folder">打开文件夹</string>
 </resources>

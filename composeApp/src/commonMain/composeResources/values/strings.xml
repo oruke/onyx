@@ -1,43 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Onyx</string>
-    <string name="action_layout_single">Single</string>
-    <string name="action_layout_dual_vertical">Dual Vertical</string>
-    <string name="action_layout_dual_horizontal">Dual Horizontal</string>
-    <string name="action_refresh_active">Refresh Active Pane</string>
+
     <string name="action_go_back">Back</string>
     <string name="action_go_forward">Forward</string>
     <string name="action_go_up">Up</string>
+    <string name="action_go_home">Home</string>
+    <string name="action_refresh_active">Refresh</string>
+    <string name="action_open_settings">Settings</string>
+    <string name="action_close_menu">Close Menu</string>
+    <string name="action_toggle_hidden_files">Show Hidden</string>
+    <string name="action_toggle_sidebar">Toggle Sidebar</string>
+    <string name="action_toggle_status_bar">Toggle Status Bar</string>
+    <string name="action_toggle_fullscreen">Toggle Full Screen</string>
+    <string name="action_zoom_reset">100%</string>
+    <string name="action_zoom_increase">Zoom In</string>
+    <string name="action_zoom_decrease">Zoom Out</string>
+    <string name="action_window_minimize">Minimize</string>
+    <string name="action_window_maximize">Maximize</string>
+    <string name="action_window_restore">Restore</string>
+    <string name="action_window_close">Close Window</string>
     <string name="action_copy">Copy</string>
     <string name="action_cut">Cut</string>
     <string name="action_paste">Paste</string>
     <string name="action_delete_selected">Delete Selected</string>
-    <string name="action_close_menu">Close</string>
-    <string name="pane_primary">Primary Pane</string>
-    <string name="pane_secondary">Secondary Pane</string>
-    <string name="label_onyx_bootstrap">Phase 0 local file browsing shell with RootComponent and PaneComponent wired
-        in
-    </string>
-    <string name="label_context_menu">Context Menu</string>
-    <string name="label_active_pane">Active pane:</string>
+
+    <string name="action_layout_single">Single</string>
+    <string name="action_layout_dual_vertical">Dual Vertical</string>
+    <string name="action_layout_dual_horizontal">Dual Horizontal</string>
+    <string name="action_view_details">Details</string>
+    <string name="action_view_gallery">Gallery</string>
+
+    <string name="pane_primary">Left</string>
+    <string name="pane_secondary">Right</string>
+    <string name="label_left_pane">Left</string>
+    <string name="label_right_pane">Right</string>
+    <string name="label_active_pane">Active Pane</string>
+
+    <string name="label_context_menu">Menu</string>
     <string name="label_location">Location</string>
-    <string name="label_loading_entries">Loading directory...</string>
-    <string name="label_items_prefix">Items:</string>
-    <string name="label_hint_click_folder">Click a folder row to open it.</string>
-    <string name="label_empty_directory">Directory is empty.</string>
-    <string name="label_error_prefix">Error:</string>
+    <string name="label_loading_entries">Loading...</string>
+    <string name="label_empty_directory">Folder is empty</string>
+    <string name="label_error_prefix">Error</string>
+    <string name="label_items_prefix">Items</string>
+    <string name="label_home">Home</string>
+    <string name="label_status_bar">Status Bar</string>
+    <string name="label_navigation_bar">Navigation Bar</string>
+    <string name="label_title_bar">Title Bar</string>
+    <string name="label_zoom_percent">100%</string>
+
     <string name="label_column_name">Name</string>
     <string name="label_column_type">Type</string>
     <string name="label_column_size">Size</string>
     <string name="label_column_modified">Modified</string>
+    <string name="label_column_date">Date</string>
+    <string name="label_column_ext">Ext</string>
+
     <string name="label_sort_ascending">Asc</string>
     <string name="label_sort_descending">Desc</string>
+
     <string name="label_task_center">Task Center</string>
     <string name="label_task_status_queued">Queued</string>
     <string name="label_task_status_running">Running</string>
     <string name="label_task_status_succeeded">Succeeded</string>
     <string name="label_task_status_failed">Failed</string>
-    <string name="label_directory_badge">DIR</string>
-    <string name="label_file_badge">FILE</string>
-    <string name="label_mode_details">DETAILS</string>
+
+    <string name="label_directory_badge">Folder</string>
+    <string name="label_file_badge">File</string>
+    <string name="label_mode_details">Details</string>
+    <string name="label_mode_gallery">Gallery</string>
+    <string name="label_show_hidden_items">Hidden Items</string>
+    <string name="label_folder_count">Folders: %1$d</string>
+    <string name="label_file_count">Files: %1$d</string>
+    <string name="label_item_count">Items: %1$d</string>
+    <string name="label_selection_count">Selected: %1$d</string>
+
+    <string name="label_onyx_bootstrap">Professional desktop file manager</string>
+    <string name="label_hint_click_folder">Open folder</string>
 </resources>
