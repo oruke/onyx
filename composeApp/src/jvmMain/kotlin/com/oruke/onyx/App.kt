@@ -59,10 +59,13 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -644,7 +647,11 @@ private fun PaneSurface(
                         } else false
                     }
                     Key.Escape -> {
-                        component.clearSelection()
+                        if (showContextMenu) {
+                            showContextMenu = false
+                        } else {
+                            component.clearSelection()
+                        }
                         true
                     }
                     else -> false
@@ -747,7 +754,10 @@ private fun PaneSurface(
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
-                    onClick = onActivate
+                    onClick = {
+                        onActivate()
+                        showContextMenu = false
+                    }
                 ),
         ) {
             PaneEntriesContent(
@@ -761,12 +771,13 @@ private fun PaneSurface(
                 onToggleSort = component::toggleSort,
                 onSelectEntry = component::selectEntry,
                 palette = palette,
-                onShowContextMenu = { entryId, keepSelection ->
+                onShowContextMenu = { entryId, entrySelected, pointerPosition ->
                     onActivate()
-                    if (!keepSelection) component.selectEntry(entryId)
+                    contextMenuOffset = pointerPosition
+                    if (!entrySelected) component.selectEntry(entryId)
                     showContextMenu = true
                 },
-                onShowContextMenuAt = { offset -> contextMenuOffset = offset },
+                onDismissContextMenu = { showContextMenu = false },
             )
 
             if (showContextMenu) {
@@ -774,10 +785,22 @@ private fun PaneSurface(
                     anchorOffset = contextMenuOffset,
                     canOperateOnSelection = state.selectedEntryIds.isNotEmpty(),
                     canPaste = canPaste,
-                    onCopySelection = onCopySelection,
-                    onCutSelection = onCutSelection,
-                    onPaste = onPaste,
-                    onRefresh = component::refresh,
+                    onCopySelection = {
+                        onCopySelection()
+                        showContextMenu = false
+                    },
+                    onCutSelection = {
+                        onCutSelection()
+                        showContextMenu = false
+                    },
+                    onPaste = {
+                        onPaste()
+                        showContextMenu = false
+                    },
+                    onRefresh = {
+                        component.refresh()
+                        showContextMenu = false
+                    },
                     onClose = { showContextMenu = false },
                     palette = palette,
                 )
@@ -897,8 +920,8 @@ private fun PaneEntriesContent(
     onToggleSort: (DetailsColumn) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     palette: OnyxPalette,
-    onShowContextMenu: (String, Boolean) -> Unit,
-    onShowContextMenuAt: (IntOffset) -> Unit,
+    onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
+    onDismissContextMenu: () -> Unit,
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -971,7 +994,7 @@ private fun PaneEntriesContent(
                             onSelectEntry = onSelectEntry,
                             palette = palette,
                             onShowContextMenu = onShowContextMenu,
-                            onShowContextMenuAt = onShowContextMenuAt,
+                            onDismissContextMenu = onDismissContextMenu,
                         )
                     }
                 }
@@ -1077,27 +1100,37 @@ private fun EntryRow(
     onOpenEntry: (VFile) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     palette: OnyxPalette,
-    onShowContextMenu: (String, Boolean) -> Unit,
-    onShowContextMenuAt: (IntOffset) -> Unit,
+    onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
+    onDismissContextMenu: () -> Unit,
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     var rangeSelection by remember { mutableStateOf(false) }
+    var rowCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .onGloballyPositioned { coordinates -> rowCoordinates = coordinates }
             .onPointerEvent(PointerEventType.Press) { event ->
                 additiveSelection = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
                 rangeSelection = event.keyboardModifiers.isShiftPressed
-                if (event.buttons.isSecondaryPressed) {
-                    onActivate()
-                    onShowContextMenuAt(
-                        IntOffset(
-                            event.changes.first().position.x.roundToInt(),
-                            event.changes.first().position.y.roundToInt(),
+                val pointerPosition = event.changes.firstOrNull()?.position ?: return@onPointerEvent
+                when {
+                    event.buttons.isSecondaryPressed -> {
+                        val windowPosition = rowCoordinates?.localToWindow(pointerPosition) ?: pointerPosition
+                        onActivate()
+                        onShowContextMenu(
+                            entry.id,
+                            selected,
+                            IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()),
                         )
-                    )
-                    onShowContextMenu(entry.id, selected)
+                    }
+
+                    event.buttons.isPrimaryPressed -> {
+                        onActivate()
+                        onDismissContextMenu()
+                        onSelectEntry(entry.id, additiveSelection, rangeSelection)
+                    }
                 }
             }
             .background(
@@ -1111,11 +1144,10 @@ private fun EntryRow(
             .combinedClickable(
                 onClick = {
                     onActivate()
-                    onSelectEntry(entry.id, additiveSelection, rangeSelection)
                 },
                 onDoubleClick = {
                     onActivate()
-                    onSelectEntry(entry.id, additiveSelection, rangeSelection)
+                    onDismissContextMenu()
                     onOpenEntry(entry)
                 },
             )
@@ -1193,8 +1225,8 @@ private fun BoxScope.PaneContextMenu(
                     layoutDirection: LayoutDirection,
                     popupContentSize: IntSize,
                 ): IntOffset {
-                    val desiredX = anchorBounds.left + anchorOffset.x
-                    val desiredY = anchorBounds.top + anchorOffset.y
+                    val desiredX = anchorOffset.x
+                    val desiredY = anchorOffset.y
                     val x = desiredX.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
                     val y = desiredY.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
                     return IntOffset(x, y)
@@ -1202,7 +1234,7 @@ private fun BoxScope.PaneContextMenu(
             }
         },
         onDismissRequest = onClose,
-        properties = PopupProperties(focusable = true),
+        properties = PopupProperties(focusable = false),
     ) {
         Column(
             modifier = Modifier

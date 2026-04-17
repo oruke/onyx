@@ -15,6 +15,7 @@ data class PaneState(
     val detailsSort: DetailsSort,
     val selectedEntryIds: Set<String>,
     val selectionAnchorId: String?,
+    val selectionFocusId: String?,
     val entriesState: PaneEntriesState,
 )
 

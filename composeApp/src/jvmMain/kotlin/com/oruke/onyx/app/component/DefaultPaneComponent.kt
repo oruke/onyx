@@ -43,6 +43,7 @@ class DefaultPaneComponent(
             ),
             selectedEntryIds = emptySet(),
             selectionAnchorId = null,
+            selectionFocusId = null,
             entriesState = PaneEntriesState.Idle,
         )
     )
@@ -70,9 +71,13 @@ class DefaultPaneComponent(
                     val nextSelectionAnchorId = mutableState.value.selectionAnchorId
                         ?.takeIf { anchorId -> nextSelectedEntryIds.contains(anchorId) }
                         ?: nextSelectedEntryIds.firstOrNull()
+                    val nextSelectionFocusId = mutableState.value.selectionFocusId
+                        ?.takeIf { focusId -> nextSelectedEntryIds.contains(focusId) }
+                        ?: nextSelectionAnchorId
                     mutableState.value.copy(
                         selectedEntryIds = nextSelectedEntryIds,
                         selectionAnchorId = nextSelectionAnchorId,
+                        selectionFocusId = nextSelectionFocusId,
                         entriesState = PaneEntriesState.Ready(sortedEntries)
                     )
                 },
@@ -135,20 +140,27 @@ class DefaultPaneComponent(
             )
         }
 
+        val sortedEntries = sortEntries(lastLoadedEntries, nextSort)
+        val sortedEntryIds = sortedEntries.mapTo(mutableSetOf()) { it.id }
+        val nextSelectedEntryIds = mutableState.value.selectedEntryIds
+            .intersect(sortedEntryIds)
+            .ifEmpty {
+                sortedEntries.firstOrNull()?.let { setOf(it.id) } ?: emptySet()
+            }
+        val nextSelectionAnchorId = mutableState.value.selectionAnchorId
+            ?.takeIf { anchorId -> sortedEntryIds.contains(anchorId) }
+            ?: nextSelectedEntryIds.firstOrNull()
+        val nextSelectionFocusId = mutableState.value.selectionFocusId
+            ?.takeIf { focusId -> sortedEntryIds.contains(focusId) }
+            ?: nextSelectionAnchorId
+
         mutableState.value = mutableState.value.copy(
             detailsSort = nextSort,
-            selectedEntryIds = mutableState.value.selectedEntryIds
-                .intersect(sortEntries(lastLoadedEntries, nextSort).mapTo(mutableSetOf()) { it.id })
-                .ifEmpty {
-                    sortEntries(lastLoadedEntries, nextSort).firstOrNull()?.let { setOf(it.id) } ?: emptySet()
-                },
-            selectionAnchorId = mutableState.value.selectionAnchorId
-                ?.takeIf { anchorId ->
-                    sortEntries(lastLoadedEntries, nextSort).any { it.id == anchorId }
-                }
-                ?: sortEntries(lastLoadedEntries, nextSort).firstOrNull()?.id,
+            selectedEntryIds = nextSelectedEntryIds,
+            selectionAnchorId = nextSelectionAnchorId,
+            selectionFocusId = nextSelectionFocusId,
             entriesState = when (val currentEntriesState = mutableState.value.entriesState) {
-                is PaneEntriesState.Ready -> PaneEntriesState.Ready(sortEntries(lastLoadedEntries, nextSort))
+                is PaneEntriesState.Ready -> PaneEntriesState.Ready(sortedEntries)
                 else -> currentEntriesState
             },
         )
@@ -165,10 +177,11 @@ class DefaultPaneComponent(
         }
 
         val currentSelected = mutableState.value.selectedEntryIds
-        val currentAnchor = mutableState.value.selectionAnchorId
+        val currentAnchor = validEntryId(mutableState.value.selectionAnchorId, entries)
+        val currentFocus = validEntryId(mutableState.value.selectionFocusId, entries)
         val nextSelection = when {
             range -> {
-                val anchorId = currentAnchor ?: currentSelected.firstOrNull() ?: entryId
+                val anchorId = currentAnchor ?: currentFocus ?: currentSelected.firstOrNull() ?: entryId
                 buildRangeSelection(
                     entries = entries,
                     anchorId = anchorId,
@@ -192,7 +205,12 @@ class DefaultPaneComponent(
         val finalSelection = nextSelection.ifEmpty { setOf(entryId) }
         mutableState.value = mutableState.value.copy(
             selectedEntryIds = finalSelection,
-            selectionAnchorId = entryId,
+            selectionAnchorId = if (range) {
+                currentAnchor ?: currentFocus ?: entryId
+            } else {
+                entryId
+            },
+            selectionFocusId = entryId,
         )
     }
 
@@ -212,7 +230,9 @@ class DefaultPaneComponent(
         val nextEntryId = entries[nextIndex].id
 
         if (extendSelection) {
-            val anchorId = mutableState.value.selectionAnchorId ?: currentSelectionFocusId(entries) ?: nextEntryId
+            val anchorId = validEntryId(mutableState.value.selectionAnchorId, entries)
+                ?: currentSelectionFocusId(entries)
+                ?: nextEntryId
             mutableState.value = mutableState.value.copy(
                 selectedEntryIds = buildRangeSelection(
                     entries = entries,
@@ -222,11 +242,13 @@ class DefaultPaneComponent(
                     existingSelection = emptySet(),
                 ),
                 selectionAnchorId = anchorId,
+                selectionFocusId = nextEntryId,
             )
         } else {
             mutableState.value = mutableState.value.copy(
                 selectedEntryIds = setOf(nextEntryId),
                 selectionAnchorId = nextEntryId,
+                selectionFocusId = nextEntryId,
             )
         }
     }
@@ -245,6 +267,7 @@ class DefaultPaneComponent(
         mutableState.value = mutableState.value.copy(
             selectedEntryIds = entries.mapTo(linkedSetOf()) { it.id },
             selectionAnchorId = entries.first().id,
+            selectionFocusId = entries.first().id,
         )
     }
 
@@ -252,6 +275,7 @@ class DefaultPaneComponent(
         mutableState.value = mutableState.value.copy(
             selectedEntryIds = emptySet(),
             selectionAnchorId = null,
+            selectionFocusId = null,
         )
     }
 
@@ -277,6 +301,7 @@ class DefaultPaneComponent(
             canGoForward = forwardStack.isNotEmpty(),
             selectedEntryIds = emptySet(),
             selectionAnchorId = null,
+            selectionFocusId = null,
             entriesState = PaneEntriesState.Loading,
         )
         refresh()
@@ -290,9 +315,18 @@ class DefaultPaneComponent(
     }
 
     private fun currentSelectionFocusId(entries: List<VFile>): String? {
-        return mutableState.value.selectionAnchorId
-            ?.takeIf { anchorId -> entries.any { it.id == anchorId } }
+        return mutableState.value.selectionFocusId
+            ?.takeIf { focusId -> entries.any { it.id == focusId } }
+            ?: mutableState.value.selectionAnchorId
+                ?.takeIf { anchorId -> entries.any { it.id == anchorId } }
             ?: mutableState.value.selectedEntryIds.firstOrNull()
+    }
+
+    private fun validEntryId(
+        entryId: String?,
+        entries: List<VFile>,
+    ): String? {
+        return entryId?.takeIf { candidate -> entries.any { it.id == candidate } }
     }
 
     private fun buildRangeSelection(
