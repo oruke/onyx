@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 
 data class PaneState(
     val paneId: PaneId,
+    val activeTabId: String,
+    val tabs: List<PaneTabState>,
     val location: String,
     val canGoBack: Boolean,
     val canGoForward: Boolean,
@@ -17,7 +19,27 @@ data class PaneState(
     val selectedEntryIds: Set<String>,
     val selectionAnchorId: String?,
     val selectionFocusId: String?,
+    val showHiddenItems: Boolean,
     val entriesState: PaneEntriesState,
+)
+
+data class PaneTabState(
+    val id: String,
+    val title: String,
+    val location: String,
+    val canGoBack: Boolean,
+    val canGoForward: Boolean,
+    val detailsColumns: List<DetailsColumn>,
+    val detailsColumnWeights: Map<DetailsColumn, Float>,
+    val detailsSort: DetailsSort,
+    val selectedEntryIds: Set<String>,
+    val selectionAnchorId: String?,
+    val selectionFocusId: String?,
+    val showHiddenItems: Boolean,
+    val entriesState: PaneEntriesState,
+    val allEntries: List<VFile>,
+    val backStack: List<String>,
+    val forwardStack: List<String>,
 )
 
 sealed interface PaneEntriesState {
@@ -51,6 +73,8 @@ interface PaneComponent {
 
     fun toggleSort(column: DetailsColumn)
 
+    fun toggleHiddenItems()
+
     fun resizeDetailsColumn(
         column: DetailsColumn,
         nextColumn: DetailsColumn,
@@ -73,4 +97,22 @@ interface PaneComponent {
     fun selectAll()
 
     fun clearSelection()
+
+    fun createTab(location: String = state.value.location)
+
+    fun selectTab(tabId: String)
+
+    fun closeTab(tabId: String)
+
+    fun moveTab(
+        tabId: String,
+        targetIndex: Int,
+    )
+
+    fun detachTab(tabId: String): PaneTabState?
+
+    fun attachTab(
+        tab: PaneTabState,
+        targetIndex: Int,
+    )
 }

@@ -8,6 +8,7 @@ data class VFile(
     val kind: VFileKind,
     val sizeBytes: Long?,
     val modifiedAtEpochMillis: Long?,
+    val hidden: Boolean,
     val capabilities: Set<VFileCapability>,
 )
 

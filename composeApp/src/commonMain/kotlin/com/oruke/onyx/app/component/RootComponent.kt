@@ -26,6 +26,13 @@ interface RootComponent {
 
     fun activatePane(paneId: PaneId)
 
+    fun moveTab(
+        sourcePaneId: PaneId,
+        tabId: String,
+        targetPaneId: PaneId,
+        targetIndex: Int,
+    )
+
     fun refreshActivePane()
 
     fun stageCopySelectedInPane(paneId: PaneId)

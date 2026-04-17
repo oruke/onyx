@@ -1,5 +1,11 @@
 package com.oruke.onyx
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +35,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -38,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -99,6 +108,7 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_tab
 import onyx.composeapp.generated.resources.action_copy
 import onyx.composeapp.generated.resources.action_cut
 import onyx.composeapp.generated.resources.action_go_back
@@ -108,6 +118,7 @@ import onyx.composeapp.generated.resources.action_go_up
 import onyx.composeapp.generated.resources.action_layout_dual_horizontal
 import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
+import onyx.composeapp.generated.resources.action_new_tab
 import onyx.composeapp.generated.resources.action_open_settings
 import onyx.composeapp.generated.resources.action_paste
 import onyx.composeapp.generated.resources.action_refresh_active
@@ -147,6 +158,17 @@ import kotlin.math.roundToInt
 
 private val DetailsColumnGap = 6.dp
 private val PaneDividerHitSlop = 7.dp
+
+private data class TabDropZone(
+    val bounds: IntRect,
+    val tabIds: List<String>,
+    val tabBounds: Map<String, IntRect>,
+)
+
+private data class TabDropTarget(
+    val paneId: PaneId,
+    val index: Int,
+)
 
 // ── Palette ────────────────────────────────────────────────────────────────
 
@@ -282,6 +304,35 @@ private fun AppContent(
     state: RootState,
     palette: OnyxPalette,
 ) {
+    val tabDropZones = remember { mutableStateMapOf<PaneId, TabDropZone>() }
+    var tabDropTarget by remember { mutableStateOf<TabDropTarget?>(null) }
+    fun resolveTabDropTarget(windowPosition: IntOffset): TabDropTarget? {
+        val target = tabDropZones.entries.firstOrNull { (_, zone) ->
+            zone.bounds.containsPoint(windowPosition)
+        } ?: return null
+        return TabDropTarget(
+            paneId = target.key,
+            index = target.value.dropIndex(windowPosition),
+        )
+    }
+
+    val onTabDrop: (PaneId, String, IntOffset) -> Unit = onTabDrop@{ sourcePaneId, tabId, windowPosition ->
+        val target = resolveTabDropTarget(windowPosition) ?: return@onTabDrop
+        rootComponent.moveTab(
+            sourcePaneId = sourcePaneId,
+            tabId = tabId,
+            targetPaneId = target.paneId,
+            targetIndex = target.index,
+        )
+        tabDropTarget = null
+    }
+    val onTabDragPositionChange: (IntOffset) -> Unit = { windowPosition ->
+        tabDropTarget = resolveTabDropTarget(windowPosition)
+    }
+    val onTabDragEnd: () -> Unit = {
+        tabDropTarget = null
+    }
+
     IntUiTheme(isDark = isSystemInDarkTheme()) {
         Column(
             modifier = Modifier
@@ -311,6 +362,11 @@ private fun AppContent(
                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
                         onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                        onDropTab = onTabDrop,
+                        onTabDragPositionChange = onTabDragPositionChange,
+                        onTabDragEnd = onTabDragEnd,
+                        onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                        tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
                         palette = palette,
                     )
                 }
@@ -334,6 +390,11 @@ private fun AppContent(
                             onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                             onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
                             onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                            onDropTab = onTabDrop,
+                            onTabDragPositionChange = onTabDragPositionChange,
+                            onTabDragEnd = onTabDragEnd,
+                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
                             palette = palette,
                         )
                         ResizablePaneDivider(
@@ -355,6 +416,11 @@ private fun AppContent(
                             onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
                             onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
                             onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
+                            onDropTab = onTabDrop,
+                            onTabDragPositionChange = onTabDragPositionChange,
+                            onTabDragEnd = onTabDragEnd,
+                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
                             palette = palette,
                         )
                     }
@@ -379,6 +445,11 @@ private fun AppContent(
                             onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                             onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
                             onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                            onDropTab = onTabDrop,
+                            onTabDragPositionChange = onTabDragPositionChange,
+                            onTabDragEnd = onTabDragEnd,
+                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
                             palette = palette,
                         )
                         ResizablePaneDivider(
@@ -400,6 +471,11 @@ private fun AppContent(
                             onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
                             onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
                             onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
+                            onDropTab = onTabDrop,
+                            onTabDragPositionChange = onTabDragPositionChange,
+                            onTabDragEnd = onTabDragEnd,
+                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
                             palette = palette,
                         )
                     }
@@ -630,6 +706,7 @@ private fun ToolbarIconButton(
     enabled: Boolean,
     onClick: () -> Unit,
     palette: OnyxPalette,
+    selected: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -638,6 +715,7 @@ private fun ToolbarIconButton(
 
     val background = when {
         !enabled -> Color.Transparent
+        selected -> palette.titleBarActiveBackground
         isPressed -> palette.titleBarPressedBackground
         isHovered -> palette.titleBarHoverBackground
         else -> Color.Transparent
@@ -661,6 +739,238 @@ private fun ToolbarIconButton(
     }
 }
 
+@Composable
+private fun PaneTabBar(
+    state: PaneState,
+    active: Boolean,
+    palette: OnyxPalette,
+    onActivate: () -> Unit,
+    onSelectTab: (String) -> Unit,
+    onCloseTab: (String) -> Unit,
+    onCreateTab: () -> Unit,
+    onDropTab: (String, IntOffset) -> Unit,
+    onDragPositionChange: (IntOffset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDropZoneChange: (TabDropZone) -> Unit,
+    dropIndicatorIndex: Int?,
+) {
+    val scrollState = rememberScrollState()
+    var barBounds by remember { mutableStateOf<IntRect?>(null) }
+    val tabBounds = remember { mutableStateMapOf<String, IntRect>() }
+
+    fun reportDropZone() {
+        val currentBarBounds = barBounds ?: return
+        onDropZoneChange(
+            TabDropZone(
+                bounds = currentBarBounds,
+                tabIds = state.tabs.map { it.id },
+                tabBounds = tabBounds.toMap(),
+            )
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(26.dp)
+            .background(palette.headerBackground)
+            .onGloballyPositioned { coordinates ->
+                barBounds = coordinates.windowBounds()
+                reportDropZone()
+            }
+            .horizontalScroll(scrollState)
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        state.tabs.forEachIndexed { index, tab ->
+            TabDropIndicator(
+                visible = dropIndicatorIndex == index,
+                palette = palette,
+            )
+            PaneTabChip(
+                tabId = tab.id,
+                title = tab.title,
+                selected = tab.id == state.activeTabId,
+                closeEnabled = state.tabs.size > 1,
+                activePane = active,
+                palette = palette,
+                onActivate = onActivate,
+                onSelect = { onSelectTab(tab.id) },
+                onClose = { onCloseTab(tab.id) },
+                onDropTab = { position -> onDropTab(tab.id, position) },
+                onDragPositionChange = onDragPositionChange,
+                onDragEnd = onDragEnd,
+                onBoundsChanged = { bounds ->
+                    tabBounds[tab.id] = bounds
+                    reportDropZone()
+                },
+            )
+        }
+        TabDropIndicator(
+            visible = dropIndicatorIndex == state.tabs.size,
+            palette = palette,
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(24.dp)
+                .background(Color.Transparent, RoundedCornerShape(4.dp))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {
+                        onActivate()
+                        onCreateTab()
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                key = AllIconsKeys.General.Add,
+                contentDescription = stringResource(Res.string.action_new_tab),
+                modifier = Modifier.size(13.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TabDropIndicator(
+    visible: Boolean,
+    palette: OnyxPalette,
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(durationMillis = 120)) +
+                expandHorizontally(animationSpec = tween(durationMillis = 120)),
+        exit = fadeOut(animationSpec = tween(durationMillis = 90)) +
+                shrinkHorizontally(animationSpec = tween(durationMillis = 90)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(8.dp)
+                .padding(horizontal = 3.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(2.dp)
+                    .background(palette.accent, RoundedCornerShape(1.dp)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PaneTabChip(
+    tabId: String,
+    title: String,
+    selected: Boolean,
+    closeEnabled: Boolean,
+    activePane: Boolean,
+    palette: OnyxPalette,
+    onActivate: () -> Unit,
+    onSelect: () -> Unit,
+    onClose: () -> Unit,
+    onDropTab: (IntOffset) -> Unit,
+    onDragPositionChange: (IntOffset) -> Unit,
+    onDragEnd: () -> Unit,
+    onBoundsChanged: (IntRect) -> Unit,
+) {
+    var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var dragPosition by remember { mutableStateOf<IntOffset?>(null) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val background = when {
+        selected && activePane -> palette.surface
+        selected -> palette.surfaceVariant
+        isHovered -> palette.titleBarHoverBackground
+        else -> Color.Transparent
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxHeight()
+            .widthIn(max = 148.dp)
+            .onGloballyPositioned { layoutCoordinates ->
+                coordinates = layoutCoordinates
+                onBoundsChanged(layoutCoordinates.windowBounds())
+            }
+            .background(background, RoundedCornerShape(4.dp))
+            .border(
+                width = 1.dp,
+                color = if (selected) palette.outline else Color.Transparent,
+                shape = RoundedCornerShape(4.dp),
+            )
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = {
+                    onActivate()
+                    onSelect()
+                },
+            )
+            .pointerInput(tabId) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        dragPosition = coordinates?.localToWindow(offset)?.toIntOffset()
+                        dragPosition?.let(onDragPositionChange)
+                    },
+                    onDragCancel = {
+                        dragPosition = null
+                        onDragEnd()
+                    },
+                    onDragEnd = {
+                        dragPosition?.let(onDropTab)
+                        dragPosition = null
+                        onDragEnd()
+                    },
+                    onDrag = { change, _ ->
+                        dragPosition = coordinates?.localToWindow(change.position)?.toIntOffset()
+                        dragPosition?.let(onDragPositionChange)
+                    },
+                )
+            }
+            .padding(start = 8.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.widthIn(max = if (closeEnabled) 112.dp else 132.dp),
+            fontSize = 12.sp,
+            color = if (selected) palette.foreground else palette.mutedForeground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (closeEnabled) {
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            onActivate()
+                            onClose()
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    key = AllIconsKeys.Actions.Close,
+                    contentDescription = stringResource(Res.string.action_close_tab),
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
+    }
+}
+
 // ── Pane surface ───────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
@@ -676,11 +986,26 @@ private fun PaneSurface(
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
     onPaste: () -> Unit,
+    onDropTab: (PaneId, String, IntOffset) -> Unit,
+    onTabDragPositionChange: (IntOffset) -> Unit,
+    onTabDragEnd: () -> Unit,
+    onTabDropZoneChange: (PaneId, TabDropZone) -> Unit,
+    tabDropIndicatorIndex: Int?,
     palette: OnyxPalette,
 ) {
     val focusRequester = remember { FocusRequester() }
     var showContextMenu by remember { mutableStateOf(false) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var paneBounds by remember { mutableStateOf<IntRect?>(null) }
+    var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
+
+    fun reportPaneDropZone() {
+        val tabDropZone = tabBarDropZone ?: return
+        onTabDropZoneChange(
+            state.paneId,
+            tabDropZone.copy(bounds = paneBounds ?: tabDropZone.bounds),
+        )
+    }
 
     LaunchedEffect(active) {
         if (active) focusRequester.requestFocus()
@@ -693,6 +1018,10 @@ private fun PaneSurface(
                 color = if (active) palette.outline else palette.outlineVariant,
             )
             .background(palette.surface)
+            .onGloballyPositioned { coordinates ->
+                paneBounds = coordinates.windowBounds()
+                reportPaneDropZone()
+            }
             .focusRequester(focusRequester)
             .focusable()
             .onPreviewKeyEvent { event ->
@@ -737,6 +1066,26 @@ private fun PaneSurface(
                 onClick = onActivate
             ),
     ) {
+        PaneTabBar(
+            state = state,
+            active = active,
+            palette = palette,
+            onActivate = onActivate,
+            onSelectTab = component::selectTab,
+            onCloseTab = component::closeTab,
+            onCreateTab = { component.createTab() },
+            onDropTab = { tabId, position -> onDropTab(state.paneId, tabId, position) },
+            onDragPositionChange = onTabDragPositionChange,
+            onDragEnd = onTabDragEnd,
+            onDropZoneChange = { zone ->
+                tabBarDropZone = zone
+                reportPaneDropZone()
+            },
+            dropIndicatorIndex = tabDropIndicatorIndex,
+        )
+
+        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+
         // ── Navigation toolbar ─────────────────────────────────────────
         Row(
             modifier = Modifier
@@ -808,11 +1157,12 @@ private fun PaneSurface(
             }
             ToolbarIconButton(
                 enabled = true,
-                onClick = { /* TODO: Toggle visibility */ },
+                onClick = { onActivate(); component.toggleHiddenItems() },
                 palette = palette,
+                selected = state.showHiddenItems,
             ) {
                 Icon(
-                    key = AllIconsKeys.Actions.ToggleVisibility,
+                    key = if (state.showHiddenItems) AllIconsKeys.Actions.ToggleVisibility else AllIconsKeys.General.Show,
                     contentDescription = stringResource(Res.string.action_toggle_hidden_files),
                 )
             }
@@ -1639,6 +1989,38 @@ private fun horizontalResizePointerIcon(): PointerIcon {
 
 private fun verticalResizePointerIcon(): PointerIcon {
     return PointerIcon(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR))
+}
+
+private fun LayoutCoordinates.windowBounds(): IntRect {
+    val topLeft = localToWindow(Offset.Zero)
+    return IntRect(
+        left = topLeft.x.roundToInt(),
+        top = topLeft.y.roundToInt(),
+        right = topLeft.x.roundToInt() + size.width,
+        bottom = topLeft.y.roundToInt() + size.height,
+    )
+}
+
+private fun Offset.toIntOffset(): IntOffset {
+    return IntOffset(x.roundToInt(), y.roundToInt())
+}
+
+private fun IntRect.containsPoint(position: IntOffset): Boolean {
+    return position.x >= left &&
+            position.x <= right &&
+            position.y >= top &&
+            position.y <= bottom
+}
+
+private fun TabDropZone.dropIndex(position: IntOffset): Int {
+    tabIds.forEachIndexed { index, tabId ->
+        val bounds = tabBounds[tabId] ?: return@forEachIndexed
+        val centerX = bounds.left + bounds.width / 2
+        if (position.x < centerX) {
+            return index
+        }
+    }
+    return tabIds.size
 }
 
 @Composable

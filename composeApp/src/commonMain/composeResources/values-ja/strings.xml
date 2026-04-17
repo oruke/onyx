@@ -9,6 +9,8 @@
     <string name="action_refresh_active">更新</string>
     <string name="action_open_settings">設定</string>
     <string name="action_close_menu">メニューを閉じる</string>
+    <string name="action_new_tab">新規タブ</string>
+    <string name="action_close_tab">タブを閉じる</string>
     <string name="action_toggle_hidden_files">隠し項目を表示</string>
     <string name="action_toggle_sidebar">サイドバーを表示/非表示</string>
     <string name="action_toggle_status_bar">ステータスバーを表示/非表示</string>

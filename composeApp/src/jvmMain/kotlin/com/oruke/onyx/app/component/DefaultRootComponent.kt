@@ -97,6 +97,29 @@ class DefaultRootComponent(
         activePane.value = paneId
     }
 
+    override fun moveTab(
+        sourcePaneId: PaneId,
+        tabId: String,
+        targetPaneId: PaneId,
+        targetIndex: Int,
+    ) {
+        if (sourcePaneId == targetPaneId) {
+            paneComponent(sourcePaneId).moveTab(
+                tabId = tabId,
+                targetIndex = targetIndex,
+            )
+            activatePane(targetPaneId)
+            return
+        }
+
+        val tab = paneComponent(sourcePaneId).detachTab(tabId) ?: return
+        paneComponent(targetPaneId).attachTab(
+            tab = tab,
+            targetIndex = targetIndex,
+        )
+        activatePane(targetPaneId)
+    }
+
     override fun refreshActivePane() {
         when (activePane.value) {
             PaneId.PRIMARY -> primaryPane.refresh()
@@ -273,6 +296,13 @@ class DefaultRootComponent(
         return when (paneId) {
             PaneId.PRIMARY -> primaryPane.state.value
             PaneId.SECONDARY -> secondaryPane.state.value
+        }
+    }
+
+    private fun paneComponent(paneId: PaneId): PaneComponent {
+        return when (paneId) {
+            PaneId.PRIMARY -> primaryPane
+            PaneId.SECONDARY -> secondaryPane
         }
     }
 
