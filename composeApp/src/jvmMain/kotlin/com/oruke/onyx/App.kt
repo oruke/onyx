@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -66,8 +67,15 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
@@ -129,6 +137,7 @@ import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 // ── Palette ────────────────────────────────────────────────────────────────
 
@@ -157,9 +166,10 @@ private fun rememberOnyxPalette(): OnyxPalette {
                 rowHoverBackground = Color(0xFF2D4F80),
                 statusBarBackground = Color(0xFF26282C),
                 titleBarBorder = Color(0xFF43454A),
-                titleBarActiveBackground = Color(0xFF4C5052),
-                titleBarHoverBackground = Color(0xFF43454A),
-                titleBarPressedBackground = Color(0xFF5A5D63),
+                titleBarActiveBackground = Color(0xFF3A3D41),
+                titleBarHoverBackground = Color(0xFF35373A),
+                titleBarPressedBackground = Color(0xFF3E4145),
+                inactiveSelectionBackground = Color(0xFF43454A),
             )
         } else {
             OnyxPalette(
@@ -178,13 +188,14 @@ private fun rememberOnyxPalette(): OnyxPalette {
                 accentVariant = Color(0xFF5B9BF0),
                 selectionBackground = Color(0xFFD0E0FF),
                 selectionForeground = Color(0xFF1D2733),
-                headerBackground = Color(0xFFF0F2F5),
+                headerBackground = Color(0xFFF7F8FA),
                 rowHoverBackground = Color(0xFFE8F0FE),
-                statusBarBackground = Color(0xFFE8EBF0),
+                statusBarBackground = Color(0xFFF7F8FA),
                 titleBarBorder = Color(0xFFEBECF0),
-                titleBarActiveBackground = Color(0xFFE4E5E9),
-                titleBarHoverBackground = Color(0xFFEDEEF2),
-                titleBarPressedBackground = Color(0xFFD4D6D9),
+                titleBarActiveBackground = Color(0xFFEBECF0),
+                titleBarHoverBackground = Color(0xFFF0F2F5),
+                titleBarPressedBackground = Color(0xFFE4E6EB),
+                inactiveSelectionBackground = Color(0xFFE2E7EF),
             )
         }
     }
@@ -213,6 +224,7 @@ private data class OnyxPalette(
     val titleBarActiveBackground: Color,
     val titleBarHoverBackground: Color,
     val titleBarPressedBackground: Color,
+    val inactiveSelectionBackground: Color,
 )
 
 // ── Entry point ─────────────────────────────────────────────────────────────
@@ -536,6 +548,42 @@ private fun TitleBarIconButton(
     }
 }
 
+@Composable
+private fun ToolbarIconButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    palette: OnyxPalette,
+    content: @Composable () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    val background = when {
+        !enabled -> Color.Transparent
+        isPressed -> palette.titleBarPressedBackground
+        isHovered -> palette.titleBarHoverBackground
+        else -> Color.Transparent
+    }
+
+    Box(
+        modifier = Modifier
+            .hoverable(enabled = enabled, interactionSource = interactionSource)
+            .background(background, RoundedCornerShape(4.dp))
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            )
+            .alpha(if (enabled) 1f else 0.45f)
+            .padding(horizontal = 5.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
 // ── Pane surface ───────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
@@ -555,6 +603,7 @@ private fun PaneSurface(
 ) {
     val focusRequester = remember { FocusRequester() }
     var showContextMenu by remember { mutableStateOf(false) }
+    var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
 
     LaunchedEffect(active) {
         if (active) focusRequester.requestFocus()
@@ -564,7 +613,7 @@ private fun PaneSurface(
         modifier = modifier
             .border(
                 width = 1.dp,
-                color = if (active) palette.accent else palette.outlineVariant,
+                color = if (active) palette.outline else palette.outlineVariant,
             )
             .background(palette.surface)
             .focusRequester(focusRequester)
@@ -617,32 +666,38 @@ private fun PaneSurface(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(1.dp),
         ) {
-            IconButton(
-                onClick = { onActivate(); component.goBack() },
+            ToolbarIconButton(
                 enabled = state.canGoBack,
+                onClick = { onActivate(); component.goBack() },
+                palette = palette,
             ) {
                 Icon(key = AllIconsKeys.Actions.Back, contentDescription = stringResource(Res.string.action_go_back))
             }
-            IconButton(
-                onClick = { onActivate(); component.goForward() },
+            ToolbarIconButton(
                 enabled = state.canGoForward,
+                onClick = { onActivate(); component.goForward() },
+                palette = palette,
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.Forward,
-                    contentDescription = stringResource(Res.string.action_go_forward)
+                    contentDescription = stringResource(Res.string.action_go_forward),
                 )
             }
-            IconButton(
+            ToolbarIconButton(
+                enabled = true,
                 onClick = { onActivate(); component.goUp() },
+                palette = palette,
             ) {
                 Icon(key = AllIconsKeys.General.ArrowUp, contentDescription = stringResource(Res.string.action_go_up))
             }
-            IconButton(
+            ToolbarIconButton(
+                enabled = true,
                 onClick = { onActivate(); component.openDirectory(System.getProperty("user.home")) },
+                palette = palette,
             ) {
                 Icon(
                     key = AllIconsKeys.Nodes.HomeFolder,
-                    contentDescription = stringResource(Res.string.action_go_home)
+                    contentDescription = stringResource(Res.string.action_go_home),
                 )
             }
 
@@ -660,20 +715,24 @@ private fun PaneSurface(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            IconButton(
+            ToolbarIconButton(
+                enabled = true,
                 onClick = { onActivate(); component.refresh() },
+                palette = palette,
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.Refresh,
-                    contentDescription = stringResource(Res.string.action_refresh_active)
+                    contentDescription = stringResource(Res.string.action_refresh_active),
                 )
             }
-            IconButton(
+            ToolbarIconButton(
+                enabled = true,
                 onClick = { /* TODO: Toggle visibility */ },
+                palette = palette,
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.ToggleVisibility,
-                    contentDescription = stringResource(Res.string.action_toggle_hidden_files)
+                    contentDescription = stringResource(Res.string.action_toggle_hidden_files),
                 )
             }
         }
@@ -696,6 +755,7 @@ private fun PaneSurface(
                 sort = state.detailsSort,
                 selectedEntryIds = state.selectedEntryIds,
                 state = state.entriesState,
+                paneActive = active,
                 onActivate = onActivate,
                 onOpenEntry = component::openEntry,
                 onToggleSort = component::toggleSort,
@@ -706,25 +766,20 @@ private fun PaneSurface(
                     if (!keepSelection) component.selectEntry(entryId)
                     showContextMenu = true
                 },
+                onShowContextMenuAt = { offset -> contextMenuOffset = offset },
             )
 
             if (showContextMenu) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .clickable { showContextMenu = false }
-                )
-            }
-
-            if (showContextMenu) {
-                ContextMenuCard(
+                PaneContextMenu(
+                    anchorOffset = contextMenuOffset,
                     canOperateOnSelection = state.selectedEntryIds.isNotEmpty(),
                     canPaste = canPaste,
-                    onCopySelection = { showContextMenu = false; onCopySelection() },
-                    onCutSelection = { showContextMenu = false; onCutSelection() },
-                    onPaste = { showContextMenu = false; onPaste() },
-                    onRefresh = { showContextMenu = false; component.refresh() },
+                    onCopySelection = onCopySelection,
+                    onCutSelection = onCutSelection,
+                    onPaste = onPaste,
+                    onRefresh = component::refresh,
                     onClose = { showContextMenu = false },
+                    palette = palette,
                 )
             }
         }
@@ -815,8 +870,9 @@ private fun BreadcrumbAddressBar(
             }
             Text(
                 text = crumb.label,
-                color = palette.accent,
+                color = if (index == breadcrumbs.lastIndex) palette.foreground else palette.mutedForeground,
                 fontSize = 12.sp,
+                fontWeight = if (index == breadcrumbs.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.clickable {
                     onActivate()
                     onOpenLocation(crumb.location)
@@ -835,12 +891,14 @@ private fun PaneEntriesContent(
     sort: DetailsSort,
     selectedEntryIds: Set<String>,
     state: PaneEntriesState,
+    paneActive: Boolean,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onToggleSort: (DetailsColumn) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     palette: OnyxPalette,
     onShowContextMenu: (String, Boolean) -> Unit,
+    onShowContextMenuAt: (IntOffset) -> Unit,
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -907,11 +965,13 @@ private fun PaneEntriesContent(
                             entry = entry,
                             zebra = index % 2 == 1,
                             selected = selectedEntryIds.contains(entry.id),
+                            paneActive = paneActive,
                             onActivate = onActivate,
                             onOpenEntry = onOpenEntry,
                             onSelectEntry = onSelectEntry,
                             palette = palette,
                             onShowContextMenu = onShowContextMenu,
+                            onShowContextMenuAt = onShowContextMenuAt,
                         )
                     }
                 }
@@ -1012,11 +1072,13 @@ private fun EntryRow(
     entry: VFile,
     zebra: Boolean,
     selected: Boolean,
+    paneActive: Boolean,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     palette: OnyxPalette,
     onShowContextMenu: (String, Boolean) -> Unit,
+    onShowContextMenuAt: (IntOffset) -> Unit,
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     var rangeSelection by remember { mutableStateOf(false) }
@@ -1029,12 +1091,19 @@ private fun EntryRow(
                 rangeSelection = event.keyboardModifiers.isShiftPressed
                 if (event.buttons.isSecondaryPressed) {
                     onActivate()
+                    onShowContextMenuAt(
+                        IntOffset(
+                            event.changes.first().position.x.roundToInt(),
+                            event.changes.first().position.y.roundToInt(),
+                        )
+                    )
                     onShowContextMenu(entry.id, selected)
                 }
             }
             .background(
                 when {
-                    selected -> palette.selectionBackground
+                    selected && paneActive -> palette.selectionBackground
+                    selected && !paneActive -> palette.inactiveSelectionBackground
                     zebra -> palette.surfaceVariant
                     else -> Color.Transparent
                 },
@@ -1104,7 +1173,8 @@ private fun EntryRow(
 // ── Context menu ────────────────────────────────────────────────────────────
 
 @Composable
-private fun BoxScope.ContextMenuCard(
+private fun BoxScope.PaneContextMenu(
+    anchorOffset: IntOffset,
     canOperateOnSelection: Boolean,
     canPaste: Boolean,
     onCopySelection: () -> Unit,
@@ -1112,49 +1182,73 @@ private fun BoxScope.ContextMenuCard(
     onPaste: () -> Unit,
     onRefresh: () -> Unit,
     onClose: () -> Unit,
+    palette: OnyxPalette,
 ) {
-    val menuWidth = 220.dp
-    Column(
-        modifier = Modifier
-            .align(Alignment.TopEnd)
-            .width(menuWidth)
-            .padding(4.dp)
-            .border(1.dp, Color(0xFF4E5157), RoundedCornerShape(6.dp))
-            .background(Color(0xFF2B2D30), RoundedCornerShape(6.dp))
-            .padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp),
+    Popup(
+        popupPositionProvider = remember(anchorOffset) {
+            object : PopupPositionProvider {
+                override fun calculatePosition(
+                    anchorBounds: IntRect,
+                    windowSize: IntSize,
+                    layoutDirection: LayoutDirection,
+                    popupContentSize: IntSize,
+                ): IntOffset {
+                    val desiredX = anchorBounds.left + anchorOffset.x
+                    val desiredY = anchorBounds.top + anchorOffset.y
+                    val x = desiredX.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+                    val y = desiredY.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
+                    return IntOffset(x, y)
+                }
+            }
+        },
+        onDismissRequest = onClose,
+        properties = PopupProperties(focusable = true),
     ) {
-        ContextMenuItem(
-            text = stringResource(Res.string.action_copy),
-            enabled = canOperateOnSelection,
-            iconKey = AllIconsKeys.Actions.Copy,
-            onClick = onCopySelection,
-        )
-        ContextMenuItem(
-            text = stringResource(Res.string.action_cut),
-            enabled = canOperateOnSelection,
-            iconKey = AllIconsKeys.Actions.MenuCut,
-            onClick = onCutSelection,
-        )
-        ContextMenuItem(
-            text = stringResource(Res.string.action_paste),
-            enabled = canPaste,
-            iconKey = AllIconsKeys.Actions.MenuPaste,
-            onClick = onPaste,
-        )
-        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-        ContextMenuItem(
-            text = stringResource(Res.string.action_refresh_active),
-            enabled = true,
-            iconKey = AllIconsKeys.Actions.Refresh,
-            onClick = onRefresh,
-        )
-        ContextMenuItem(
-            text = stringResource(Res.string.action_close_menu),
-            enabled = true,
-            iconKey = AllIconsKeys.Actions.Close,
-            onClick = onClose,
-        )
+        Column(
+            modifier = Modifier
+                .width(220.dp)
+                .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+                .background(palette.floatingSurface, RoundedCornerShape(6.dp))
+                .padding(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            ContextMenuItem(
+                text = stringResource(Res.string.action_copy),
+                enabled = canOperateOnSelection,
+                iconKey = AllIconsKeys.Actions.Copy,
+                palette = palette,
+                onClick = onCopySelection,
+            )
+            ContextMenuItem(
+                text = stringResource(Res.string.action_cut),
+                enabled = canOperateOnSelection,
+                iconKey = AllIconsKeys.Actions.MenuCut,
+                palette = palette,
+                onClick = onCutSelection,
+            )
+            ContextMenuItem(
+                text = stringResource(Res.string.action_paste),
+                enabled = canPaste,
+                iconKey = AllIconsKeys.Actions.MenuPaste,
+                palette = palette,
+                onClick = onPaste,
+            )
+            Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+            ContextMenuItem(
+                text = stringResource(Res.string.action_refresh_active),
+                enabled = true,
+                iconKey = AllIconsKeys.Actions.Refresh,
+                palette = palette,
+                onClick = onRefresh,
+            )
+            ContextMenuItem(
+                text = stringResource(Res.string.action_close_menu),
+                enabled = true,
+                iconKey = AllIconsKeys.Actions.Close,
+                palette = palette,
+                onClick = onClose,
+            )
+        }
     }
 }
 
@@ -1163,12 +1257,13 @@ private fun ContextMenuItem(
     text: String,
     enabled: Boolean,
     iconKey: org.jetbrains.jewel.ui.icon.IconKey,
+    palette: OnyxPalette,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    val background = if (enabled && isHovered) Color(0xFF43454A) else Color.Transparent
-    val contentColor = if (enabled) Color(0xFFDFE1E5) else Color(0xFF6E6E6E)
+    val background = if (enabled && isHovered) palette.rowHoverBackground else Color.Transparent
+    val contentColor = if (enabled) palette.foreground else palette.disabledForeground
 
     Row(
         modifier = Modifier
@@ -1176,6 +1271,7 @@ private fun ContextMenuItem(
             .hoverable(interactionSource)
             .background(background, RoundedCornerShape(4.dp))
             .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.55f)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1283,20 +1379,22 @@ private fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .background(palette.titleBarActiveBackground, RoundedCornerShape(4.dp))
-                    .padding(3.dp),
+            LayoutIconButton(
+                selected = true,
+                onClick = { },
+                palette = palette,
+                tooltip = stringResource(Res.string.label_mode_details),
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.ListFiles,
                     contentDescription = stringResource(Res.string.label_mode_details),
                 )
             }
-            Box(
-                modifier = Modifier
-                    .background(Color.Transparent, RoundedCornerShape(4.dp))
-                    .padding(3.dp),
+            LayoutIconButton(
+                selected = false,
+                onClick = { },
+                palette = palette,
+                tooltip = stringResource(Res.string.label_mode_gallery),
             ) {
                 Icon(
                     key = AllIconsKeys.General.Layout,
