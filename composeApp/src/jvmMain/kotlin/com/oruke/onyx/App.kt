@@ -42,6 +42,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -49,6 +50,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -170,6 +172,25 @@ private data class TabDropTarget(
     val index: Int,
 )
 
+private data class TooltipRequest(
+    val owner: Any,
+    val text: String,
+    val anchorBounds: IntRect,
+    val pointerPosition: IntOffset,
+)
+
+private class TooltipController(
+    val show: (TooltipRequest) -> Unit,
+    val hide: (Any) -> Unit,
+)
+
+private val LocalTooltipController = staticCompositionLocalOf {
+    TooltipController(
+        show = {},
+        hide = {},
+    )
+}
+
 // ── Palette ────────────────────────────────────────────────────────────────
 
 @Composable
@@ -266,22 +287,35 @@ fun DecoratedWindowScope.WindowApp() {
     val state by rootComponent.state.collectAsState()
     val palette = rememberOnyxPalette()
     var uiScale by remember { mutableStateOf(100) }
+    var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     val onUiScaleChange: (Int) -> Unit = { value -> uiScale = value }
 
-    TitleBar(modifier = Modifier.newFullscreenControls()) { _ ->
-        TitleBarContent(
-            rootComponent = rootComponent,
-            layoutMode = state.layoutMode,
-            uiScale = uiScale,
-            onUiScaleChange = onUiScaleChange,
-            palette = palette,
+    CompositionLocalProvider(
+        LocalTooltipController provides TooltipController(
+            show = { request -> titleBarTooltipRequest = request },
+            hide = { owner ->
+                if (titleBarTooltipRequest?.owner === owner) {
+                    titleBarTooltipRequest = null
+                }
+            },
         )
+    ) {
+        TitleBar(modifier = Modifier.newFullscreenControls()) { _ ->
+            TitleBarContent(
+                rootComponent = rootComponent,
+                layoutMode = state.layoutMode,
+                uiScale = uiScale,
+                onUiScaleChange = onUiScaleChange,
+                palette = palette,
+            )
+        }
     }
 
     AppContent(
         rootComponent = rootComponent,
         state = state,
         palette = palette,
+        externalTooltipRequest = titleBarTooltipRequest,
     )
 }
 
@@ -303,9 +337,13 @@ private fun AppContent(
     rootComponent: RootComponent,
     state: RootState,
     palette: OnyxPalette,
+    externalTooltipRequest: TooltipRequest? = null,
 ) {
     val tabDropZones = remember { mutableStateMapOf<PaneId, TabDropZone>() }
     var tabDropTarget by remember { mutableStateOf<TabDropTarget?>(null) }
+    var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
+    var appContentSize by remember { mutableStateOf(IntSize.Zero) }
+    var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
     fun resolveTabDropTarget(windowPosition: IntOffset): TabDropTarget? {
         val target = tabDropZones.entries.firstOrNull { (_, zone) ->
             zone.bounds.containsPoint(windowPosition)
@@ -334,162 +372,191 @@ private fun AppContent(
     }
 
     IntUiTheme(isDark = isSystemInDarkTheme()) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(palette.appBackground),
+        CompositionLocalProvider(
+            LocalTooltipController provides TooltipController(
+                show = { request -> tooltipRequest = request },
+                hide = { owner ->
+                    if (tooltipRequest?.owner === owner) {
+                        tooltipRequest = null
+                    }
+                },
+            )
         ) {
-            // ── Task panel (if any) ─────────────────────────────────────
-            if (state.tasks.isNotEmpty()) {
-                TaskPanel(
-                    tasks = state.tasks,
-                    onDismissTask = rootComponent::dismissTask,
-                    palette = palette,
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { coordinates ->
+                        appContentSize = coordinates.size
+                        appWindowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
+                    },
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(palette.appBackground),
+                ) {
+                    // ── Task panel (if any) ─────────────────────────────────────
+                    if (state.tasks.isNotEmpty()) {
+                        TaskPanel(
+                            tasks = state.tasks,
+                            onDismissTask = rootComponent::dismissTask,
+                            palette = palette,
+                        )
+                    }
 
-            // ── Content area ────────────────────────────────────────────
-            when (state.layoutMode) {
-                PaneLayoutMode.SINGLE -> {
-                    PaneSurface(
-                        state = state.primaryPane,
-                        active = state.activePane == PaneId.PRIMARY,
-                        component = rootComponent.primaryPane,
-                        modifier = Modifier.weight(1f),
-                        onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
-                        canPaste = state.canPaste,
-                        onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
-                        onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
-                        onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
-                        onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
-                        onDropTab = onTabDrop,
-                        onTabDragPositionChange = onTabDragPositionChange,
-                        onTabDragEnd = onTabDragEnd,
-                        onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                        tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                    // ── Content area ────────────────────────────────────────────
+                    when (state.layoutMode) {
+                        PaneLayoutMode.SINGLE -> {
+                            PaneSurface(
+                                state = state.primaryPane,
+                                active = state.activePane == PaneId.PRIMARY,
+                                component = rootComponent.primaryPane,
+                                modifier = Modifier.weight(1f),
+                                onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
+                                canPaste = state.canPaste,
+                                onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
+                                onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
+                                onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
+                                onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                                onDropTab = onTabDrop,
+                                onTabDragPositionChange = onTabDragPositionChange,
+                                onTabDragEnd = onTabDragEnd,
+                                onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                palette = palette,
+                            )
+                        }
+
+                        PaneLayoutMode.DUAL_VERTICAL -> {
+                            var contentSize by remember { mutableStateOf(IntSize.Zero) }
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .onSizeChanged { contentSize = it },
+                            ) {
+                                PaneSurface(
+                                    state = state.primaryPane,
+                                    active = state.activePane == PaneId.PRIMARY,
+                                    component = rootComponent.primaryPane,
+                                    modifier = Modifier.weight(state.paneSplitFraction),
+                                    onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
+                                    canPaste = state.canPaste,
+                                    onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
+                                    onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
+                                    onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
+                                    onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                                    onDropTab = onTabDrop,
+                                    onTabDragPositionChange = onTabDragPositionChange,
+                                    onTabDragEnd = onTabDragEnd,
+                                    onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                    tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                    palette = palette,
+                                )
+                                ResizablePaneDivider(
+                                    orientation = Orientation.Vertical,
+                                    palette = palette,
+                                    onDragDelta = { delta ->
+                                        val width = contentSize.width.toFloat().coerceAtLeast(1f)
+                                        rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width)
+                                    },
+                                )
+                                PaneSurface(
+                                    state = state.secondaryPane,
+                                    active = state.activePane == PaneId.SECONDARY,
+                                    component = rootComponent.secondaryPane,
+                                    modifier = Modifier.weight(1f - state.paneSplitFraction),
+                                    onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
+                                    canPaste = state.canPaste,
+                                    onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
+                                    onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
+                                    onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
+                                    onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
+                                    onDropTab = onTabDrop,
+                                    onTabDragPositionChange = onTabDragPositionChange,
+                                    onTabDragEnd = onTabDragEnd,
+                                    onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                    tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
+                                    palette = palette,
+                                )
+                            }
+                        }
+
+                        PaneLayoutMode.DUAL_HORIZONTAL -> {
+                            var contentSize by remember { mutableStateOf(IntSize.Zero) }
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .onSizeChanged { contentSize = it },
+                            ) {
+                                PaneSurface(
+                                    state = state.primaryPane,
+                                    active = state.activePane == PaneId.PRIMARY,
+                                    component = rootComponent.primaryPane,
+                                    modifier = Modifier.weight(state.paneSplitFraction),
+                                    onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
+                                    canPaste = state.canPaste,
+                                    onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
+                                    onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
+                                    onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
+                                    onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                                    onDropTab = onTabDrop,
+                                    onTabDragPositionChange = onTabDragPositionChange,
+                                    onTabDragEnd = onTabDragEnd,
+                                    onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                    tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                    palette = palette,
+                                )
+                                ResizablePaneDivider(
+                                    orientation = Orientation.Horizontal,
+                                    palette = palette,
+                                    onDragDelta = { delta ->
+                                        val height = contentSize.height.toFloat().coerceAtLeast(1f)
+                                        rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height)
+                                    },
+                                )
+                                PaneSurface(
+                                    state = state.secondaryPane,
+                                    active = state.activePane == PaneId.SECONDARY,
+                                    component = rootComponent.secondaryPane,
+                                    modifier = Modifier.weight(1f - state.paneSplitFraction),
+                                    onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
+                                    canPaste = state.canPaste,
+                                    onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
+                                    onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
+                                    onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
+                                    onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
+                                    onDropTab = onTabDrop,
+                                    onTabDragPositionChange = onTabDragPositionChange,
+                                    onTabDragEnd = onTabDragEnd,
+                                    onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                    tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
+                                    palette = palette,
+                                )
+                            }
+                        }
+                    }
+
+                    // ── Status bar ──────────────────────────────────────────────
+                    StatusBar(
+                        primaryPane = state.primaryPane,
+                        secondaryPane = state.secondaryPane,
+                        activePane = state.activePane,
+                        layoutMode = state.layoutMode,
                         palette = palette,
                     )
                 }
 
-                PaneLayoutMode.DUAL_VERTICAL -> {
-                    var contentSize by remember { mutableStateOf(IntSize.Zero) }
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .onSizeChanged { contentSize = it },
-                    ) {
-                        PaneSurface(
-                            state = state.primaryPane,
-                            active = state.activePane == PaneId.PRIMARY,
-                            component = rootComponent.primaryPane,
-                            modifier = Modifier.weight(state.paneSplitFraction),
-                            onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
-                            canPaste = state.canPaste,
-                            onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
-                            onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
-                            onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
-                            onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
-                            onDropTab = onTabDrop,
-                            onTabDragPositionChange = onTabDragPositionChange,
-                            onTabDragEnd = onTabDragEnd,
-                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
-                            palette = palette,
-                        )
-                        ResizablePaneDivider(
-                            orientation = Orientation.Vertical,
-                            palette = palette,
-                            onDragDelta = { delta ->
-                                val width = contentSize.width.toFloat().coerceAtLeast(1f)
-                                rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width)
-                            },
-                        )
-                        PaneSurface(
-                            state = state.secondaryPane,
-                            active = state.activePane == PaneId.SECONDARY,
-                            component = rootComponent.secondaryPane,
-                            modifier = Modifier.weight(1f - state.paneSplitFraction),
-                            onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
-                            canPaste = state.canPaste,
-                            onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
-                            onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
-                            onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
-                            onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
-                            onDropTab = onTabDrop,
-                            onTabDragPositionChange = onTabDragPositionChange,
-                            onTabDragEnd = onTabDragEnd,
-                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
-                            palette = palette,
-                        )
-                    }
-                }
-
-                PaneLayoutMode.DUAL_HORIZONTAL -> {
-                    var contentSize by remember { mutableStateOf(IntSize.Zero) }
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .onSizeChanged { contentSize = it },
-                    ) {
-                        PaneSurface(
-                            state = state.primaryPane,
-                            active = state.activePane == PaneId.PRIMARY,
-                            component = rootComponent.primaryPane,
-                            modifier = Modifier.weight(state.paneSplitFraction),
-                            onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
-                            canPaste = state.canPaste,
-                            onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
-                            onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
-                            onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
-                            onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
-                            onDropTab = onTabDrop,
-                            onTabDragPositionChange = onTabDragPositionChange,
-                            onTabDragEnd = onTabDragEnd,
-                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
-                            palette = palette,
-                        )
-                        ResizablePaneDivider(
-                            orientation = Orientation.Horizontal,
-                            palette = palette,
-                            onDragDelta = { delta ->
-                                val height = contentSize.height.toFloat().coerceAtLeast(1f)
-                                rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height)
-                            },
-                        )
-                        PaneSurface(
-                            state = state.secondaryPane,
-                            active = state.activePane == PaneId.SECONDARY,
-                            component = rootComponent.secondaryPane,
-                            modifier = Modifier.weight(1f - state.paneSplitFraction),
-                            onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
-                            canPaste = state.canPaste,
-                            onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
-                            onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
-                            onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
-                            onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
-                            onDropTab = onTabDrop,
-                            onTabDragPositionChange = onTabDragPositionChange,
-                            onTabDragEnd = onTabDragEnd,
-                            onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                            tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
-                            palette = palette,
-                        )
-                    }
+                (tooltipRequest ?: externalTooltipRequest)?.let { request ->
+                    OnyxTooltipOverlay(
+                        request = request,
+                        appSize = appContentSize,
+                        appWindowOrigin = appWindowOrigin,
+                        palette = palette,
+                    )
                 }
             }
-
-            // ── Status bar ──────────────────────────────────────────────
-            StatusBar(
-                primaryPane = state.primaryPane,
-                secondaryPane = state.secondaryPane,
-                activePane = state.activePane,
-                layoutMode = state.layoutMode,
-                palette = palette,
-            )
         }
     }
 }
@@ -584,7 +651,11 @@ private fun TitleBarContent(
 
             Spacer(modifier = Modifier.width(3.dp))
 
-            TitleBarIconButton(onClick = { }, palette = palette) {
+            TitleBarIconButton(
+                onClick = { },
+                palette = palette,
+                tooltip = stringResource(Res.string.action_open_settings),
+            ) {
                 Icon(
                     key = AllIconsKeys.General.GearPlain,
                     contentDescription = stringResource(Res.string.action_open_settings)
@@ -594,6 +665,86 @@ private fun TitleBarContent(
             Spacer(modifier = Modifier.width(6.dp))
         }
     }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun OnyxTooltip(
+    text: String,
+    palette: OnyxPalette,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    val tooltipController = LocalTooltipController.current
+    val tooltipOwner = remember { Any() }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    var anchorBounds by remember { mutableStateOf<IntRect?>(null) }
+    var pointerPosition by remember { mutableStateOf<IntOffset?>(null) }
+
+    fun updatePointerPosition(eventPosition: Offset) {
+        pointerPosition = anchorBounds?.let { bounds ->
+            IntOffset(
+                x = bounds.left + eventPosition.x.roundToInt(),
+                y = bounds.top + eventPosition.y.roundToInt(),
+            )
+        }
+    }
+
+    LaunchedEffect(enabled, isHovered, text, anchorBounds, pointerPosition) {
+        val bounds = anchorBounds
+        val position = pointerPosition
+        if (enabled && isHovered && text.isNotBlank() && bounds != null) {
+            tooltipController.show(
+                TooltipRequest(
+                    owner = tooltipOwner,
+                    text = text,
+                    anchorBounds = bounds,
+                    pointerPosition = position ?: bounds.centerBottom(),
+                )
+            )
+        } else {
+            tooltipController.hide(tooltipOwner)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .onGloballyPositioned { coordinates -> anchorBounds = coordinates.windowBounds() }
+            .onPointerEvent(PointerEventType.Enter) { event ->
+                event.changes.firstOrNull()?.position?.let(::updatePointerPosition)
+            }
+            .onPointerEvent(PointerEventType.Move) { event ->
+                event.changes.firstOrNull()?.position?.let(::updatePointerPosition)
+            }
+            .hoverable(enabled = enabled, interactionSource = interactionSource),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun OnyxTooltipOverlay(
+    request: TooltipRequest,
+    appSize: IntSize,
+    appWindowOrigin: IntOffset,
+    palette: OnyxPalette,
+) {
+    var tooltipSize by remember(request.text) { mutableStateOf(IntSize.Zero) }
+    Text(
+        text = request.text,
+        modifier = Modifier
+            .offset { tooltipOffset(request.pointerPosition, appWindowOrigin, appSize, tooltipSize) }
+            .onSizeChanged { tooltipSize = it }
+            .widthIn(max = 260.dp)
+            .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
+            .background(palette.floatingSurface, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        color = palette.foreground,
+        fontSize = 11.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @Composable
@@ -614,15 +765,17 @@ private fun LayoutIconButton(
         else -> Color.Transparent
     }
 
-    Box(
-        modifier = Modifier
-            .hoverable(interactionSource)
-            .background(background, RoundedCornerShape(4.dp))
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 5.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
+    OnyxTooltip(text = tooltip, palette = palette) {
+        Box(
+            modifier = Modifier
+                .hoverable(interactionSource)
+                .background(background, RoundedCornerShape(4.dp))
+                .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+                .padding(horizontal = 5.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
     }
 }
 
@@ -630,28 +783,31 @@ private fun LayoutIconButton(
 private fun TitleBarIconButton(
     onClick: () -> Unit,
     palette: OnyxPalette,
+    tooltip: String,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    Box(
-        modifier = Modifier
-            .hoverable(interactionSource)
-            .background(
-                when {
-                    isPressed -> palette.titleBarPressedBackground
-                    isHovered -> palette.titleBarHoverBackground
-                    else -> Color.Transparent
-                },
-                RoundedCornerShape(4.dp),
-            )
-            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-            .padding(horizontal = 5.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
+    OnyxTooltip(text = tooltip, palette = palette) {
+        Box(
+            modifier = Modifier
+                .hoverable(interactionSource)
+                .background(
+                    when {
+                        isPressed -> palette.titleBarPressedBackground
+                        isHovered -> palette.titleBarHoverBackground
+                        else -> Color.Transparent
+                    },
+                    RoundedCornerShape(4.dp),
+                )
+                .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+                .padding(horizontal = 5.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
     }
 }
 
@@ -706,6 +862,7 @@ private fun ToolbarIconButton(
     enabled: Boolean,
     onClick: () -> Unit,
     palette: OnyxPalette,
+    tooltip: String,
     selected: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -721,21 +878,23 @@ private fun ToolbarIconButton(
         else -> Color.Transparent
     }
 
-    Box(
-        modifier = Modifier
-            .hoverable(enabled = enabled, interactionSource = interactionSource)
-            .background(background, RoundedCornerShape(4.dp))
-            .clickable(
-                enabled = enabled,
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onClick,
-            )
-            .alpha(if (enabled) 1f else 0.45f)
-            .padding(horizontal = 5.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        content()
+    OnyxTooltip(text = tooltip, palette = palette, enabled = enabled) {
+        Box(
+            modifier = Modifier
+                .hoverable(enabled = enabled, interactionSource = interactionSource)
+                .background(background, RoundedCornerShape(4.dp))
+                .clickable(
+                    enabled = enabled,
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onClick,
+                )
+                .alpha(if (enabled) 1f else 0.45f)
+                .padding(horizontal = 5.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            content()
+        }
     }
 }
 
@@ -812,26 +971,29 @@ private fun PaneTabBar(
             palette = palette,
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(24.dp)
-                .background(Color.Transparent, RoundedCornerShape(4.dp))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {
-                        onActivate()
-                        onCreateTab()
-                    },
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                key = AllIconsKeys.General.Add,
-                contentDescription = stringResource(Res.string.action_new_tab),
-                modifier = Modifier.size(13.dp),
-            )
+        val newTabTooltip = stringResource(Res.string.action_new_tab)
+        OnyxTooltip(text = newTabTooltip, palette = palette) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(24.dp)
+                    .background(Color.Transparent, RoundedCornerShape(4.dp))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            onActivate()
+                            onCreateTab()
+                        },
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    key = AllIconsKeys.General.Add,
+                    contentDescription = newTabTooltip,
+                    modifier = Modifier.size(13.dp),
+                )
+            }
         }
     }
 }
@@ -892,80 +1054,85 @@ private fun PaneTabChip(
         else -> Color.Transparent
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxHeight()
-            .widthIn(max = 148.dp)
-            .onGloballyPositioned { layoutCoordinates ->
-                coordinates = layoutCoordinates
-                onBoundsChanged(layoutCoordinates.windowBounds())
-            }
-            .background(background, RoundedCornerShape(4.dp))
-            .border(
-                width = 1.dp,
-                color = if (selected) palette.outline else Color.Transparent,
-                shape = RoundedCornerShape(4.dp),
-            )
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {
-                    onActivate()
-                    onSelect()
-                },
-            )
-            .pointerInput(tabId) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        dragPosition = coordinates?.localToWindow(offset)?.toIntOffset()
-                        dragPosition?.let(onDragPositionChange)
-                    },
-                    onDragCancel = {
-                        dragPosition = null
-                        onDragEnd()
-                    },
-                    onDragEnd = {
-                        dragPosition?.let(onDropTab)
-                        dragPosition = null
-                        onDragEnd()
-                    },
-                    onDrag = { change, _ ->
-                        dragPosition = coordinates?.localToWindow(change.position)?.toIntOffset()
-                        dragPosition?.let(onDragPositionChange)
+    OnyxTooltip(text = title, palette = palette) {
+        Row(
+            modifier = Modifier
+                .fillMaxHeight()
+                .widthIn(max = 148.dp)
+                .onGloballyPositioned { layoutCoordinates ->
+                    coordinates = layoutCoordinates
+                    onBoundsChanged(layoutCoordinates.windowBounds())
+                }
+                .background(background, RoundedCornerShape(4.dp))
+                .border(
+                    width = 1.dp,
+                    color = if (selected) palette.outline else Color.Transparent,
+                    shape = RoundedCornerShape(4.dp),
+                )
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = {
+                        onActivate()
+                        onSelect()
                     },
                 )
-            }
-            .padding(start = 8.dp, end = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = title,
-            modifier = Modifier.widthIn(max = if (closeEnabled) 112.dp else 132.dp),
-            fontSize = 12.sp,
-            color = if (selected) palette.foreground else palette.mutedForeground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (closeEnabled) {
-            Box(
-                modifier = Modifier
-                    .size(16.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {
-                            onActivate()
-                            onClose()
+                .pointerInput(tabId) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            dragPosition = coordinates?.localToWindow(offset)?.toIntOffset()
+                            dragPosition?.let(onDragPositionChange)
                         },
-                    ),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.Close,
-                    contentDescription = stringResource(Res.string.action_close_tab),
-                    modifier = Modifier.size(12.dp),
-                )
+                        onDragCancel = {
+                            dragPosition = null
+                            onDragEnd()
+                        },
+                        onDragEnd = {
+                            dragPosition?.let(onDropTab)
+                            dragPosition = null
+                            onDragEnd()
+                        },
+                        onDrag = { change, _ ->
+                            dragPosition = coordinates?.localToWindow(change.position)?.toIntOffset()
+                            dragPosition?.let(onDragPositionChange)
+                        },
+                    )
+                }
+                .padding(start = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.widthIn(max = if (closeEnabled) 112.dp else 132.dp),
+                fontSize = 12.sp,
+                color = if (selected) palette.foreground else palette.mutedForeground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (closeEnabled) {
+                val closeTabTooltip = stringResource(Res.string.action_close_tab)
+                OnyxTooltip(text = closeTabTooltip, palette = palette) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = {
+                                    onActivate()
+                                    onClose()
+                                },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            key = AllIconsKeys.Actions.Close,
+                            contentDescription = closeTabTooltip,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -1100,6 +1267,7 @@ private fun PaneSurface(
                 enabled = state.canGoBack,
                 onClick = { onActivate(); component.goBack() },
                 palette = palette,
+                tooltip = stringResource(Res.string.action_go_back),
             ) {
                 Icon(key = AllIconsKeys.Actions.Back, contentDescription = stringResource(Res.string.action_go_back))
             }
@@ -1107,6 +1275,7 @@ private fun PaneSurface(
                 enabled = state.canGoForward,
                 onClick = { onActivate(); component.goForward() },
                 palette = palette,
+                tooltip = stringResource(Res.string.action_go_forward),
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.Forward,
@@ -1117,6 +1286,7 @@ private fun PaneSurface(
                 enabled = true,
                 onClick = { onActivate(); component.goUp() },
                 palette = palette,
+                tooltip = stringResource(Res.string.action_go_up),
             ) {
                 Icon(key = AllIconsKeys.General.ArrowUp, contentDescription = stringResource(Res.string.action_go_up))
             }
@@ -1124,6 +1294,7 @@ private fun PaneSurface(
                 enabled = true,
                 onClick = { onActivate(); component.openDirectory(System.getProperty("user.home")) },
                 palette = palette,
+                tooltip = stringResource(Res.string.action_go_home),
             ) {
                 Icon(
                     key = AllIconsKeys.Nodes.HomeFolder,
@@ -1149,6 +1320,7 @@ private fun PaneSurface(
                 enabled = true,
                 onClick = { onActivate(); component.refresh() },
                 palette = palette,
+                tooltip = stringResource(Res.string.action_refresh_active),
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.Refresh,
@@ -1159,6 +1331,7 @@ private fun PaneSurface(
                 enabled = true,
                 onClick = { onActivate(); component.toggleHiddenItems() },
                 palette = palette,
+                tooltip = stringResource(Res.string.action_toggle_hidden_files),
                 selected = state.showHiddenItems,
             ) {
                 Icon(
@@ -1299,6 +1472,11 @@ private fun BreadcrumbAddressBar(
 ) {
     val scrollState = rememberScrollState()
     val breadcrumbs = remember(location) { buildBreadcrumbs(location) }
+    val maxScroll = scrollState.maxValue
+
+    LaunchedEffect(location, maxScroll) {
+        scrollState.scrollTo(maxScroll)
+    }
 
     Row(
         modifier = Modifier
@@ -2010,6 +2188,35 @@ private fun IntRect.containsPoint(position: IntOffset): Boolean {
             position.x <= right &&
             position.y >= top &&
             position.y <= bottom
+}
+
+private fun tooltipOffset(
+    pointerWindowPosition: IntOffset,
+    appWindowOrigin: IntOffset,
+    appSize: IntSize,
+    tooltipSize: IntSize,
+): IntOffset {
+    val pointerPosition = IntOffset(
+        x = pointerWindowPosition.x - appWindowOrigin.x,
+        y = pointerWindowPosition.y - appWindowOrigin.y,
+    )
+    val width = tooltipSize.width.takeIf { it > 0 } ?: 120
+    val height = tooltipSize.height.takeIf { it > 0 } ?: 28
+    val rightX = pointerPosition.x + 14
+    val leftX = pointerPosition.x - width - 14
+    val maxX = (appSize.width - width - 4).coerceAtLeast(4)
+    val x = if (rightX <= maxX) rightX else leftX.coerceAtLeast(4)
+    val belowY = pointerPosition.y + 18
+    val aboveY = pointerPosition.y - height - 12
+    val y = if (belowY + height <= appSize.height) belowY else aboveY.coerceAtLeast(4)
+    return IntOffset(x, y)
+}
+
+private fun IntRect.centerBottom(): IntOffset {
+    return IntOffset(
+        x = left + width / 2,
+        y = bottom,
+    )
 }
 
 private fun TabDropZone.dropIndex(position: IntOffset): Int {
