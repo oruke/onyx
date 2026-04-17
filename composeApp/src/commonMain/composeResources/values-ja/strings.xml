@@ -12,6 +12,8 @@
     <string name="action_new_tab">新規タブ</string>
     <string name="action_close_tab">タブを閉じる</string>
     <string name="action_toggle_hidden_files">隠し項目を表示</string>
+    <string name="action_cancel_task">キャンセル</string>
+    <string name="action_clear_all_tasks">すべて消去</string>
     <string name="action_toggle_sidebar">サイドバーを表示/非表示</string>
     <string name="action_toggle_status_bar">ステータスバーを表示/非表示</string>
     <string name="action_toggle_fullscreen">全画面を切り替え</string>
@@ -23,6 +25,9 @@
     <string name="action_window_restore">元に戻す</string>
     <string name="action_window_close">ウィンドウを閉じる</string>
     <string name="action_copy">コピー</string>
+    <string name="action_move">移動</string>
+    <string name="label_copy_to_destination">%1$s にコピー</string>
+    <string name="label_move_to_destination">%1$s に移動</string>
     <string name="action_cut">切り取り</string>
     <string name="action_paste">貼り付け</string>
     <string name="action_delete_selected">選択項目を削除</string>
@@ -66,6 +71,7 @@
     <string name="label_task_status_running">実行中</string>
     <string name="label_task_status_succeeded">完了</string>
     <string name="label_task_status_failed">失敗</string>
+    <string name="label_task_status_cancelled">キャンセル済み</string>
 
     <string name="label_directory_badge">フォルダー</string>
     <string name="label_file_badge">ファイル</string>

@@ -7,11 +7,8 @@ import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.nio.file.AccessDeniedException
-import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
-import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
@@ -213,17 +210,38 @@ class JvmLocalFileProvider {
             throw NoSuchFileException(source.pathString)
         }
 
-        val target = targetDirectory.resolve(source.fileName.toString()).normalize().toAbsolutePath()
+        val target = availableTargetPath(
+            source = source,
+            targetDirectory = targetDirectory,
+        )
         if (target == source) {
             throw IllegalArgumentException("Source and target cannot be the same path")
-        }
-        if (Files.exists(target)) {
-            throw FileAlreadyExistsException(target.pathString)
         }
         if (Files.isDirectory(source) && targetDirectory.startsWith(source)) {
             throw IllegalArgumentException("Cannot place a directory into itself")
         }
         return target
+    }
+
+    private fun availableTargetPath(
+        source: Path,
+        targetDirectory: Path,
+    ): Path {
+        val originalName = source.fileName.toString()
+        val isDirectory = Files.isDirectory(source)
+        val dotIndex = originalName.lastIndexOf('.')
+        val hasExtension = !isDirectory && dotIndex > 0 && dotIndex < originalName.lastIndex
+        val baseName = if (hasExtension) originalName.substring(0, dotIndex) else originalName
+        val extension = if (hasExtension) originalName.substring(dotIndex) else ""
+
+        var candidate = targetDirectory.resolve(originalName).normalize().toAbsolutePath()
+        var copyIndex = 1
+        while (Files.exists(candidate)) {
+            val suffix = if (copyIndex == 1) " copy" else " copy $copyIndex"
+            candidate = targetDirectory.resolve("$baseName$suffix$extension").normalize().toAbsolutePath()
+            copyIndex += 1
+        }
+        return candidate
     }
 
     private fun copyPathRecursively(

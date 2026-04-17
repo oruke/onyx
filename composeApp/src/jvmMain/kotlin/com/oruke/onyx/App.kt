@@ -1,7 +1,9 @@
 package com.oruke.onyx
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -93,6 +95,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.rememberWindowState
+import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
@@ -109,6 +114,8 @@ import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_cancel_task
+import onyx.composeapp.generated.resources.action_clear_all_tasks
 import onyx.composeapp.generated.resources.action_close_menu
 import onyx.composeapp.generated.resources.action_close_tab
 import onyx.composeapp.generated.resources.action_copy
@@ -120,6 +127,7 @@ import onyx.composeapp.generated.resources.action_go_up
 import onyx.composeapp.generated.resources.action_layout_dual_horizontal
 import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
+import onyx.composeapp.generated.resources.action_move
 import onyx.composeapp.generated.resources.action_new_tab
 import onyx.composeapp.generated.resources.action_open_settings
 import onyx.composeapp.generated.resources.action_paste
@@ -129,14 +137,17 @@ import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_column_modified
 import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_size
+import onyx.composeapp.generated.resources.label_copy_to_destination
 import onyx.composeapp.generated.resources.label_directory_file_count
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
 import onyx.composeapp.generated.resources.label_loading_entries
 import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_mode_gallery
+import onyx.composeapp.generated.resources.label_move_to_destination
 import onyx.composeapp.generated.resources.label_task_center
 import onyx.composeapp.generated.resources.label_task_status_failed
+import onyx.composeapp.generated.resources.label_task_status_cancelled
 import onyx.composeapp.generated.resources.label_task_status_queued
 import onyx.composeapp.generated.resources.label_task_status_running
 import onyx.composeapp.generated.resources.label_task_status_succeeded
@@ -170,6 +181,24 @@ private data class TabDropZone(
 private data class TabDropTarget(
     val paneId: PaneId,
     val index: Int,
+)
+
+private data class FileDragState(
+    val sourcePaneId: PaneId,
+    val operation: FileTransferOperation,
+)
+
+private data class FileDropZone(
+    val paneId: PaneId,
+    val targetDirectoryLocation: String,
+    val bounds: IntRect,
+    val directoryEntryId: String? = null,
+)
+
+private data class FileDropTarget(
+    val paneId: PaneId,
+    val targetDirectoryLocation: String,
+    val directoryEntryId: String?,
 )
 
 private data class TooltipRequest(
@@ -341,6 +370,11 @@ private fun AppContent(
 ) {
     val tabDropZones = remember { mutableStateMapOf<PaneId, TabDropZone>() }
     var tabDropTarget by remember { mutableStateOf<TabDropTarget?>(null) }
+    val fileDropZones = remember { mutableStateMapOf<String, FileDropZone>() }
+    var fileDragState by remember { mutableStateOf<FileDragState?>(null) }
+    var fileDropTarget by remember { mutableStateOf<FileDropTarget?>(null) }
+    var fileDragPosition by remember { mutableStateOf<IntOffset?>(null) }
+    var taskCenterVisible by remember { mutableStateOf(false) }
     var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     var appContentSize by remember { mutableStateOf(IntSize.Zero) }
     var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
@@ -371,6 +405,92 @@ private fun AppContent(
         tabDropTarget = null
     }
 
+    fun isCurrentFileDropZone(zone: FileDropZone): Boolean {
+        val paneState = rootComponent.state.value.paneState(zone.paneId)
+        if (zone.directoryEntryId == null) {
+            return true
+        }
+        val entries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
+        return entries.any { entry ->
+            entry.id == zone.directoryEntryId &&
+                    entry.location == zone.targetDirectoryLocation &&
+                    entry.kind == VFileKind.DIRECTORY
+        }
+    }
+
+    fun resolveFileDropTarget(windowPosition: IntOffset): FileDropTarget? {
+        val dragState = fileDragState ?: return null
+        val currentState = rootComponent.state.value
+        val zones = fileDropZones.values
+            .filter { zone -> isCurrentFileDropZone(zone) }
+            .filter { zone -> zone.bounds.containsPoint(windowPosition) }
+            .sortedWith(
+                compareByDescending<FileDropZone> { it.directoryEntryId != null }
+                    .thenBy { it.bounds.area }
+            )
+        val zone = zones.firstOrNull() ?: return null
+        val sourceLocation = currentState.paneState(dragState.sourcePaneId).location
+        val targetLocation = if (zone.directoryEntryId == null) {
+            currentState.paneState(zone.paneId).location
+        } else {
+            zone.targetDirectoryLocation
+        }
+        if (zone.paneId == dragState.sourcePaneId &&
+            zone.directoryEntryId == null &&
+            targetLocation == sourceLocation
+        ) {
+            return null
+        }
+        return FileDropTarget(
+            paneId = zone.paneId,
+            targetDirectoryLocation = targetLocation,
+            directoryEntryId = zone.directoryEntryId,
+        )
+    }
+
+    val onFileDragStart: (PaneId, FileTransferOperation) -> Unit = { sourcePaneId, operation ->
+        fileDragState = FileDragState(
+            sourcePaneId = sourcePaneId,
+            operation = operation,
+        )
+    }
+    val onFileDragPositionChange: (IntOffset) -> Unit = { windowPosition ->
+        fileDragPosition = windowPosition
+        fileDropTarget = resolveFileDropTarget(windowPosition)
+    }
+    val onFileDragEnd: (IntOffset?) -> Unit = { windowPosition ->
+        val dragState = fileDragState
+        val target = windowPosition?.let(::resolveFileDropTarget) ?: fileDropTarget
+        if (dragState != null && target != null) {
+            rootComponent.requestTransferSelectedToDirectory(
+                sourcePaneId = dragState.sourcePaneId,
+                targetDirectoryLocation = target.targetDirectoryLocation,
+                operation = dragState.operation,
+            )
+            rootComponent.activatePane(target.paneId)
+        }
+        fileDragState = null
+        fileDropTarget = null
+        fileDragPosition = null
+    }
+
+    LaunchedEffect(state.tasks.size) {
+        if (state.tasks.isNotEmpty()) {
+            taskCenterVisible = true
+        }
+    }
+
+    if (taskCenterVisible && state.tasks.isNotEmpty()) {
+        TaskCenterWindow(
+            tasks = state.tasks,
+            palette = palette,
+            onDismissTask = rootComponent::dismissTask,
+            onCancelTask = rootComponent::cancelTask,
+            onClearAllTasks = rootComponent::clearAllTasks,
+            onClose = { taskCenterVisible = false },
+        )
+    }
+
     IntUiTheme(isDark = isSystemInDarkTheme()) {
         CompositionLocalProvider(
             LocalTooltipController provides TooltipController(
@@ -395,15 +515,6 @@ private fun AppContent(
                         .fillMaxSize()
                         .background(palette.appBackground),
                 ) {
-                    // ── Task panel (if any) ─────────────────────────────────────
-                    if (state.tasks.isNotEmpty()) {
-                        TaskPanel(
-                            tasks = state.tasks,
-                            onDismissTask = rootComponent::dismissTask,
-                            palette = palette,
-                        )
-                    }
-
                     // ── Content area ────────────────────────────────────────────
                     when (state.layoutMode) {
                         PaneLayoutMode.SINGLE -> {
@@ -423,6 +534,11 @@ private fun AppContent(
                                 onTabDragEnd = onTabDragEnd,
                                 onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
                                 tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                onFileDragStart = onFileDragStart,
+                                onFileDragPositionChange = onFileDragPositionChange,
+                                onFileDragEnd = onFileDragEnd,
+                                onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                fileDropTarget = fileDropTarget,
                                 palette = palette,
                             )
                         }
@@ -451,6 +567,11 @@ private fun AppContent(
                                     onTabDragEnd = onTabDragEnd,
                                     onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
                                     tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                    onFileDragStart = onFileDragStart,
+                                    onFileDragPositionChange = onFileDragPositionChange,
+                                    onFileDragEnd = onFileDragEnd,
+                                    onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                    fileDropTarget = fileDropTarget,
                                     palette = palette,
                                 )
                                 ResizablePaneDivider(
@@ -477,6 +598,11 @@ private fun AppContent(
                                     onTabDragEnd = onTabDragEnd,
                                     onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
                                     tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
+                                    onFileDragStart = onFileDragStart,
+                                    onFileDragPositionChange = onFileDragPositionChange,
+                                    onFileDragEnd = onFileDragEnd,
+                                    onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                    fileDropTarget = fileDropTarget,
                                     palette = palette,
                                 )
                             }
@@ -506,6 +632,11 @@ private fun AppContent(
                                     onTabDragEnd = onTabDragEnd,
                                     onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
                                     tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                    onFileDragStart = onFileDragStart,
+                                    onFileDragPositionChange = onFileDragPositionChange,
+                                    onFileDragEnd = onFileDragEnd,
+                                    onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                    fileDropTarget = fileDropTarget,
                                     palette = palette,
                                 )
                                 ResizablePaneDivider(
@@ -532,6 +663,11 @@ private fun AppContent(
                                     onTabDragEnd = onTabDragEnd,
                                     onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
                                     tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
+                                    onFileDragStart = onFileDragStart,
+                                    onFileDragPositionChange = onFileDragPositionChange,
+                                    onFileDragEnd = onFileDragEnd,
+                                    onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                    fileDropTarget = fileDropTarget,
                                     palette = palette,
                                 )
                             }
@@ -552,6 +688,16 @@ private fun AppContent(
                     OnyxTooltipOverlay(
                         request = request,
                         appSize = appContentSize,
+                        appWindowOrigin = appWindowOrigin,
+                        palette = palette,
+                    )
+                }
+                val currentFileDragState = fileDragState
+                if (currentFileDragState != null && fileDragPosition != null) {
+                    FileDragOverlay(
+                        operation = currentFileDragState.operation,
+                        pointerWindowPosition = fileDragPosition,
+                        targetDirectoryLocation = fileDropTarget?.targetDirectoryLocation,
                         appWindowOrigin = appWindowOrigin,
                         palette = palette,
                     )
@@ -745,6 +891,63 @@ private fun OnyxTooltipOverlay(
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
+}
+
+@Composable
+private fun FileDragOverlay(
+    operation: FileTransferOperation,
+    pointerWindowPosition: IntOffset?,
+    targetDirectoryLocation: String?,
+    appWindowOrigin: IntOffset,
+    palette: OnyxPalette,
+) {
+    val alpha by animateFloatAsState(
+        targetValue = if (pointerWindowPosition != null) 1f else 0f,
+        animationSpec = tween(durationMillis = 100),
+    )
+    val label = if (targetDirectoryLocation != null) {
+        when (operation) {
+            FileTransferOperation.COPY -> stringResource(Res.string.label_copy_to_destination, targetDirectoryLocation)
+            FileTransferOperation.MOVE -> stringResource(Res.string.label_move_to_destination, targetDirectoryLocation)
+        }
+    } else {
+        when (operation) {
+            FileTransferOperation.COPY -> stringResource(Res.string.action_copy)
+            FileTransferOperation.MOVE -> stringResource(Res.string.action_move)
+        }
+    }
+    val pointerPosition = pointerWindowPosition ?: return
+
+    Row(
+        modifier = Modifier
+            .offset {
+                IntOffset(
+                    x = pointerPosition.x - appWindowOrigin.x + 18,
+                    y = pointerPosition.y - appWindowOrigin.y + 18,
+                )
+            }
+            .alpha(alpha)
+            .border(1.dp, palette.outline, RoundedCornerShape(4.dp))
+            .background(palette.floatingSurface, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            key = if (operation == FileTransferOperation.COPY) AllIconsKeys.Actions.Copy else AllIconsKeys.Actions.MenuCut,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+        )
+        Text(
+            text = label,
+            modifier = Modifier.widthIn(max = 320.dp),
+            color = palette.foreground,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable
@@ -1158,6 +1361,11 @@ private fun PaneSurface(
     onTabDragEnd: () -> Unit,
     onTabDropZoneChange: (PaneId, TabDropZone) -> Unit,
     tabDropIndicatorIndex: Int?,
+    onFileDragStart: (PaneId, FileTransferOperation) -> Unit,
+    onFileDragPositionChange: (IntOffset) -> Unit,
+    onFileDragEnd: (IntOffset?) -> Unit,
+    onFileDropZoneChange: (FileDropZone) -> Unit,
+    fileDropTarget: FileDropTarget?,
     palette: OnyxPalette,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -1165,6 +1373,17 @@ private fun PaneSurface(
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
+    val paneDropBackground by animateColorAsState(
+        targetValue = if (fileDropTarget?.paneId == state.paneId &&
+            fileDropTarget.directoryEntryId == null &&
+            fileDropTarget.targetDirectoryLocation == state.location
+        ) {
+            palette.rowHoverBackground.copy(alpha = 0.28f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(durationMillis = 120),
+    )
 
     fun reportPaneDropZone() {
         val tabDropZone = tabBarDropZone ?: return
@@ -1194,6 +1413,32 @@ private fun PaneSurface(
             .onPreviewKeyEvent { event ->
                 if (!active || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
+                    Key.C -> {
+                        if (event.isCtrlPressed || event.isMetaPressed) {
+                            onCopySelection()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+
+                    Key.X -> {
+                        if (event.isCtrlPressed || event.isMetaPressed) {
+                            onCutSelection()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+
+                    Key.V -> {
+                        if (event.isCtrlPressed || event.isMetaPressed) {
+                            onPaste()
+                            true
+                        } else {
+                            false
+                        }
+                    }
                     Key.DirectionDown -> {
                         component.moveSelection(offset = 1, extendSelection = event.isShiftPressed)
                         true
@@ -1348,6 +1593,16 @@ private fun PaneSurface(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .onGloballyPositioned { coordinates ->
+                    onFileDropZoneChange(
+                        FileDropZone(
+                            paneId = state.paneId,
+                            targetDirectoryLocation = state.location,
+                            bounds = coordinates.windowBounds(),
+                        )
+                    )
+                }
+                .background(paneDropBackground)
                 .clickable(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() },
@@ -1371,6 +1626,12 @@ private fun PaneSurface(
                 onResizeColumn = component::resizeDetailsColumn,
                 onSelectEntry = component::selectEntry,
                 palette = palette,
+                paneId = state.paneId,
+                fileDropTarget = fileDropTarget,
+                onStartFileDrag = onFileDragStart,
+                onFileDragPositionChange = onFileDragPositionChange,
+                onFileDragEnd = onFileDragEnd,
+                onFileDropZoneChange = onFileDropZoneChange,
                 onShowContextMenu = { entryId, entrySelected, pointerPosition ->
                     onActivate()
                     contextMenuOffset = pointerPosition
@@ -1528,6 +1789,12 @@ private fun PaneEntriesContent(
     onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     palette: OnyxPalette,
+    paneId: PaneId,
+    fileDropTarget: FileDropTarget?,
+    onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
+    onFileDragPositionChange: (IntOffset) -> Unit,
+    onFileDragEnd: (IntOffset?) -> Unit,
+    onFileDropZoneChange: (FileDropZone) -> Unit,
     onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     onDismissContextMenu: () -> Unit,
 ) {
@@ -1600,11 +1867,18 @@ private fun PaneEntriesContent(
                             entry = entry,
                             zebra = index % 2 == 1,
                             selected = selectedEntryIds.contains(entry.id),
+                            selectedEntryCount = selectedEntryIds.size,
                             paneActive = paneActive,
                             onActivate = onActivate,
                             onOpenEntry = onOpenEntry,
                             onSelectEntry = onSelectEntry,
                             palette = palette,
+                            paneId = paneId,
+                            fileDropTarget = fileDropTarget,
+                            onStartFileDrag = onStartFileDrag,
+                            onFileDragPositionChange = onFileDragPositionChange,
+                            onFileDragEnd = onFileDragEnd,
+                            onFileDropZoneChange = onFileDropZoneChange,
                             onShowContextMenu = onShowContextMenu,
                             onDismissContextMenu = onDismissContextMenu,
                         )
@@ -1757,25 +2031,53 @@ private fun EntryRow(
     entry: VFile,
     zebra: Boolean,
     selected: Boolean,
+    selectedEntryCount: Int,
     paneActive: Boolean,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     palette: OnyxPalette,
+    paneId: PaneId,
+    fileDropTarget: FileDropTarget?,
+    onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
+    onFileDragPositionChange: (IntOffset) -> Unit,
+    onFileDragEnd: (IntOffset?) -> Unit,
+    onFileDropZoneChange: (FileDropZone) -> Unit,
     onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     onDismissContextMenu: () -> Unit,
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     var rangeSelection by remember { mutableStateOf(false) }
+    var dragOperation by remember { mutableStateOf(FileTransferOperation.MOVE) }
+    var dragPosition by remember { mutableStateOf<IntOffset?>(null) }
     var rowCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val isDirectoryDropTarget = fileDropTarget?.directoryEntryId == entry.id
+    val preserveMultiSelectionForDrag = selected && selectedEntryCount > 1
+    val rowBackground by animateColorAsState(
+        targetValue = when {
+            isDirectoryDropTarget -> palette.rowHoverBackground
+            selected && paneActive -> palette.selectionBackground
+            selected && !paneActive -> palette.inactiveSelectionBackground
+            zebra -> palette.surfaceVariant
+            else -> Color.Transparent
+        },
+        animationSpec = tween(durationMillis = 120),
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .onGloballyPositioned { coordinates -> rowCoordinates = coordinates }
+            .onGloballyPositioned { coordinates ->
+                rowCoordinates = coordinates
+            }
             .onPointerEvent(PointerEventType.Press) { event ->
                 additiveSelection = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
                 rangeSelection = event.keyboardModifiers.isShiftPressed
+                dragOperation = if (event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed) {
+                    FileTransferOperation.COPY
+                } else {
+                    FileTransferOperation.MOVE
+                }
                 val pointerPosition = event.changes.firstOrNull()?.position ?: return@onPointerEvent
                 when {
                     event.buttons.isSecondaryPressed -> {
@@ -1791,18 +2093,34 @@ private fun EntryRow(
                     event.buttons.isPrimaryPressed -> {
                         onActivate()
                         onDismissContextMenu()
-                        onSelectEntry(entry.id, additiveSelection, rangeSelection)
+                        if (!preserveMultiSelectionForDrag || additiveSelection || rangeSelection) {
+                            onSelectEntry(entry.id, additiveSelection, rangeSelection)
+                        }
                     }
                 }
             }
-            .background(
-                when {
-                    selected && paneActive -> palette.selectionBackground
-                    selected && !paneActive -> palette.inactiveSelectionBackground
-                    zebra -> palette.surfaceVariant
-                    else -> Color.Transparent
-                },
-            )
+            .pointerInput(entry.id, paneId) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        dragPosition = rowCoordinates?.localToWindow(offset)?.toIntOffset()
+                        onStartFileDrag(paneId, dragOperation)
+                        dragPosition?.let(onFileDragPositionChange)
+                    },
+                    onDragCancel = {
+                        dragPosition = null
+                        onFileDragEnd(null)
+                    },
+                    onDragEnd = {
+                        onFileDragEnd(dragPosition)
+                        dragPosition = null
+                    },
+                    onDrag = { change, _ ->
+                        dragPosition = rowCoordinates?.localToWindow(change.position)?.toIntOffset()
+                        dragPosition?.let(onFileDragPositionChange)
+                    },
+                )
+            }
+            .background(rowBackground)
             .combinedClickable(
                 onClick = {
                     onActivate()
@@ -1822,7 +2140,20 @@ private fun EntryRow(
             when (column) {
                 DetailsColumn.NAME -> {
                     Row(
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier
+                            .weight(detailsColumnWeight(columnWeights, column))
+                            .onGloballyPositioned { coordinates ->
+                                if (entry.kind == VFileKind.DIRECTORY) {
+                                    onFileDropZoneChange(
+                                        FileDropZone(
+                                            paneId = paneId,
+                                            targetDirectoryLocation = entry.location,
+                                            bounds = coordinates.windowBounds(),
+                                            directoryEntryId = entry.id,
+                                        )
+                                    )
+                                }
+                            },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -1984,9 +2315,44 @@ private fun ContextMenuItem(
 // ── Task panel ──────────────────────────────────────────────────────────────
 
 @Composable
+private fun TaskCenterWindow(
+    tasks: List<BackgroundTask>,
+    palette: OnyxPalette,
+    onDismissTask: (String) -> Unit,
+    onCancelTask: (String) -> Unit,
+    onClearAllTasks: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Window(
+        onCloseRequest = onClose,
+        title = stringResource(Res.string.label_task_center),
+        state = rememberWindowState(width = 460.dp, height = 320.dp),
+    ) {
+        IntUiTheme(isDark = isSystemInDarkTheme()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(palette.appBackground)
+                    .padding(10.dp),
+            ) {
+                TaskPanel(
+                    tasks = tasks,
+                    onDismissTask = onDismissTask,
+                    onCancelTask = onCancelTask,
+                    onClearAllTasks = onClearAllTasks,
+                    palette = palette,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun TaskPanel(
     tasks: List<BackgroundTask>,
     onDismissTask: (String) -> Unit,
+    onCancelTask: (String) -> Unit,
+    onClearAllTasks: () -> Unit,
     palette: OnyxPalette,
 ) {
     Column(
@@ -2002,7 +2368,20 @@ private fun TaskPanel(
             fontSize = 12.sp,
             color = palette.foreground,
         )
-        tasks.take(5).forEach { task ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ContextMenuItem(
+                text = stringResource(Res.string.action_clear_all_tasks),
+                enabled = tasks.isNotEmpty(),
+                iconKey = AllIconsKeys.Actions.Close,
+                palette = palette,
+                onClick = onClearAllTasks,
+            )
+        }
+        tasks.forEach { task ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2015,15 +2394,61 @@ private fun TaskPanel(
                         fontSize = 11.sp,
                         color = palette.mutedForeground,
                     )
+                    TaskProgressBar(
+                        progress = task.progress,
+                        status = task.status,
+                        palette = palette,
+                    )
                 }
-                IconButton(onClick = { onDismissTask(task.id) }) {
+                val taskRunning =
+                    task.status == BackgroundTaskStatus.QUEUED || task.status == BackgroundTaskStatus.RUNNING
+                IconButton(onClick = { if (taskRunning) onCancelTask(task.id) else onDismissTask(task.id) }) {
                     Icon(
                         key = AllIconsKeys.Actions.Close,
-                        contentDescription = stringResource(Res.string.action_close_menu)
+                        contentDescription = stringResource(
+                            if (taskRunning) Res.string.action_cancel_task else Res.string.action_close_menu
+                        )
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TaskProgressBar(
+    progress: Float?,
+    status: BackgroundTaskStatus,
+    palette: OnyxPalette,
+) {
+    val targetProgress = when {
+        progress != null -> progress.coerceIn(0f, 1f)
+        status == BackgroundTaskStatus.SUCCEEDED -> 1f
+        else -> 0f
+    }
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(durationMillis = 160),
+    )
+    val barColor = when (status) {
+        BackgroundTaskStatus.FAILED -> Color(0xFFD74E4E)
+        BackgroundTaskStatus.CANCELLED -> palette.disabledForeground
+        BackgroundTaskStatus.SUCCEEDED -> Color(0xFF4DAA57)
+        BackgroundTaskStatus.QUEUED, BackgroundTaskStatus.RUNNING -> palette.accent
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .background(palette.outlineVariant, RoundedCornerShape(2.dp)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(animatedProgress)
+                .height(4.dp)
+                .background(barColor, RoundedCornerShape(2.dp)),
+        )
     }
 }
 
@@ -2190,6 +2615,23 @@ private fun IntRect.containsPoint(position: IntOffset): Boolean {
             position.y <= bottom
 }
 
+private val IntRect.area: Int
+    get() = (width.coerceAtLeast(0)) * (height.coerceAtLeast(0))
+
+private val FileDropZone.key: String
+    get() = if (directoryEntryId == null) {
+        "${paneId.name}:__pane"
+    } else {
+        "${paneId.name}:$directoryEntryId:$targetDirectoryLocation"
+    }
+
+private fun RootState.paneState(paneId: PaneId): PaneState {
+    return when (paneId) {
+        PaneId.PRIMARY -> primaryPane
+        PaneId.SECONDARY -> secondaryPane
+    }
+}
+
 private fun tooltipOffset(
     pointerWindowPosition: IntOffset,
     appWindowOrigin: IntOffset,
@@ -2249,6 +2691,7 @@ private fun taskStatusLabel(status: BackgroundTaskStatus): String {
         BackgroundTaskStatus.RUNNING -> stringResource(Res.string.label_task_status_running)
         BackgroundTaskStatus.SUCCEEDED -> stringResource(Res.string.label_task_status_succeeded)
         BackgroundTaskStatus.FAILED -> stringResource(Res.string.label_task_status_failed)
+        BackgroundTaskStatus.CANCELLED -> stringResource(Res.string.label_task_status_cancelled)
     }
 }
 

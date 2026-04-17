@@ -6,12 +6,16 @@ import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.VFile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import java.nio.file.Path
 import java.util.*
 
 class DefaultRootComponent(
@@ -36,6 +40,7 @@ class DefaultRootComponent(
     private val activePane = MutableStateFlow(PaneId.PRIMARY)
     private val clipboard = MutableStateFlow<ClipboardPayload?>(null)
     private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
+    private val taskJobs = mutableMapOf<String, Job>()
     private val mutableState = MutableStateFlow(
         RootState(
             layoutMode = layoutMode.value,
@@ -152,75 +157,139 @@ class DefaultRootComponent(
     override fun requestPasteIntoPane(paneId: PaneId) {
         val clipboardPayload = clipboard.value ?: return
         val targetLocation = paneState(paneId).location
+        requestTransferEntriesToDirectory(
+            entries = clipboardPayload.entries,
+            targetDirectoryLocation = targetLocation,
+            operation = when (clipboardPayload.operation) {
+                ClipboardOperation.COPY -> FileTransferOperation.COPY
+                ClipboardOperation.CUT -> FileTransferOperation.MOVE
+            },
+            clearClipboardOnSuccess = clipboardPayload.operation == ClipboardOperation.CUT,
+        )
+    }
+
+    override fun requestTransferSelectedToDirectory(
+        sourcePaneId: PaneId,
+        targetDirectoryLocation: String,
+        operation: FileTransferOperation,
+    ) {
+        val entries = selectedEntriesInPane(sourcePaneId)
+        if (entries.isEmpty()) {
+            return
+        }
+        requestTransferEntriesToDirectory(
+            entries = entries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            operation = operation,
+            clearClipboardOnSuccess = false,
+        )
+    }
+
+    private fun requestTransferEntriesToDirectory(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        operation: FileTransferOperation,
+        clearClipboardOnSuccess: Boolean,
+    ) {
+        if (operation == FileTransferOperation.MOVE && entries.all { it.parentLocation == targetDirectoryLocation }) {
+            return
+        }
+        if (entries.any { entry -> targetDirectoryLocation.isSameOrChildOf(entry.location) }) {
+            return
+        }
         val taskId = UUID.randomUUID().toString()
         appendTask(
             BackgroundTask(
                 id = taskId,
-                title = when (clipboardPayload.operation) {
-                    ClipboardOperation.COPY -> "Copy ${clipboardPayload.entries.size} item(s)"
-                    ClipboardOperation.CUT -> "Move ${clipboardPayload.entries.size} item(s)"
+                title = when (operation) {
+                    FileTransferOperation.COPY -> "Copy ${entries.size} item(s)"
+                    FileTransferOperation.MOVE -> "Move ${entries.size} item(s)"
                 },
                 status = BackgroundTaskStatus.QUEUED,
-                detail = targetLocation,
+                detail = targetDirectoryLocation,
+                progress = 0f,
             )
         )
 
-        scope.launch {
-            updateTask(
-                taskId = taskId,
-                status = BackgroundTaskStatus.RUNNING,
-                detail = buildTransferTaskDetail(
-                    entries = clipboardPayload.entries,
-                    targetLocation = targetLocation,
-                ),
-            )
+        val job = scope.launch {
+            try {
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.RUNNING,
+                    detail = buildTransferTaskDetail(
+                        entries = entries,
+                        targetLocation = targetDirectoryLocation,
+                    ),
+                    progress = 0f,
+                )
 
-            val result = when (clipboardPayload.operation) {
-                ClipboardOperation.COPY -> {
-                    localFileProvider.copy(
-                        entries = clipboardPayload.entries,
-                        targetDirectoryLocation = targetLocation,
-                    )
-                }
+                entries.forEachIndexed { index, entry ->
+                    ensureActive()
+                    val result = when (operation) {
+                        FileTransferOperation.COPY -> {
+                            localFileProvider.copy(
+                                entries = listOf(entry),
+                                targetDirectoryLocation = targetDirectoryLocation,
+                            )
+                        }
 
-                ClipboardOperation.CUT -> {
-                    localFileProvider.move(
-                        entries = clipboardPayload.entries,
-                        targetDirectoryLocation = targetLocation,
-                    )
-                }
-            }
-
-            result.fold(
-                onSuccess = {
-                    updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.SUCCEEDED,
-                        detail = when (clipboardPayload.operation) {
-                            ClipboardOperation.COPY ->
-                                "Copied ${clipboardPayload.entries.size} item(s) to $targetLocation"
-
-                            ClipboardOperation.CUT ->
-                                "Moved ${clipboardPayload.entries.size} item(s) to $targetLocation"
-                        },
-                    )
-                    if (clipboardPayload.operation == ClipboardOperation.CUT) {
-                        clipboard.value = null
+                        FileTransferOperation.MOVE -> {
+                            localFileProvider.move(
+                                entries = listOf(entry),
+                                targetDirectoryLocation = targetDirectoryLocation,
+                            )
+                        }
                     }
-                    refreshAllPanes()
-                },
-                onFailure = { failure ->
+                    result.getOrThrow()
                     updateTask(
                         taskId = taskId,
-                        status = BackgroundTaskStatus.FAILED,
-                        detail = failure.message ?: when (clipboardPayload.operation) {
-                            ClipboardOperation.COPY -> "Copy failed"
-                            ClipboardOperation.CUT -> "Move failed"
-                        },
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = "${entry.name} -> $targetDirectoryLocation",
+                        progress = (index + 1).toFloat() / entries.size,
                     )
-                },
-            )
+                }
+
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.SUCCEEDED,
+                    detail = when (operation) {
+                        FileTransferOperation.COPY ->
+                            "Copied ${entries.size} item(s) to $targetDirectoryLocation"
+
+                        FileTransferOperation.MOVE ->
+                            "Moved ${entries.size} item(s) to $targetDirectoryLocation"
+                    },
+                    progress = 1f,
+                )
+                if (clearClipboardOnSuccess) {
+                    clipboard.value = null
+                }
+                refreshAllPanes()
+            } catch (_: CancellationException) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.CANCELLED,
+                    detail = "Cancelled",
+                    progress = null,
+                )
+                refreshAllPanes()
+            } catch (failure: Throwable) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.FAILED,
+                    detail = failure.message ?: when (operation) {
+                        FileTransferOperation.COPY -> "Copy failed"
+                        FileTransferOperation.MOVE -> "Move failed"
+                    },
+                    progress = null,
+                )
+                refreshAllPanes()
+            }
         }
+        taskJobs[taskId] = job
     }
 
     override fun requestDeleteSelectedInPane(paneId: PaneId) {
@@ -236,39 +305,74 @@ class DefaultRootComponent(
                 title = "Delete ${selectedEntries.size} item(s)",
                 status = BackgroundTaskStatus.QUEUED,
                 detail = paneState(paneId).location,
+                progress = 0f,
             )
         )
 
-        scope.launch {
-            updateTask(
-                taskId = taskId,
-                status = BackgroundTaskStatus.RUNNING,
-                detail = buildTaskDetail(selectedEntries),
-            )
+        val job = scope.launch {
+            try {
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.RUNNING,
+                    detail = buildTaskDetail(selectedEntries),
+                    progress = 0f,
+                )
 
-            val result = localFileProvider.delete(selectedEntries)
-            result.fold(
-                onSuccess = {
+                selectedEntries.forEachIndexed { index, entry ->
+                    ensureActive()
+                    localFileProvider.delete(listOf(entry)).getOrThrow()
                     updateTask(
                         taskId = taskId,
-                        status = BackgroundTaskStatus.SUCCEEDED,
-                        detail = "Deleted ${selectedEntries.size} item(s)",
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = entry.name,
+                        progress = (index + 1).toFloat() / selectedEntries.size,
                     )
-                    refreshAllPanes()
-                },
-                onFailure = { failure ->
-                    updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.FAILED,
-                        detail = failure.message ?: "Delete failed",
-                    )
-                },
-            )
+                }
+
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.SUCCEEDED,
+                    detail = "Deleted ${selectedEntries.size} item(s)",
+                    progress = 1f,
+                )
+                refreshAllPanes()
+            } catch (_: CancellationException) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.CANCELLED,
+                    detail = "Cancelled",
+                    progress = null,
+                )
+                refreshAllPanes()
+            } catch (failure: Throwable) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.FAILED,
+                    detail = failure.message ?: "Delete failed",
+                    progress = null,
+                )
+                refreshAllPanes()
+            }
         }
+        taskJobs[taskId] = job
     }
 
     override fun dismissTask(taskId: String) {
+        taskJobs.remove(taskId)?.cancel()
         tasks.value = tasks.value.filterNot { task -> task.id == taskId }
+    }
+
+    override fun cancelTask(taskId: String) {
+        taskJobs[taskId]?.cancel()
+    }
+
+    override fun clearAllTasks() {
+        taskJobs.values.forEach { job -> job.cancel() }
+        taskJobs.clear()
+        tasks.value = emptyList()
     }
 
     private fun appendTask(task: BackgroundTask) {
@@ -279,12 +383,14 @@ class DefaultRootComponent(
         taskId: String,
         status: BackgroundTaskStatus,
         detail: String,
+        progress: Float? = null,
     ) {
         tasks.value = tasks.value.map { task ->
             if (task.id == taskId) {
                 task.copy(
                     status = status,
                     detail = detail,
+                    progress = progress,
                 )
             } else {
                 task
@@ -338,4 +444,10 @@ class DefaultRootComponent(
         COPY,
         CUT,
     }
+}
+
+private fun String.isSameOrChildOf(parentLocation: String): Boolean {
+    val target = Path.of(this).normalize().toAbsolutePath()
+    val parent = Path.of(parentLocation).normalize().toAbsolutePath()
+    return target == parent || target.startsWith(parent)
 }

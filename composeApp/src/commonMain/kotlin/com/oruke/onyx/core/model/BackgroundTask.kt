@@ -5,6 +5,7 @@ data class BackgroundTask(
     val title: String,
     val status: BackgroundTaskStatus,
     val detail: String,
+    val progress: Float? = null,
 )
 
 enum class BackgroundTaskStatus {
@@ -12,4 +13,5 @@ enum class BackgroundTaskStatus {
     RUNNING,
     SUCCEEDED,
     FAILED,
+    CANCELLED,
 }

@@ -15,6 +15,11 @@ data class RootState(
     val tasks: List<BackgroundTask>,
 )
 
+enum class FileTransferOperation {
+    COPY,
+    MOVE,
+}
+
 interface RootComponent {
     val state: StateFlow<RootState>
     val primaryPane: PaneComponent
@@ -41,7 +46,17 @@ interface RootComponent {
 
     fun requestPasteIntoPane(paneId: PaneId)
 
+    fun requestTransferSelectedToDirectory(
+        sourcePaneId: PaneId,
+        targetDirectoryLocation: String,
+        operation: FileTransferOperation,
+    )
+
     fun requestDeleteSelectedInPane(paneId: PaneId)
 
     fun dismissTask(taskId: String)
+
+    fun cancelTask(taskId: String)
+
+    fun clearAllTasks()
 }

@@ -12,6 +12,8 @@
     <string name="action_new_tab">新建标签页</string>
     <string name="action_close_tab">关闭标签页</string>
     <string name="action_toggle_hidden_files">显示隐藏项</string>
+    <string name="action_cancel_task">取消</string>
+    <string name="action_clear_all_tasks">全部清除</string>
     <string name="action_toggle_sidebar">显示/隐藏侧栏</string>
     <string name="action_toggle_status_bar">显示/隐藏状态栏</string>
     <string name="action_toggle_fullscreen">切换全屏</string>
@@ -23,6 +25,9 @@
     <string name="action_window_restore">还原</string>
     <string name="action_window_close">关闭窗口</string>
     <string name="action_copy">复制</string>
+    <string name="action_move">移动</string>
+    <string name="label_copy_to_destination">复制到 %1$s</string>
+    <string name="label_move_to_destination">移动到 %1$s</string>
     <string name="action_cut">剪切</string>
     <string name="action_paste">粘贴</string>
     <string name="action_delete_selected">删除所选</string>
@@ -66,6 +71,7 @@
     <string name="label_task_status_running">执行中</string>
     <string name="label_task_status_succeeded">已完成</string>
     <string name="label_task_status_failed">失败</string>
+    <string name="label_task_status_cancelled">已取消</string>
 
     <string name="label_directory_badge">文件夹</string>
     <string name="label_file_badge">文件</string>
