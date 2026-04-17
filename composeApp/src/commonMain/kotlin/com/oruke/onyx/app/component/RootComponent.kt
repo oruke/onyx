@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 data class RootState(
     val layoutMode: PaneLayoutMode,
+    val paneSplitFraction: Float,
     val activePane: PaneId,
     val primaryPane: PaneState,
     val secondaryPane: PaneState,
@@ -20,6 +21,8 @@ interface RootComponent {
     val secondaryPane: PaneComponent
 
     fun setLayoutMode(mode: PaneLayoutMode)
+
+    fun setPaneSplitFraction(fraction: Float)
 
     fun activatePane(paneId: PaneId)
 

@@ -12,6 +12,7 @@ data class PaneState(
     val canGoBack: Boolean,
     val canGoForward: Boolean,
     val detailsColumns: List<DetailsColumn>,
+    val detailsColumnWeights: Map<DetailsColumn, Float>,
     val detailsSort: DetailsSort,
     val selectedEntryIds: Set<String>,
     val selectionAnchorId: String?,
@@ -49,6 +50,12 @@ interface PaneComponent {
     fun openEntry(entry: VFile)
 
     fun toggleSort(column: DetailsColumn)
+
+    fun resizeDetailsColumn(
+        column: DetailsColumn,
+        nextColumn: DetailsColumn,
+        deltaWeight: Float,
+    )
 
     fun selectEntry(
         entryId: String,

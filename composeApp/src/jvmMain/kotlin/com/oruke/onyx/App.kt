@@ -57,15 +57,18 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -113,6 +116,7 @@ import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_column_modified
 import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_size
+import onyx.composeapp.generated.resources.label_directory_file_count
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
 import onyx.composeapp.generated.resources.label_loading_entries
@@ -123,8 +127,6 @@ import onyx.composeapp.generated.resources.label_task_status_failed
 import onyx.composeapp.generated.resources.label_task_status_queued
 import onyx.composeapp.generated.resources.label_task_status_running
 import onyx.composeapp.generated.resources.label_task_status_succeeded
-import onyx.composeapp.generated.resources.pane_primary
-import onyx.composeapp.generated.resources.pane_secondary
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -136,11 +138,15 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.window.DecoratedWindowScope
 import org.jetbrains.jewel.window.TitleBar
 import org.jetbrains.jewel.window.newFullscreenControls
+import java.awt.Cursor
 import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+
+private val DetailsColumnGap = 6.dp
+private val PaneDividerHitSlop = 7.dp
 
 // ── Palette ────────────────────────────────────────────────────────────────
 
@@ -310,14 +316,18 @@ private fun AppContent(
                 }
 
                 PaneLayoutMode.DUAL_VERTICAL -> {
+                    var contentSize by remember { mutableStateOf(IntSize.Zero) }
                     Row(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .onSizeChanged { contentSize = it },
                     ) {
                         PaneSurface(
                             state = state.primaryPane,
                             active = state.activePane == PaneId.PRIMARY,
                             component = rootComponent.primaryPane,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(state.paneSplitFraction),
                             onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
                             canPaste = state.canPaste,
                             onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
@@ -326,12 +336,19 @@ private fun AppContent(
                             onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
                             palette = palette,
                         )
-                        Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
+                        ResizablePaneDivider(
+                            orientation = Orientation.Vertical,
+                            palette = palette,
+                            onDragDelta = { delta ->
+                                val width = contentSize.width.toFloat().coerceAtLeast(1f)
+                                rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width)
+                            },
+                        )
                         PaneSurface(
                             state = state.secondaryPane,
                             active = state.activePane == PaneId.SECONDARY,
                             component = rootComponent.secondaryPane,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f - state.paneSplitFraction),
                             onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
                             canPaste = state.canPaste,
                             onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
@@ -344,14 +361,18 @@ private fun AppContent(
                 }
 
                 PaneLayoutMode.DUAL_HORIZONTAL -> {
+                    var contentSize by remember { mutableStateOf(IntSize.Zero) }
                     Column(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .onSizeChanged { contentSize = it },
                     ) {
                         PaneSurface(
                             state = state.primaryPane,
                             active = state.activePane == PaneId.PRIMARY,
                             component = rootComponent.primaryPane,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(state.paneSplitFraction),
                             onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
                             canPaste = state.canPaste,
                             onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
@@ -360,12 +381,19 @@ private fun AppContent(
                             onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
                             palette = palette,
                         )
-                        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+                        ResizablePaneDivider(
+                            orientation = Orientation.Horizontal,
+                            palette = palette,
+                            onDragDelta = { delta ->
+                                val height = contentSize.height.toFloat().coerceAtLeast(1f)
+                                rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height)
+                            },
+                        )
                         PaneSurface(
                             state = state.secondaryPane,
                             active = state.activePane == PaneId.SECONDARY,
                             component = rootComponent.secondaryPane,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f - state.paneSplitFraction),
                             onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
                             canPaste = state.canPaste,
                             onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
@@ -548,6 +576,52 @@ private fun TitleBarIconButton(
         contentAlignment = Alignment.Center,
     ) {
         content()
+    }
+}
+
+@Composable
+private fun ResizablePaneDivider(
+    orientation: Orientation,
+    palette: OnyxPalette,
+    onDragDelta: (Float) -> Unit,
+) {
+    val modifier = when (orientation) {
+        Orientation.Vertical -> Modifier
+            .fillMaxHeight()
+            .width(PaneDividerHitSlop)
+            .pointerHoverIcon(horizontalResizePointerIcon())
+            .pointerInput(Unit) {
+                detectDragGestures { _, dragAmount ->
+                    onDragDelta(dragAmount.x)
+                }
+            }
+
+        Orientation.Horizontal -> Modifier
+            .fillMaxWidth()
+            .height(PaneDividerHitSlop)
+            .pointerHoverIcon(verticalResizePointerIcon())
+            .pointerInput(Unit) {
+                detectDragGestures { _, dragAmount ->
+                    onDragDelta(dragAmount.y)
+                }
+            }
+    }
+
+    Box(
+        modifier = modifier.background(palette.appBackground),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (orientation) {
+            Orientation.Vertical -> Divider(
+                Orientation.Vertical,
+                modifier = Modifier.fillMaxHeight().width(1.dp),
+            )
+
+            Orientation.Horizontal -> Divider(
+                Orientation.Horizontal,
+                modifier = Modifier.fillMaxWidth().height(1.dp),
+            )
+        }
     }
 }
 
@@ -762,13 +836,16 @@ private fun PaneSurface(
         ) {
             PaneEntriesContent(
                 columns = state.detailsColumns,
+                columnWeights = state.detailsColumnWeights,
                 sort = state.detailsSort,
                 selectedEntryIds = state.selectedEntryIds,
                 state = state.entriesState,
                 paneActive = active,
+                contextMenuVisible = showContextMenu,
                 onActivate = onActivate,
                 onOpenEntry = component::openEntry,
                 onToggleSort = component::toggleSort,
+                onResizeColumn = component::resizeDetailsColumn,
                 onSelectEntry = component::selectEntry,
                 palette = palette,
                 onShowContextMenu = { entryId, entrySelected, pointerPosition ->
@@ -911,13 +988,16 @@ private fun BreadcrumbAddressBar(
 @Composable
 private fun PaneEntriesContent(
     columns: List<DetailsColumn>,
+    columnWeights: Map<DetailsColumn, Float>,
     sort: DetailsSort,
     selectedEntryIds: Set<String>,
     state: PaneEntriesState,
     paneActive: Boolean,
+    contextMenuVisible: Boolean,
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onToggleSort: (DetailsColumn) -> Unit,
+    onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     palette: OnyxPalette,
     onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
@@ -969,8 +1049,10 @@ private fun PaneEntriesContent(
                 // ── Column headers ─────────────────────────────────────
                 DetailsHeader(
                     columns = columns,
+                    columnWeights = columnWeights,
                     sort = sort,
                     onToggleSort = onToggleSort,
+                    onResizeColumn = onResizeColumn,
                     palette = palette,
                 )
 
@@ -978,6 +1060,7 @@ private fun PaneEntriesContent(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 4.dp),
+                    userScrollEnabled = !contextMenuVisible,
                 ) {
                     itemsIndexed(
                         items = state.entries,
@@ -985,6 +1068,7 @@ private fun PaneEntriesContent(
                     ) { index, entry ->
                         EntryRow(
                             columns = columns,
+                            columnWeights = columnWeights,
                             entry = entry,
                             zebra = index % 2 == 1,
                             selected = selectedEntryIds.contains(entry.id),
@@ -1008,24 +1092,35 @@ private fun PaneEntriesContent(
 @Composable
 private fun DetailsHeader(
     columns: List<DetailsColumn>,
+    columnWeights: Map<DetailsColumn, Float>,
     sort: DetailsSort,
     onToggleSort: (DetailsColumn) -> Unit,
+    onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
     palette: OnyxPalette,
 ) {
+    var headerWidthPx by remember { mutableStateOf(1) }
+    val visibleColumns = remember(columns) { visibleDetailsColumns(columns) }
+    val totalWeight = visibleColumns
+        .sumOf { column -> detailsColumnWeight(columnWeights, column).toDouble() }
+        .toFloat()
+        .coerceAtLeast(1f)
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(palette.headerBackground)
             .height(24.dp)
+            .onSizeChanged { headerWidthPx = it.width.coerceAtLeast(1) }
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        columns.filterNot { it == DetailsColumn.TYPE }.forEach { column ->
+        visibleColumns.forEachIndexed { index, column ->
+            val nextColumn = visibleColumns.getOrNull(index + 1)
             when (column) {
                 DetailsColumn.NAME -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_name),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(0.58f),
+                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                     palette = palette,
                     onClick = { onToggleSort(column) },
                 )
@@ -1033,22 +1128,28 @@ private fun DetailsHeader(
                 DetailsColumn.SIZE -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_size),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(0.16f),
+                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                     palette = palette,
                     onClick = { onToggleSort(column) },
-                    textAlign = TextAlign.End,
                 )
 
                 DetailsColumn.MODIFIED -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_modified),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(0.26f),
+                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                     palette = palette,
                     onClick = { onToggleSort(column) },
-                    textAlign = TextAlign.End,
                 )
 
                 DetailsColumn.TYPE -> Unit
+            }
+            if (nextColumn != null) {
+                DetailsColumnResizeGap(
+                    palette = palette,
+                    onResize = { deltaPx ->
+                        onResizeColumn(column, nextColumn, deltaPx / headerWidthPx.toFloat() * totalWeight)
+                    },
+                )
             }
         }
     }
@@ -1063,26 +1164,58 @@ private fun SortHeaderCell(
     onClick: () -> Unit,
     textAlign: TextAlign = TextAlign.Start,
 ) {
-    Row(
-        modifier = modifier.clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (textAlign == TextAlign.End) Arrangement.End else Arrangement.Start,
-    ) {
-        Text(
-            text = text,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp,
-            color = palette.mutedForeground,
-            textAlign = textAlign,
-        )
-        if (sortHint != null) {
-            Icon(
-                key = if (sortHint == "▲") AllIconsKeys.General.ArrowUp else AllIconsKeys.General.ArrowDown,
-                contentDescription = sortHint,
-                modifier = Modifier.size(12.dp),
+    Box(modifier = modifier.fillMaxHeight()) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(onClick = onClick),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (textAlign == TextAlign.End) Arrangement.End else Arrangement.Start,
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.weight(1f),
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                color = palette.mutedForeground,
+                textAlign = textAlign,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
+            if (sortHint != null) {
+                Icon(
+                    key = if (sortHint == "▲") AllIconsKeys.General.ArrowUp else AllIconsKeys.General.ArrowDown,
+                    contentDescription = sortHint,
+                    modifier = Modifier.size(12.dp),
+                )
+            }
         }
-        Spacer(modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun DetailsColumnResizeGap(
+    palette: OnyxPalette,
+    onResize: (Float) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(DetailsColumnGap)
+            .pointerHoverIcon(horizontalResizePointerIcon())
+            .pointerInput(Unit) {
+                detectDragGestures { _, dragAmount ->
+                    onResize(dragAmount.x)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(1.dp)
+                .background(palette.outlineVariant),
+        )
     }
 }
 
@@ -1092,6 +1225,7 @@ private fun SortHeaderCell(
 @Composable
 private fun EntryRow(
     columns: List<DetailsColumn>,
+    columnWeights: Map<DetailsColumn, Float>,
     entry: VFile,
     zebra: Boolean,
     selected: Boolean,
@@ -1154,12 +1288,13 @@ private fun EntryRow(
             .padding(horizontal = 8.dp, vertical = 1.dp)
             .height(22.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(DetailsColumnGap),
     ) {
-        columns.filterNot { it == DetailsColumn.TYPE }.forEach { column ->
+        visibleDetailsColumns(columns).forEach { column ->
             when (column) {
                 DetailsColumn.NAME -> {
                     Row(
-                        modifier = Modifier.weight(0.58f),
+                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -1169,6 +1304,7 @@ private fun EntryRow(
                         )
                         Text(
                             text = entry.name,
+                            modifier = Modifier.weight(1f),
                             fontWeight = if (entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
                             fontSize = 12.sp,
                             color = palette.foreground,
@@ -1180,19 +1316,23 @@ private fun EntryRow(
                 DetailsColumn.SIZE -> {
                     Text(
                         text = formatFileSize(entry.sizeBytes),
-                        modifier = Modifier.weight(0.16f),
+                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
                         color = palette.mutedForeground,
-                        textAlign = TextAlign.End,
+                        textAlign = TextAlign.Start,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 DetailsColumn.MODIFIED -> {
                     Text(
                         text = formatModifiedTime(entry.modifiedAtEpochMillis),
-                        modifier = Modifier.weight(0.26f),
+                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
                         color = palette.mutedForeground,
-                        textAlign = TextAlign.End,
+                        textAlign = TextAlign.Start,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
 
@@ -1383,24 +1523,12 @@ private fun StatusBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
-            val paneLabel =
-                if (activePane == PaneId.PRIMARY) stringResource(Res.string.pane_primary) else stringResource(Res.string.pane_secondary)
-            Text(
-                text = paneLabel,
-                fontSize = 11.sp,
-                color = palette.accent,
-                fontWeight = FontWeight.Medium,
-            )
             if (activeState.entriesState is PaneEntriesState.Ready) {
                 val entries = activeState.entriesState.entries
                 val dirs = entries.count { it.kind == VFileKind.DIRECTORY }
                 val files = entries.count { it.kind == VFileKind.FILE }
-                Divider(
-                    orientation = Orientation.Vertical,
-                    modifier = Modifier.height(12.dp).width(1.dp),
-                )
                 Text(
-                    text = "共 $dirs 个文件夹, $files 个文件",
+                    text = stringResource(Res.string.label_directory_file_count, dirs, files),
                     fontSize = 11.sp,
                     color = palette.mutedForeground,
                 )
@@ -1483,6 +1611,34 @@ private fun formatModifiedTime(modifiedAtEpochMillis: Long?): String {
             .atZone(ZoneId.systemDefault())
             .toLocalDateTime(),
     )
+}
+
+private fun visibleDetailsColumns(columns: List<DetailsColumn>): List<DetailsColumn> {
+    return columns.filterNot { it == DetailsColumn.TYPE }
+}
+
+private fun detailsColumnWeight(
+    weights: Map<DetailsColumn, Float>,
+    column: DetailsColumn,
+): Float {
+    return (weights[column] ?: defaultDetailsColumnWeight(column)).coerceAtLeast(0.01f)
+}
+
+private fun defaultDetailsColumnWeight(column: DetailsColumn): Float {
+    return when (column) {
+        DetailsColumn.NAME -> 0.58f
+        DetailsColumn.SIZE -> 0.16f
+        DetailsColumn.MODIFIED -> 0.26f
+        DetailsColumn.TYPE -> 0.08f
+    }
+}
+
+private fun horizontalResizePointerIcon(): PointerIcon {
+    return PointerIcon(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR))
+}
+
+private fun verticalResizePointerIcon(): PointerIcon {
+    return PointerIcon(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR))
 }
 
 @Composable

@@ -37,6 +37,7 @@ class DefaultPaneComponent(
                 DetailsColumn.SIZE,
                 DetailsColumn.MODIFIED,
             ),
+            detailsColumnWeights = defaultDetailsColumnWeights(),
             detailsSort = DetailsSort(
                 column = DetailsColumn.NAME,
                 direction = SortDirection.ASCENDING,
@@ -163,6 +164,30 @@ class DefaultPaneComponent(
                 is PaneEntriesState.Ready -> PaneEntriesState.Ready(sortedEntries)
                 else -> currentEntriesState
             },
+        )
+    }
+
+    override fun resizeDetailsColumn(
+        column: DetailsColumn,
+        nextColumn: DetailsColumn,
+        deltaWeight: Float,
+    ) {
+        val currentWeights = mutableState.value.detailsColumnWeights
+        val columnWeight = currentWeights[column] ?: defaultDetailsColumnWeight(column)
+        val nextColumnWeight = currentWeights[nextColumn] ?: defaultDetailsColumnWeight(nextColumn)
+        val combinedWeight = columnWeight + nextColumnWeight
+        if (combinedWeight <= MIN_DETAILS_COLUMN_WEIGHT * 2) {
+            return
+        }
+
+        val nextColumnWeightValue = (columnWeight + deltaWeight)
+            .coerceIn(MIN_DETAILS_COLUMN_WEIGHT, combinedWeight - MIN_DETAILS_COLUMN_WEIGHT)
+        val nextAdjacentWeightValue = combinedWeight - nextColumnWeightValue
+        mutableState.value = mutableState.value.copy(
+            detailsColumnWeights = currentWeights + mapOf(
+                column to nextColumnWeightValue,
+                nextColumn to nextAdjacentWeightValue,
+            )
         )
     }
 
@@ -369,4 +394,18 @@ class DefaultPaneComponent(
             }
         }
     }
+}
+
+private const val MIN_DETAILS_COLUMN_WEIGHT = 0.08f
+
+private fun defaultDetailsColumnWeights(): Map<DetailsColumn, Float> {
+    return mapOf(
+        DetailsColumn.NAME to 0.58f,
+        DetailsColumn.SIZE to 0.16f,
+        DetailsColumn.MODIFIED to 0.26f,
+    )
+}
+
+private fun defaultDetailsColumnWeight(column: DetailsColumn): Float {
+    return defaultDetailsColumnWeights()[column] ?: MIN_DETAILS_COLUMN_WEIGHT
 }

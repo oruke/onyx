@@ -70,6 +70,7 @@
     <string name="label_mode_details">详情视图</string>
     <string name="label_mode_gallery">画廊视图</string>
     <string name="label_show_hidden_items">隐藏项</string>
+    <string name="label_directory_file_count">共 %1$d 个文件夹，%2$d 个文件</string>
     <string name="label_folder_count">文件夹：%1$d</string>
     <string name="label_file_count">文件：%1$d</string>
     <string name="label_item_count">项目：%1$d</string>

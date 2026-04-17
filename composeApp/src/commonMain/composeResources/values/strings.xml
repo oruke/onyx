@@ -70,6 +70,7 @@
     <string name="label_mode_details">Details</string>
     <string name="label_mode_gallery">Gallery</string>
     <string name="label_show_hidden_items">Hidden Items</string>
+    <string name="label_directory_file_count">Folders: %1$d, Files: %2$d</string>
     <string name="label_folder_count">Folders: %1$d</string>
     <string name="label_file_count">Files: %1$d</string>
     <string name="label_item_count">Items: %1$d</string>

@@ -32,12 +32,14 @@ class DefaultRootComponent(
     )
 
     private val layoutMode = MutableStateFlow(PaneLayoutMode.DUAL_VERTICAL)
+    private val paneSplitFraction = MutableStateFlow(0.5f)
     private val activePane = MutableStateFlow(PaneId.PRIMARY)
     private val clipboard = MutableStateFlow<ClipboardPayload?>(null)
     private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     private val mutableState = MutableStateFlow(
         RootState(
             layoutMode = layoutMode.value,
+            paneSplitFraction = paneSplitFraction.value,
             activePane = activePane.value,
             primaryPane = primaryPane.state.value,
             secondaryPane = secondaryPane.state.value,
@@ -52,6 +54,7 @@ class DefaultRootComponent(
         scope.launch {
             combine(
                 layoutMode,
+                paneSplitFraction,
                 activePane,
                 primaryPane.state,
                 secondaryPane.state,
@@ -59,15 +62,17 @@ class DefaultRootComponent(
                 tasks,
             ) { values ->
                 val currentLayoutMode = values[0] as PaneLayoutMode
-                val currentActivePane = values[1] as PaneId
-                val primaryState = values[2] as PaneState
-                val secondaryState = values[3] as PaneState
-                val currentClipboard = values[4] as ClipboardPayload?
+                val currentPaneSplitFraction = values[1] as Float
+                val currentActivePane = values[2] as PaneId
+                val primaryState = values[3] as PaneState
+                val secondaryState = values[4] as PaneState
+                val currentClipboard = values[5] as ClipboardPayload?
 
                 @Suppress("UNCHECKED_CAST")
-                val currentTasks = values[5] as List<BackgroundTask>
+                val currentTasks = values[6] as List<BackgroundTask>
                 RootState(
                     layoutMode = currentLayoutMode,
+                    paneSplitFraction = currentPaneSplitFraction,
                     activePane = currentActivePane,
                     primaryPane = primaryState,
                     secondaryPane = secondaryState,
@@ -82,6 +87,10 @@ class DefaultRootComponent(
 
     override fun setLayoutMode(mode: PaneLayoutMode) {
         layoutMode.value = mode
+    }
+
+    override fun setPaneSplitFraction(fraction: Float) {
+        paneSplitFraction.value = fraction.coerceIn(0.18f, 0.82f)
     }
 
     override fun activatePane(paneId: PaneId) {
