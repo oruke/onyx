@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -62,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -120,8 +122,10 @@ import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
+import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
+import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneInlineEditMode
 import com.oruke.onyx.core.model.PaneInlineEditState
@@ -131,7 +135,9 @@ import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.ViewMode
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_apply
 import onyx.composeapp.generated.resources.action_cancel_task
 import onyx.composeapp.generated.resources.action_clear_all_tasks
 import onyx.composeapp.generated.resources.action_close_menu
@@ -160,7 +166,9 @@ import onyx.composeapp.generated.resources.action_paste
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_rename
 import onyx.composeapp.generated.resources.action_skip
+import onyx.composeapp.generated.resources.action_toggle_favorite
 import onyx.composeapp.generated.resources.action_toggle_hidden_files
+import onyx.composeapp.generated.resources.action_toggle_sidebar
 import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_column_modified
 import onyx.composeapp.generated.resources.label_column_name
@@ -173,9 +181,14 @@ import onyx.composeapp.generated.resources.label_create_directories_error_empty
 import onyx.composeapp.generated.resources.label_create_directories_placeholder
 import onyx.composeapp.generated.resources.label_create_directories_shortcuts
 import onyx.composeapp.generated.resources.label_create_directories_title
+import onyx.composeapp.generated.resources.label_default_layout_mode
+import onyx.composeapp.generated.resources.label_default_view_mode
 import onyx.composeapp.generated.resources.label_delete_confirmation_move_to_trash
 import onyx.composeapp.generated.resources.label_delete_confirmation_permanent
 import onyx.composeapp.generated.resources.label_delete_confirmation_trash_unavailable
+import onyx.composeapp.generated.resources.label_delete_mode
+import onyx.composeapp.generated.resources.label_delete_mode_move_to_trash
+import onyx.composeapp.generated.resources.label_delete_mode_permanent
 import onyx.composeapp.generated.resources.label_directory_file_count
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
@@ -184,18 +197,35 @@ import onyx.composeapp.generated.resources.label_feedback_create_directory_faile
 import onyx.composeapp.generated.resources.label_feedback_create_file_failed
 import onyx.composeapp.generated.resources.label_feedback_open_failed
 import onyx.composeapp.generated.resources.label_feedback_rename_failed
+import onyx.composeapp.generated.resources.label_filter_placeholder
+import onyx.composeapp.generated.resources.label_filtered_item_count
+import onyx.composeapp.generated.resources.label_home
+import onyx.composeapp.generated.resources.label_item_count
 import onyx.composeapp.generated.resources.label_loading_entries
 import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_mode_gallery
 import onyx.composeapp.generated.resources.label_move_to_destination
 import onyx.composeapp.generated.resources.label_operation_copy
 import onyx.composeapp.generated.resources.label_operation_move
+import onyx.composeapp.generated.resources.label_selected_size
+import onyx.composeapp.generated.resources.label_setting_hide
+import onyx.composeapp.generated.resources.label_setting_show
+import onyx.composeapp.generated.resources.label_settings_title
+import onyx.composeapp.generated.resources.label_sidebar_empty_favorites
+import onyx.composeapp.generated.resources.label_sidebar_empty_recent
+import onyx.composeapp.generated.resources.label_sidebar_section_favorites
+import onyx.composeapp.generated.resources.label_sidebar_section_quick_access
+import onyx.composeapp.generated.resources.label_sidebar_section_recent
+import onyx.composeapp.generated.resources.label_sidebar_visibility
+import onyx.composeapp.generated.resources.label_status_bar_visibility
 import onyx.composeapp.generated.resources.label_task_center
 import onyx.composeapp.generated.resources.label_task_status_cancelled
 import onyx.composeapp.generated.resources.label_task_status_failed
 import onyx.composeapp.generated.resources.label_task_status_queued
 import onyx.composeapp.generated.resources.label_task_status_running
 import onyx.composeapp.generated.resources.label_task_status_succeeded
+import onyx.composeapp.generated.resources.label_task_summary
+import onyx.composeapp.generated.resources.label_ui_scale
 import onyx.composeapp.generated.resources.message_apply_to_remaining_conflicts
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
@@ -383,7 +413,13 @@ fun DecoratedWindowScope.WindowApp() {
                 rootComponent = rootComponent,
                 layoutMode = state.layoutMode,
                 uiScale = state.settings.uiScale,
+                sidebarVisible = state.settings.sidebarVisible,
                 onUiScaleChange = onUiScaleChange,
+                onToggleSidebar = {
+                    rootComponent.updateSettings(
+                        state.settings.copy(sidebarVisible = !state.settings.sidebarVisible),
+                    )
+                },
                 palette = palette,
             )
         }
@@ -427,6 +463,18 @@ private fun AppContent(
     var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     var appContentSize by remember { mutableStateOf(IntSize.Zero) }
     var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
+    val toggleFavoriteLocation: (String) -> Unit = { location ->
+        val currentFavorites = state.settings.favoriteLocations
+        rootComponent.updateSettings(
+            state.settings.copy(
+                favoriteLocations = if (currentFavorites.contains(location)) {
+                    currentFavorites.filterNot { favorite -> favorite == location }
+                } else {
+                    currentFavorites + location
+                },
+            ),
+        )
+    }
     fun resolveTabDropTarget(windowPosition: IntOffset): TabDropTarget? {
         val target = tabDropZones.entries.firstOrNull { (_, zone) ->
             zone.bounds.containsPoint(windowPosition)
@@ -569,6 +617,16 @@ private fun AppContent(
             )
         }
 
+        is RootDialogState.Settings -> {
+            SettingsDialog(
+                state = dialogState,
+                palette = palette,
+                onDraftChange = rootComponent::updateSettingsDraft,
+                onConfirm = rootComponent::confirmDialog,
+                onDismiss = rootComponent::dismissDialog,
+            )
+        }
+
         null -> Unit
     }
 
@@ -596,60 +654,49 @@ private fun AppContent(
                         .fillMaxSize()
                         .background(palette.appBackground),
                 ) {
+                    val activePaneState = state.paneState(state.activePane)
                     // ── Content area ────────────────────────────────────────────
-                    when (state.layoutMode) {
-                        PaneLayoutMode.SINGLE -> {
-                            PaneSurface(
-                                state = state.primaryPane,
-                                active = state.activePane == PaneId.PRIMARY,
-                                component = rootComponent.primaryPane,
-                                modifier = Modifier.weight(1f),
-                                onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
-                                canPaste = state.canPaste,
-                                onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
-                                onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
-                                onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
-                                onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
-                                onOpenSelected = { rootComponent.primaryPane.openSelectedEntry() },
-                                onOpenSelectedInNewTab = { rootComponent.primaryPane.openSelectedInNewTab() },
-                                onBeginRename = { rootComponent.primaryPane.beginRename() },
-                                onBeginCreateFile = { rootComponent.primaryPane.beginCreateFile() },
-                                onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.PRIMARY) },
-                                onCopySelectedPaths = { rootComponent.primaryPane.copySelectedPaths() },
-                                inlineEditState = state.primaryPane.inlineEditState,
-                                onUpdateInlineEditDraft = rootComponent.primaryPane::updateInlineEditDraft,
-                                onConfirmInlineEdit = { rootComponent.primaryPane.confirmInlineEdit() },
-                                onCancelInlineEdit = { rootComponent.primaryPane.cancelInlineEdit() },
-                                onDismissOperationFeedback = { rootComponent.primaryPane.dismissOperationFeedback() },
-                                onDropTab = onTabDrop,
-                                onTabDragPositionChange = onTabDragPositionChange,
-                                onTabDragEnd = onTabDragEnd,
-                                onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                                tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
-                                onFileDragStart = onFileDragStart,
-                                onFileDragPositionChange = onFileDragPositionChange,
-                                onFileDragEnd = onFileDragEnd,
-                                onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
-                                fileDropTarget = fileDropTarget,
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                    ) {
+                        if (state.settings.sidebarVisible) {
+                            PaneSidebar(
+                                location = activePaneState.location,
+                                favoriteLocations = state.settings.favoriteLocations,
+                                recentLocations = state.settings.recentLocations,
                                 palette = palette,
+                                onActivate = {
+                                    when (state.activePane) {
+                                        PaneId.PRIMARY -> rootComponent.activatePane(PaneId.PRIMARY)
+                                        PaneId.SECONDARY -> rootComponent.activatePane(PaneId.SECONDARY)
+                                    }
+                                },
+                                onOpenLocation = { location ->
+                                    when (state.activePane) {
+                                        PaneId.PRIMARY -> rootComponent.primaryPane.openDirectory(location)
+                                        PaneId.SECONDARY -> rootComponent.secondaryPane.openDirectory(location)
+                                    }
+                                },
+                                onToggleFavoriteLocation = toggleFavoriteLocation,
                             )
+                            Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
                         }
 
-                        PaneLayoutMode.DUAL_VERTICAL -> {
-                            var contentSize by remember { mutableStateOf(IntSize.Zero) }
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth()
-                                    .onSizeChanged { contentSize = it },
-                            ) {
+                        when (state.layoutMode) {
+                            PaneLayoutMode.SINGLE -> {
                                 PaneSurface(
                                     state = state.primaryPane,
                                     active = state.activePane == PaneId.PRIMARY,
                                     component = rootComponent.primaryPane,
-                                    modifier = Modifier.weight(state.paneSplitFraction),
+                                    modifier = Modifier.weight(1f),
                                     onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
                                     canPaste = state.canPaste,
+                                    favoriteLocations = state.settings.favoriteLocations,
+                                    onToggleFavoriteLocation = toggleFavoriteLocation,
+                                    filterQuery = state.primaryPane.filterQuery,
+                                    onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
                                     onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
                                     onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                                     onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
@@ -670,48 +717,6 @@ private fun AppContent(
                                     onTabDragEnd = onTabDragEnd,
                                     onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
                                     tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
-                                    onFileDragStart = onFileDragStart,
-                                    onFileDragPositionChange = onFileDragPositionChange,
-                                    onFileDragEnd = onFileDragEnd,
-                                    onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
-                                    fileDropTarget = fileDropTarget,
-                                    palette = palette,
-                                )
-                                ResizablePaneDivider(
-                                    orientation = Orientation.Vertical,
-                                    palette = palette,
-                                    onDragDelta = { delta ->
-                                        val width = contentSize.width.toFloat().coerceAtLeast(1f)
-                                        rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width)
-                                    },
-                                )
-                                PaneSurface(
-                                    state = state.secondaryPane,
-                                    active = state.activePane == PaneId.SECONDARY,
-                                    component = rootComponent.secondaryPane,
-                                    modifier = Modifier.weight(1f - state.paneSplitFraction),
-                                    onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
-                                    canPaste = state.canPaste,
-                                    onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
-                                    onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
-                                    onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
-                                    onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
-                                    onOpenSelected = { rootComponent.secondaryPane.openSelectedEntry() },
-                                    onOpenSelectedInNewTab = { rootComponent.secondaryPane.openSelectedInNewTab() },
-                                    onBeginRename = { rootComponent.secondaryPane.beginRename() },
-                                    onBeginCreateFile = { rootComponent.secondaryPane.beginCreateFile() },
-                                    onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.SECONDARY) },
-                                    onCopySelectedPaths = { rootComponent.secondaryPane.copySelectedPaths() },
-                                    inlineEditState = state.secondaryPane.inlineEditState,
-                                    onUpdateInlineEditDraft = rootComponent.secondaryPane::updateInlineEditDraft,
-                                    onConfirmInlineEdit = { rootComponent.secondaryPane.confirmInlineEdit() },
-                                    onCancelInlineEdit = { rootComponent.secondaryPane.cancelInlineEdit() },
-                                    onDismissOperationFeedback = { rootComponent.secondaryPane.dismissOperationFeedback() },
-                                    onDropTab = onTabDrop,
-                                    onTabDragPositionChange = onTabDragPositionChange,
-                                    onTabDragEnd = onTabDragEnd,
-                                    onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                                    tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
                                     onFileDragStart = onFileDragStart,
                                     onFileDragPositionChange = onFileDragPositionChange,
                                     onFileDragEnd = onFileDragEnd,
@@ -720,104 +725,217 @@ private fun AppContent(
                                     palette = palette,
                                 )
                             }
-                        }
 
-                        PaneLayoutMode.DUAL_HORIZONTAL -> {
-                            var contentSize by remember { mutableStateOf(IntSize.Zero) }
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxWidth()
-                                    .onSizeChanged { contentSize = it },
-                            ) {
-                                PaneSurface(
-                                    state = state.primaryPane,
-                                    active = state.activePane == PaneId.PRIMARY,
-                                    component = rootComponent.primaryPane,
-                                    modifier = Modifier.weight(state.paneSplitFraction),
-                                    onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
-                                    canPaste = state.canPaste,
-                                    onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
-                                    onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
-                                    onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
-                                    onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
-                                    onOpenSelected = { rootComponent.primaryPane.openSelectedEntry() },
-                                    onOpenSelectedInNewTab = { rootComponent.primaryPane.openSelectedInNewTab() },
-                                    onBeginRename = { rootComponent.primaryPane.beginRename() },
-                                    onBeginCreateFile = { rootComponent.primaryPane.beginCreateFile() },
-                                    onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.PRIMARY) },
-                                    onCopySelectedPaths = { rootComponent.primaryPane.copySelectedPaths() },
-                                    inlineEditState = state.primaryPane.inlineEditState,
-                                    onUpdateInlineEditDraft = rootComponent.primaryPane::updateInlineEditDraft,
-                                    onConfirmInlineEdit = { rootComponent.primaryPane.confirmInlineEdit() },
-                                    onCancelInlineEdit = { rootComponent.primaryPane.cancelInlineEdit() },
-                                    onDismissOperationFeedback = { rootComponent.primaryPane.dismissOperationFeedback() },
-                                    onDropTab = onTabDrop,
-                                    onTabDragPositionChange = onTabDragPositionChange,
-                                    onTabDragEnd = onTabDragEnd,
-                                    onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                                    tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
-                                    onFileDragStart = onFileDragStart,
-                                    onFileDragPositionChange = onFileDragPositionChange,
-                                    onFileDragEnd = onFileDragEnd,
-                                    onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
-                                    fileDropTarget = fileDropTarget,
-                                    palette = palette,
-                                )
-                                ResizablePaneDivider(
-                                    orientation = Orientation.Horizontal,
-                                    palette = palette,
-                                    onDragDelta = { delta ->
-                                        val height = contentSize.height.toFloat().coerceAtLeast(1f)
-                                        rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height)
-                                    },
-                                )
-                                PaneSurface(
-                                    state = state.secondaryPane,
-                                    active = state.activePane == PaneId.SECONDARY,
-                                    component = rootComponent.secondaryPane,
-                                    modifier = Modifier.weight(1f - state.paneSplitFraction),
-                                    onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
-                                    canPaste = state.canPaste,
-                                    onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
-                                    onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
-                                    onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
-                                    onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
-                                    onOpenSelected = { rootComponent.secondaryPane.openSelectedEntry() },
-                                    onOpenSelectedInNewTab = { rootComponent.secondaryPane.openSelectedInNewTab() },
-                                    onBeginRename = { rootComponent.secondaryPane.beginRename() },
-                                    onBeginCreateFile = { rootComponent.secondaryPane.beginCreateFile() },
-                                    onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.SECONDARY) },
-                                    onCopySelectedPaths = { rootComponent.secondaryPane.copySelectedPaths() },
-                                    inlineEditState = state.secondaryPane.inlineEditState,
-                                    onUpdateInlineEditDraft = rootComponent.secondaryPane::updateInlineEditDraft,
-                                    onConfirmInlineEdit = { rootComponent.secondaryPane.confirmInlineEdit() },
-                                    onCancelInlineEdit = { rootComponent.secondaryPane.cancelInlineEdit() },
-                                    onDismissOperationFeedback = { rootComponent.secondaryPane.dismissOperationFeedback() },
-                                    onDropTab = onTabDrop,
-                                    onTabDragPositionChange = onTabDragPositionChange,
-                                    onTabDragEnd = onTabDragEnd,
-                                    onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
-                                    tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
-                                    onFileDragStart = onFileDragStart,
-                                    onFileDragPositionChange = onFileDragPositionChange,
-                                    onFileDragEnd = onFileDragEnd,
-                                    onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
-                                    fileDropTarget = fileDropTarget,
-                                    palette = palette,
-                                )
+                            PaneLayoutMode.DUAL_VERTICAL -> {
+                                var contentSize by remember { mutableStateOf(IntSize.Zero) }
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .onSizeChanged { contentSize = it },
+                                ) {
+                                    PaneSurface(
+                                        state = state.primaryPane,
+                                        active = state.activePane == PaneId.PRIMARY,
+                                        component = rootComponent.primaryPane,
+                                        modifier = Modifier.weight(state.paneSplitFraction),
+                                        onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
+                                        canPaste = state.canPaste,
+                                        favoriteLocations = state.settings.favoriteLocations,
+                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+                                        filterQuery = state.primaryPane.filterQuery,
+                                        onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
+                                        onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
+                                        onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
+                                        onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
+                                        onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                                        onOpenSelected = { rootComponent.primaryPane.openSelectedEntry() },
+                                        onOpenSelectedInNewTab = { rootComponent.primaryPane.openSelectedInNewTab() },
+                                        onBeginRename = { rootComponent.primaryPane.beginRename() },
+                                        onBeginCreateFile = { rootComponent.primaryPane.beginCreateFile() },
+                                        onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.PRIMARY) },
+                                        onCopySelectedPaths = { rootComponent.primaryPane.copySelectedPaths() },
+                                        inlineEditState = state.primaryPane.inlineEditState,
+                                        onUpdateInlineEditDraft = rootComponent.primaryPane::updateInlineEditDraft,
+                                        onConfirmInlineEdit = { rootComponent.primaryPane.confirmInlineEdit() },
+                                        onCancelInlineEdit = { rootComponent.primaryPane.cancelInlineEdit() },
+                                        onDismissOperationFeedback = { rootComponent.primaryPane.dismissOperationFeedback() },
+                                        onDropTab = onTabDrop,
+                                        onTabDragPositionChange = onTabDragPositionChange,
+                                        onTabDragEnd = onTabDragEnd,
+                                        onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                        tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                        onFileDragStart = onFileDragStart,
+                                        onFileDragPositionChange = onFileDragPositionChange,
+                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                        fileDropTarget = fileDropTarget,
+                                        palette = palette,
+                                    )
+                                    ResizablePaneDivider(
+                                        orientation = Orientation.Vertical,
+                                        palette = palette,
+                                        onDragDelta = { delta ->
+                                            val width = contentSize.width.toFloat().coerceAtLeast(1f)
+                                            rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width)
+                                        },
+                                    )
+                                    PaneSurface(
+                                        state = state.secondaryPane,
+                                        active = state.activePane == PaneId.SECONDARY,
+                                        component = rootComponent.secondaryPane,
+                                        modifier = Modifier.weight(1f - state.paneSplitFraction),
+                                        onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
+                                        canPaste = state.canPaste,
+                                        favoriteLocations = state.settings.favoriteLocations,
+                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+                                        filterQuery = state.secondaryPane.filterQuery,
+                                        onFilterQueryChange = rootComponent.secondaryPane::setFilterQuery,
+                                        onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
+                                        onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
+                                        onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
+                                        onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
+                                        onOpenSelected = { rootComponent.secondaryPane.openSelectedEntry() },
+                                        onOpenSelectedInNewTab = { rootComponent.secondaryPane.openSelectedInNewTab() },
+                                        onBeginRename = { rootComponent.secondaryPane.beginRename() },
+                                        onBeginCreateFile = { rootComponent.secondaryPane.beginCreateFile() },
+                                        onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.SECONDARY) },
+                                        onCopySelectedPaths = { rootComponent.secondaryPane.copySelectedPaths() },
+                                        inlineEditState = state.secondaryPane.inlineEditState,
+                                        onUpdateInlineEditDraft = rootComponent.secondaryPane::updateInlineEditDraft,
+                                        onConfirmInlineEdit = { rootComponent.secondaryPane.confirmInlineEdit() },
+                                        onCancelInlineEdit = { rootComponent.secondaryPane.cancelInlineEdit() },
+                                        onDismissOperationFeedback = { rootComponent.secondaryPane.dismissOperationFeedback() },
+                                        onDropTab = onTabDrop,
+                                        onTabDragPositionChange = onTabDragPositionChange,
+                                        onTabDragEnd = onTabDragEnd,
+                                        onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                        tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
+                                        onFileDragStart = onFileDragStart,
+                                        onFileDragPositionChange = onFileDragPositionChange,
+                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                        fileDropTarget = fileDropTarget,
+                                        palette = palette,
+                                    )
+                                }
+                            }
+
+                            PaneLayoutMode.DUAL_HORIZONTAL -> {
+                                var contentSize by remember { mutableStateOf(IntSize.Zero) }
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .onSizeChanged { contentSize = it },
+                                ) {
+                                    PaneSurface(
+                                        state = state.primaryPane,
+                                        active = state.activePane == PaneId.PRIMARY,
+                                        component = rootComponent.primaryPane,
+                                        modifier = Modifier.weight(state.paneSplitFraction),
+                                        onActivate = { rootComponent.activatePane(PaneId.PRIMARY) },
+                                        canPaste = state.canPaste,
+                                        favoriteLocations = state.settings.favoriteLocations,
+                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+                                        filterQuery = state.primaryPane.filterQuery,
+                                        onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
+                                        onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
+                                        onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
+                                        onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
+                                        onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
+                                        onOpenSelected = { rootComponent.primaryPane.openSelectedEntry() },
+                                        onOpenSelectedInNewTab = { rootComponent.primaryPane.openSelectedInNewTab() },
+                                        onBeginRename = { rootComponent.primaryPane.beginRename() },
+                                        onBeginCreateFile = { rootComponent.primaryPane.beginCreateFile() },
+                                        onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.PRIMARY) },
+                                        onCopySelectedPaths = { rootComponent.primaryPane.copySelectedPaths() },
+                                        inlineEditState = state.primaryPane.inlineEditState,
+                                        onUpdateInlineEditDraft = rootComponent.primaryPane::updateInlineEditDraft,
+                                        onConfirmInlineEdit = { rootComponent.primaryPane.confirmInlineEdit() },
+                                        onCancelInlineEdit = { rootComponent.primaryPane.cancelInlineEdit() },
+                                        onDismissOperationFeedback = { rootComponent.primaryPane.dismissOperationFeedback() },
+                                        onDropTab = onTabDrop,
+                                        onTabDragPositionChange = onTabDragPositionChange,
+                                        onTabDragEnd = onTabDragEnd,
+                                        onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                        tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.PRIMARY }?.index,
+                                        onFileDragStart = onFileDragStart,
+                                        onFileDragPositionChange = onFileDragPositionChange,
+                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                        fileDropTarget = fileDropTarget,
+                                        palette = palette,
+                                    )
+                                    ResizablePaneDivider(
+                                        orientation = Orientation.Horizontal,
+                                        palette = palette,
+                                        onDragDelta = { delta ->
+                                            val height = contentSize.height.toFloat().coerceAtLeast(1f)
+                                            rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height)
+                                        },
+                                    )
+                                    PaneSurface(
+                                        state = state.secondaryPane,
+                                        active = state.activePane == PaneId.SECONDARY,
+                                        component = rootComponent.secondaryPane,
+                                        modifier = Modifier.weight(1f - state.paneSplitFraction),
+                                        onActivate = { rootComponent.activatePane(PaneId.SECONDARY) },
+                                        canPaste = state.canPaste,
+                                        favoriteLocations = state.settings.favoriteLocations,
+                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+                                        filterQuery = state.secondaryPane.filterQuery,
+                                        onFilterQueryChange = rootComponent.secondaryPane::setFilterQuery,
+                                        onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
+                                        onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
+                                        onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
+                                        onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
+                                        onOpenSelected = { rootComponent.secondaryPane.openSelectedEntry() },
+                                        onOpenSelectedInNewTab = { rootComponent.secondaryPane.openSelectedInNewTab() },
+                                        onBeginRename = { rootComponent.secondaryPane.beginRename() },
+                                        onBeginCreateFile = { rootComponent.secondaryPane.beginCreateFile() },
+                                        onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(PaneId.SECONDARY) },
+                                        onCopySelectedPaths = { rootComponent.secondaryPane.copySelectedPaths() },
+                                        inlineEditState = state.secondaryPane.inlineEditState,
+                                        onUpdateInlineEditDraft = rootComponent.secondaryPane::updateInlineEditDraft,
+                                        onConfirmInlineEdit = { rootComponent.secondaryPane.confirmInlineEdit() },
+                                        onCancelInlineEdit = { rootComponent.secondaryPane.cancelInlineEdit() },
+                                        onDismissOperationFeedback = { rootComponent.secondaryPane.dismissOperationFeedback() },
+                                        onDropTab = onTabDrop,
+                                        onTabDragPositionChange = onTabDragPositionChange,
+                                        onTabDragEnd = onTabDragEnd,
+                                        onTabDropZoneChange = { paneId, zone -> tabDropZones[paneId] = zone },
+                                        tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == PaneId.SECONDARY }?.index,
+                                        onFileDragStart = onFileDragStart,
+                                        onFileDragPositionChange = onFileDragPositionChange,
+                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
+                                        fileDropTarget = fileDropTarget,
+                                        palette = palette,
+                                    )
+                                }
                             }
                         }
                     }
 
                     // ── Status bar ──────────────────────────────────────────────
-                    StatusBar(
-                        primaryPane = state.primaryPane,
-                        secondaryPane = state.secondaryPane,
-                        activePane = state.activePane,
-                        layoutMode = state.layoutMode,
-                        palette = palette,
-                    )
+                    if (state.settings.statusBarVisible) {
+                        StatusBar(
+                            primaryPane = state.primaryPane,
+                            secondaryPane = state.secondaryPane,
+                            activePane = state.activePane,
+                            activeTaskCount = state.tasks.count { task ->
+                                task.status == BackgroundTaskStatus.QUEUED || task.status == BackgroundTaskStatus.RUNNING
+                            },
+                            onSetActiveViewMode = { mode ->
+                                when (state.activePane) {
+                                    PaneId.PRIMARY -> rootComponent.primaryPane.setViewMode(mode)
+                                    PaneId.SECONDARY -> rootComponent.secondaryPane.setViewMode(mode)
+                                }
+                            },
+                            palette = palette,
+                        )
+                    }
                 }
 
                 (tooltipRequest ?: externalTooltipRequest)?.let { request ->
@@ -840,6 +958,277 @@ private fun AppContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsDialog(
+    state: RootDialogState.Settings,
+    palette: OnyxPalette,
+    onDraftChange: (OnyxSettings) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val draft = state.draft
+    val title = stringResource(Res.string.label_settings_title)
+    DialogWindow(
+        onCloseRequest = onDismiss,
+        title = title,
+        state = rememberDialogState(width = 560.dp, height = 420.dp),
+        resizable = false,
+    ) {
+        IntUiTheme(isDark = isSystemInDarkTheme()) {
+            DialogFrame(
+                palette = palette,
+                title = title,
+                body = {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        SettingsSection(
+                            title = stringResource(Res.string.label_default_layout_mode),
+                            palette = palette,
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsOption(
+                                    selected = draft.defaultLayoutMode == PaneLayoutMode.SINGLE,
+                                    text = stringResource(Res.string.action_layout_single),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.SINGLE)) },
+                                )
+                                SettingsOption(
+                                    selected = draft.defaultLayoutMode == PaneLayoutMode.DUAL_VERTICAL,
+                                    text = stringResource(Res.string.action_layout_dual_vertical),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_VERTICAL)) },
+                                )
+                                SettingsOption(
+                                    selected = draft.defaultLayoutMode == PaneLayoutMode.DUAL_HORIZONTAL,
+                                    text = stringResource(Res.string.action_layout_dual_horizontal),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_HORIZONTAL)) },
+                                )
+                            }
+                        }
+
+                        SettingsSection(
+                            title = stringResource(Res.string.label_default_view_mode),
+                            palette = palette,
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsOption(
+                                    selected = draft.defaultViewMode == ViewMode.DETAILS,
+                                    text = stringResource(Res.string.label_mode_details),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(defaultViewMode = ViewMode.DETAILS)) },
+                                )
+                                SettingsOption(
+                                    selected = draft.defaultViewMode == ViewMode.GALLERY,
+                                    text = stringResource(Res.string.label_mode_gallery),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(defaultViewMode = ViewMode.GALLERY)) },
+                                )
+                            }
+                        }
+
+                        SettingsSection(
+                            title = stringResource(Res.string.label_delete_mode),
+                            palette = palette,
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsOption(
+                                    selected = draft.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED,
+                                    text = stringResource(Res.string.label_delete_mode_move_to_trash),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(deleteMode = DeleteMode.MOVE_TO_TRASH_PREFERRED)) },
+                                )
+                                SettingsOption(
+                                    selected = draft.deleteMode == DeleteMode.PERMANENT,
+                                    text = stringResource(Res.string.label_delete_mode_permanent),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(deleteMode = DeleteMode.PERMANENT)) },
+                                )
+                            }
+                        }
+
+                        SettingsSection(
+                            title = stringResource(Res.string.label_sidebar_visibility),
+                            palette = palette,
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsOption(
+                                    selected = draft.sidebarVisible,
+                                    text = stringResource(Res.string.label_setting_show),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(sidebarVisible = true)) },
+                                )
+                                SettingsOption(
+                                    selected = !draft.sidebarVisible,
+                                    text = stringResource(Res.string.label_setting_hide),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(sidebarVisible = false)) },
+                                )
+                            }
+                        }
+
+                        SettingsSection(
+                            title = stringResource(Res.string.label_status_bar_visibility),
+                            palette = palette,
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SettingsOption(
+                                    selected = draft.statusBarVisible,
+                                    text = stringResource(Res.string.label_setting_show),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(statusBarVisible = true)) },
+                                )
+                                SettingsOption(
+                                    selected = !draft.statusBarVisible,
+                                    text = stringResource(Res.string.label_setting_hide),
+                                    palette = palette,
+                                    onClick = { onDraftChange(draft.copy(statusBarVisible = false)) },
+                                )
+                            }
+                        }
+
+                        SettingsSection(
+                            title = stringResource(Res.string.label_ui_scale),
+                            palette = palette,
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    Text(
+                                        text = "${draft.uiScale}%",
+                                        fontSize = 11.sp,
+                                        color = palette.foreground,
+                                        modifier = Modifier.width(52.dp),
+                                    )
+                                    SettingsScaleSlider(
+                                        value = draft.uiScale,
+                                        min = 75,
+                                        max = 200,
+                                        palette = palette,
+                                        onValueChange = { value -> onDraftChange(draft.copy(uiScale = value)) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                actions = {
+                    DialogTextButton(
+                        text = stringResource(Res.string.action_close_menu),
+                        palette = palette,
+                        onClick = onDismiss,
+                    )
+                    DialogTextButton(
+                        text = stringResource(Res.string.action_apply),
+                        palette = palette,
+                        emphasized = true,
+                        onClick = onConfirm,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    palette: OnyxPalette,
+    content: @Composable () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            text = title,
+            fontSize = 12.sp,
+            color = palette.foreground,
+            fontWeight = FontWeight.Medium,
+        )
+        content()
+    }
+}
+
+@Composable
+private fun SettingsOption(
+    selected: Boolean,
+    text: String,
+    palette: OnyxPalette,
+    onClick: () -> Unit,
+) {
+    val background = if (selected) palette.titleBarActiveBackground else palette.surface
+    Box(
+        modifier = Modifier
+            .background(background, RoundedCornerShape(4.dp))
+            .border(1.dp, if (selected) palette.accent else palette.outlineVariant, RoundedCornerShape(4.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = if (selected) Color.White else palette.foreground,
+            fontSize = 11.sp,
+        )
+    }
+}
+
+@Composable
+private fun SettingsScaleSlider(
+    value: Int,
+    min: Int,
+    max: Int,
+    palette: OnyxPalette,
+    onValueChange: (Int) -> Unit,
+) {
+    val clampedValue = value.coerceIn(min, max)
+    val fraction = ((clampedValue - min).toFloat() / (max - min)).coerceIn(0f, 1f)
+    val sliderWidthDp = 280
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val sliderWidthPx = with(density) { sliderWidthDp.dp.toPx() }
+
+    Box(
+        modifier = Modifier
+            .width(sliderWidthDp.dp)
+            .height(16.dp)
+            .pointerInput(Unit) {
+                detectDragGestures { change, _ ->
+                    val x = change.position.x.coerceIn(0f, sliderWidthPx)
+                    val newFraction = x / sliderWidthPx
+                    onValueChange((min + (newFraction * (max - min)).toInt()).coerceIn(min, max))
+                }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val newFraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
+                    onValueChange((min + (newFraction * (max - min)).toInt()).coerceIn(min, max))
+                }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(palette.outlineVariant, RoundedCornerShape(1.dp)),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(fraction)
+                .height(3.dp)
+                .background(palette.accent, RoundedCornerShape(1.dp)),
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = (fraction * (sliderWidthDp - 8)).dp)
+                .size(8.dp)
+                .background(palette.accent, RoundedCornerShape(4.dp)),
+        )
     }
 }
 
@@ -1292,7 +1681,9 @@ private fun TitleBarContent(
     rootComponent: RootComponent,
     layoutMode: PaneLayoutMode,
     uiScale: Int,
+    sidebarVisible: Boolean,
     onUiScaleChange: (Int) -> Unit,
+    onToggleSidebar: () -> Unit,
     palette: OnyxPalette,
 ) {
     // Jewel DecoratedWindow 的标题栏内容区域
@@ -1376,7 +1767,18 @@ private fun TitleBarContent(
             Spacer(modifier = Modifier.width(3.dp))
 
             TitleBarIconButton(
-                onClick = { },
+                onClick = onToggleSidebar,
+                palette = palette,
+                tooltip = stringResource(Res.string.action_toggle_sidebar),
+            ) {
+                Icon(
+                    key = if (sidebarVisible) AllIconsKeys.Actions.ToggleVisibility else AllIconsKeys.General.Show,
+                    contentDescription = stringResource(Res.string.action_toggle_sidebar),
+                )
+            }
+
+            TitleBarIconButton(
+                onClick = rootComponent::openSettings,
                 palette = palette,
                 tooltip = stringResource(Res.string.action_open_settings),
             ) {
@@ -1930,6 +2332,10 @@ private fun PaneSurface(
     modifier: Modifier = Modifier,
     onActivate: () -> Unit,
     canPaste: Boolean,
+    favoriteLocations: List<String>,
+    onToggleFavoriteLocation: (String) -> Unit,
+    filterQuery: String,
+    onFilterQueryChange: (String) -> Unit,
     onDeleteSelection: () -> Unit,
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
@@ -2101,6 +2507,7 @@ private fun PaneSurface(
             ?.filter { entry -> state.selectedEntryIds.contains(entry.id) }
             .orEmpty()
         val singleSelectedEntry = selectedEntries.singleOrNull()
+        val currentLocationFavorite = favoriteLocations.contains(state.location)
         PaneTabBar(
             state = state,
             active = active,
@@ -2169,6 +2576,19 @@ private fun PaneSurface(
                     contentDescription = stringResource(Res.string.action_go_home),
                 )
             }
+            ToolbarIconButton(
+                enabled = true,
+                onClick = { onActivate(); onToggleFavoriteLocation(state.location) },
+                palette = palette,
+                tooltip = stringResource(Res.string.action_toggle_favorite),
+                selected = currentLocationFavorite,
+            ) {
+                Text(
+                    text = if (currentLocationFavorite) "★" else "☆",
+                    fontSize = 11.sp,
+                    color = if (currentLocationFavorite) Color(0xFFFFC94D) else palette.foreground,
+                )
+            }
 
             Spacer(modifier = Modifier.width(4.dp))
 
@@ -2179,6 +2599,46 @@ private fun PaneSurface(
                     onActivate = onActivate,
                     onOpenLocation = component::openDirectory,
                     palette = palette,
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            Box(
+                modifier = Modifier.width(190.dp).height(22.dp)
+            ) {
+                BasicTextField(
+                    value = filterQuery,
+                    onValueChange = onFilterQueryChange,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(palette.inputBackground, RoundedCornerShape(4.dp))
+                        .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp)
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                onActivate()
+                            }
+                        },
+                    textStyle = TextStyle(
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        color = palette.foreground,
+                    ),
+                    singleLine = true,
+                    cursorBrush = SolidColor(palette.accent),
+                    decorationBox = { innerTextField ->
+                        Box(contentAlignment = Alignment.CenterStart) {
+                            if (filterQuery.isEmpty()) {
+                                Text(
+                                    text = stringResource(Res.string.label_filter_placeholder),
+                                    fontSize = 11.sp,
+                                    color = palette.disabledForeground,
+                                )
+                            }
+                            innerTextField()
+                        }
+                    },
                 )
             }
 
@@ -2336,6 +2796,185 @@ private fun PaneSurface(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PaneSidebar(
+    location: String,
+    favoriteLocations: List<String>,
+    recentLocations: List<String>,
+    palette: OnyxPalette,
+    onActivate: () -> Unit,
+    onOpenLocation: (String) -> Unit,
+    onToggleFavoriteLocation: (String) -> Unit,
+) {
+    val homeLocation = System.getProperty("user.home")
+    val scrollState = rememberScrollState()
+    Column(
+        modifier = Modifier
+            .width(184.dp)
+            .fillMaxHeight()
+            .background(palette.surfaceVariant)
+            .verticalScroll(scrollState)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        SidebarSection(
+            title = stringResource(Res.string.label_sidebar_section_quick_access),
+            palette = palette,
+        ) {
+            SidebarLocationItem(
+                label = stringResource(Res.string.label_home),
+                location = homeLocation,
+                selected = location == homeLocation,
+                favorite = favoriteLocations.contains(homeLocation),
+                palette = palette,
+                onOpen = {
+                    onActivate()
+                    onOpenLocation(homeLocation)
+                },
+                onToggleFavorite = { onToggleFavoriteLocation(homeLocation) },
+            )
+        }
+
+        SidebarSection(
+            title = stringResource(Res.string.label_sidebar_section_favorites),
+            palette = palette,
+        ) {
+            if (favoriteLocations.isEmpty()) {
+                SidebarEmptyState(
+                    text = stringResource(Res.string.label_sidebar_empty_favorites),
+                    palette = palette,
+                )
+            } else {
+                favoriteLocations.forEach { favoriteLocation ->
+                    SidebarLocationItem(
+                        label = Path.of(favoriteLocation).fileName?.toString().orEmpty().ifBlank { favoriteLocation },
+                        location = favoriteLocation,
+                        selected = location == favoriteLocation,
+                        favorite = true,
+                        palette = palette,
+                        onOpen = {
+                            onActivate()
+                            onOpenLocation(favoriteLocation)
+                        },
+                        onToggleFavorite = { onToggleFavoriteLocation(favoriteLocation) },
+                    )
+                }
+            }
+        }
+
+        SidebarSection(
+            title = stringResource(Res.string.label_sidebar_section_recent),
+            palette = palette,
+        ) {
+            val displayRecentLocations = recentLocations.filterNot { recentLocation ->
+                recentLocation == location
+            }
+            if (displayRecentLocations.isEmpty()) {
+                SidebarEmptyState(
+                    text = stringResource(Res.string.label_sidebar_empty_recent),
+                    palette = palette,
+                )
+            } else {
+                displayRecentLocations.forEach { recentLocation ->
+                    SidebarLocationItem(
+                        label = Path.of(recentLocation).fileName?.toString().orEmpty().ifBlank { recentLocation },
+                        location = recentLocation,
+                        selected = false,
+                        favorite = favoriteLocations.contains(recentLocation),
+                        palette = palette,
+                        onOpen = {
+                            onActivate()
+                            onOpenLocation(recentLocation)
+                        },
+                        onToggleFavorite = { onToggleFavoriteLocation(recentLocation) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SidebarSection(
+    title: String,
+    palette: OnyxPalette,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = title,
+            fontSize = 11.sp,
+            color = palette.mutedForeground,
+            fontWeight = FontWeight.Medium,
+        )
+        content()
+    }
+}
+
+@Composable
+private fun SidebarEmptyState(
+    text: String,
+    palette: OnyxPalette,
+) {
+    Text(
+        text = text,
+        fontSize = 11.sp,
+        color = palette.disabledForeground,
+        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
+private fun SidebarLocationItem(
+    label: String,
+    location: String,
+    selected: Boolean,
+    favorite: Boolean,
+    palette: OnyxPalette,
+    onOpen: () -> Unit,
+    onToggleFavorite: () -> Unit,
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .hoverable(interactionSource)
+            .background(
+                when {
+                    selected -> palette.selectionBackground
+                    isHovered -> palette.rowHoverBackground.copy(alpha = 0.28f)
+                    else -> Color.Transparent
+                },
+                RoundedCornerShape(4.dp),
+            )
+            .clickable(onClick = onOpen)
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            key = if (location == System.getProperty("user.home")) AllIconsKeys.Nodes.HomeFolder else AllIconsKeys.Nodes.Folder,
+            contentDescription = null,
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            fontSize = 11.sp,
+            color = palette.foreground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = if (favorite) "★" else "☆",
+            fontSize = 11.sp,
+            color = if (favorite) Color(0xFFFFC94D) else palette.disabledForeground,
+            modifier = Modifier.clickable(onClick = onToggleFavorite),
+        )
     }
 }
 
@@ -3359,9 +3998,11 @@ private fun StatusBar(
     primaryPane: PaneState,
     secondaryPane: PaneState,
     activePane: PaneId,
-    layoutMode: PaneLayoutMode,
+    activeTaskCount: Int,
+    onSetActiveViewMode: (ViewMode) -> Unit,
     palette: OnyxPalette,
 ) {
+    val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -3375,13 +4016,45 @@ private fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
-            if (activeState.entriesState is PaneEntriesState.Ready) {
-                val entries = activeState.entriesState.entries
-                val dirs = entries.count { it.kind == VFileKind.DIRECTORY }
-                val files = entries.count { it.kind == VFileKind.FILE }
+            val status = activeState.statusInfo
+            Text(
+                text = stringResource(
+                    Res.string.label_directory_file_count,
+                    status.directoryCount,
+                    status.fileCount,
+                ),
+                fontSize = 11.sp,
+                color = palette.mutedForeground,
+            )
+            Text(
+                text = stringResource(Res.string.label_item_count, status.totalItemCount),
+                fontSize = 11.sp,
+                color = palette.mutedForeground,
+            )
+            if (activeState.filterQuery.isNotBlank()) {
                 Text(
-                    text = stringResource(Res.string.label_directory_file_count, dirs, files),
+                    text = stringResource(
+                        Res.string.label_filtered_item_count,
+                        status.visibleItemCount,
+                        status.totalItemCount,
+                    ),
+                    fontSize = 11.sp,
+                    color = palette.mutedForeground,
+                )
+            }
+            val selectedSizeText = stringResource(
+                Res.string.label_selected_size,
+                status.selectedCount,
+                formatFileSize(status.selectedSizeBytes),
+            )
+            Text(
+                text = selectedSizeText,
+                fontSize = 11.sp,
+                color = palette.mutedForeground,
+            )
+            if (activeTaskCount > 0) {
+                Text(
+                    text = stringResource(Res.string.label_task_summary, activeTaskCount),
                     fontSize = 11.sp,
                     color = palette.mutedForeground,
                 )
@@ -3393,8 +4066,8 @@ private fun StatusBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             LayoutIconButton(
-                selected = true,
-                onClick = { },
+                selected = activeState.viewMode == ViewMode.DETAILS,
+                onClick = { onSetActiveViewMode(ViewMode.DETAILS) },
                 palette = palette,
                 tooltip = stringResource(Res.string.label_mode_details),
             ) {
@@ -3404,8 +4077,8 @@ private fun StatusBar(
                 )
             }
             LayoutIconButton(
-                selected = false,
-                onClick = { },
+                selected = activeState.viewMode == ViewMode.GALLERY,
+                onClick = { onSetActiveViewMode(ViewMode.GALLERY) },
                 palette = palette,
                 tooltip = stringResource(Res.string.label_mode_gallery),
             ) {

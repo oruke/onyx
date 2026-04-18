@@ -10,6 +10,7 @@
     <string name="action_open_settings">设置</string>
     <string name="action_open">打开</string>
     <string name="action_open_in_new_tab">在新标签页打开</string>
+    <string name="action_toggle_favorite">切换收藏</string>
     <string name="action_rename">重命名</string>
     <string name="action_new_file">新建文件</string>
     <string name="action_new_directory">新建文件夹</string>
@@ -20,6 +21,7 @@
     <string name="action_toggle_hidden_files">显示隐藏项</string>
     <string name="action_cancel_task">取消</string>
     <string name="action_clear_all_tasks">全部清除</string>
+    <string name="action_apply">应用</string>
     <string name="action_toggle_sidebar">显示/隐藏侧栏</string>
     <string name="action_toggle_status_bar">显示/隐藏状态栏</string>
     <string name="action_toggle_fullscreen">切换全屏</string>
@@ -76,6 +78,23 @@
     <string name="label_feedback_copy_path_failed">复制路径失败：%1$s</string>
     <string name="label_loading_entries">正在加载...</string>
     <string name="label_empty_directory">文件夹为空</string>
+    <string name="label_settings_title">设置</string>
+    <string name="label_default_layout_mode">默认布局模式</string>
+    <string name="label_default_view_mode">默认视图模式</string>
+    <string name="label_delete_mode">删除模式</string>
+    <string name="label_sidebar_visibility">侧边栏</string>
+    <string name="label_status_bar_visibility">状态栏</string>
+    <string name="label_setting_show">显示</string>
+    <string name="label_setting_hide">隐藏</string>
+    <string name="label_delete_mode_move_to_trash">优先移至回收站</string>
+    <string name="label_delete_mode_permanent">永久删除</string>
+    <string name="label_ui_scale">界面缩放</string>
+    <string name="label_filter_placeholder">过滤文件...</string>
+    <string name="label_sidebar_section_quick_access">快速访问</string>
+    <string name="label_sidebar_section_favorites">收藏</string>
+    <string name="label_sidebar_section_recent">最近位置</string>
+    <string name="label_sidebar_empty_favorites">还没有收藏</string>
+    <string name="label_sidebar_empty_recent">还没有最近目录</string>
     <string name="label_error_prefix">错误</string>
     <string name="label_operation_copy">复制</string>
     <string name="label_operation_move">移动</string>
@@ -112,6 +131,9 @@
     <string name="label_folder_count">文件夹：%1$d</string>
     <string name="label_file_count">文件：%1$d</string>
     <string name="label_item_count">项目：%1$d</string>
+    <string name="label_selected_size">已选择：%1$d 项（%2$s）</string>
+    <string name="label_filtered_item_count">可见：%1$d / %2$d</string>
+    <string name="label_task_summary">任务：%1$d 个进行中</string>
     <string name="label_selection_count">已选择：%1$d</string>
     <string name="message_apply_to_remaining_conflicts">应用到剩余冲突</string>
 

@@ -152,6 +152,16 @@ class DefaultRootComponent(
         scope.launch {
             restorePersistedState()
         }
+
+        scope.launch {
+            combine(primaryPane.state, secondaryPane.state) { primaryState, secondaryState ->
+                listOf(primaryState.location, secondaryState.location)
+            }.collect { locations ->
+                if (persistenceReady) {
+                    recordRecentLocations(*locations.toTypedArray())
+                }
+            }
+        }
     }
 
     override fun setLayoutMode(mode: PaneLayoutMode) {
@@ -162,14 +172,21 @@ class DefaultRootComponent(
         paneSplitFraction.value = fraction.coerceIn(0.18f, 0.82f)
     }
 
+    override fun openSettings() {
+        dialogState.value = RootDialogState.Settings(draft = settings.value)
+    }
+
+    override fun updateSettingsDraft(draft: OnyxSettings) {
+        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
+        dialogState.value = currentDialog.copy(draft = draft)
+    }
+
     override fun activatePane(paneId: PaneId) {
         activePane.value = paneId
     }
 
     override fun updateSettings(settings: OnyxSettings) {
-        this.settings.value = settings.copy(
-            uiScale = settings.uiScale.coerceIn(75, 200),
-        )
+        this.settings.value = settings.sanitized()
     }
 
     override fun beginCreateDirectoriesInPane(paneId: PaneId) {
@@ -209,6 +226,11 @@ class DefaultRootComponent(
                     parentLocation = currentDialog.location,
                     paths = directoryPaths,
                 )
+            }
+
+            is RootDialogState.Settings -> {
+                dialogState.value = null
+                updateSettings(currentDialog.draft)
             }
 
             else -> Unit
@@ -643,11 +665,13 @@ class DefaultRootComponent(
                     applySession(session)
                 } else {
                     layoutMode.value = settings.value.defaultLayoutMode
+                    applyDefaultViewMode()
                 }
             },
             onFailure = { failure ->
                 restoreError = restoreError ?: failure.message ?: "Failed to restore session"
                 layoutMode.value = settings.value.defaultLayoutMode
+                applyDefaultViewMode()
             },
         )
 
@@ -657,6 +681,10 @@ class DefaultRootComponent(
             SessionRestoreState.Failed(restoreError)
         }
         persistenceReady = true
+        recordRecentLocations(
+            primaryPane.state.value.location,
+            secondaryPane.state.value.location,
+        )
         persistCurrentState()
     }
 
@@ -666,6 +694,12 @@ class DefaultRootComponent(
         primaryPane.restoreSession(snapshot.primaryPane)
         secondaryPane.restoreSession(snapshot.secondaryPane)
         activePane.value = snapshot.activePane
+    }
+
+    private fun applyDefaultViewMode() {
+        val defaultViewMode = settings.value.defaultViewMode
+        primaryPane.setViewMode(defaultViewMode)
+        secondaryPane.setViewMode(defaultViewMode)
     }
 
     private suspend fun persistCurrentState() {
@@ -769,6 +803,22 @@ class DefaultRootComponent(
             .map { line -> line.trim() }
             .filter { line -> line.isNotBlank() }
             .distinct()
+    }
+
+    private fun recordRecentLocations(vararg locations: String) {
+        val normalizedLocations = locations
+            .map { location -> location.trim() }
+            .filter { location -> location.isNotEmpty() }
+        if (normalizedLocations.isEmpty()) {
+            return
+        }
+        val nextRecentLocations = buildList {
+            addAll(normalizedLocations)
+            addAll(settings.value.recentLocations)
+        }.distinct().take(MaxRecentLocations)
+        if (nextRecentLocations != settings.value.recentLocations) {
+            settings.value = settings.value.copy(recentLocations = nextRecentLocations).sanitized()
+        }
     }
 
     private fun appendTask(task: BackgroundTask) {
@@ -885,3 +935,16 @@ private fun String.isSameOrChildOf(parentLocation: String): Boolean {
     val parent = Path.of(parentLocation).normalize().toAbsolutePath()
     return target == parent || target.startsWith(parent)
 }
+
+private fun OnyxSettings.sanitized(): OnyxSettings {
+    return copy(
+        uiScale = uiScale.coerceIn(75, 200),
+        favoriteLocations = favoriteLocations.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            .take(MaxFavoriteLocations),
+        recentLocations = recentLocations.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            .take(MaxRecentLocations),
+    )
+}
+
+private const val MaxFavoriteLocations = 12
+private const val MaxRecentLocations = 10

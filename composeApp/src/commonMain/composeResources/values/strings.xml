@@ -10,6 +10,7 @@
     <string name="action_open_settings">Settings</string>
     <string name="action_open">Open</string>
     <string name="action_open_in_new_tab">Open in New Tab</string>
+    <string name="action_toggle_favorite">Toggle Favorite</string>
     <string name="action_rename">Rename</string>
     <string name="action_new_file">New File</string>
     <string name="action_new_directory">New Directory</string>
@@ -20,6 +21,7 @@
     <string name="action_toggle_hidden_files">Show Hidden</string>
     <string name="action_cancel_task">Cancel</string>
     <string name="action_clear_all_tasks">Clear All</string>
+    <string name="action_apply">Apply</string>
     <string name="action_toggle_sidebar">Toggle Sidebar</string>
     <string name="action_toggle_status_bar">Toggle Status Bar</string>
     <string name="action_toggle_fullscreen">Toggle Full Screen</string>
@@ -78,6 +80,23 @@
     <string name="label_feedback_copy_path_failed">Copy path failed: %1$s</string>
     <string name="label_loading_entries">Loading...</string>
     <string name="label_empty_directory">Folder is empty</string>
+    <string name="label_settings_title">Settings</string>
+    <string name="label_default_layout_mode">Default layout mode</string>
+    <string name="label_default_view_mode">Default view mode</string>
+    <string name="label_delete_mode">Delete mode</string>
+    <string name="label_sidebar_visibility">Sidebar</string>
+    <string name="label_status_bar_visibility">Status bar</string>
+    <string name="label_setting_show">Show</string>
+    <string name="label_setting_hide">Hide</string>
+    <string name="label_delete_mode_move_to_trash">Move to trash</string>
+    <string name="label_delete_mode_permanent">Delete permanently</string>
+    <string name="label_ui_scale">UI scale</string>
+    <string name="label_filter_placeholder">Filter files...</string>
+    <string name="label_sidebar_section_quick_access">Quick Access</string>
+    <string name="label_sidebar_section_favorites">Favorites</string>
+    <string name="label_sidebar_section_recent">Recent</string>
+    <string name="label_sidebar_empty_favorites">No favorites yet</string>
+    <string name="label_sidebar_empty_recent">No recent folders</string>
     <string name="label_error_prefix">Error</string>
     <string name="label_operation_copy">Copy</string>
     <string name="label_operation_move">Move</string>
@@ -114,6 +133,9 @@
     <string name="label_folder_count">Folders: %1$d</string>
     <string name="label_file_count">Files: %1$d</string>
     <string name="label_item_count">Items: %1$d</string>
+    <string name="label_selected_size">Selected: %1$d items (%2$s)</string>
+    <string name="label_filtered_item_count">Visible: %1$d / %2$d</string>
+    <string name="label_task_summary">Tasks: %1$d active</string>
     <string name="label_selection_count">Selected: %1$d</string>
     <string name="message_apply_to_remaining_conflicts">Apply to remaining conflicts</string>
 
