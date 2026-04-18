@@ -1,10 +1,17 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.filesystem.ExternalOpenService
+import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.PaneInlineEditMode
+import com.oruke.onyx.core.model.PaneInlineEditState
 import com.oruke.onyx.core.model.PaneInspectorState
+import com.oruke.onyx.core.model.PaneOperationFeedback
+import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.SortDirection
@@ -25,6 +32,9 @@ class DefaultPaneComponent(
     private val paneId: PaneId,
     initialLocation: String,
     private val fileRepository: FileRepository,
+    private val fileCommandService: FileCommandService,
+    private val textClipboardService: TextClipboardService,
+    private val externalOpenService: ExternalOpenService,
     private val scope: CoroutineScope,
     private val initialViewMode: ViewMode = ViewMode.DETAILS,
 ) : PaneComponent {
@@ -43,7 +53,12 @@ class DefaultPaneComponent(
 
     override fun refresh() {
         val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab -> currentTab.copy(entriesState = PaneEntriesState.Loading) }
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(
+                inlineEditState = null,
+                entriesState = PaneEntriesState.Loading,
+            )
+        }
         loadTab(tabId = tab.id, location = tab.location)
     }
 
@@ -63,6 +78,7 @@ class DefaultPaneComponent(
                 selectionFocusId = null,
                 entriesState = PaneEntriesState.Loading,
                 allEntries = emptyList(),
+                inlineEditState = null,
                 backStack = nextBackStack,
                 forwardStack = nextForwardStack,
             )
@@ -86,6 +102,7 @@ class DefaultPaneComponent(
                 selectionFocusId = null,
                 entriesState = PaneEntriesState.Loading,
                 allEntries = emptyList(),
+                inlineEditState = null,
                 backStack = nextBackStack,
                 forwardStack = nextForwardStack,
             )
@@ -106,9 +123,214 @@ class DefaultPaneComponent(
     }
 
     override fun openEntry(entry: VFile) {
-        if (entry.kind == VFileKind.DIRECTORY) {
-            openDirectory(entry.location)
+        val tab = activeTab() ?: return
+        clearInlineEdit(tab.id)
+        when (entry.kind) {
+            VFileKind.DIRECTORY -> {
+                openDirectory(entry.location)
+            }
+
+            VFileKind.FILE -> {
+                scope.launch {
+                    externalOpenService.open(entry)
+                        .onSuccess {
+                            clearOperationFeedback(tab.id)
+                        }
+                        .onFailure { failure ->
+                            updateFailure(
+                                tabId = tab.id,
+                                kind = PaneOperationFeedbackKind.OPEN_FAILED,
+                                detail = failure.message,
+                            )
+                        }
+                }
+            }
         }
+    }
+
+    override fun beginRename() {
+        val tab = activeTab() ?: return
+        if (tab.inlineEditState != null) {
+            return
+        }
+        val entries = currentVisibleEntries()
+        val targetEntryId = currentSelectionFocusId(entries) ?: return
+        val targetEntry = entries.firstOrNull { it.id == targetEntryId } ?: return
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(
+                inlineEditState = PaneInlineEditState(
+                    mode = PaneInlineEditMode.RENAME,
+                    targetEntryId = targetEntry.id,
+                    draftName = targetEntry.name,
+                ),
+            )
+        }
+    }
+
+    override fun beginCreateFile() {
+        val tab = activeTab() ?: return
+        if (tab.inlineEditState != null) {
+            return
+        }
+        val nextName = generateCreateName(tab, PaneInlineEditMode.CREATE_FILE)
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(
+                inlineEditState = PaneInlineEditState(
+                    mode = PaneInlineEditMode.CREATE_FILE,
+                    draftName = nextName,
+                ),
+            )
+        }
+    }
+
+    override fun beginCreateDirectory() {
+        val tab = activeTab() ?: return
+        if (tab.inlineEditState != null) {
+            return
+        }
+        val nextName = generateCreateName(tab, PaneInlineEditMode.CREATE_DIRECTORY)
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(
+                inlineEditState = PaneInlineEditState(
+                    mode = PaneInlineEditMode.CREATE_DIRECTORY,
+                    draftName = nextName,
+                ),
+            )
+        }
+    }
+
+    override fun openSelectedInNewTab() {
+        val tab = activeTab() ?: return
+        val entries = currentVisibleEntries()
+        val targetEntryId = currentSelectionFocusId(entries) ?: return
+        val targetEntry = entries.firstOrNull { it.id == targetEntryId } ?: return
+        if (targetEntry.kind != VFileKind.DIRECTORY) {
+            return
+        }
+        clearInlineEdit(tab.id)
+        createTab(targetEntry.location)
+    }
+
+    override fun copySelectedPaths() {
+        val tab = activeTab() ?: return
+        val entries = currentVisibleEntries()
+            .filter { entry -> tab.selectedEntryIds.contains(entry.id) }
+        if (entries.isEmpty()) {
+            return
+        }
+        scope.launch {
+            textClipboardService.copyText(entries.joinToString(separator = "\n") { entry -> entry.location })
+                .onSuccess {
+                    clearOperationFeedback(tab.id)
+                }
+                .onFailure { failure ->
+                    updateFailure(
+                        tabId = tab.id,
+                        kind = PaneOperationFeedbackKind.COPY_PATH_FAILED,
+                        detail = failure.message,
+                    )
+                }
+        }
+    }
+
+    override fun updateInlineEditDraft(draft: String) {
+        val tab = activeTab() ?: return
+        if (tab.inlineEditState == null || draft == tab.inlineEditState.draftName) {
+            return
+        }
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(
+                inlineEditState = currentTab.inlineEditState?.copy(draftName = draft),
+            )
+        }
+    }
+
+    override fun confirmInlineEdit() {
+        val tab = activeTab() ?: return
+        val inlineEdit = tab.inlineEditState ?: return
+        if (tab.entriesState is PaneEntriesState.Failure) {
+            clearInlineEdit(tab.id)
+            return
+        }
+        val normalizedDraft = inlineEdit.draftName.trim()
+        if (normalizedDraft.isBlank()) {
+            clearInlineEdit(tab.id)
+            return
+        }
+
+        when (inlineEdit.mode) {
+            PaneInlineEditMode.RENAME -> {
+                val targetEntry = currentTabEntries(tab)
+                    .firstOrNull { it.id == inlineEdit.targetEntryId }
+                    ?: run {
+                        clearInlineEdit(tab.id)
+                        return
+                    }
+                if (targetEntry.name == normalizedDraft) {
+                    clearInlineEdit(tab.id)
+                    return
+                }
+                scope.launch {
+                    fileCommandService.rename(
+                        entry = targetEntry,
+                        targetName = normalizedDraft,
+                    ).onSuccess {
+                        clearOperationFeedback(tab.id)
+                        refreshActiveTab(tab.id)
+                    }.onFailure { failure ->
+                        updateFailure(
+                            tabId = tab.id,
+                            kind = PaneOperationFeedbackKind.RENAME_FAILED,
+                            detail = failure.message,
+                        )
+                    }
+                }
+            }
+
+            PaneInlineEditMode.CREATE_FILE -> {
+                scope.launch {
+                    fileCommandService.createFile(
+                        parentLocation = tab.location,
+                        name = normalizedDraft,
+                    ).onSuccess {
+                        clearOperationFeedback(tab.id)
+                        refreshActiveTab(tab.id)
+                    }.onFailure { failure ->
+                        updateFailure(
+                            tabId = tab.id,
+                            kind = PaneOperationFeedbackKind.CREATE_FILE_FAILED,
+                            detail = failure.message,
+                        )
+                    }
+                }
+            }
+
+            PaneInlineEditMode.CREATE_DIRECTORY -> {
+                scope.launch {
+                    fileCommandService.createDirectory(
+                        parentLocation = tab.location,
+                        name = normalizedDraft,
+                    ).onSuccess {
+                        clearOperationFeedback(tab.id)
+                        refreshActiveTab(tab.id)
+                    }.onFailure { failure ->
+                        updateFailure(
+                            tabId = tab.id,
+                            kind = PaneOperationFeedbackKind.CREATE_DIRECTORY_FAILED,
+                            detail = failure.message,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    override fun cancelInlineEdit() {
+        clearInlineEdit(activeTab()?.id ?: return)
+    }
+
+    override fun dismissOperationFeedback() {
+        clearOperationFeedback(activeTab()?.id ?: return)
     }
 
     override fun setViewMode(mode: ViewMode) {
@@ -188,6 +410,7 @@ class DefaultPaneComponent(
         range: Boolean,
     ) {
         val tab = activeTab() ?: return
+        clearInlineEdit(tab.id)
         val entries = currentVisibleEntries()
         if (entries.none { it.id == entryId }) {
             return
@@ -237,6 +460,7 @@ class DefaultPaneComponent(
         extendSelection: Boolean,
     ) {
         val tab = activeTab() ?: return
+        clearInlineEdit(tab.id)
         val entries = currentVisibleEntries()
         if (entries.isEmpty()) {
             return
@@ -279,11 +503,13 @@ class DefaultPaneComponent(
     override fun openSelectedEntry() {
         val selectedEntry =
             currentVisibleEntries().firstOrNull { it.id == currentSelectionFocusId(currentVisibleEntries()) } ?: return
+        clearInlineEdit(activeTab()?.id ?: return)
         openEntry(selectedEntry)
     }
 
     override fun selectAll() {
         val tab = activeTab() ?: return
+        clearInlineEdit(tab.id)
         val entries = currentVisibleEntries()
         if (entries.isEmpty()) {
             return
@@ -299,6 +525,7 @@ class DefaultPaneComponent(
 
     override fun clearSelection() {
         val tab = activeTab() ?: return
+        clearInlineEdit(tab.id)
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
                 selectedEntryIds = emptySet(),
@@ -481,6 +708,7 @@ class DefaultPaneComponent(
                 selectionFocusId = null,
                 entriesState = PaneEntriesState.Loading,
                 allEntries = emptyList(),
+                inlineEditState = null,
                 backStack = nextBackStack,
                 forwardStack = nextForwardStack,
             )
@@ -509,6 +737,23 @@ class DefaultPaneComponent(
                     }
                 },
             )
+        }
+    }
+
+    private fun refreshActiveTab(tabId: String) {
+        updateTab(tabId) { currentTab ->
+            currentTab.copy(
+                entriesState = PaneEntriesState.Loading,
+                allEntries = emptyList(),
+                selectedEntryIds = emptySet(),
+                selectionAnchorId = null,
+                selectionFocusId = null,
+                inlineEditState = null,
+            )
+        }
+        val tab = mutableState.value.tabs.firstOrNull { it.id == tabId }
+        if (tab != null) {
+            loadTab(tabId = tab.id, location = tab.location)
         }
     }
 
@@ -551,12 +796,63 @@ class DefaultPaneComponent(
             statusInfo = PaneStatusInfo(),
             inlineEditState = null,
             inspectorState = PaneInspectorState(),
+            operationFeedback = null,
             showHiddenItems = false,
             entriesState = PaneEntriesState.Idle,
             allEntries = emptyList(),
             backStack = emptyList(),
             forwardStack = emptyList(),
         )
+    }
+
+    private fun clearInlineEdit(tabId: String) {
+        updateTab(tabId) { currentTab ->
+            currentTab.copy(inlineEditState = null)
+        }
+    }
+
+    private fun clearOperationFeedback(tabId: String) {
+        updateTab(tabId) { currentTab ->
+            currentTab.copy(operationFeedback = null)
+        }
+    }
+
+    private fun updateFailure(
+        tabId: String,
+        kind: PaneOperationFeedbackKind,
+        detail: String?,
+    ) {
+        updateTab(tabId) { currentTab ->
+            currentTab.copy(
+                operationFeedback = PaneOperationFeedback(
+                    kind = kind,
+                    detail = detail,
+                )
+            )
+        }
+    }
+
+    private fun currentTabEntries(tab: PaneTabState): List<VFile> {
+        return when (val entriesState = tab.entriesState) {
+            is PaneEntriesState.Ready -> entriesState.entries
+            else -> emptyList()
+        }
+    }
+
+    private fun generateCreateName(tab: PaneTabState, mode: PaneInlineEditMode): String {
+        val existingNames = tab.allEntries.mapTo(mutableSetOf()) { it.name }
+        val baseName = when (mode) {
+            PaneInlineEditMode.CREATE_FILE -> "New File"
+            PaneInlineEditMode.CREATE_DIRECTORY -> "New Folder"
+            PaneInlineEditMode.RENAME -> ""
+        }
+        var candidate = baseName
+        var suffixIndex = 1
+        while (candidate in existingNames) {
+            candidate = "$baseName ($suffixIndex)"
+            suffixIndex += 1
+        }
+        return candidate
     }
 
     private fun updateTab(
@@ -784,6 +1080,7 @@ private fun PaneTabState.toPaneState(
         statusInfo = statusInfo,
         inlineEditState = inlineEditState,
         inspectorState = inspectorState,
+        operationFeedback = operationFeedback,
         showHiddenItems = showHiddenItems,
         entriesState = entriesState,
     )
@@ -822,6 +1119,7 @@ private fun TabSessionSnapshot.toPaneTabState(): PaneTabState {
         statusInfo = PaneStatusInfo(),
         inlineEditState = null,
         inspectorState = PaneInspectorState(),
+        operationFeedback = null,
         showHiddenItems = showHiddenItems,
         entriesState = PaneEntriesState.Idle,
         allEntries = emptyList(),

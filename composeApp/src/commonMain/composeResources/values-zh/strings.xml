@@ -8,6 +8,12 @@
     <string name="action_go_home">主页</string>
     <string name="action_refresh_active">刷新</string>
     <string name="action_open_settings">设置</string>
+    <string name="action_open">打开</string>
+    <string name="action_open_in_new_tab">在新标签页打开</string>
+    <string name="action_rename">重命名</string>
+    <string name="action_new_file">新建文件</string>
+    <string name="action_new_directory">新建文件夹</string>
+    <string name="action_copy_path">复制路径</string>
     <string name="action_close_menu">关闭菜单</string>
     <string name="action_new_tab">新建标签页</string>
     <string name="action_close_tab">关闭标签页</string>
@@ -26,6 +32,9 @@
     <string name="action_window_close">关闭窗口</string>
     <string name="action_copy">复制</string>
     <string name="action_move">移动</string>
+    <string name="action_keep_both">保留双方</string>
+    <string name="action_overwrite">覆盖</string>
+    <string name="action_skip">跳过</string>
     <string name="label_copy_to_destination">复制到 %1$s</string>
     <string name="label_move_to_destination">移动到 %1$s</string>
     <string name="action_cut">剪切</string>
@@ -46,9 +55,24 @@
 
     <string name="label_context_menu">菜单</string>
     <string name="label_location">位置</string>
+    <string name="label_create_directories_title">批量新建文件夹</string>
+    <string name="label_create_directories_description">每行输入一个相对文件夹路径，支持 a/b/c 这样的多层路径。</string>
+    <string name="label_create_directories_error_empty">请至少输入一个文件夹路径。</string>
+    <string name="label_conflict_resolution_title">处理冲突（%1$d/%2$d）</string>
+    <string name="label_conflict_resolution_message">“%1$s” 在 %2$s 中已存在。请选择处理方式。</string>
+    <string name="label_delete_confirmation_move_to_trash">将 %1$d 个所选项目移到回收站？</string>
+    <string name="label_delete_confirmation_permanent">永久删除 %1$d 个所选项目？</string>
+    <string name="label_delete_confirmation_trash_unavailable">当前平台不支持回收站。</string>
+    <string name="label_feedback_open_failed">打开失败：%1$s</string>
+    <string name="label_feedback_rename_failed">重命名失败：%1$s</string>
+    <string name="label_feedback_create_file_failed">创建文件失败：%1$s</string>
+    <string name="label_feedback_create_directory_failed">创建文件夹失败：%1$s</string>
+    <string name="label_feedback_copy_path_failed">复制路径失败：%1$s</string>
     <string name="label_loading_entries">正在加载...</string>
     <string name="label_empty_directory">文件夹为空</string>
     <string name="label_error_prefix">错误</string>
+    <string name="label_operation_copy">复制</string>
+    <string name="label_operation_move">移动</string>
     <string name="label_items_prefix">项目</string>
     <string name="label_home">主页</string>
     <string name="label_status_bar">状态栏</string>
@@ -83,6 +107,7 @@
     <string name="label_file_count">文件：%1$d</string>
     <string name="label_item_count">项目：%1$d</string>
     <string name="label_selection_count">已选择：%1$d</string>
+    <string name="message_apply_to_remaining_conflicts">应用到剩余冲突</string>
 
     <string name="label_onyx_bootstrap">专业桌面文件管理器</string>
     <string name="label_hint_click_folder">打开文件夹</string>

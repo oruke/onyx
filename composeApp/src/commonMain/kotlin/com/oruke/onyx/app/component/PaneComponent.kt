@@ -5,6 +5,7 @@ import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneInlineEditState
 import com.oruke.onyx.core.model.PaneInspectorState
+import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.VFile
@@ -29,6 +30,7 @@ data class PaneState(
     val statusInfo: PaneStatusInfo,
     val inlineEditState: PaneInlineEditState?,
     val inspectorState: PaneInspectorState,
+    val operationFeedback: PaneOperationFeedback?,
     val showHiddenItems: Boolean,
     val entriesState: PaneEntriesState,
 )
@@ -50,6 +52,7 @@ data class PaneTabState(
     val statusInfo: PaneStatusInfo,
     val inlineEditState: PaneInlineEditState?,
     val inspectorState: PaneInspectorState,
+    val operationFeedback: PaneOperationFeedback?,
     val showHiddenItems: Boolean,
     val entriesState: PaneEntriesState,
     val allEntries: List<VFile>,
@@ -112,6 +115,25 @@ interface PaneComponent {
     )
 
     fun openSelectedEntry()
+
+    fun beginRename()
+
+    fun beginCreateFile()
+
+    fun beginCreateDirectory()
+
+    fun openSelectedInNewTab()
+
+    fun copySelectedPaths()
+
+    fun updateInlineEditDraft(draft: String)
+
+    fun confirmInlineEdit()
+
+    fun cancelInlineEdit()
+
+    fun dismissOperationFeedback()
+
 
     fun selectAll()
 

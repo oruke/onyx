@@ -4,6 +4,8 @@ import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
+import java.awt.Toolkit
+import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
 
 class JvmDesktopExternalOpenService : ExternalOpenService {
@@ -38,6 +40,14 @@ class JvmDesktopTrashService : TrashService {
                     "Failed to move ${entry.name} to trash"
                 }
             }
+        }
+    }
+}
+
+class JvmTextClipboardService : TextClipboardService {
+    override suspend fun copyText(text: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)
         }
     }
 }

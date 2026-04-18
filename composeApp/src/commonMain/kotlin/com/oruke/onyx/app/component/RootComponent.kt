@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
@@ -30,15 +31,30 @@ sealed interface SessionRestoreState {
 }
 
 sealed interface RootDialogState {
-    data class Confirmation(
-        val title: String,
-        val message: String,
+    data class DeleteSelectionConfirmation(
+        val moveToTrash: Boolean,
+        val itemCount: Int,
+        val trashUnavailable: Boolean,
     ) : RootDialogState
 
     data class ConflictResolution(
         val sourceName: String,
         val targetLocation: String,
+        val operation: FileTransferOperation,
+        val currentIndex: Int,
+        val total: Int,
     ) : RootDialogState
+
+    data class CreateDirectories(
+        val paneId: PaneId,
+        val location: String,
+        val draft: String,
+        val error: CreateDirectoriesDialogError? = null,
+    ) : RootDialogState
+}
+
+enum class CreateDirectoriesDialogError {
+    EMPTY_INPUT,
 }
 
 enum class FileTransferOperation {
@@ -58,6 +74,19 @@ interface RootComponent {
     fun activatePane(paneId: PaneId)
 
     fun updateSettings(settings: OnyxSettings)
+
+    fun beginCreateDirectoriesInPane(paneId: PaneId)
+
+    fun updateCreateDirectoriesDraft(draft: String)
+
+    fun confirmDialog()
+
+    fun dismissDialog()
+
+    fun resolveConflict(
+        strategy: TransferConflictStrategy,
+        applyToAll: Boolean,
+    )
 
     fun moveTab(
         sourcePaneId: PaneId,

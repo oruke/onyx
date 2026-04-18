@@ -5,7 +5,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import com.oruke.onyx.app.filesystem.JsonSessionRepository
 import com.oruke.onyx.app.filesystem.JsonSettingsRepository
+import com.oruke.onyx.app.filesystem.JvmDesktopExternalOpenService
+import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
+import com.oruke.onyx.app.filesystem.JvmTextClipboardService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,10 +21,16 @@ fun rememberRootComponent(): RootComponent {
     }
     val component = remember {
         val localFileProvider = JvmLocalFileProvider()
+        val externalOpenService = JvmDesktopExternalOpenService()
+        val trashService = JvmDesktopTrashService()
+        val textClipboardService = JvmTextClipboardService()
         DefaultRootComponent(
             scope = scope,
             fileRepository = localFileProvider,
             fileCommandService = localFileProvider,
+            textClipboardService = textClipboardService,
+            externalOpenService = externalOpenService,
+            trashService = trashService,
             settingsRepository = JsonSettingsRepository(),
             sessionRepository = JsonSessionRepository(),
         )

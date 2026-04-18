@@ -8,6 +8,12 @@
     <string name="action_go_home">Home</string>
     <string name="action_refresh_active">Refresh</string>
     <string name="action_open_settings">Settings</string>
+    <string name="action_open">Open</string>
+    <string name="action_open_in_new_tab">Open in New Tab</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_new_file">New File</string>
+    <string name="action_new_directory">New Directory</string>
+    <string name="action_copy_path">Copy Path</string>
     <string name="action_close_menu">Close Menu</string>
     <string name="action_new_tab">New Tab</string>
     <string name="action_close_tab">Close Tab</string>
@@ -26,6 +32,9 @@
     <string name="action_window_close">Close Window</string>
     <string name="action_copy">Copy</string>
     <string name="action_move">Move</string>
+    <string name="action_keep_both">Keep Both</string>
+    <string name="action_overwrite">Overwrite</string>
+    <string name="action_skip">Skip</string>
     <string name="label_copy_to_destination">Copy to %1$s</string>
     <string name="label_move_to_destination">Move to %1$s</string>
     <string name="action_cut">Cut</string>
@@ -46,9 +55,26 @@
 
     <string name="label_context_menu">Menu</string>
     <string name="label_location">Location</string>
+    <string name="label_create_directories_title">Create Folders</string>
+    <string name="label_create_directories_description">Enter one relative folder path per line. Nested paths like a/b/c
+        are supported.
+    </string>
+    <string name="label_create_directories_error_empty">Enter at least one folder path.</string>
+    <string name="label_conflict_resolution_title">Resolve Conflict (%1$d/%2$d)</string>
+    <string name="label_conflict_resolution_message">"%1$s" already exists in %2$s. Choose how to continue.</string>
+    <string name="label_delete_confirmation_move_to_trash">Move %1$d selected item(s) to trash?</string>
+    <string name="label_delete_confirmation_permanent">Delete %1$d selected item(s) permanently?</string>
+    <string name="label_delete_confirmation_trash_unavailable">Trash is not available on this platform.</string>
+    <string name="label_feedback_open_failed">Open failed: %1$s</string>
+    <string name="label_feedback_rename_failed">Rename failed: %1$s</string>
+    <string name="label_feedback_create_file_failed">Create file failed: %1$s</string>
+    <string name="label_feedback_create_directory_failed">Create folder failed: %1$s</string>
+    <string name="label_feedback_copy_path_failed">Copy path failed: %1$s</string>
     <string name="label_loading_entries">Loading...</string>
     <string name="label_empty_directory">Folder is empty</string>
     <string name="label_error_prefix">Error</string>
+    <string name="label_operation_copy">Copy</string>
+    <string name="label_operation_move">Move</string>
     <string name="label_items_prefix">Items</string>
     <string name="label_home">Home</string>
     <string name="label_status_bar">Status Bar</string>
@@ -83,6 +109,7 @@
     <string name="label_file_count">Files: %1$d</string>
     <string name="label_item_count">Items: %1$d</string>
     <string name="label_selection_count">Selected: %1$d</string>
+    <string name="message_apply_to_remaining_conflicts">Apply to remaining conflicts</string>
 
     <string name="label_onyx_bootstrap">Professional desktop file manager</string>
     <string name="label_hint_click_folder">Open folder</string>

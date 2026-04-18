@@ -56,6 +56,7 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
     override suspend fun copy(
         entries: List<VFile>,
         targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val targetDirectory = resolveTargetDirectory(targetDirectoryLocation)
@@ -63,6 +64,7 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
                 copyPathToDirectory(
                     source = Path.of(entry.location),
                     targetDirectory = targetDirectory,
+                    conflictStrategy = conflictStrategy,
                 )
             }
         }.mapUnitError()
@@ -71,6 +73,7 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
     override suspend fun move(
         entries: List<VFile>,
         targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val targetDirectory = resolveTargetDirectory(targetDirectoryLocation)
@@ -78,6 +81,7 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
                 movePathToDirectory(
                     source = Path.of(entry.location),
                     targetDirectory = targetDirectory,
+                    conflictStrategy = conflictStrategy,
                 )
             }
         }.mapUnitError()
@@ -105,6 +109,30 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
         }.mapVFileError()
     }
 
+    override suspend fun createFile(
+        parentLocation: String,
+        name: String,
+    ): Result<VFile> = withContext(Dispatchers.IO) {
+        runCatching {
+            val parentDirectory = resolveTargetDirectory(parentLocation)
+            val target = resolveCreateTarget(parentDirectory, name)
+            Files.createFile(target)
+            target.toVFile(parentDirectory)
+        }.mapVFileError()
+    }
+
+    override suspend fun createDirectory(
+        parentLocation: String,
+        name: String,
+    ): Result<VFile> = withContext(Dispatchers.IO) {
+        runCatching {
+            val parentDirectory = resolveTargetDirectory(parentLocation)
+            val target = resolveCreateDirectoryTarget(parentDirectory, name)
+            Files.createDirectories(target)
+            target.toVFile(target.parent ?: parentDirectory)
+        }.mapVFileError()
+    }
+
     private fun Path.toVFile(parent: Path): VFile {
         val isDirectory = isDirectory()
         return VFile(
@@ -128,6 +156,37 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
                 }
             },
         )
+    }
+
+    private fun resolveCreateTarget(
+        parentDirectory: Path,
+        name: String,
+    ): Path {
+        val sanitizedName = name.trim()
+        validateTargetName(sanitizedName)
+        val target = parentDirectory.resolve(sanitizedName).normalize().toAbsolutePath()
+        if (target == parentDirectory) {
+            throw IllegalArgumentException("Cannot create entry with empty name")
+        }
+        if (Files.exists(target)) {
+            throw FileAlreadyExistsException(target.pathString)
+        }
+        return target
+    }
+
+    private fun resolveCreateDirectoryTarget(
+        parentDirectory: Path,
+        rawName: String,
+    ): Path {
+        val normalizedRelativePath = normalizeRelativeDirectoryPath(rawName)
+        val target = parentDirectory.resolve(normalizedRelativePath).normalize().toAbsolutePath()
+        require(target.startsWith(parentDirectory)) {
+            throw IllegalArgumentException("Directory path must stay inside the current location")
+        }
+        if (Files.exists(target)) {
+            throw FileAlreadyExistsException(target.pathString)
+        }
+        return target
     }
 
     private fun Result<List<VFile>>.mapError(): Result<List<VFile>> {
@@ -166,12 +225,17 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
     private fun copyPathToDirectory(
         source: Path,
         targetDirectory: Path,
+        conflictStrategy: TransferConflictStrategy,
     ) {
         val normalizedSource = source.normalize().toAbsolutePath()
         val target = buildTargetPath(
             source = normalizedSource,
             targetDirectory = targetDirectory,
-        )
+            conflictStrategy = conflictStrategy,
+        ) ?: return
+        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target)) {
+            deletePathRecursively(target)
+        }
         copyPathRecursively(
             source = normalizedSource,
             target = target,
@@ -181,12 +245,18 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
     private fun movePathToDirectory(
         source: Path,
         targetDirectory: Path,
+        conflictStrategy: TransferConflictStrategy,
     ) {
         val normalizedSource = source.normalize().toAbsolutePath()
         val target = buildTargetPath(
             source = normalizedSource,
             targetDirectory = targetDirectory,
-        )
+            conflictStrategy = conflictStrategy,
+        ) ?: return
+
+        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target)) {
+            deletePathRecursively(target)
+        }
 
         try {
             Files.move(normalizedSource, target)
@@ -207,15 +277,24 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
     private fun buildTargetPath(
         source: Path,
         targetDirectory: Path,
-    ): Path {
+        conflictStrategy: TransferConflictStrategy,
+    ): Path? {
         require(Files.exists(source)) {
             throw NoSuchFileException(source.pathString)
         }
 
-        val target = availableTargetPath(
-            source = source,
-            targetDirectory = targetDirectory,
-        )
+        val directTarget = targetDirectory.resolve(source.fileName.toString()).normalize().toAbsolutePath()
+        val target = when {
+            !Files.exists(directTarget) -> directTarget
+            conflictStrategy == TransferConflictStrategy.KEEP_BOTH -> availableTargetPath(
+                source = source,
+                targetDirectory = targetDirectory,
+            )
+
+            conflictStrategy == TransferConflictStrategy.OVERWRITE -> directTarget
+            conflictStrategy == TransferConflictStrategy.SKIP -> return null
+            else -> directTarget
+        }
         if (target == source) {
             throw IllegalArgumentException("Source and target cannot be the same path")
         }
@@ -287,6 +366,30 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
         require('/' !in targetName && '\\' !in targetName) {
             throw IllegalArgumentException("Name cannot contain path separators")
         }
+    }
+
+    private fun normalizeRelativeDirectoryPath(rawPath: String): String {
+        val trimmed = rawPath.trim()
+        require(!trimmed.startsWith('/') && !trimmed.startsWith('\\')) {
+            throw IllegalArgumentException("Directory path must be relative")
+        }
+        require(!trimmed.matches(Regex("^[A-Za-z]:.*"))) {
+            throw IllegalArgumentException("Directory path must be relative")
+        }
+        val normalized = rawPath
+            .trim()
+            .replace('\\', '/')
+            .trim('/')
+        require(normalized.isNotBlank()) {
+            throw IllegalArgumentException("Directory path cannot be blank")
+        }
+        val segments = normalized.split('/')
+        require(segments.all { segment ->
+            segment.isNotBlank() && segment != "." && segment != ".."
+        }) {
+            throw IllegalArgumentException("Directory path contains invalid segments")
+        }
+        return segments.joinToString("/")
     }
 
     private fun deletePathRecursively(path: Path) {

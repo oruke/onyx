@@ -1,12 +1,17 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.TextClipboardService
+import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
+import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
@@ -31,6 +36,9 @@ class DefaultRootComponent(
     private val scope: CoroutineScope,
     private val fileRepository: FileRepository,
     private val fileCommandService: FileCommandService,
+    private val textClipboardService: TextClipboardService,
+    private val trashService: TrashService,
+    private val externalOpenService: ExternalOpenService,
     private val settingsRepository: SettingsRepository,
     private val sessionRepository: SessionRepository,
 ) : RootComponent {
@@ -38,12 +46,18 @@ class DefaultRootComponent(
         paneId = PaneId.PRIMARY,
         initialLocation = fileRepository.defaultLocation(),
         fileRepository = fileRepository,
+        fileCommandService = fileCommandService,
+        textClipboardService = textClipboardService,
+        externalOpenService = externalOpenService,
         scope = scope,
     )
     override val secondaryPane: PaneComponent = DefaultPaneComponent(
         paneId = PaneId.SECONDARY,
         initialLocation = fileRepository.defaultLocation(),
         fileRepository = fileRepository,
+        fileCommandService = fileCommandService,
+        textClipboardService = textClipboardService,
+        externalOpenService = externalOpenService,
         scope = scope,
     )
 
@@ -56,6 +70,8 @@ class DefaultRootComponent(
     private val clipboard = MutableStateFlow<ClipboardPayload?>(null)
     private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     private val taskJobs = mutableMapOf<String, Job>()
+    private var pendingDeleteRequest: PendingDeleteRequest? = null
+    private var pendingTransferRequest: PendingTransferRequest? = null
     private val persistenceMutex = Mutex()
     private var persistenceReady = false
     private val mutableState = MutableStateFlow(
@@ -156,6 +172,114 @@ class DefaultRootComponent(
         )
     }
 
+    override fun beginCreateDirectoriesInPane(paneId: PaneId) {
+        dialogState.value = RootDialogState.CreateDirectories(
+            paneId = paneId,
+            location = paneState(paneId).location,
+            draft = "",
+        )
+    }
+
+    override fun updateCreateDirectoriesDraft(draft: String) {
+        val currentDialog = dialogState.value as? RootDialogState.CreateDirectories ?: return
+        dialogState.value = currentDialog.copy(
+            draft = draft,
+            error = null,
+        )
+    }
+
+    override fun confirmDialog() {
+        when (val currentDialog = dialogState.value) {
+            is RootDialogState.DeleteSelectionConfirmation -> {
+                dialogState.value = null
+                val deleteRequest = pendingDeleteRequest ?: return
+                pendingDeleteRequest = null
+                executeDeleteRequest(deleteRequest)
+            }
+
+            is RootDialogState.CreateDirectories -> {
+                val directoryPaths = parseDirectoryDraft(currentDialog.draft)
+                if (directoryPaths.isEmpty()) {
+                    dialogState.value = currentDialog.copy(error = CreateDirectoriesDialogError.EMPTY_INPUT)
+                    return
+                }
+                dialogState.value = null
+                executeCreateDirectories(
+                    paneId = currentDialog.paneId,
+                    parentLocation = currentDialog.location,
+                    paths = directoryPaths,
+                )
+            }
+
+            else -> Unit
+        }
+    }
+
+    override fun dismissDialog() {
+        pendingDeleteRequest = null
+        pendingTransferRequest = null
+        dialogState.value = null
+    }
+
+    override fun resolveConflict(
+        strategy: TransferConflictStrategy,
+        applyToAll: Boolean,
+    ) {
+        val pendingRequest = pendingTransferRequest ?: return
+        val currentConflict = pendingRequest.conflictingEntries.getOrNull(pendingRequest.nextConflictIndex) ?: run {
+            pendingTransferRequest = null
+            dialogState.value = null
+            return
+        }
+        val nextResolvedStrategies = pendingRequest.resolvedStrategies.toMutableMap().apply {
+            put(currentConflict.id, strategy)
+        }
+        if (applyToAll) {
+            pendingRequest.conflictingEntries
+                .drop(pendingRequest.nextConflictIndex + 1)
+                .forEach { entry ->
+                    nextResolvedStrategies[entry.id] = strategy
+                }
+            pendingTransferRequest = null
+            dialogState.value = null
+            launchTransferTask(
+                entries = pendingRequest.entries,
+                targetDirectoryLocation = pendingRequest.targetDirectoryLocation,
+                operation = pendingRequest.operation,
+                clearClipboardOnSuccess = pendingRequest.clearClipboardOnSuccess,
+                conflictStrategies = nextResolvedStrategies,
+            )
+            return
+        }
+
+        val nextConflictIndex = pendingRequest.nextConflictIndex + 1
+        if (nextConflictIndex >= pendingRequest.conflictingEntries.size) {
+            pendingTransferRequest = null
+            dialogState.value = null
+            launchTransferTask(
+                entries = pendingRequest.entries,
+                targetDirectoryLocation = pendingRequest.targetDirectoryLocation,
+                operation = pendingRequest.operation,
+                clearClipboardOnSuccess = pendingRequest.clearClipboardOnSuccess,
+                conflictStrategies = nextResolvedStrategies,
+            )
+            return
+        }
+
+        val nextConflict = pendingRequest.conflictingEntries[nextConflictIndex]
+        pendingTransferRequest = pendingRequest.copy(
+            resolvedStrategies = nextResolvedStrategies,
+            nextConflictIndex = nextConflictIndex,
+        )
+        dialogState.value = RootDialogState.ConflictResolution(
+            sourceName = nextConflict.name,
+            targetLocation = pendingRequest.targetDirectoryLocation,
+            operation = pendingRequest.operation,
+            currentIndex = nextConflictIndex + 1,
+            total = pendingRequest.conflictingEntries.size,
+        )
+    }
+
     override fun moveTab(
         sourcePaneId: PaneId,
         tabId: String,
@@ -251,6 +375,48 @@ class DefaultRootComponent(
         if (entries.any { entry -> targetDirectoryLocation.isSameOrChildOf(entry.location) }) {
             return
         }
+        scope.launch {
+            val conflictingEntries = detectConflictingEntries(
+                entries = entries,
+                targetDirectoryLocation = targetDirectoryLocation,
+            )
+            if (conflictingEntries.isNotEmpty()) {
+                pendingTransferRequest = PendingTransferRequest(
+                    entries = entries,
+                    targetDirectoryLocation = targetDirectoryLocation,
+                    operation = operation,
+                    clearClipboardOnSuccess = clearClipboardOnSuccess,
+                    conflictingEntries = conflictingEntries,
+                    resolvedStrategies = emptyMap(),
+                    nextConflictIndex = 0,
+                )
+                val firstConflict = conflictingEntries.first()
+                dialogState.value = RootDialogState.ConflictResolution(
+                    sourceName = firstConflict.name,
+                    targetLocation = targetDirectoryLocation,
+                    operation = operation,
+                    currentIndex = 1,
+                    total = conflictingEntries.size,
+                )
+                return@launch
+            }
+            launchTransferTask(
+                entries = entries,
+                targetDirectoryLocation = targetDirectoryLocation,
+                operation = operation,
+                clearClipboardOnSuccess = clearClipboardOnSuccess,
+                conflictStrategies = emptyMap(),
+            )
+        }
+    }
+
+    private fun launchTransferTask(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        operation: FileTransferOperation,
+        clearClipboardOnSuccess: Boolean,
+        conflictStrategies: Map<String, TransferConflictStrategy>,
+    ) {
         val taskId = UUID.randomUUID().toString()
         appendTask(
             BackgroundTask(
@@ -279,11 +445,13 @@ class DefaultRootComponent(
 
                 entries.forEachIndexed { index, entry ->
                     ensureActive()
+                    val conflictStrategy = conflictStrategies[entry.id] ?: TransferConflictStrategy.KEEP_BOTH
                     val result = when (operation) {
                         FileTransferOperation.COPY -> {
                             fileCommandService.copy(
                                 entries = listOf(entry),
                                 targetDirectoryLocation = targetDirectoryLocation,
+                                conflictStrategy = conflictStrategy,
                             )
                         }
 
@@ -291,6 +459,7 @@ class DefaultRootComponent(
                             fileCommandService.move(
                                 entries = listOf(entry),
                                 targetDirectoryLocation = targetDirectoryLocation,
+                                conflictStrategy = conflictStrategy,
                             )
                         }
                     }
@@ -352,13 +521,33 @@ class DefaultRootComponent(
             return
         }
 
+        val moveToTrashPreferred = settings.value.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED
+        val willMoveToTrash = moveToTrashPreferred && trashService.isSupported
+        pendingDeleteRequest = PendingDeleteRequest(
+            paneId = paneId,
+            entries = selectedEntries,
+            moveToTrash = willMoveToTrash,
+        )
+        dialogState.value = RootDialogState.DeleteSelectionConfirmation(
+            moveToTrash = willMoveToTrash,
+            itemCount = selectedEntries.size,
+            trashUnavailable = moveToTrashPreferred && !trashService.isSupported,
+        )
+    }
+
+    private fun executeDeleteRequest(request: PendingDeleteRequest) {
+        val selectedEntries = request.entries
+        if (selectedEntries.isEmpty()) {
+            return
+        }
+
         val taskId = UUID.randomUUID().toString()
         appendTask(
             BackgroundTask(
                 id = taskId,
                 title = "Delete ${selectedEntries.size} item(s)",
                 status = BackgroundTaskStatus.QUEUED,
-                detail = paneState(paneId).location,
+                detail = paneState(request.paneId).location,
                 progress = 0f,
             )
         )
@@ -374,7 +563,11 @@ class DefaultRootComponent(
 
                 selectedEntries.forEachIndexed { index, entry ->
                     ensureActive()
-                    fileCommandService.delete(listOf(entry)).getOrThrow()
+                    if (request.moveToTrash) {
+                        trashService.moveToTrash(listOf(entry)).getOrThrow()
+                    } else {
+                        fileCommandService.delete(listOf(entry)).getOrThrow()
+                    }
                     updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
@@ -492,6 +685,92 @@ class DefaultRootComponent(
         )
     }
 
+    private suspend fun detectConflictingEntries(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+    ): List<VFile> {
+        val existingNames = fileRepository.list(targetDirectoryLocation)
+            .getOrDefault(emptyList())
+            .mapTo(mutableSetOf()) { entry -> entry.name }
+        return entries.filter { entry -> existingNames.contains(entry.name) }
+    }
+
+    private fun executeCreateDirectories(
+        paneId: PaneId,
+        parentLocation: String,
+        paths: List<String>,
+    ) {
+        val taskId = UUID.randomUUID().toString()
+        appendTask(
+            BackgroundTask(
+                id = taskId,
+                title = "Create ${paths.size} folder(s)",
+                status = BackgroundTaskStatus.QUEUED,
+                detail = parentLocation,
+                progress = 0f,
+            )
+        )
+
+        val job = scope.launch {
+            try {
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.RUNNING,
+                    detail = paths.joinToString(limit = 3, truncated = " ..."),
+                    progress = 0f,
+                )
+                paths.forEachIndexed { index, path ->
+                    ensureActive()
+                    fileCommandService.createDirectory(
+                        parentLocation = parentLocation,
+                        name = path,
+                    ).getOrThrow()
+                    updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = path,
+                        progress = (index + 1).toFloat() / paths.size,
+                    )
+                }
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.SUCCEEDED,
+                    detail = "Created ${paths.size} folder(s)",
+                    progress = 1f,
+                )
+                paneComponent(paneId).refresh()
+            } catch (_: CancellationException) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.CANCELLED,
+                    detail = "Cancelled",
+                    progress = null,
+                )
+                paneComponent(paneId).refresh()
+            } catch (failure: Throwable) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.FAILED,
+                    detail = failure.message ?: "Create directory failed",
+                    progress = null,
+                )
+                paneComponent(paneId).refresh()
+            }
+        }
+        taskJobs[taskId] = job
+    }
+
+    private fun parseDirectoryDraft(draft: String): List<String> {
+        return draft
+            .lines()
+            .map { line -> line.trim() }
+            .filter { line -> line.isNotBlank() }
+            .distinct()
+    }
+
     private fun appendTask(task: BackgroundTask) {
         tasks.value = listOf(task) + tasks.value
     }
@@ -555,6 +834,22 @@ class DefaultRootComponent(
     private data class ClipboardPayload(
         val operation: ClipboardOperation,
         val entries: List<VFile>,
+    )
+
+    private data class PendingDeleteRequest(
+        val paneId: PaneId,
+        val entries: List<VFile>,
+        val moveToTrash: Boolean,
+    )
+
+    private data class PendingTransferRequest(
+        val entries: List<VFile>,
+        val targetDirectoryLocation: String,
+        val operation: FileTransferOperation,
+        val clearClipboardOnSuccess: Boolean,
+        val conflictingEntries: List<VFile>,
+        val resolvedStrategies: Map<String, TransferConflictStrategy>,
+        val nextConflictIndex: Int,
     )
 
     private enum class ClipboardOperation {

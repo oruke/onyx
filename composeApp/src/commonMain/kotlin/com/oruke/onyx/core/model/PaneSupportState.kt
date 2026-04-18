@@ -25,3 +25,16 @@ data class PaneInspectorState(
     val previewVisible: Boolean = false,
     val detailsVisible: Boolean = false,
 )
+
+data class PaneOperationFeedback(
+    val kind: PaneOperationFeedbackKind,
+    val detail: String? = null,
+)
+
+enum class PaneOperationFeedbackKind {
+    OPEN_FAILED,
+    RENAME_FAILED,
+    CREATE_FILE_FAILED,
+    CREATE_DIRECTORY_FAILED,
+    COPY_PATH_FAILED,
+}

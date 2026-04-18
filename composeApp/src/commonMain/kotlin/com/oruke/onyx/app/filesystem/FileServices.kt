@@ -14,11 +14,13 @@ interface FileCommandService {
     suspend fun copy(
         entries: List<VFile>,
         targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy = TransferConflictStrategy.KEEP_BOTH,
     ): Result<Unit>
 
     suspend fun move(
         entries: List<VFile>,
         targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy = TransferConflictStrategy.KEEP_BOTH,
     ): Result<Unit>
 
     suspend fun delete(entries: List<VFile>): Result<Unit>
@@ -27,10 +29,30 @@ interface FileCommandService {
         entry: VFile,
         targetName: String,
     ): Result<VFile>
+
+    suspend fun createFile(
+        parentLocation: String,
+        name: String,
+    ): Result<VFile>
+
+    suspend fun createDirectory(
+        parentLocation: String,
+        name: String,
+    ): Result<VFile>
+}
+
+enum class TransferConflictStrategy {
+    KEEP_BOTH,
+    OVERWRITE,
+    SKIP,
 }
 
 interface ExternalOpenService {
     suspend fun open(entry: VFile): Result<Unit>
+}
+
+interface TextClipboardService {
+    suspend fun copyText(text: String): Result<Unit>
 }
 
 interface TrashService {
