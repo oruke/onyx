@@ -60,6 +60,12 @@
         are supported.
     </string>
     <string name="label_create_directories_error_empty">Enter at least one folder path.</string>
+    <string name="label_create_directories_placeholder">Examples:
+        reports
+        assets/icons
+        2026/04/invoices
+    </string>
+    <string name="label_create_directories_shortcuts">Ctrl/Cmd+Enter to create · Esc to close</string>
     <string name="label_conflict_resolution_title">Resolve Conflict (%1$d/%2$d)</string>
     <string name="label_conflict_resolution_message">"%1$s" already exists in %2$s. Choose how to continue.</string>
     <string name="label_delete_confirmation_move_to_trash">Move %1$d selected item(s) to trash?</string>

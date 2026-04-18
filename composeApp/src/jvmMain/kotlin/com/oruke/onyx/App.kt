@@ -45,6 +45,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -63,6 +64,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -84,9 +86,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -163,6 +170,8 @@ import onyx.composeapp.generated.resources.label_conflict_resolution_title
 import onyx.composeapp.generated.resources.label_copy_to_destination
 import onyx.composeapp.generated.resources.label_create_directories_description
 import onyx.composeapp.generated.resources.label_create_directories_error_empty
+import onyx.composeapp.generated.resources.label_create_directories_placeholder
+import onyx.composeapp.generated.resources.label_create_directories_shortcuts
 import onyx.composeapp.generated.resources.label_create_directories_title
 import onyx.composeapp.generated.resources.label_delete_confirmation_move_to_trash
 import onyx.composeapp.generated.resources.label_delete_confirmation_permanent
@@ -985,6 +994,38 @@ private fun CreateDirectoriesDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val focusRequester = remember { FocusRequester() }
+    val inputScrollState = rememberScrollState()
+    var draftFieldValue by remember {
+        mutableStateOf(
+            TextFieldValue(
+                text = state.draft,
+                selection = TextRange(state.draft.length),
+            )
+        )
+    }
+    val inputTextStyle = TextStyle(
+        fontSize = 12.sp,
+        lineHeight = 17.sp,
+        color = palette.foreground,
+        textAlign = TextAlign.Start,
+        textDirection = TextDirection.Ltr,
+        fontFamily = FontFamily.Monospace,
+    )
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    LaunchedEffect(state.draft) {
+        if (state.draft != draftFieldValue.text) {
+            draftFieldValue = draftFieldValue.copy(
+                text = state.draft,
+                selection = TextRange(state.draft.length),
+            )
+        }
+    }
+
     DialogWindow(
         onCloseRequest = onDismiss,
         title = stringResource(Res.string.label_create_directories_title),
@@ -1006,19 +1047,64 @@ private fun CreateDirectoriesDialog(
                             fontSize = 12.sp,
                             color = palette.foreground,
                         )
-                        BasicTextField(
-                            value = state.draft,
-                            onValueChange = onDraftChange,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 160.dp)
-                                .background(palette.inputBackground, RoundedCornerShape(6.dp))
-                                .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
-                                .padding(10.dp),
-                            textStyle = TextStyle(
-                                fontSize = 12.sp,
-                                color = palette.foreground,
-                            ),
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            BasicTextField(
+                                value = draftFieldValue,
+                                onValueChange = { nextValue ->
+                                    draftFieldValue = nextValue
+                                    onDraftChange(nextValue.text)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester)
+                                    .onPreviewKeyEvent { event ->
+                                        if (event.type != KeyEventType.KeyDown) {
+                                            return@onPreviewKeyEvent false
+                                        }
+                                        when {
+                                            (event.key == Key.Enter) && (event.isCtrlPressed || event.isMetaPressed) -> {
+                                                onConfirm()
+                                                true
+                                            }
+
+                                            event.key == Key.Escape -> {
+                                                onDismiss()
+                                                true
+                                            }
+
+                                            else -> false
+                                        }
+                                    },
+                                textStyle = inputTextStyle,
+                                cursorBrush = SolidColor(palette.accent),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 170.dp, max = 220.dp)
+                                            .background(palette.inputBackground, RoundedCornerShape(6.dp))
+                                            .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 10.dp, vertical = 9.dp)
+                                            .verticalScroll(inputScrollState),
+                                    ) {
+                                        if (draftFieldValue.text.isBlank()) {
+                                            Text(
+                                                text = stringResource(Res.string.label_create_directories_placeholder),
+                                                fontSize = 12.sp,
+                                                lineHeight = 17.sp,
+                                                color = palette.disabledForeground,
+                                                fontFamily = FontFamily.Monospace,
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                },
+                            )
+                        }
+                        Text(
+                            text = stringResource(Res.string.label_create_directories_shortcuts),
+                            fontSize = 11.sp,
+                            color = palette.mutedForeground,
                         )
                         state.error?.let { error ->
                             Text(

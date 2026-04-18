@@ -58,6 +58,12 @@
     <string name="label_create_directories_title">批量新建文件夹</string>
     <string name="label_create_directories_description">每行输入一个相对文件夹路径，支持 a/b/c 这样的多层路径。</string>
     <string name="label_create_directories_error_empty">请至少输入一个文件夹路径。</string>
+    <string name="label_create_directories_placeholder">示例：
+        资料
+        assets/icons
+        2026/04/发票
+    </string>
+    <string name="label_create_directories_shortcuts">Ctrl/Cmd+Enter 创建 · Esc 关闭</string>
     <string name="label_conflict_resolution_title">处理冲突（%1$d/%2$d）</string>
     <string name="label_conflict_resolution_message">“%1$s” 在 %2$s 中已存在。请选择处理方式。</string>
     <string name="label_delete_confirmation_move_to_trash">将 %1$d 个所选项目移到回收站？</string>
