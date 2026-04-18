@@ -3,7 +3,12 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.PaneInlineEditState
+import com.oruke.onyx.core.model.PaneInspectorState
+import com.oruke.onyx.core.model.PaneSessionSnapshot
+import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.flow.StateFlow
 
 data class PaneState(
@@ -16,9 +21,14 @@ data class PaneState(
     val detailsColumns: List<DetailsColumn>,
     val detailsColumnWeights: Map<DetailsColumn, Float>,
     val detailsSort: DetailsSort,
+    val viewMode: ViewMode,
+    val filterQuery: String,
     val selectedEntryIds: Set<String>,
     val selectionAnchorId: String?,
     val selectionFocusId: String?,
+    val statusInfo: PaneStatusInfo,
+    val inlineEditState: PaneInlineEditState?,
+    val inspectorState: PaneInspectorState,
     val showHiddenItems: Boolean,
     val entriesState: PaneEntriesState,
 )
@@ -32,9 +42,14 @@ data class PaneTabState(
     val detailsColumns: List<DetailsColumn>,
     val detailsColumnWeights: Map<DetailsColumn, Float>,
     val detailsSort: DetailsSort,
+    val viewMode: ViewMode,
+    val filterQuery: String,
     val selectedEntryIds: Set<String>,
     val selectionAnchorId: String?,
     val selectionFocusId: String?,
+    val statusInfo: PaneStatusInfo,
+    val inlineEditState: PaneInlineEditState?,
+    val inspectorState: PaneInspectorState,
     val showHiddenItems: Boolean,
     val entriesState: PaneEntriesState,
     val allEntries: List<VFile>,
@@ -70,6 +85,10 @@ interface PaneComponent {
     fun openDirectory(location: String)
 
     fun openEntry(entry: VFile)
+
+    fun setViewMode(mode: ViewMode)
+
+    fun setFilterQuery(query: String)
 
     fun toggleSort(column: DetailsColumn)
 
@@ -115,4 +134,6 @@ interface PaneComponent {
         tab: PaneTabState,
         targetIndex: Int,
     )
+
+    fun restoreSession(snapshot: PaneSessionSnapshot)
 }

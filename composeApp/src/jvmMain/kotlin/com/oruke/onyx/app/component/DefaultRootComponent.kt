@@ -1,10 +1,17 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
+import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.SessionRepository
+import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
+import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.PaneSessionSnapshot
+import com.oruke.onyx.core.model.TabSessionSnapshot
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -15,32 +22,42 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.nio.file.Path
 import java.util.*
 
 class DefaultRootComponent(
     private val scope: CoroutineScope,
-    private val localFileProvider: JvmLocalFileProvider,
+    private val fileRepository: FileRepository,
+    private val fileCommandService: FileCommandService,
+    private val settingsRepository: SettingsRepository,
+    private val sessionRepository: SessionRepository,
 ) : RootComponent {
     override val primaryPane: PaneComponent = DefaultPaneComponent(
         paneId = PaneId.PRIMARY,
-        initialLocation = localFileProvider.defaultLocation(),
-        localFileProvider = localFileProvider,
+        initialLocation = fileRepository.defaultLocation(),
+        fileRepository = fileRepository,
         scope = scope,
     )
     override val secondaryPane: PaneComponent = DefaultPaneComponent(
         paneId = PaneId.SECONDARY,
-        initialLocation = localFileProvider.defaultLocation(),
-        localFileProvider = localFileProvider,
+        initialLocation = fileRepository.defaultLocation(),
+        fileRepository = fileRepository,
         scope = scope,
     )
 
     private val layoutMode = MutableStateFlow(PaneLayoutMode.DUAL_VERTICAL)
     private val paneSplitFraction = MutableStateFlow(0.5f)
     private val activePane = MutableStateFlow(PaneId.PRIMARY)
+    private val settings = MutableStateFlow(OnyxSettings())
+    private val sessionRestoreState = MutableStateFlow<SessionRestoreState>(SessionRestoreState.Loading)
+    private val dialogState = MutableStateFlow<RootDialogState?>(null)
     private val clipboard = MutableStateFlow<ClipboardPayload?>(null)
     private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     private val taskJobs = mutableMapOf<String, Job>()
+    private val persistenceMutex = Mutex()
+    private var persistenceReady = false
     private val mutableState = MutableStateFlow(
         RootState(
             layoutMode = layoutMode.value,
@@ -48,6 +65,9 @@ class DefaultRootComponent(
             activePane = activePane.value,
             primaryPane = primaryPane.state.value,
             secondaryPane = secondaryPane.state.value,
+            settings = settings.value,
+            sessionRestoreState = sessionRestoreState.value,
+            dialogState = dialogState.value,
             canPaste = clipboard.value != null,
             tasks = tasks.value,
         )
@@ -63,6 +83,9 @@ class DefaultRootComponent(
                 activePane,
                 primaryPane.state,
                 secondaryPane.state,
+                settings,
+                sessionRestoreState,
+                dialogState,
                 clipboard,
                 tasks,
             ) { values ->
@@ -71,22 +94,47 @@ class DefaultRootComponent(
                 val currentActivePane = values[2] as PaneId
                 val primaryState = values[3] as PaneState
                 val secondaryState = values[4] as PaneState
-                val currentClipboard = values[5] as ClipboardPayload?
+                val currentSettings = values[5] as OnyxSettings
+                val currentSessionRestoreState = values[6] as SessionRestoreState
+                val currentDialogState = values[7] as RootDialogState?
+                val currentClipboard = values[8] as ClipboardPayload?
 
                 @Suppress("UNCHECKED_CAST")
-                val currentTasks = values[6] as List<BackgroundTask>
+                val currentTasks = values[9] as List<BackgroundTask>
                 RootState(
                     layoutMode = currentLayoutMode,
                     paneSplitFraction = currentPaneSplitFraction,
                     activePane = currentActivePane,
                     primaryPane = primaryState,
                     secondaryPane = secondaryState,
+                    settings = currentSettings,
+                    sessionRestoreState = currentSessionRestoreState,
+                    dialogState = currentDialogState,
                     canPaste = currentClipboard != null,
                     tasks = currentTasks,
                 )
             }.collect { combinedState ->
                 mutableState.value = combinedState
             }
+        }
+
+        scope.launch {
+            combine(
+                layoutMode,
+                paneSplitFraction,
+                activePane,
+                primaryPane.state,
+                secondaryPane.state,
+                settings,
+            ) { _ ->
+                if (persistenceReady) {
+                    persistCurrentState()
+                }
+            }.collect {}
+        }
+
+        scope.launch {
+            restorePersistedState()
         }
     }
 
@@ -100,6 +148,12 @@ class DefaultRootComponent(
 
     override fun activatePane(paneId: PaneId) {
         activePane.value = paneId
+    }
+
+    override fun updateSettings(settings: OnyxSettings) {
+        this.settings.value = settings.copy(
+            uiScale = settings.uiScale.coerceIn(75, 200),
+        )
     }
 
     override fun moveTab(
@@ -227,14 +281,14 @@ class DefaultRootComponent(
                     ensureActive()
                     val result = when (operation) {
                         FileTransferOperation.COPY -> {
-                            localFileProvider.copy(
+                            fileCommandService.copy(
                                 entries = listOf(entry),
                                 targetDirectoryLocation = targetDirectoryLocation,
                             )
                         }
 
                         FileTransferOperation.MOVE -> {
-                            localFileProvider.move(
+                            fileCommandService.move(
                                 entries = listOf(entry),
                                 targetDirectoryLocation = targetDirectoryLocation,
                             )
@@ -320,7 +374,7 @@ class DefaultRootComponent(
 
                 selectedEntries.forEachIndexed { index, entry ->
                     ensureActive()
-                    localFileProvider.delete(listOf(entry)).getOrThrow()
+                    fileCommandService.delete(listOf(entry)).getOrThrow()
                     updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
@@ -373,6 +427,69 @@ class DefaultRootComponent(
         taskJobs.values.forEach { job -> job.cancel() }
         taskJobs.clear()
         tasks.value = emptyList()
+    }
+
+    private suspend fun restorePersistedState() {
+        var restoreError: String? = null
+        settingsRepository.loadSettings().fold(
+            onSuccess = { loadedSettings ->
+                if (loadedSettings != null) {
+                    settings.value = loadedSettings.copy(
+                        uiScale = loadedSettings.uiScale.coerceIn(75, 200),
+                    )
+                }
+            },
+            onFailure = { failure ->
+                restoreError = failure.message ?: "Failed to load settings"
+            },
+        )
+
+        sessionRepository.loadSession().fold(
+            onSuccess = { session ->
+                if (session != null) {
+                    applySession(session)
+                } else {
+                    layoutMode.value = settings.value.defaultLayoutMode
+                }
+            },
+            onFailure = { failure ->
+                restoreError = restoreError ?: failure.message ?: "Failed to restore session"
+                layoutMode.value = settings.value.defaultLayoutMode
+            },
+        )
+
+        sessionRestoreState.value = if (restoreError == null) {
+            SessionRestoreState.Ready
+        } else {
+            SessionRestoreState.Failed(restoreError)
+        }
+        persistenceReady = true
+        persistCurrentState()
+    }
+
+    private fun applySession(snapshot: AppSessionSnapshot) {
+        layoutMode.value = snapshot.layoutMode
+        paneSplitFraction.value = snapshot.paneSplitFraction.coerceIn(0.18f, 0.82f)
+        primaryPane.restoreSession(snapshot.primaryPane)
+        secondaryPane.restoreSession(snapshot.secondaryPane)
+        activePane.value = snapshot.activePane
+    }
+
+    private suspend fun persistCurrentState() {
+        persistenceMutex.withLock {
+            settingsRepository.saveSettings(settings.value)
+            sessionRepository.saveSession(buildSessionSnapshot())
+        }
+    }
+
+    private fun buildSessionSnapshot(): AppSessionSnapshot {
+        return AppSessionSnapshot(
+            layoutMode = layoutMode.value,
+            paneSplitFraction = paneSplitFraction.value,
+            activePane = activePane.value,
+            primaryPane = primaryPane.state.value.toSessionSnapshot(),
+            secondaryPane = secondaryPane.state.value.toSessionSnapshot(),
+        )
     }
 
     private fun appendTask(task: BackgroundTask) {
@@ -444,6 +561,28 @@ class DefaultRootComponent(
         COPY,
         CUT,
     }
+}
+
+private fun PaneState.toSessionSnapshot(): PaneSessionSnapshot {
+    return PaneSessionSnapshot(
+        activeTabId = activeTabId,
+        tabs = tabs.map { tab -> tab.toSessionSnapshot() },
+    )
+}
+
+private fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
+    return TabSessionSnapshot(
+        id = id,
+        location = location,
+        detailsColumns = detailsColumns,
+        detailsColumnWeights = detailsColumnWeights,
+        detailsSort = detailsSort,
+        showHiddenItems = showHiddenItems,
+        viewMode = viewMode,
+        filterQuery = filterQuery,
+        backStack = backStack,
+        forwardStack = forwardStack,
+    )
 }
 
 private fun String.isSameOrChildOf(parentLocation: String): Boolean {

@@ -29,6 +29,8 @@ Onyx 是一个面向桌面端的专业级文件管理器，目标是复刻并逐
 - [架构说明](/home/oruke/Projects/onyx/docs/architecture.md)
 - [重构实现方案](/home/oruke/Projects/onyx/docs/rebuild-plan.md)
 - [TODO 清单](/home/oruke/Projects/onyx/docs/todo.md)
+- [功能差距清单](/home/oruke/Projects/onyx/docs/feature-gap-checklist.md)
+- [可执行 Roadmap](/home/oruke/Projects/onyx/docs/executable-roadmap.md)
 - [ADR-001：桌面单平台与核心栈决策](/home/oruke/Projects/onyx/docs/adrs/ADR-001-desktop-jvm-stack.md)
 
 ## 建议执行顺序

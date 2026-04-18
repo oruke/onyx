@@ -1,12 +1,17 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
+import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.PaneInspectorState
+import com.oruke.onyx.core.model.PaneSessionSnapshot
+import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.SortDirection
+import com.oruke.onyx.core.model.TabSessionSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,10 +24,16 @@ import kotlin.io.path.pathString
 class DefaultPaneComponent(
     private val paneId: PaneId,
     initialLocation: String,
-    private val localFileProvider: JvmLocalFileProvider,
+    private val fileRepository: FileRepository,
     private val scope: CoroutineScope,
+    private val initialViewMode: ViewMode = ViewMode.DETAILS,
 ) : PaneComponent {
-    private val mutableState = MutableStateFlow(createInitialState(initialLocation))
+    private val mutableState = MutableStateFlow(
+        createInitialState(
+            initialLocation = initialLocation,
+            defaultViewMode = initialViewMode,
+        )
+    )
 
     override val state: StateFlow<PaneState> = mutableState.asStateFlow()
 
@@ -100,6 +111,18 @@ class DefaultPaneComponent(
         }
     }
 
+    override fun setViewMode(mode: ViewMode) {
+        val tab = activeTab() ?: return
+        updateTab(tab.id) { currentTab -> currentTab.copy(viewMode = mode) }
+    }
+
+    override fun setFilterQuery(query: String) {
+        val tab = activeTab() ?: return
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(filterQuery = query.trim())
+        }
+    }
+
     override fun toggleSort(column: DetailsColumn) {
         val tab = activeTab() ?: return
         val currentSort = tab.detailsSort
@@ -116,25 +139,9 @@ class DefaultPaneComponent(
                 direction = SortDirection.ASCENDING,
             )
         }
-
-        val sortedEntries = visibleSortedEntries(
-            allEntries = tab.allEntries,
-            showHiddenItems = tab.showHiddenItems,
-            sort = nextSort,
-        )
-        val selection = reconcileSelection(
-            entries = sortedEntries,
-            selectedEntryIds = tab.selectedEntryIds,
-            anchorId = tab.selectionAnchorId,
-            focusId = tab.selectionFocusId,
-        )
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
                 detailsSort = nextSort,
-                selectedEntryIds = selection.selectedEntryIds,
-                selectionAnchorId = selection.anchorId,
-                selectionFocusId = selection.focusId,
-                entriesState = PaneEntriesState.Ready(sortedEntries),
             )
         }
     }
@@ -142,24 +149,9 @@ class DefaultPaneComponent(
     override fun toggleHiddenItems() {
         val tab = activeTab() ?: return
         val showHiddenItems = !tab.showHiddenItems
-        val sortedEntries = visibleSortedEntries(
-            allEntries = tab.allEntries,
-            showHiddenItems = showHiddenItems,
-            sort = tab.detailsSort,
-        )
-        val selection = reconcileSelection(
-            entries = sortedEntries,
-            selectedEntryIds = tab.selectedEntryIds,
-            anchorId = tab.selectionAnchorId,
-            focusId = tab.selectionFocusId,
-        )
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
                 showHiddenItems = showHiddenItems,
-                selectedEntryIds = selection.selectedEntryIds,
-                selectionAnchorId = selection.anchorId,
-                selectionFocusId = selection.focusId,
-                entriesState = PaneEntriesState.Ready(sortedEntries),
             )
         }
     }
@@ -334,6 +326,9 @@ class DefaultPaneComponent(
             activeTabId = tab.id,
             tabs = mutableState.value.tabs,
         )
+        if (tab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = tab.id, location = tab.location)
+        }
     }
 
     override fun closeTab(tabId: String) {
@@ -358,6 +353,9 @@ class DefaultPaneComponent(
             activeTabId = nextActiveTab.id,
             tabs = nextTabs,
         )
+        if (nextActiveTab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = nextActiveTab.id, location = nextActiveTab.location)
+        }
     }
 
     override fun moveTab(
@@ -392,7 +390,7 @@ class DefaultPaneComponent(
 
         val tab = state.tabs[tabIndex]
         if (state.tabs.size == 1) {
-            val replacement = createTabState(localFileProvider.defaultLocation())
+            val replacement = createTabState(fileRepository.defaultLocation())
             mutableState.value = replacement.toPaneState(
                 paneId = paneId,
                 activeTabId = replacement.id,
@@ -413,6 +411,9 @@ class DefaultPaneComponent(
             activeTabId = nextActiveTab.id,
             tabs = nextTabs,
         )
+        if (nextActiveTab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = nextActiveTab.id, location = nextActiveTab.location)
+        }
         return tab
     }
 
@@ -434,6 +435,26 @@ class DefaultPaneComponent(
             activeTabId = uniqueTab.id,
             tabs = nextTabs,
         )
+        if (uniqueTab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = uniqueTab.id, location = uniqueTab.location)
+        }
+    }
+
+    override fun restoreSession(snapshot: PaneSessionSnapshot) {
+        val restoredTabs = snapshot.tabs
+            .ifEmpty { listOf(createTabState(fileRepository.defaultLocation()).toSessionSnapshot()) }
+            .map { tabSnapshot -> tabSnapshot.toPaneTabState() }
+
+        val activeTabId = snapshot.activeTabId.takeIf { candidate ->
+            restoredTabs.any { tab -> tab.id == candidate }
+        } ?: restoredTabs.first().id
+        val activeTab = restoredTabs.first { tab -> tab.id == activeTabId }
+        mutableState.value = activeTab.toPaneState(
+            paneId = paneId,
+            activeTabId = activeTabId,
+            tabs = restoredTabs,
+        )
+        loadTab(tabId = activeTab.id, location = activeTab.location)
     }
 
     private fun navigateActiveTab(
@@ -472,31 +493,14 @@ class DefaultPaneComponent(
         location: String,
     ) {
         scope.launch {
-            val result = localFileProvider.list(location)
+            val result = fileRepository.list(location)
             result.fold(
                 onSuccess = { entries ->
-                    val tab = mutableState.value.tabs.firstOrNull { it.id == tabId }
-                    if (tab != null) {
-                        val sortedEntries = visibleSortedEntries(
+                    updateTab(tabId) { currentTab ->
+                        currentTab.copy(
                             allEntries = entries,
-                            showHiddenItems = tab.showHiddenItems,
-                            sort = tab.detailsSort,
+                            entriesState = PaneEntriesState.Ready(entries),
                         )
-                        val selection = reconcileSelection(
-                            entries = sortedEntries,
-                            selectedEntryIds = tab.selectedEntryIds,
-                            anchorId = tab.selectionAnchorId,
-                            focusId = tab.selectionFocusId,
-                        )
-                        updateTab(tabId) { currentTab ->
-                            currentTab.copy(
-                                allEntries = entries,
-                                selectedEntryIds = selection.selectedEntryIds,
-                                selectionAnchorId = selection.anchorId,
-                                selectionFocusId = selection.focusId,
-                                entriesState = PaneEntriesState.Ready(sortedEntries),
-                            )
-                        }
                     }
                 },
                 onFailure = { failure ->
@@ -508,8 +512,14 @@ class DefaultPaneComponent(
         }
     }
 
-    private fun createInitialState(initialLocation: String): PaneState {
-        val tab = createTabState(normalizeLocation(initialLocation))
+    private fun createInitialState(
+        initialLocation: String,
+        defaultViewMode: ViewMode,
+    ): PaneState {
+        val tab = createTabState(
+            location = normalizeLocation(initialLocation),
+            defaultViewMode = defaultViewMode,
+        )
         return tab.toPaneState(
             paneId = paneId,
             activeTabId = tab.id,
@@ -517,7 +527,10 @@ class DefaultPaneComponent(
         )
     }
 
-    private fun createTabState(location: String): PaneTabState {
+    private fun createTabState(
+        location: String,
+        defaultViewMode: ViewMode = initialViewMode,
+    ): PaneTabState {
         return PaneTabState(
             id = UUID.randomUUID().toString(),
             title = locationTitle(location),
@@ -530,9 +543,14 @@ class DefaultPaneComponent(
                 column = DetailsColumn.NAME,
                 direction = SortDirection.ASCENDING,
             ),
+            viewMode = defaultViewMode,
+            filterQuery = "",
             selectedEntryIds = emptySet(),
             selectionAnchorId = null,
             selectionFocusId = null,
+            statusInfo = PaneStatusInfo(),
+            inlineEditState = null,
+            inspectorState = PaneInspectorState(),
             showHiddenItems = false,
             entriesState = PaneEntriesState.Idle,
             allEntries = emptyList(),
@@ -549,7 +567,7 @@ class DefaultPaneComponent(
         var updatedActiveTab: PaneTabState? = null
         val nextTabs = state.tabs.map { tab ->
             if (tab.id == tabId) {
-                transform(tab).also { updated ->
+                transform(tab).withDerivedState().also { updated ->
                     if (state.activeTabId == tabId) {
                         updatedActiveTab = updated
                     }
@@ -591,9 +609,70 @@ class DefaultPaneComponent(
         allEntries: List<VFile>,
         showHiddenItems: Boolean,
         sort: DetailsSort,
+        filterQuery: String,
     ): List<VFile> {
         val visibleEntries = if (showHiddenItems) allEntries else allEntries.filterNot { it.hidden }
-        return sortEntries(visibleEntries, sort)
+        val filteredEntries = if (filterQuery.isBlank()) {
+            visibleEntries
+        } else {
+            val normalizedQuery = filterQuery.lowercase()
+            visibleEntries.filter { entry ->
+                entry.name.lowercase().contains(normalizedQuery)
+            }
+        }
+        return sortEntries(filteredEntries, sort)
+    }
+
+    private fun PaneTabState.withDerivedState(): PaneTabState {
+        val visibleEntries = visibleSortedEntries(
+            allEntries = allEntries,
+            showHiddenItems = showHiddenItems,
+            sort = detailsSort,
+            filterQuery = filterQuery,
+        )
+        val selection = reconcileSelection(
+            entries = visibleEntries,
+            selectedEntryIds = selectedEntryIds,
+            anchorId = selectionAnchorId,
+            focusId = selectionFocusId,
+        )
+        val nextEntriesState = when (val currentEntriesState = entriesState) {
+            is PaneEntriesState.Ready -> PaneEntriesState.Ready(visibleEntries)
+            is PaneEntriesState.Failure -> currentEntriesState
+            PaneEntriesState.Loading -> PaneEntriesState.Loading
+            PaneEntriesState.Idle -> if (allEntries.isNotEmpty()) {
+                PaneEntriesState.Ready(visibleEntries)
+            } else {
+                PaneEntriesState.Idle
+            }
+        }
+        return copy(
+            selectedEntryIds = selection.selectedEntryIds,
+            selectionAnchorId = selection.anchorId,
+            selectionFocusId = selection.focusId,
+            statusInfo = buildStatusInfo(
+                allEntries = allEntries,
+                visibleEntries = visibleEntries,
+                selectedEntryIds = selection.selectedEntryIds,
+            ),
+            entriesState = nextEntriesState,
+        )
+    }
+
+    private fun buildStatusInfo(
+        allEntries: List<VFile>,
+        visibleEntries: List<VFile>,
+        selectedEntryIds: Set<String>,
+    ): PaneStatusInfo {
+        val selectedEntries = visibleEntries.filter { entry -> selectedEntryIds.contains(entry.id) }
+        return PaneStatusInfo(
+            totalItemCount = allEntries.size,
+            visibleItemCount = visibleEntries.size,
+            directoryCount = visibleEntries.count { entry -> entry.kind == VFileKind.DIRECTORY },
+            fileCount = visibleEntries.count { entry -> entry.kind == VFileKind.FILE },
+            selectedCount = selectedEntries.size,
+            selectedSizeBytes = selectedEntries.sumOf { entry -> entry.sizeBytes ?: 0L },
+        )
     }
 
     private fun reconcileSelection(
@@ -697,11 +776,57 @@ private fun PaneTabState.toPaneState(
         detailsColumns = detailsColumns,
         detailsColumnWeights = detailsColumnWeights,
         detailsSort = detailsSort,
+        viewMode = viewMode,
+        filterQuery = filterQuery,
         selectedEntryIds = selectedEntryIds,
         selectionAnchorId = selectionAnchorId,
         selectionFocusId = selectionFocusId,
+        statusInfo = statusInfo,
+        inlineEditState = inlineEditState,
+        inspectorState = inspectorState,
         showHiddenItems = showHiddenItems,
         entriesState = entriesState,
+    )
+}
+
+private fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
+    return TabSessionSnapshot(
+        id = id,
+        location = location,
+        detailsColumns = detailsColumns,
+        detailsColumnWeights = detailsColumnWeights,
+        detailsSort = detailsSort,
+        showHiddenItems = showHiddenItems,
+        viewMode = viewMode,
+        filterQuery = filterQuery,
+        backStack = backStack,
+        forwardStack = forwardStack,
+    )
+}
+
+private fun TabSessionSnapshot.toPaneTabState(): PaneTabState {
+    return PaneTabState(
+        id = id,
+        title = locationTitle(location),
+        location = location,
+        canGoBack = backStack.isNotEmpty(),
+        canGoForward = forwardStack.isNotEmpty(),
+        detailsColumns = detailsColumns,
+        detailsColumnWeights = detailsColumnWeights,
+        detailsSort = detailsSort,
+        viewMode = viewMode,
+        filterQuery = filterQuery,
+        selectedEntryIds = emptySet(),
+        selectionAnchorId = null,
+        selectionFocusId = null,
+        statusInfo = PaneStatusInfo(),
+        inlineEditState = null,
+        inspectorState = PaneInspectorState(),
+        showHiddenItems = showHiddenItems,
+        entriesState = PaneEntriesState.Idle,
+        allEntries = emptyList(),
+        backStack = backStack,
+        forwardStack = forwardStack,
     )
 }
 

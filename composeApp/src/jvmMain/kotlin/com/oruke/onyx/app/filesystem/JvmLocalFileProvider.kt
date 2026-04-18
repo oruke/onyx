@@ -7,8 +7,10 @@ import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
@@ -18,8 +20,8 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 import kotlin.io.path.pathString
 
-class JvmLocalFileProvider {
-    suspend fun list(location: String): Result<List<VFile>> = withContext(Dispatchers.IO) {
+class JvmLocalFileProvider : FileRepository, FileCommandService {
+    override suspend fun list(location: String): Result<List<VFile>> = withContext(Dispatchers.IO) {
         runCatching {
             val directory = Path.of(location).normalize().toAbsolutePath()
             require(Files.exists(directory)) {
@@ -41,9 +43,9 @@ class JvmLocalFileProvider {
         }.mapError()
     }
 
-    fun defaultLocation(): String = Path.of(System.getProperty("user.home")).toAbsolutePath().pathString
+    override fun defaultLocation(): String = Path.of(System.getProperty("user.home")).toAbsolutePath().pathString
 
-    suspend fun delete(entries: List<VFile>): Result<Unit> = withContext(Dispatchers.IO) {
+    override suspend fun delete(entries: List<VFile>): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             entries.forEach { entry ->
                 deletePathRecursively(Path.of(entry.location))
@@ -51,7 +53,7 @@ class JvmLocalFileProvider {
         }.mapDeleteError()
     }
 
-    suspend fun copy(
+    override suspend fun copy(
         entries: List<VFile>,
         targetDirectoryLocation: String,
     ): Result<Unit> = withContext(Dispatchers.IO) {
@@ -66,7 +68,7 @@ class JvmLocalFileProvider {
         }.mapUnitError()
     }
 
-    suspend fun move(
+    override suspend fun move(
         entries: List<VFile>,
         targetDirectoryLocation: String,
     ): Result<Unit> = withContext(Dispatchers.IO) {
@@ -81,7 +83,7 @@ class JvmLocalFileProvider {
         }.mapUnitError()
     }
 
-    suspend fun rename(
+    override suspend fun rename(
         entry: VFile,
         targetName: String,
     ): Result<VFile> = withContext(Dispatchers.IO) {

@@ -3,6 +3,8 @@ package com.oruke.onyx.app.component
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import com.oruke.onyx.app.filesystem.JsonSessionRepository
+import com.oruke.onyx.app.filesystem.JsonSettingsRepository
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,9 +17,13 @@ fun rememberRootComponent(): RootComponent {
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     }
     val component = remember {
+        val localFileProvider = JvmLocalFileProvider()
         DefaultRootComponent(
             scope = scope,
-            localFileProvider = JvmLocalFileProvider(),
+            fileRepository = localFileProvider,
+            fileCommandService = localFileProvider,
+            settingsRepository = JsonSettingsRepository(),
+            sessionRepository = JsonSessionRepository(),
         )
     }
 

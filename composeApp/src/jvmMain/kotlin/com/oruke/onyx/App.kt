@@ -2,8 +2,8 @@ package com.oruke.onyx
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -146,8 +146,8 @@ import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_mode_gallery
 import onyx.composeapp.generated.resources.label_move_to_destination
 import onyx.composeapp.generated.resources.label_task_center
-import onyx.composeapp.generated.resources.label_task_status_failed
 import onyx.composeapp.generated.resources.label_task_status_cancelled
+import onyx.composeapp.generated.resources.label_task_status_failed
 import onyx.composeapp.generated.resources.label_task_status_queued
 import onyx.composeapp.generated.resources.label_task_status_running
 import onyx.composeapp.generated.resources.label_task_status_succeeded
@@ -315,9 +315,12 @@ fun DecoratedWindowScope.WindowApp() {
     val rootComponent = rememberRootComponent()
     val state by rootComponent.state.collectAsState()
     val palette = rememberOnyxPalette()
-    var uiScale by remember { mutableStateOf(100) }
     var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
-    val onUiScaleChange: (Int) -> Unit = { value -> uiScale = value }
+    val onUiScaleChange: (Int) -> Unit = { value ->
+        rootComponent.updateSettings(
+            state.settings.copy(uiScale = value),
+        )
+    }
 
     CompositionLocalProvider(
         LocalTooltipController provides TooltipController(
@@ -333,7 +336,7 @@ fun DecoratedWindowScope.WindowApp() {
             TitleBarContent(
                 rootComponent = rootComponent,
                 layoutMode = state.layoutMode,
-                uiScale = uiScale,
+                uiScale = state.settings.uiScale,
                 onUiScaleChange = onUiScaleChange,
                 palette = palette,
             )
