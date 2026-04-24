@@ -19,6 +19,7 @@ data class RootState(
     val dialogState: RootDialogState?,
     val canPaste: Boolean,
     val tasks: List<BackgroundTask>,
+    val showPreviewPane: Boolean = false,
 )
 
 data class SidebarTreeState(
@@ -133,6 +134,8 @@ interface RootComponent {
     )
 
     fun refreshActivePane()
+
+    fun togglePreviewPane()
 
     fun stageCopySelectedInPane(paneId: PaneId)
 

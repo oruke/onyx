@@ -78,6 +78,7 @@ import com.oruke.onyx.ui.theme.detailsColumnWeight
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.horizontalResizePointerIcon
+import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.orEmpty
 import com.oruke.onyx.ui.theme.sortHint
 import com.oruke.onyx.ui.theme.toIntOffset
@@ -87,6 +88,9 @@ import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_column_modified
 import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_size
+import onyx.composeapp.generated.resources.label_column_type
+import onyx.composeapp.generated.resources.label_directory_badge
+import onyx.composeapp.generated.resources.label_file_badge
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
 import onyx.composeapp.generated.resources.label_loading_entries
@@ -446,8 +450,15 @@ internal fun InlineEditEntryRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-
-                DetailsColumn.TYPE -> Unit
+                DetailsColumn.TYPE -> {
+                    Text(
+                        text = "-",
+                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        fontSize = 12.sp,
+                        color = Color.Transparent,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -506,8 +517,13 @@ internal fun DetailsHeader(
                     palette = palette,
                     onClick = { onToggleSort(column) },
                 )
-
-                DetailsColumn.TYPE -> Unit
+                DetailsColumn.TYPE -> SortHeaderCell(
+                    text = stringResource(Res.string.label_column_type),
+                    sortHint = sortHint(column, sort),
+                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                    palette = palette,
+                    onClick = { onToggleSort(column) },
+                )
             }
             if (nextColumn != null) {
                 DetailsColumnResizeGap(
@@ -722,7 +738,7 @@ internal fun EntryRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Icon(
-                            key = if (entry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else AllIconsKeys.FileTypes.Any_type,
+                            key = if (entry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry.name),
                             contentDescription = null,
                         )
                         Text(
@@ -760,8 +776,17 @@ internal fun EntryRow(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-
-                DetailsColumn.TYPE -> Unit
+                DetailsColumn.TYPE -> {
+                    Text(
+                        text = if (entry.kind == VFileKind.DIRECTORY) stringResource(Res.string.label_directory_badge) else entry.name.substringAfterLast('.', missingDelimiterValue = stringResource(Res.string.label_file_badge)).uppercase(),
+                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        fontSize = 12.sp,
+                        color = palette.mutedForeground,
+                        textAlign = TextAlign.Start,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

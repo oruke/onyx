@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +60,7 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.FileDropTarget
+import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.OnyxPalette
 import com.oruke.onyx.ui.theme.toIntOffset
@@ -222,11 +225,16 @@ internal fun GalleryItem(
                 AsyncImage(
                     model = entry.location,
                     contentDescription = entry.name,
-                    modifier = Modifier.fillMaxSize()
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(palette.inactiveSelectionBackground)
+                        .border(1.dp, palette.outline, RoundedCornerShape(4.dp))
                 )
             } else {
                 val iconKey =
-                    if (entry?.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else AllIconsKeys.FileTypes.Any_type
+                    if (entry?.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry?.name)
                 Icon(
                     key = iconKey,
                     contentDescription = null,

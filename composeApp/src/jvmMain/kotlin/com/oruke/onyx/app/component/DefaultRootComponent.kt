@@ -77,6 +77,7 @@ class DefaultRootComponent(
     private val dialogState = MutableStateFlow<RootDialogState?>(null)
     private val clipboard = MutableStateFlow<ClipboardPayload?>(null)
     private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
+    private val showPreviewPane = MutableStateFlow(false)
     private val taskJobs = mutableMapOf<String, Job>()
     private var pendingDeleteRequest: PendingDeleteRequest? = null
     private var pendingTransferRequest: PendingTransferRequest? = null
@@ -95,6 +96,7 @@ class DefaultRootComponent(
             dialogState = dialogState.value,
             canPaste = clipboard.value != null,
             tasks = tasks.value,
+            showPreviewPane = showPreviewPane.value,
         )
     )
 
@@ -114,6 +116,7 @@ class DefaultRootComponent(
                 dialogState,
                 clipboard,
                 tasks,
+                showPreviewPane,
             ) { values ->
                 val currentLayoutMode = values[0] as PaneLayoutMode
                 val currentPaneSplitFraction = values[1] as Float
@@ -128,6 +131,7 @@ class DefaultRootComponent(
 
                 @Suppress("UNCHECKED_CAST")
                 val currentTasks = values[10] as List<BackgroundTask>
+                val currentShowPreviewPane = values[11] as Boolean
                 RootState(
                     layoutMode = currentLayoutMode,
                     paneSplitFraction = currentPaneSplitFraction,
@@ -140,6 +144,7 @@ class DefaultRootComponent(
                     dialogState = currentDialogState,
                     canPaste = currentClipboard != null,
                     tasks = currentTasks,
+                    showPreviewPane = currentShowPreviewPane,
                 )
             }.collect { combinedState ->
                 mutableState.value = combinedState
@@ -395,6 +400,10 @@ class DefaultRootComponent(
             PaneId.PRIMARY -> primaryPane.refresh()
             PaneId.SECONDARY -> secondaryPane.refresh()
         }
+    }
+
+    override fun togglePreviewPane() {
+        showPreviewPane.value = !showPreviewPane.value
     }
 
     override fun stageCopySelectedInPane(paneId: PaneId) {

@@ -106,6 +106,8 @@ internal fun TitleBarContent(
     sidebarVisible: Boolean,
     onUiScaleChange: (Int) -> Unit,
     onToggleSidebar: () -> Unit,
+    showPreviewPane: Boolean,
+    onTogglePreviewPane: () -> Unit,
     palette: OnyxPalette,
 ) {
     // Jewel DecoratedWindow 的标题栏内容区域
@@ -196,6 +198,17 @@ internal fun TitleBarContent(
                 Icon(
                     key = if (sidebarVisible) AllIconsKeys.Actions.ToggleVisibility else AllIconsKeys.General.Show,
                     contentDescription = stringResource(Res.string.action_toggle_sidebar),
+                )
+            }
+
+            TitleBarIconButton(
+                onClick = onTogglePreviewPane,
+                palette = palette,
+                tooltip = "Toggle Preview Pane",
+            ) {
+                Icon(
+                    key = if (showPreviewPane) AllIconsKeys.Actions.Preview else AllIconsKeys.Actions.PreviewDetails,
+                    contentDescription = "Toggle Preview Pane",
                 )
             }
 

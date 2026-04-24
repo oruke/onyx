@@ -140,7 +140,7 @@ internal fun formatModifiedTime(modifiedAtEpochMillis: Long?): String {
 // ── Column helpers ──────────────────────────────────────────────────────────
 
 internal fun visibleDetailsColumns(columns: List<DetailsColumn>): List<DetailsColumn> {
-    return columns.filterNot { it == DetailsColumn.TYPE }
+    return columns
 }
 
 internal fun detailsColumnWeight(
@@ -268,6 +268,26 @@ internal fun taskStatusLabel(status: BackgroundTaskStatus): String {
 }
 
 internal fun String?.orEmpty(): String = this ?: ""
+
+internal fun fileIconKey(fileName: String?) = when {
+    fileName == null -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Any_type
+    else -> {
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    when (ext) {
+        "txt", "md", "log", "csv" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Text
+        "zip", "rar", "7z", "tar", "gz" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Archive
+        "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Image
+        "xml" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Xml
+        "html", "htm" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Html
+        "json" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Json
+        "java", "kt", "class" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.JavaClass
+        "js", "ts" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.JavaScript
+        "css" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Css
+        "properties", "conf", "ini", "yaml", "yml" -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Config
+        else -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Any_type
+    }
+    }
+}
 
 internal fun com.oruke.onyx.app.component.RootState.paneState(paneId: PaneId): com.oruke.onyx.app.component.PaneState {
     return when (paneId) {

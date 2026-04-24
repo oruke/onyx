@@ -42,6 +42,7 @@ import com.oruke.onyx.ui.FileDragOverlay
 import com.oruke.onyx.ui.OnyxTooltipOverlay
 import com.oruke.onyx.ui.PaneSidebar
 import com.oruke.onyx.ui.PaneSurface
+import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
 import com.oruke.onyx.ui.SettingsDialog
 import com.oruke.onyx.ui.StatusBar
@@ -106,6 +107,8 @@ fun DecoratedWindowScope.WindowApp() {
                         state.settings.copy(sidebarVisible = !state.settings.sidebarVisible),
                     )
                 },
+                showPreviewPane = state.showPreviewPane,
+                onTogglePreviewPane = rootComponent::togglePreviewPane,
                 palette = palette,
             )
         }
@@ -588,6 +591,21 @@ private fun AppContent(
                                     )
                                 }
                             }
+                        }
+
+                        if (state.showPreviewPane) {
+                            Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
+                            val activePaneState = state.paneState(state.activePane)
+                            val selectedEntryId = activePaneState.selectedEntryIds.firstOrNull()
+                            val selectedEntry = if (selectedEntryId != null) {
+                                (activePaneState.entriesState as? PaneEntriesState.Ready)?.entries?.find { it.id == selectedEntryId }
+                            } else null
+                            
+                            PreviewPane(
+                                selectedEntry = selectedEntry,
+                                palette = palette,
+                                modifier = Modifier.width(300.dp).fillMaxHeight()
+                            )
                         }
                     }
 
