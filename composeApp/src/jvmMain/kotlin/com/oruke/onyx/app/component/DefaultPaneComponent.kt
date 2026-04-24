@@ -978,17 +978,10 @@ class DefaultPaneComponent(
         focusId: String?,
     ): SelectionState {
         val visibleIds = entries.mapTo(mutableSetOf()) { it.id }
-        val nextSelectedEntryIds = selectedEntryIds
-            .intersect(visibleIds)
-            .ifEmpty {
-                entries.firstOrNull()?.let { setOf(it.id) } ?: emptySet()
-            }
-        val nextAnchorId = anchorId
-            ?.takeIf { visibleIds.contains(it) }
-            ?: nextSelectedEntryIds.firstOrNull()
-        val nextFocusId = focusId
-            ?.takeIf { visibleIds.contains(it) }
-            ?: nextAnchorId
+        // 允许空选择——用户清空选择后不应自动选中首项
+        val nextSelectedEntryIds = selectedEntryIds.intersect(visibleIds)
+        val nextAnchorId = anchorId?.takeIf { visibleIds.contains(it) }
+        val nextFocusId = focusId?.takeIf { visibleIds.contains(it) } ?: nextAnchorId
         return SelectionState(
             selectedEntryIds = nextSelectedEntryIds,
             anchorId = nextAnchorId,

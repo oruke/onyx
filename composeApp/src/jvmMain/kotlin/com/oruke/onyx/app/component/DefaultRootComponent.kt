@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -153,11 +154,13 @@ class DefaultRootComponent(
                 primaryPane.state,
                 secondaryPane.state,
                 settings,
-            ) { _ ->
-                if (persistenceReady) {
-                    persistCurrentState()
+            ) { _ -> Unit }
+                .debounce(500)
+                .collect {
+                    if (persistenceReady) {
+                        persistCurrentState()
+                    }
                 }
-            }.collect {}
         }
 
         scope.launch {
