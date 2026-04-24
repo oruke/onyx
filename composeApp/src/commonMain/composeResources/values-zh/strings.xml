@@ -93,6 +93,7 @@
     <string name="label_sidebar_section_quick_access">快速访问</string>
     <string name="label_sidebar_section_favorites">收藏</string>
     <string name="label_sidebar_section_recent">最近位置</string>
+    <string name="label_sidebar_section_tree">目录树</string>
     <string name="label_sidebar_empty_favorites">还没有收藏</string>
     <string name="label_sidebar_empty_recent">还没有最近目录</string>
     <string name="label_error_prefix">错误</string>

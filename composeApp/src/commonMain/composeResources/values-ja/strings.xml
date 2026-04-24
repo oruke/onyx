@@ -95,6 +95,7 @@
     <string name="label_sidebar_section_quick_access">クイックアクセス</string>
     <string name="label_sidebar_section_favorites">お気に入り</string>
     <string name="label_sidebar_section_recent">最近の場所</string>
+    <string name="label_sidebar_section_tree">フォルダーツリー</string>
     <string name="label_sidebar_empty_favorites">お気に入りはありません</string>
     <string name="label_sidebar_empty_recent">最近のフォルダーはありません</string>
     <string name="label_error_prefix">エラー</string>

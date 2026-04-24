@@ -18,6 +18,7 @@ import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.TabSessionSnapshot
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.nio.file.FileSystems
 import java.nio.file.Path
 import java.util.*
 
@@ -64,6 +66,11 @@ class DefaultRootComponent(
     private val layoutMode = MutableStateFlow(PaneLayoutMode.DUAL_VERTICAL)
     private val paneSplitFraction = MutableStateFlow(0.5f)
     private val activePane = MutableStateFlow(PaneId.PRIMARY)
+    private val sidebarTreeState = MutableStateFlow(
+        SidebarTreeState(
+            roots = buildSidebarRootNodes(),
+        )
+    )
     private val settings = MutableStateFlow(OnyxSettings())
     private val sessionRestoreState = MutableStateFlow<SessionRestoreState>(SessionRestoreState.Loading)
     private val dialogState = MutableStateFlow<RootDialogState?>(null)
@@ -81,6 +88,7 @@ class DefaultRootComponent(
             activePane = activePane.value,
             primaryPane = primaryPane.state.value,
             secondaryPane = secondaryPane.state.value,
+            sidebarTreeState = sidebarTreeState.value,
             settings = settings.value,
             sessionRestoreState = sessionRestoreState.value,
             dialogState = dialogState.value,
@@ -99,6 +107,7 @@ class DefaultRootComponent(
                 activePane,
                 primaryPane.state,
                 secondaryPane.state,
+                sidebarTreeState,
                 settings,
                 sessionRestoreState,
                 dialogState,
@@ -110,19 +119,21 @@ class DefaultRootComponent(
                 val currentActivePane = values[2] as PaneId
                 val primaryState = values[3] as PaneState
                 val secondaryState = values[4] as PaneState
-                val currentSettings = values[5] as OnyxSettings
-                val currentSessionRestoreState = values[6] as SessionRestoreState
-                val currentDialogState = values[7] as RootDialogState?
-                val currentClipboard = values[8] as ClipboardPayload?
+                val currentSidebarTreeState = values[5] as SidebarTreeState
+                val currentSettings = values[6] as OnyxSettings
+                val currentSessionRestoreState = values[7] as SessionRestoreState
+                val currentDialogState = values[8] as RootDialogState?
+                val currentClipboard = values[9] as ClipboardPayload?
 
                 @Suppress("UNCHECKED_CAST")
-                val currentTasks = values[9] as List<BackgroundTask>
+                val currentTasks = values[10] as List<BackgroundTask>
                 RootState(
                     layoutMode = currentLayoutMode,
                     paneSplitFraction = currentPaneSplitFraction,
                     activePane = currentActivePane,
                     primaryPane = primaryState,
                     secondaryPane = secondaryState,
+                    sidebarTreeState = currentSidebarTreeState,
                     settings = currentSettings,
                     sessionRestoreState = currentSessionRestoreState,
                     dialogState = currentDialogState,
@@ -162,6 +173,18 @@ class DefaultRootComponent(
                 }
             }
         }
+
+        scope.launch {
+            combine(
+                activePane,
+                primaryPane.state,
+                secondaryPane.state
+            ) { currentActivePane, primaryState, secondaryState ->
+                if (currentActivePane == PaneId.PRIMARY) primaryState.location else secondaryState.location
+            }.collect { location ->
+                ensureSidebarLocationVisible(location)
+            }
+        }
     }
 
     override fun setLayoutMode(mode: PaneLayoutMode) {
@@ -187,6 +210,45 @@ class DefaultRootComponent(
 
     override fun updateSettings(settings: OnyxSettings) {
         this.settings.value = settings.sanitized()
+    }
+
+    override fun openLocationInActivePane(location: String) {
+        when (activePane.value) {
+            PaneId.PRIMARY -> primaryPane.openDirectory(location)
+            PaneId.SECONDARY -> secondaryPane.openDirectory(location)
+        }
+    }
+
+    override fun toggleFavoriteLocation(location: String) {
+        val currentFavorites = settings.value.favoriteLocations
+        updateSettings(
+            settings.value.copy(
+                favoriteLocations = if (currentFavorites.contains(location)) {
+                    currentFavorites.filterNot { favoriteLocation -> favoriteLocation == location }
+                } else {
+                    currentFavorites + location
+                },
+            ),
+        )
+    }
+
+    override fun toggleSidebarTreeNode(location: String) {
+        val node = sidebarTreeState.value.findNode(location) ?: return
+        val expand = !node.expanded
+        sidebarTreeState.value = sidebarTreeState.value.updateNode(location) { currentNode ->
+            currentNode.copy(expanded = expand)
+        }
+        if (expand && node.loadState != SidebarTreeNodeLoadState.READY) {
+            scope.launch {
+                loadSidebarChildren(location)
+            }
+        }
+    }
+
+    override fun retrySidebarTreeNode(location: String) {
+        scope.launch {
+            loadSidebarChildren(location, forceReload = true)
+        }
     }
 
     override fun beginCreateDirectoriesInPane(paneId: PaneId) {
@@ -805,6 +867,91 @@ class DefaultRootComponent(
             .distinct()
     }
 
+    private fun buildSidebarRootNodes(): List<SidebarTreeNode> {
+        return FileSystems.getDefault()
+            .rootDirectories
+            .map { rootPath -> rootPath.normalize().toAbsolutePath() }
+            .distinct()
+            .sortedBy { rootPath -> rootPath.toString() }
+            .map { rootPath ->
+                SidebarTreeNode(
+                    location = rootPath.toString().ifBlank { "/" },
+                    label = rootPath.toString().ifBlank { "/" },
+                    expanded = false,
+                    loadState = SidebarTreeNodeLoadState.IDLE,
+                )
+            }
+    }
+
+    private suspend fun ensureSidebarLocationVisible(location: String) {
+        val normalizedLocation = normalizeTreeLocation(location) ?: return
+        buildAncestorLocations(normalizedLocation)
+            .dropLast(1)
+            .forEach { ancestorLocation ->
+                val node = sidebarTreeState.value.findNode(ancestorLocation) ?: return@forEach
+                if (!node.expanded) {
+                    sidebarTreeState.value = sidebarTreeState.value.updateNode(ancestorLocation) { currentNode ->
+                        currentNode.copy(expanded = true)
+                    }
+                }
+                if (node.loadState != SidebarTreeNodeLoadState.READY) {
+                    loadSidebarChildren(ancestorLocation)
+                }
+            }
+    }
+
+    private suspend fun loadSidebarChildren(
+        location: String,
+        forceReload: Boolean = false,
+    ) {
+        val currentNode = sidebarTreeState.value.findNode(location) ?: return
+        if (!forceReload && currentNode.loadState == SidebarTreeNodeLoadState.LOADING) {
+            return
+        }
+        if (!forceReload && currentNode.loadState == SidebarTreeNodeLoadState.READY) {
+            return
+        }
+
+        sidebarTreeState.value = sidebarTreeState.value.updateNode(location) { node ->
+            node.copy(
+                expanded = true,
+                loadState = SidebarTreeNodeLoadState.LOADING,
+                loadError = null,
+            )
+        }
+
+        fileRepository.list(location).fold(
+            onSuccess = { entries ->
+                val children = entries
+                    .filter { entry -> entry.kind == VFileKind.DIRECTORY }
+                    .sortedBy { entry -> entry.name.lowercase() }
+                    .map { entry ->
+                        SidebarTreeNode(
+                            location = entry.location,
+                            label = entry.name,
+                            expanded = false,
+                            loadState = SidebarTreeNodeLoadState.IDLE,
+                        )
+                    }
+                sidebarTreeState.value = sidebarTreeState.value.updateNode(location) { node ->
+                    node.copy(
+                        loadState = SidebarTreeNodeLoadState.READY,
+                        loadError = null,
+                        children = children,
+                    )
+                }
+            },
+            onFailure = { failure ->
+                sidebarTreeState.value = sidebarTreeState.value.updateNode(location) { node ->
+                    node.copy(
+                        loadState = SidebarTreeNodeLoadState.FAILURE,
+                        loadError = failure.message,
+                    )
+                }
+            },
+        )
+    }
+
     private fun recordRecentLocations(vararg locations: String) {
         val normalizedLocations = locations
             .map { location -> location.trim() }
@@ -944,6 +1091,57 @@ private fun OnyxSettings.sanitized(): OnyxSettings {
         recentLocations = recentLocations.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
             .take(MaxRecentLocations),
     )
+}
+
+private fun buildAncestorLocations(location: String): List<String> {
+    val path = Path.of(location).normalize().toAbsolutePath()
+    val chain = ArrayDeque<String>()
+    var current: Path? = path
+    while (current != null) {
+        chain.addFirst(current.toString().ifBlank { "/" })
+        current = current.parent
+    }
+    return chain.toList()
+}
+
+private fun normalizeTreeLocation(location: String): String? {
+    return runCatching {
+        Path.of(location).normalize().toAbsolutePath().toString().ifBlank { "/" }
+    }.getOrNull()
+}
+
+private fun SidebarTreeState.findNode(location: String): SidebarTreeNode? {
+    fun List<SidebarTreeNode>.search(): SidebarTreeNode? {
+        for (node in this) {
+            if (node.location == location) {
+                return node
+            }
+            val nestedNode = node.children.search()
+            if (nestedNode != null) {
+                return nestedNode
+            }
+        }
+        return null
+    }
+
+    return roots.search()
+}
+
+private fun SidebarTreeState.updateNode(
+    location: String,
+    transform: (SidebarTreeNode) -> SidebarTreeNode,
+): SidebarTreeState {
+    fun List<SidebarTreeNode>.update(): List<SidebarTreeNode> {
+        return map { node ->
+            when {
+                node.location == location -> transform(node)
+                node.children.isNotEmpty() -> node.copy(children = node.children.update())
+                else -> node
+            }
+        }
+    }
+
+    return copy(roots = roots.update())
 }
 
 private const val MaxFavoriteLocations = 12
