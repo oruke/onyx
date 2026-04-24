@@ -2,9 +2,9 @@ package com.oruke.onyx.core.model
 
 data class BackgroundTask(
     val id: String,
-    val title: String,
+    val title: I18nMessage,
     val status: BackgroundTaskStatus,
-    val detail: String,
+    val detail: I18nMessage,
     val progress: Float? = null,
 )
 

@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.SidebarTreeNode
 import com.oruke.onyx.app.component.SidebarTreeNodeLoadState
 import com.oruke.onyx.app.component.SidebarTreeState
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.orEmpty
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_refresh_active
@@ -57,7 +57,6 @@ internal fun PaneSidebar(
     favoriteLocations: List<String>,
     recentLocations: List<String>,
     treeState: SidebarTreeState,
-    palette: OnyxPalette,
     onActivate: () -> Unit,
     onOpenLocation: (String) -> Unit,
     onToggleFavoriteLocation: (String) -> Unit,
@@ -70,21 +69,19 @@ internal fun PaneSidebar(
         modifier = Modifier
             .width(184.dp)
             .fillMaxHeight()
-            .background(palette.surfaceVariant)
+            .background(LocalOnyxPalette.current.surfaceVariant)
             .verticalScroll(scrollState)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         SidebarSection(
             title = stringResource(Res.string.label_sidebar_section_quick_access),
-            palette = palette,
         ) {
             SidebarLocationItem(
                 label = stringResource(Res.string.label_home),
                 location = homeLocation,
                 selected = location == homeLocation,
                 favorite = favoriteLocations.contains(homeLocation),
-                palette = palette,
                 onOpen = {
                     onActivate()
                     onOpenLocation(homeLocation)
@@ -95,12 +92,10 @@ internal fun PaneSidebar(
 
         SidebarSection(
             title = stringResource(Res.string.label_sidebar_section_favorites),
-            palette = palette,
         ) {
             if (favoriteLocations.isEmpty()) {
                 SidebarEmptyState(
                     text = stringResource(Res.string.label_sidebar_empty_favorites),
-                    palette = palette,
                 )
             } else {
                 favoriteLocations.forEach { favoriteLocation ->
@@ -109,7 +104,6 @@ internal fun PaneSidebar(
                         location = favoriteLocation,
                         selected = location == favoriteLocation,
                         favorite = true,
-                        palette = palette,
                         onOpen = {
                             onActivate()
                             onOpenLocation(favoriteLocation)
@@ -122,7 +116,6 @@ internal fun PaneSidebar(
 
         SidebarSection(
             title = stringResource(Res.string.label_sidebar_section_recent),
-            palette = palette,
         ) {
             val displayRecentLocations = recentLocations.filterNot { recentLocation ->
                 recentLocation == location
@@ -130,7 +123,6 @@ internal fun PaneSidebar(
             if (displayRecentLocations.isEmpty()) {
                 SidebarEmptyState(
                     text = stringResource(Res.string.label_sidebar_empty_recent),
-                    palette = palette,
                 )
             } else {
                 displayRecentLocations.forEach { recentLocation ->
@@ -139,7 +131,6 @@ internal fun PaneSidebar(
                         location = recentLocation,
                         selected = false,
                         favorite = favoriteLocations.contains(recentLocation),
-                        palette = palette,
                         onOpen = {
                             onActivate()
                             onOpenLocation(recentLocation)
@@ -152,12 +143,10 @@ internal fun PaneSidebar(
 
         SidebarSection(
             title = stringResource(Res.string.label_sidebar_section_tree),
-            palette = palette,
         ) {
             SidebarTree(
                 selectedLocation = location,
                 treeState = treeState,
-                palette = palette,
                 onOpenLocation = { treeLocation ->
                     onActivate()
                     onOpenLocation(treeLocation)
@@ -172,14 +161,13 @@ internal fun PaneSidebar(
 @Composable
 internal fun SidebarSection(
     title: String,
-    palette: OnyxPalette,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = title,
             fontSize = 11.sp,
-            color = palette.mutedForeground,
+            color = LocalOnyxPalette.current.mutedForeground,
             fontWeight = FontWeight.Medium,
         )
         content()
@@ -189,12 +177,11 @@ internal fun SidebarSection(
 @Composable
 internal fun SidebarEmptyState(
     text: String,
-    palette: OnyxPalette,
 ) {
     Text(
         text = text,
         fontSize = 11.sp,
-        color = palette.disabledForeground,
+        color = LocalOnyxPalette.current.disabledForeground,
         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
@@ -205,7 +192,6 @@ internal fun SidebarLocationItem(
     location: String,
     selected: Boolean,
     favorite: Boolean,
-    palette: OnyxPalette,
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
@@ -217,8 +203,8 @@ internal fun SidebarLocationItem(
             .hoverable(interactionSource)
             .background(
                 when {
-                    selected -> palette.selectionBackground
-                    isHovered -> palette.rowHoverBackground.copy(alpha = 0.28f)
+                    selected -> LocalOnyxPalette.current.selectionBackground
+                    isHovered -> LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.28f)
                     else -> Color.Transparent
                 },
                 RoundedCornerShape(4.dp),
@@ -237,14 +223,14 @@ internal fun SidebarLocationItem(
             text = label,
             modifier = Modifier.weight(1f),
             fontSize = 11.sp,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = if (favorite) "★" else "☆",
             fontSize = 11.sp,
-            color = if (favorite) Color(0xFFFFC94D) else palette.disabledForeground,
+            color = if (favorite) Color(0xFFFFC94D) else LocalOnyxPalette.current.disabledForeground,
             modifier = Modifier.clickable(onClick = onToggleFavorite),
         )
     }
@@ -254,7 +240,6 @@ internal fun SidebarLocationItem(
 internal fun SidebarTree(
     selectedLocation: String,
     treeState: SidebarTreeState,
-    palette: OnyxPalette,
     onOpenLocation: (String) -> Unit,
     onToggleNode: (String) -> Unit,
     onRetryNode: (String) -> Unit,
@@ -274,7 +259,6 @@ internal fun SidebarTree(
             SidebarTreeItem(
                 item = item,
                 selected = selectedLocation == item.node.location,
-                palette = palette,
                 onOpenLocation = onOpenLocation,
                 onToggleNode = onToggleNode,
                 onRetryNode = onRetryNode,
@@ -287,7 +271,6 @@ internal fun SidebarTree(
 internal fun SidebarTreeItem(
     item: SidebarTreeItemState,
     selected: Boolean,
-    palette: OnyxPalette,
     onOpenLocation: (String) -> Unit,
     onToggleNode: (String) -> Unit,
     onRetryNode: (String) -> Unit,
@@ -302,8 +285,8 @@ internal fun SidebarTreeItem(
             .hoverable(interactionSource)
             .background(
                 when {
-                    selected -> palette.selectionBackground
-                    isHovered -> palette.rowHoverBackground.copy(alpha = 0.24f)
+                    selected -> LocalOnyxPalette.current.selectionBackground
+                    isHovered -> LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.24f)
                     else -> Color.Transparent
                 },
                 RoundedCornerShape(4.dp),
@@ -321,7 +304,7 @@ internal fun SidebarTreeItem(
         ) {
             when {
                 node.loadState == SidebarTreeNodeLoadState.LOADING -> {
-                    Text(text = "…", fontSize = 10.sp, color = palette.disabledForeground)
+                    Text(text = "…", fontSize = 10.sp, color = LocalOnyxPalette.current.disabledForeground)
                 }
 
                 showExpander -> {
@@ -342,7 +325,7 @@ internal fun SidebarTreeItem(
             text = node.label,
             modifier = Modifier.weight(1f),
             fontSize = 11.sp,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

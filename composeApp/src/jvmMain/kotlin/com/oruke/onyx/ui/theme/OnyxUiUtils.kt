@@ -13,6 +13,7 @@ import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
+import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.SortDirection
 import onyx.composeapp.generated.resources.Res
@@ -33,6 +34,13 @@ import kotlin.math.roundToInt
 
 internal val DetailsColumnGap = 6.dp
 internal val PaneDividerHitSlop = 7.dp
+
+// ── I18n Extensions ─────────────────────────────────────────────────────────
+
+@Composable
+internal fun I18nMessage.resolve(): String {
+    return stringResource(key, *args.toTypedArray())
+}
 
 // ── Drag & Drop models ──────────────────────────────────────────────────────
 
@@ -269,6 +277,13 @@ internal fun taskStatusLabel(status: BackgroundTaskStatus): String {
 
 internal fun String?.orEmpty(): String = this ?: ""
 
+/**
+ * 根据文件扩展名映射到合适的 Jewel 高清矢量图标 (SVG)。
+ * 这是 Onyx 保持 IntelliJ IDEA 视觉风格和高性能滚动的核心手段。
+ * 
+ * @param fileName 文件名称（包含扩展名）
+ * @return 对应的 Jewel IconKey
+ */
 internal fun fileIconKey(fileName: String?) = when {
     fileName == null -> org.jetbrains.jewel.ui.icons.AllIconsKeys.FileTypes.Any_type
     else -> {

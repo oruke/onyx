@@ -25,7 +25,8 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.resolve
 import com.oruke.onyx.ui.theme.taskStatusLabel
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_cancel_task
@@ -44,7 +45,6 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 @Composable
 internal fun TaskCenterWindow(
     tasks: List<BackgroundTask>,
-    palette: OnyxPalette,
     onDismissTask: (String) -> Unit,
     onCancelTask: (String) -> Unit,
     onClearAllTasks: () -> Unit,
@@ -59,7 +59,7 @@ internal fun TaskCenterWindow(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(palette.appBackground)
+                    .background(LocalOnyxPalette.current.appBackground)
                     .padding(10.dp),
             ) {
                 TaskPanel(
@@ -67,7 +67,6 @@ internal fun TaskCenterWindow(
                     onDismissTask = onDismissTask,
                     onCancelTask = onCancelTask,
                     onClearAllTasks = onClearAllTasks,
-                    palette = palette,
                 )
             }
         }
@@ -80,12 +79,11 @@ internal fun TaskPanel(
     onDismissTask: (String) -> Unit,
     onCancelTask: (String) -> Unit,
     onClearAllTasks: () -> Unit,
-    palette: OnyxPalette,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(palette.surfaceVariant)
+            .background(LocalOnyxPalette.current.surfaceVariant)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -93,7 +91,7 @@ internal fun TaskPanel(
             text = stringResource(Res.string.label_task_center),
             fontWeight = FontWeight.SemiBold,
             fontSize = 12.sp,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -104,7 +102,6 @@ internal fun TaskPanel(
                 text = stringResource(Res.string.action_clear_all_tasks),
                 enabled = tasks.isNotEmpty(),
                 iconKey = AllIconsKeys.Actions.Close,
-                palette = palette,
                 onClick = onClearAllTasks,
             )
         }
@@ -115,16 +112,15 @@ internal fun TaskPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = task.title, fontSize = 12.sp, color = palette.foreground)
+                    Text(text = task.title.resolve(), fontSize = 12.sp, color = LocalOnyxPalette.current.foreground)
                     Text(
-                        text = "${taskStatusLabel(task.status)} · ${task.detail}",
+                        text = "${taskStatusLabel(task.status)} · ${task.detail.resolve()}",
                         fontSize = 11.sp,
-                        color = palette.mutedForeground,
+                        color = LocalOnyxPalette.current.mutedForeground,
                     )
                     TaskProgressBar(
                         progress = task.progress,
                         status = task.status,
-                        palette = palette,
                     )
                 }
                 val taskRunning =
@@ -146,7 +142,6 @@ internal fun TaskPanel(
 internal fun TaskProgressBar(
     progress: Float?,
     status: BackgroundTaskStatus,
-    palette: OnyxPalette,
 ) {
     val targetProgress = when {
         progress != null -> progress.coerceIn(0f, 1f)
@@ -159,16 +154,16 @@ internal fun TaskProgressBar(
     )
     val barColor = when (status) {
         BackgroundTaskStatus.FAILED -> Color(0xFFD74E4E)
-        BackgroundTaskStatus.CANCELLED -> palette.disabledForeground
+        BackgroundTaskStatus.CANCELLED -> LocalOnyxPalette.current.disabledForeground
         BackgroundTaskStatus.SUCCEEDED -> Color(0xFF4DAA57)
-        BackgroundTaskStatus.QUEUED, BackgroundTaskStatus.RUNNING -> palette.accent
+        BackgroundTaskStatus.QUEUED, BackgroundTaskStatus.RUNNING -> LocalOnyxPalette.current.accent
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(4.dp)
-            .background(palette.outlineVariant, RoundedCornerShape(2.dp)),
+            .background(LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(2.dp)),
     ) {
         Box(
             modifier = Modifier

@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.PaneState
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.windowBounds
@@ -59,7 +59,6 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 internal fun PaneTabBar(
     state: PaneState,
     active: Boolean,
-    palette: OnyxPalette,
     onActivate: () -> Unit,
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
@@ -89,7 +88,7 @@ internal fun PaneTabBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(26.dp)
-            .background(palette.headerBackground)
+            .background(LocalOnyxPalette.current.headerBackground)
             .onGloballyPositioned { coordinates ->
                 barBounds = coordinates.windowBounds()
                 reportDropZone()
@@ -102,7 +101,6 @@ internal fun PaneTabBar(
         state.tabs.forEachIndexed { index, tab ->
             TabDropIndicator(
                 visible = dropIndicatorIndex == index,
-                palette = palette,
             )
             PaneTabChip(
                 tabId = tab.id,
@@ -110,7 +108,6 @@ internal fun PaneTabBar(
                 selected = tab.id == state.activeTabId,
                 closeEnabled = state.tabs.size > 1,
                 activePane = active,
-                palette = palette,
                 onActivate = onActivate,
                 onSelect = { onSelectTab(tab.id) },
                 onClose = { onCloseTab(tab.id) },
@@ -125,11 +122,10 @@ internal fun PaneTabBar(
         }
         TabDropIndicator(
             visible = dropIndicatorIndex == state.tabs.size,
-            palette = palette,
         )
 
         val newTabTooltip = stringResource(Res.string.action_new_tab)
-        OnyxTooltip(text = newTabTooltip, palette = palette) {
+        OnyxTooltip(text = newTabTooltip) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
@@ -158,7 +154,6 @@ internal fun PaneTabBar(
 @Composable
 internal fun TabDropIndicator(
     visible: Boolean,
-    palette: OnyxPalette,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -178,7 +173,7 @@ internal fun TabDropIndicator(
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(2.dp)
-                    .background(palette.accent, RoundedCornerShape(1.dp)),
+                    .background(LocalOnyxPalette.current.accent, RoundedCornerShape(1.dp)),
             )
         }
     }
@@ -191,7 +186,6 @@ internal fun PaneTabChip(
     selected: Boolean,
     closeEnabled: Boolean,
     activePane: Boolean,
-    palette: OnyxPalette,
     onActivate: () -> Unit,
     onSelect: () -> Unit,
     onClose: () -> Unit,
@@ -205,13 +199,13 @@ internal fun PaneTabChip(
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val background = when {
-        selected && activePane -> palette.surface
-        selected -> palette.surfaceVariant
-        isHovered -> palette.titleBarHoverBackground
+        selected && activePane -> LocalOnyxPalette.current.surface
+        selected -> LocalOnyxPalette.current.surfaceVariant
+        isHovered -> LocalOnyxPalette.current.titleBarHoverBackground
         else -> Color.Transparent
     }
 
-    OnyxTooltip(text = title, palette = palette) {
+    OnyxTooltip(text = title) {
         Row(
             modifier = Modifier
                 .fillMaxHeight()
@@ -223,7 +217,7 @@ internal fun PaneTabChip(
                 .background(background, RoundedCornerShape(4.dp))
                 .border(
                     width = 1.dp,
-                    color = if (selected) palette.outline else Color.Transparent,
+                    color = if (selected) LocalOnyxPalette.current.outline else Color.Transparent,
                     shape = RoundedCornerShape(4.dp),
                 )
                 .clickable(
@@ -263,13 +257,13 @@ internal fun PaneTabChip(
                 text = title,
                 modifier = Modifier.widthIn(max = if (closeEnabled) 112.dp else 132.dp),
                 fontSize = 12.sp,
-                color = if (selected) palette.foreground else palette.mutedForeground,
+                color = if (selected) LocalOnyxPalette.current.foreground else LocalOnyxPalette.current.mutedForeground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (closeEnabled) {
                 val closeTabTooltip = stringResource(Res.string.action_close_tab)
-                OnyxTooltip(text = closeTabTooltip, palette = palette) {
+                OnyxTooltip(text = closeTabTooltip) {
                     Box(
                         modifier = Modifier
                             .size(16.dp)

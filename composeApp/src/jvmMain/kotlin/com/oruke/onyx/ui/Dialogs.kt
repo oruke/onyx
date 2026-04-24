@@ -65,7 +65,7 @@ import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.ViewMode
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
 import onyx.composeapp.generated.resources.action_close_menu
@@ -111,7 +111,6 @@ import org.jetbrains.jewel.ui.component.Text
 @Composable
 internal fun SettingsDialog(
     state: RootDialogState.Settings,
-    palette: OnyxPalette,
     onDraftChange: (OnyxSettings) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
@@ -126,7 +125,6 @@ internal fun SettingsDialog(
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             DialogFrame(
-                palette = palette,
                 title = title,
                 body = {
                     Column(
@@ -135,25 +133,21 @@ internal fun SettingsDialog(
                     ) {
                         SettingsSection(
                             title = stringResource(Res.string.label_default_layout_mode),
-                            palette = palette,
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsOption(
                                     selected = draft.defaultLayoutMode == PaneLayoutMode.SINGLE,
                                     text = stringResource(Res.string.action_layout_single),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.SINGLE)) },
                                 )
                                 SettingsOption(
                                     selected = draft.defaultLayoutMode == PaneLayoutMode.DUAL_VERTICAL,
                                     text = stringResource(Res.string.action_layout_dual_vertical),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_VERTICAL)) },
                                 )
                                 SettingsOption(
                                     selected = draft.defaultLayoutMode == PaneLayoutMode.DUAL_HORIZONTAL,
                                     text = stringResource(Res.string.action_layout_dual_horizontal),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_HORIZONTAL)) },
                                 )
                             }
@@ -161,19 +155,16 @@ internal fun SettingsDialog(
 
                         SettingsSection(
                             title = stringResource(Res.string.label_default_view_mode),
-                            palette = palette,
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsOption(
                                     selected = draft.defaultViewMode == ViewMode.DETAILS,
                                     text = stringResource(Res.string.label_mode_details),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(defaultViewMode = ViewMode.DETAILS)) },
                                 )
                                 SettingsOption(
                                     selected = draft.defaultViewMode == ViewMode.GALLERY,
                                     text = stringResource(Res.string.label_mode_gallery),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(defaultViewMode = ViewMode.GALLERY)) },
                                 )
                             }
@@ -181,19 +172,16 @@ internal fun SettingsDialog(
 
                         SettingsSection(
                             title = stringResource(Res.string.label_delete_mode),
-                            palette = palette,
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsOption(
                                     selected = draft.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED,
                                     text = stringResource(Res.string.label_delete_mode_move_to_trash),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(deleteMode = DeleteMode.MOVE_TO_TRASH_PREFERRED)) },
                                 )
                                 SettingsOption(
                                     selected = draft.deleteMode == DeleteMode.PERMANENT,
                                     text = stringResource(Res.string.label_delete_mode_permanent),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(deleteMode = DeleteMode.PERMANENT)) },
                                 )
                             }
@@ -201,19 +189,16 @@ internal fun SettingsDialog(
 
                         SettingsSection(
                             title = stringResource(Res.string.label_sidebar_visibility),
-                            palette = palette,
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsOption(
                                     selected = draft.sidebarVisible,
                                     text = stringResource(Res.string.label_setting_show),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(sidebarVisible = true)) },
                                 )
                                 SettingsOption(
                                     selected = !draft.sidebarVisible,
                                     text = stringResource(Res.string.label_setting_hide),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(sidebarVisible = false)) },
                                 )
                             }
@@ -221,19 +206,16 @@ internal fun SettingsDialog(
 
                         SettingsSection(
                             title = stringResource(Res.string.label_status_bar_visibility),
-                            palette = palette,
                         ) {
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SettingsOption(
                                     selected = draft.statusBarVisible,
                                     text = stringResource(Res.string.label_setting_show),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(statusBarVisible = true)) },
                                 )
                                 SettingsOption(
                                     selected = !draft.statusBarVisible,
                                     text = stringResource(Res.string.label_setting_hide),
-                                    palette = palette,
                                     onClick = { onDraftChange(draft.copy(statusBarVisible = false)) },
                                 )
                             }
@@ -241,7 +223,6 @@ internal fun SettingsDialog(
 
                         SettingsSection(
                             title = stringResource(Res.string.label_ui_scale),
-                            palette = palette,
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(
@@ -251,14 +232,13 @@ internal fun SettingsDialog(
                                     Text(
                                         text = "${draft.uiScale}%",
                                         fontSize = 11.sp,
-                                        color = palette.foreground,
+                                        color = LocalOnyxPalette.current.foreground,
                                         modifier = Modifier.width(52.dp),
                                     )
                                     SettingsScaleSlider(
                                         value = draft.uiScale,
                                         min = 75,
                                         max = 200,
-                                        palette = palette,
                                         onValueChange = { value -> onDraftChange(draft.copy(uiScale = value)) },
                                     )
                                 }
@@ -269,12 +249,10 @@ internal fun SettingsDialog(
                 actions = {
                     DialogTextButton(
                         text = stringResource(Res.string.action_close_menu),
-                        palette = palette,
                         onClick = onDismiss,
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_apply),
-                        palette = palette,
                         emphasized = true,
                         onClick = onConfirm,
                     )
@@ -287,14 +265,13 @@ internal fun SettingsDialog(
 @Composable
 internal fun SettingsSection(
     title: String,
-    palette: OnyxPalette,
     content: @Composable () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = title,
             fontSize = 12.sp,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
             fontWeight = FontWeight.Medium,
         )
         content()
@@ -305,21 +282,25 @@ internal fun SettingsSection(
 internal fun SettingsOption(
     selected: Boolean,
     text: String,
-    palette: OnyxPalette,
     onClick: () -> Unit,
 ) {
-    val background = if (selected) palette.titleBarActiveBackground else palette.surface
+    val background =
+        if (selected) LocalOnyxPalette.current.titleBarActiveBackground else LocalOnyxPalette.current.surface
     Box(
         modifier = Modifier
             .background(background, RoundedCornerShape(4.dp))
-            .border(1.dp, if (selected) palette.accent else palette.outlineVariant, RoundedCornerShape(4.dp))
+            .border(
+                1.dp,
+                if (selected) LocalOnyxPalette.current.accent else LocalOnyxPalette.current.outlineVariant,
+                RoundedCornerShape(4.dp)
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
-            color = if (selected) Color.White else palette.foreground,
+            color = if (selected) Color.White else LocalOnyxPalette.current.foreground,
             fontSize = 11.sp,
         )
     }
@@ -330,7 +311,6 @@ internal fun SettingsScaleSlider(
     value: Int,
     min: Int,
     max: Int,
-    palette: OnyxPalette,
     onValueChange: (Int) -> Unit,
 ) {
     val clampedValue = value.coerceIn(min, max)
@@ -362,19 +342,19 @@ internal fun SettingsScaleSlider(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(3.dp)
-                .background(palette.outlineVariant, RoundedCornerShape(1.dp)),
+                .background(LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(1.dp)),
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth(fraction)
                 .height(3.dp)
-                .background(palette.accent, RoundedCornerShape(1.dp)),
+                .background(LocalOnyxPalette.current.accent, RoundedCornerShape(1.dp)),
         )
         Box(
             modifier = Modifier
                 .offset(x = (fraction * (sliderWidthDp - 8)).dp)
                 .size(8.dp)
-                .background(palette.accent, RoundedCornerShape(4.dp)),
+                .background(LocalOnyxPalette.current.accent, RoundedCornerShape(4.dp)),
         )
     }
 }
@@ -382,7 +362,6 @@ internal fun SettingsScaleSlider(
 @Composable
 internal fun ConfirmationDialog(
     state: RootDialogState.DeleteSelectionConfirmation,
-    palette: OnyxPalette,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -417,24 +396,21 @@ internal fun ConfirmationDialog(
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             DialogFrame(
-                palette = palette,
                 title = title,
                 body = {
                     Text(
                         text = message,
                         fontSize = 12.sp,
-                        color = palette.foreground,
+                        color = LocalOnyxPalette.current.foreground,
                     )
                 },
                 actions = {
                     DialogTextButton(
                         text = stringResource(Res.string.action_close_menu),
-                        palette = palette,
                         onClick = onDismiss,
                     )
                     DialogTextButton(
                         text = confirmLabel,
-                        palette = palette,
                         emphasized = true,
                         destructive = true,
                         onClick = onConfirm,
@@ -448,7 +424,6 @@ internal fun ConfirmationDialog(
 @Composable
 internal fun ConflictResolutionDialog(
     state: RootDialogState.ConflictResolution,
-    palette: OnyxPalette,
     onResolve: (TransferConflictStrategy, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -468,14 +443,13 @@ internal fun ConflictResolutionDialog(
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             DialogFrame(
-                palette = palette,
                 title = stringResource(Res.string.label_conflict_resolution_title, state.currentIndex, state.total),
                 body = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             text = operationLabel,
                             fontSize = 11.sp,
-                            color = palette.mutedForeground,
+                            color = LocalOnyxPalette.current.mutedForeground,
                         )
                         Text(
                             text = stringResource(
@@ -484,12 +458,11 @@ internal fun ConflictResolutionDialog(
                                 state.targetLocation,
                             ),
                             fontSize = 12.sp,
-                            color = palette.foreground,
+                            color = LocalOnyxPalette.current.foreground,
                         )
                         ApplyToAllToggle(
                             checked = applyToAll,
                             text = stringResource(Res.string.message_apply_to_remaining_conflicts),
-                            palette = palette,
                             onToggle = { applyToAll = !applyToAll },
                         )
                     }
@@ -497,22 +470,18 @@ internal fun ConflictResolutionDialog(
                 actions = {
                     DialogTextButton(
                         text = stringResource(Res.string.action_close_menu),
-                        palette = palette,
                         onClick = onDismiss,
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_skip),
-                        palette = palette,
                         onClick = { onResolve(TransferConflictStrategy.SKIP, applyToAll) },
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_keep_both),
-                        palette = palette,
                         onClick = { onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll) },
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_overwrite),
-                        palette = palette,
                         emphasized = true,
                         onClick = { onResolve(TransferConflictStrategy.OVERWRITE, applyToAll) },
                     )
@@ -525,7 +494,6 @@ internal fun ConflictResolutionDialog(
 @Composable
 internal fun CreateDirectoriesDialog(
     state: RootDialogState.CreateDirectories,
-    palette: OnyxPalette,
     onDraftChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
@@ -543,7 +511,7 @@ internal fun CreateDirectoriesDialog(
     val inputTextStyle = TextStyle(
         fontSize = 12.sp,
         lineHeight = 17.sp,
-        color = palette.foreground,
+        color = LocalOnyxPalette.current.foreground,
         textAlign = TextAlign.Start,
         textDirection = TextDirection.Ltr,
         fontFamily = FontFamily.Monospace,
@@ -569,19 +537,18 @@ internal fun CreateDirectoriesDialog(
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             DialogFrame(
-                palette = palette,
                 title = stringResource(Res.string.label_create_directories_title),
                 body = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             text = state.location,
                             fontSize = 11.sp,
-                            color = palette.mutedForeground,
+                            color = LocalOnyxPalette.current.mutedForeground,
                         )
                         Text(
                             text = stringResource(Res.string.label_create_directories_description),
                             fontSize = 12.sp,
-                            color = palette.foreground,
+                            color = LocalOnyxPalette.current.foreground,
                         )
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             BasicTextField(
@@ -612,14 +579,21 @@ internal fun CreateDirectoriesDialog(
                                         }
                                     },
                                 textStyle = inputTextStyle,
-                                cursorBrush = SolidColor(palette.accent),
+                                cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
                                 decorationBox = { innerTextField ->
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .heightIn(min = 170.dp, max = 220.dp)
-                                            .background(palette.inputBackground, RoundedCornerShape(6.dp))
-                                            .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+                                            .background(
+                                                LocalOnyxPalette.current.inputBackground,
+                                                RoundedCornerShape(6.dp)
+                                            )
+                                            .border(
+                                                1.dp,
+                                                LocalOnyxPalette.current.outlineVariant,
+                                                RoundedCornerShape(6.dp)
+                                            )
                                             .padding(horizontal = 10.dp, vertical = 9.dp)
                                             .verticalScroll(inputScrollState),
                                     ) {
@@ -628,7 +602,7 @@ internal fun CreateDirectoriesDialog(
                                                 text = stringResource(Res.string.label_create_directories_placeholder),
                                                 fontSize = 12.sp,
                                                 lineHeight = 17.sp,
-                                                color = palette.disabledForeground,
+                                                color = LocalOnyxPalette.current.disabledForeground,
                                                 fontFamily = FontFamily.Monospace,
                                             )
                                         }
@@ -640,7 +614,7 @@ internal fun CreateDirectoriesDialog(
                         Text(
                             text = stringResource(Res.string.label_create_directories_shortcuts),
                             fontSize = 11.sp,
-                            color = palette.mutedForeground,
+                            color = LocalOnyxPalette.current.mutedForeground,
                         )
                         state.error?.let { error ->
                             Text(
@@ -657,12 +631,10 @@ internal fun CreateDirectoriesDialog(
                 actions = {
                     DialogTextButton(
                         text = stringResource(Res.string.action_close_menu),
-                        palette = palette,
                         onClick = onDismiss,
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_new_directory),
-                        palette = palette,
                         emphasized = true,
                         onClick = onConfirm,
                     )
@@ -674,7 +646,6 @@ internal fun CreateDirectoriesDialog(
 
 @Composable
 internal fun DialogFrame(
-    palette: OnyxPalette,
     title: String,
     body: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit,
@@ -682,7 +653,7 @@ internal fun DialogFrame(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(palette.appBackground)
+            .background(LocalOnyxPalette.current.appBackground)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -690,7 +661,7 @@ internal fun DialogFrame(
             text = title,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
         )
         Box(modifier = Modifier.weight(1f, fill = true)) {
             body()
@@ -708,17 +679,16 @@ internal fun DialogFrame(
 @Composable
 internal fun DialogTextButton(
     text: String,
-    palette: OnyxPalette,
     emphasized: Boolean = false,
     destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
     val background = when {
         destructive && emphasized -> Color(0xFFD74E4E)
-        emphasized -> palette.accent
-        else -> palette.surfaceVariant
+        emphasized -> LocalOnyxPalette.current.accent
+        else -> LocalOnyxPalette.current.surfaceVariant
     }
-    val contentColor = if (emphasized) Color.White else palette.foreground
+    val contentColor = if (emphasized) Color.White else LocalOnyxPalette.current.foreground
     Box(
         modifier = Modifier
             .padding(start = 8.dp)
@@ -739,7 +709,6 @@ internal fun DialogTextButton(
 internal fun ApplyToAllToggle(
     checked: Boolean,
     text: String,
-    palette: OnyxPalette,
     onToggle: () -> Unit,
 ) {
     Row(
@@ -752,8 +721,11 @@ internal fun ApplyToAllToggle(
         Box(
             modifier = Modifier
                 .size(16.dp)
-                .border(1.dp, palette.outline, RoundedCornerShape(4.dp))
-                .background(if (checked) palette.accent else Color.Transparent, RoundedCornerShape(4.dp)),
+                .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
+                .background(
+                    if (checked) LocalOnyxPalette.current.accent else Color.Transparent,
+                    RoundedCornerShape(4.dp)
+                ),
             contentAlignment = Alignment.Center,
         ) {
             if (checked) {
@@ -763,7 +735,7 @@ internal fun ApplyToAllToggle(
         Text(
             text = text,
             fontSize = 12.sp,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
         )
     }
 }

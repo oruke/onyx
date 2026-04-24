@@ -48,8 +48,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.FileTransferOperation
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.LocalTooltipController
-import com.oruke.onyx.ui.theme.OnyxPalette
 import com.oruke.onyx.ui.theme.PaneDividerHitSlop
 import com.oruke.onyx.ui.theme.TooltipRequest
 import com.oruke.onyx.ui.theme.centerBottom
@@ -74,7 +74,6 @@ import kotlin.math.roundToInt
 @Composable
 internal fun OnyxTooltip(
     text: String,
-    palette: OnyxPalette,
     enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
@@ -131,7 +130,6 @@ internal fun OnyxTooltipOverlay(
     request: TooltipRequest,
     appSize: IntSize,
     appWindowOrigin: IntOffset,
-    palette: OnyxPalette,
 ) {
     var tooltipSize by remember(request.text) { mutableStateOf(IntSize.Zero) }
     Text(
@@ -140,10 +138,10 @@ internal fun OnyxTooltipOverlay(
             .offset { tooltipOffset(request.pointerPosition, appWindowOrigin, appSize, tooltipSize) }
             .onSizeChanged { tooltipSize = it }
             .widthIn(max = 260.dp)
-            .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
-            .background(palette.floatingSurface, RoundedCornerShape(4.dp))
+            .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
+            .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp),
-        color = palette.foreground,
+        color = LocalOnyxPalette.current.foreground,
         fontSize = 11.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
@@ -156,7 +154,6 @@ internal fun FileDragOverlay(
     pointerWindowPosition: IntOffset?,
     targetDirectoryLocation: String?,
     appWindowOrigin: IntOffset,
-    palette: OnyxPalette,
 ) {
     val alpha by animateFloatAsState(
         targetValue = if (pointerWindowPosition != null) 1f else 0f,
@@ -184,8 +181,8 @@ internal fun FileDragOverlay(
                 )
             }
             .alpha(alpha)
-            .border(1.dp, palette.outline, RoundedCornerShape(4.dp))
-            .background(palette.floatingSurface, RoundedCornerShape(4.dp))
+            .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
+            .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -198,7 +195,7 @@ internal fun FileDragOverlay(
         Text(
             text = label,
             modifier = Modifier.widthIn(max = 320.dp),
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -211,7 +208,6 @@ internal fun FileDragOverlay(
 internal fun LayoutIconButton(
     selected: Boolean,
     onClick: () -> Unit,
-    palette: OnyxPalette,
     tooltip: String,
     content: @Composable () -> Unit,
 ) {
@@ -219,13 +215,13 @@ internal fun LayoutIconButton(
     val isHovered by interactionSource.collectIsHoveredAsState()
     val isPressed by interactionSource.collectIsPressedAsState()
     val background = when {
-        selected -> palette.titleBarActiveBackground
-        isPressed -> palette.titleBarPressedBackground
-        isHovered -> palette.titleBarHoverBackground
+        selected -> LocalOnyxPalette.current.titleBarActiveBackground
+        isPressed -> LocalOnyxPalette.current.titleBarPressedBackground
+        isHovered -> LocalOnyxPalette.current.titleBarHoverBackground
         else -> Color.Transparent
     }
 
-    OnyxTooltip(text = tooltip, palette = palette) {
+    OnyxTooltip(text = tooltip) {
         Box(
             modifier = Modifier
                 .hoverable(interactionSource)
@@ -242,7 +238,6 @@ internal fun LayoutIconButton(
 @Composable
 internal fun TitleBarIconButton(
     onClick: () -> Unit,
-    palette: OnyxPalette,
     tooltip: String,
     content: @Composable () -> Unit,
 ) {
@@ -250,14 +245,14 @@ internal fun TitleBarIconButton(
     val isHovered by interactionSource.collectIsHoveredAsState()
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    OnyxTooltip(text = tooltip, palette = palette) {
+    OnyxTooltip(text = tooltip) {
         Box(
             modifier = Modifier
                 .hoverable(interactionSource)
                 .background(
                     when {
-                        isPressed -> palette.titleBarPressedBackground
-                        isHovered -> palette.titleBarHoverBackground
+                        isPressed -> LocalOnyxPalette.current.titleBarPressedBackground
+                        isHovered -> LocalOnyxPalette.current.titleBarHoverBackground
                         else -> Color.Transparent
                     },
                     RoundedCornerShape(4.dp),
@@ -274,7 +269,6 @@ internal fun TitleBarIconButton(
 @Composable
 internal fun ResizablePaneDivider(
     orientation: Orientation,
-    palette: OnyxPalette,
     onDragDelta: (Float) -> Unit,
 ) {
     val modifier = when (orientation) {
@@ -300,7 +294,7 @@ internal fun ResizablePaneDivider(
     }
 
     Box(
-        modifier = modifier.background(palette.appBackground),
+        modifier = modifier.background(LocalOnyxPalette.current.appBackground),
         contentAlignment = Alignment.Center,
     ) {
         when (orientation) {
@@ -321,7 +315,6 @@ internal fun ResizablePaneDivider(
 internal fun ToolbarIconButton(
     enabled: Boolean,
     onClick: () -> Unit,
-    palette: OnyxPalette,
     tooltip: String,
     selected: Boolean = false,
     content: @Composable () -> Unit,
@@ -332,13 +325,13 @@ internal fun ToolbarIconButton(
 
     val background = when {
         !enabled -> Color.Transparent
-        selected -> palette.titleBarActiveBackground
-        isPressed -> palette.titleBarPressedBackground
-        isHovered -> palette.titleBarHoverBackground
+        selected -> LocalOnyxPalette.current.titleBarActiveBackground
+        isPressed -> LocalOnyxPalette.current.titleBarPressedBackground
+        isHovered -> LocalOnyxPalette.current.titleBarHoverBackground
         else -> Color.Transparent
     }
 
-    OnyxTooltip(text = tooltip, palette = palette, enabled = enabled) {
+    OnyxTooltip(text = tooltip, enabled = enabled) {
         Box(
             modifier = Modifier
                 .hoverable(enabled = enabled, interactionSource = interactionSource)

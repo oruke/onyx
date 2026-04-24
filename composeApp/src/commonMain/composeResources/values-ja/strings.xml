@@ -142,4 +142,18 @@
 
     <string name="label_onyx_bootstrap">プロ向けデスクトップファイルマネージャー</string>
     <string name="label_hint_click_folder">フォルダーを開く</string>
+    <string name="msg_copy_items">%1$d 個のアイテムをコピー</string>
+    <string name="msg_move_items">%1$d 個のアイテムを移動</string>
+    <string name="msg_copied_items">%1$d 個のアイテムを %2$s にコピーしました</string>
+    <string name="msg_moved_items">%1$d 個のアイテムを %2$s に移動しました</string>
+    <string name="msg_copy_failed">コピーに失敗しました</string>
+    <string name="msg_move_failed">移動に失敗しました</string>
+    <string name="msg_delete_items">%1$d 個のアイテムを削除</string>
+    <string name="msg_deleted_items">%1$d 個のアイテムを削除しました</string>
+    <string name="msg_delete_failed">削除に失敗しました</string>
+    <string name="msg_create_folders">%1$d 個のフォルダーを作成</string>
+    <string name="msg_created_folders">%1$d 個のフォルダーを作成しました</string>
+    <string name="msg_create_folder_failed">フォルダーの作成に失敗しました</string>
+    <string name="msg_cancelled">キャンセルされました</string>
+    <string name="msg_string_literal">%1$s</string>
 </resources>

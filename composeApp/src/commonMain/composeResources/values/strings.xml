@@ -142,4 +142,18 @@
 
     <string name="label_onyx_bootstrap">Professional desktop file manager</string>
     <string name="label_hint_click_folder">Open folder</string>
+    <string name="msg_copy_items">Copy %1$d item(s)</string>
+    <string name="msg_move_items">Move %1$d item(s)</string>
+    <string name="msg_copied_items">Copied %1$d item(s) to %2$s</string>
+    <string name="msg_moved_items">Moved %1$d item(s) to %2$s</string>
+    <string name="msg_copy_failed">Copy failed</string>
+    <string name="msg_move_failed">Move failed</string>
+    <string name="msg_delete_items">Delete %1$d item(s)</string>
+    <string name="msg_deleted_items">Deleted %1$d item(s)</string>
+    <string name="msg_delete_failed">Delete failed</string>
+    <string name="msg_create_folders">Create %1$d folder(s)</string>
+    <string name="msg_created_folders">Created %1$d folder(s)</string>
+    <string name="msg_create_folder_failed">Create directory failed</string>
+    <string name="msg_cancelled">Cancelled</string>
+    <string name="msg_string_literal">%1$s</string>
 </resources>

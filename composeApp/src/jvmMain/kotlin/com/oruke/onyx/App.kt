@@ -51,8 +51,8 @@ import com.oruke.onyx.ui.TitleBarContent
 import com.oruke.onyx.ui.theme.FileDragState
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.LocalTooltipController
-import com.oruke.onyx.ui.theme.OnyxPalette
 import com.oruke.onyx.ui.theme.TabDropTarget
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.TooltipController
@@ -93,7 +93,8 @@ fun DecoratedWindowScope.WindowApp() {
                     titleBarTooltipRequest = null
                 }
             },
-        )
+        ),
+        LocalOnyxPalette provides palette
     ) {
         TitleBar(modifier = Modifier.newFullscreenControls()) { _ ->
             TitleBarContent(
@@ -109,17 +110,15 @@ fun DecoratedWindowScope.WindowApp() {
                 },
                 showPreviewPane = state.showPreviewPane,
                 onTogglePreviewPane = rootComponent::togglePreviewPane,
-                palette = palette,
             )
         }
-    }
 
-    AppContent(
-        rootComponent = rootComponent,
-        state = state,
-        palette = palette,
-        externalTooltipRequest = titleBarTooltipRequest,
-    )
+        AppContent(
+            rootComponent = rootComponent,
+            state = state,
+            externalTooltipRequest = titleBarTooltipRequest,
+        )
+    }
 }
 
 @Composable
@@ -128,18 +127,18 @@ fun App() {
     val state by rootComponent.state.collectAsState()
     val palette = rememberOnyxPalette()
 
-    AppContent(
-        rootComponent = rootComponent,
-        state = state,
-        palette = palette,
-    )
+    CompositionLocalProvider(LocalOnyxPalette provides palette) {
+        AppContent(
+            rootComponent = rootComponent,
+            state = state,
+        )
+    }
 }
 
 @Composable
 private fun AppContent(
     rootComponent: RootComponent,
     state: RootState,
-    palette: OnyxPalette,
     externalTooltipRequest: TooltipRequest? = null,
 ) {
     val tabDropZones = remember { mutableStateMapOf<PaneId, TabDropZone>() }
@@ -258,7 +257,6 @@ private fun AppContent(
     if (taskCenterVisible && state.tasks.isNotEmpty()) {
         TaskCenterWindow(
             tasks = state.tasks,
-            palette = palette,
             onDismissTask = rootComponent::dismissTask,
             onCancelTask = rootComponent::cancelTask,
             onClearAllTasks = rootComponent::clearAllTasks,
@@ -270,7 +268,6 @@ private fun AppContent(
         is RootDialogState.DeleteSelectionConfirmation -> {
             ConfirmationDialog(
                 state = dialogState,
-                palette = palette,
                 onConfirm = rootComponent::confirmDialog,
                 onDismiss = rootComponent::dismissDialog,
             )
@@ -279,7 +276,6 @@ private fun AppContent(
         is RootDialogState.ConflictResolution -> {
             ConflictResolutionDialog(
                 state = dialogState,
-                palette = palette,
                 onResolve = rootComponent::resolveConflict,
                 onDismiss = rootComponent::dismissDialog,
             )
@@ -288,7 +284,6 @@ private fun AppContent(
         is RootDialogState.CreateDirectories -> {
             CreateDirectoriesDialog(
                 state = dialogState,
-                palette = palette,
                 onDraftChange = rootComponent::updateCreateDirectoriesDraft,
                 onConfirm = rootComponent::confirmDialog,
                 onDismiss = rootComponent::dismissDialog,
@@ -298,7 +293,6 @@ private fun AppContent(
         is RootDialogState.Settings -> {
             SettingsDialog(
                 state = dialogState,
-                palette = palette,
                 onDraftChange = rootComponent::updateSettingsDraft,
                 onConfirm = rootComponent::confirmDialog,
                 onDismiss = rootComponent::dismissDialog,
@@ -330,7 +324,7 @@ private fun AppContent(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(palette.appBackground),
+                        .background(LocalOnyxPalette.current.appBackground),
                 ) {
                     val activePaneState = state.paneState(state.activePane)
                     // ── Content area ────────────────────────────────────────────
@@ -345,7 +339,6 @@ private fun AppContent(
                                 favoriteLocations = state.settings.favoriteLocations,
                                 recentLocations = state.settings.recentLocations,
                                 treeState = state.sidebarTreeState,
-                                palette = palette,
                                 onActivate = {
                                     when (state.activePane) {
                                         PaneId.PRIMARY -> rootComponent.activatePane(PaneId.PRIMARY)
@@ -398,7 +391,6 @@ private fun AppContent(
                                     onFileDragEnd = onFileDragEnd,
                                     onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                     fileDropTarget = fileDropTarget,
-                                    palette = palette,
                                 )
                             }
 
@@ -446,11 +438,9 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
-                                        palette = palette,
                                     )
                                     ResizablePaneDivider(
                                         orientation = Orientation.Vertical,
-                                        palette = palette,
                                         onDragDelta = { delta ->
                                             val width = contentSize.width.toFloat().coerceAtLeast(1f)
                                             rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width)
@@ -492,7 +482,6 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
-                                        palette = palette,
                                     )
                                 }
                             }
@@ -541,11 +530,9 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
-                                        palette = palette,
                                     )
                                     ResizablePaneDivider(
                                         orientation = Orientation.Horizontal,
-                                        palette = palette,
                                         onDragDelta = { delta ->
                                             val height = contentSize.height.toFloat().coerceAtLeast(1f)
                                             rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height)
@@ -587,7 +574,6 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
-                                        palette = palette,
                                     )
                                 }
                             }
@@ -603,7 +589,6 @@ private fun AppContent(
                             
                             PreviewPane(
                                 selectedEntry = selectedEntry,
-                                palette = palette,
                                 modifier = Modifier.width(300.dp).fillMaxHeight()
                             )
                         }
@@ -624,7 +609,6 @@ private fun AppContent(
                                     PaneId.SECONDARY -> rootComponent.secondaryPane.setViewMode(mode)
                                 }
                             },
-                            palette = palette,
                         )
                     }
                 }
@@ -634,7 +618,6 @@ private fun AppContent(
                         request = request,
                         appSize = appContentSize,
                         appWindowOrigin = appWindowOrigin,
-                        palette = palette,
                     )
                 }
                 val currentFileDragState = fileDragState
@@ -644,7 +627,6 @@ private fun AppContent(
                         pointerWindowPosition = fileDragPosition,
                         targetDirectoryLocation = fileDropTarget?.targetDirectoryLocation,
                         appWindowOrigin = appWindowOrigin,
-                        palette = palette,
                     )
                 }
             }

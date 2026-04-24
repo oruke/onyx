@@ -23,8 +23,9 @@ import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.orEmpty
+import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_menu
 import onyx.composeapp.generated.resources.action_layout_dual_horizontal
@@ -46,24 +47,23 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 @Composable
 internal fun OperationFeedbackBar(
     feedback: PaneOperationFeedback,
-    palette: OnyxPalette,
     onDismiss: () -> Unit,
 ) {
     val text = when (feedback.kind) {
         PaneOperationFeedbackKind.OPEN_FAILED ->
-            stringResource(Res.string.label_feedback_open_failed, feedback.detail.orEmpty())
+            stringResource(Res.string.label_feedback_open_failed, feedback.detail?.resolve().orEmpty())
 
         PaneOperationFeedbackKind.RENAME_FAILED ->
-            stringResource(Res.string.label_feedback_rename_failed, feedback.detail.orEmpty())
+            stringResource(Res.string.label_feedback_rename_failed, feedback.detail?.resolve().orEmpty())
 
         PaneOperationFeedbackKind.CREATE_FILE_FAILED ->
-            stringResource(Res.string.label_feedback_create_file_failed, feedback.detail.orEmpty())
+            stringResource(Res.string.label_feedback_create_file_failed, feedback.detail?.resolve().orEmpty())
 
         PaneOperationFeedbackKind.CREATE_DIRECTORY_FAILED ->
-            stringResource(Res.string.label_feedback_create_directory_failed, feedback.detail.orEmpty())
+            stringResource(Res.string.label_feedback_create_directory_failed, feedback.detail?.resolve().orEmpty())
 
         PaneOperationFeedbackKind.COPY_PATH_FAILED ->
-            stringResource(Res.string.label_feedback_copy_path_failed, feedback.detail.orEmpty())
+            stringResource(Res.string.label_feedback_copy_path_failed, feedback.detail?.resolve().orEmpty())
     }
     Row(
         modifier = Modifier
@@ -77,7 +77,7 @@ internal fun OperationFeedbackBar(
             text = text,
             modifier = Modifier.weight(1f),
             fontSize = 11.sp,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
@@ -108,7 +108,6 @@ internal fun TitleBarContent(
     onToggleSidebar: () -> Unit,
     showPreviewPane: Boolean,
     onTogglePreviewPane: () -> Unit,
-    palette: OnyxPalette,
 ) {
     // Jewel DecoratedWindow 的标题栏内容区域
     // 注意：DecoratedWindow 会自动处理窗口拖拽和系统按钮区域
@@ -123,7 +122,7 @@ internal fun TitleBarContent(
             text = stringResource(Res.string.app_name),
             fontWeight = FontWeight.SemiBold,
             fontSize = 13.sp,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
         )
 
         Spacer(modifier = Modifier.width(14.dp))
@@ -140,12 +139,11 @@ internal fun TitleBarContent(
                 Text(
                     text = "$uiScale%",
                     fontSize = 11.sp,
-                    color = palette.mutedForeground,
+                    color = LocalOnyxPalette.current.mutedForeground,
                 )
                 ZoomSlider(
                     value = uiScale,
                     onValueChange = onUiScaleChange,
-                    palette = palette,
                 )
             }
         }
@@ -157,7 +155,6 @@ internal fun TitleBarContent(
             LayoutIconButton(
                 selected = layoutMode == PaneLayoutMode.SINGLE,
                 onClick = { rootComponent.setLayoutMode(PaneLayoutMode.SINGLE) },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_layout_single),
             ) {
                 Icon(
@@ -168,7 +165,6 @@ internal fun TitleBarContent(
             LayoutIconButton(
                 selected = layoutMode == PaneLayoutMode.DUAL_VERTICAL,
                 onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_VERTICAL) },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_layout_dual_vertical),
             ) {
                 Icon(
@@ -179,7 +175,6 @@ internal fun TitleBarContent(
             LayoutIconButton(
                 selected = layoutMode == PaneLayoutMode.DUAL_HORIZONTAL,
                 onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_HORIZONTAL) },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_layout_dual_horizontal),
             ) {
                 Icon(
@@ -192,7 +187,6 @@ internal fun TitleBarContent(
 
             TitleBarIconButton(
                 onClick = onToggleSidebar,
-                palette = palette,
                 tooltip = stringResource(Res.string.action_toggle_sidebar),
             ) {
                 Icon(
@@ -203,7 +197,6 @@ internal fun TitleBarContent(
 
             TitleBarIconButton(
                 onClick = onTogglePreviewPane,
-                palette = palette,
                 tooltip = "Toggle Preview Pane",
             ) {
                 Icon(
@@ -214,7 +207,6 @@ internal fun TitleBarContent(
 
             TitleBarIconButton(
                 onClick = rootComponent::openSettings,
-                palette = palette,
                 tooltip = stringResource(Res.string.action_open_settings),
             ) {
                 Icon(

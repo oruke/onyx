@@ -12,6 +12,7 @@ import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.DeleteMode
+import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
@@ -31,6 +32,21 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.msg_cancelled
+import onyx.composeapp.generated.resources.msg_copied_items
+import onyx.composeapp.generated.resources.msg_copy_failed
+import onyx.composeapp.generated.resources.msg_copy_items
+import onyx.composeapp.generated.resources.msg_create_folder_failed
+import onyx.composeapp.generated.resources.msg_create_folders
+import onyx.composeapp.generated.resources.msg_created_folders
+import onyx.composeapp.generated.resources.msg_delete_failed
+import onyx.composeapp.generated.resources.msg_delete_items
+import onyx.composeapp.generated.resources.msg_deleted_items
+import onyx.composeapp.generated.resources.msg_move_failed
+import onyx.composeapp.generated.resources.msg_move_items
+import onyx.composeapp.generated.resources.msg_moved_items
+import onyx.composeapp.generated.resources.msg_string_literal
 import java.nio.file.FileSystems
 import java.nio.file.Path
 import java.util.*
@@ -518,11 +534,11 @@ class DefaultRootComponent(
             BackgroundTask(
                 id = taskId,
                 title = when (operation) {
-                    FileTransferOperation.COPY -> "Copy ${entries.size} item(s)"
-                    FileTransferOperation.MOVE -> "Move ${entries.size} item(s)"
+                    FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_items, entries.size)
+                    FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_items, entries.size)
                 },
                 status = BackgroundTaskStatus.QUEUED,
-                detail = targetDirectoryLocation,
+                detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
                 progress = 0f,
             )
         )
@@ -532,9 +548,12 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = buildTransferTaskDetail(
-                        entries = entries,
-                        targetLocation = targetDirectoryLocation,
+                    detail = I18nMessage(
+                        Res.string.msg_string_literal,
+                        buildTransferTaskDetail(
+                            entries = entries,
+                            targetLocation = targetDirectoryLocation,
+                        )
                     ),
                     progress = 0f,
                 )
@@ -563,7 +582,10 @@ class DefaultRootComponent(
                     updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
-                        detail = "${entry.name} -> $targetDirectoryLocation",
+                        detail = I18nMessage(
+                            Res.string.msg_string_literal,
+                            "${entry.name} -> $targetDirectoryLocation"
+                        ),
                         progress = (index + 1).toFloat() / entries.size,
                     )
                 }
@@ -574,10 +596,10 @@ class DefaultRootComponent(
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = when (operation) {
                         FileTransferOperation.COPY ->
-                            "Copied ${entries.size} item(s) to $targetDirectoryLocation"
+                            I18nMessage(Res.string.msg_copied_items, entries.size, targetDirectoryLocation)
 
                         FileTransferOperation.MOVE ->
-                            "Moved ${entries.size} item(s) to $targetDirectoryLocation"
+                            I18nMessage(Res.string.msg_moved_items, entries.size, targetDirectoryLocation)
                     },
                     progress = 1f,
                 )
@@ -590,7 +612,7 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = "Cancelled",
+                    detail = I18nMessage(Res.string.msg_cancelled),
                     progress = null,
                 )
                 refreshAllPanes()
@@ -599,9 +621,10 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message ?: when (operation) {
-                        FileTransferOperation.COPY -> "Copy failed"
-                        FileTransferOperation.MOVE -> "Move failed"
+                    detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
+                        ?: when (operation) {
+                            FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_failed)
+                            FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_failed)
                     },
                     progress = null,
                 )
@@ -641,9 +664,9 @@ class DefaultRootComponent(
         appendTask(
             BackgroundTask(
                 id = taskId,
-                title = "Delete ${selectedEntries.size} item(s)",
+                title = I18nMessage(Res.string.msg_delete_items, selectedEntries.size),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = paneState(request.paneId).location,
+                detail = I18nMessage(Res.string.msg_string_literal, paneState(request.paneId).location),
                 progress = 0f,
             )
         )
@@ -653,7 +676,7 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = buildTaskDetail(selectedEntries),
+                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(selectedEntries)),
                     progress = 0f,
                 )
 
@@ -667,7 +690,7 @@ class DefaultRootComponent(
                     updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
-                        detail = entry.name,
+                        detail = I18nMessage(Res.string.msg_string_literal, entry.name),
                         progress = (index + 1).toFloat() / selectedEntries.size,
                     )
                 }
@@ -676,7 +699,7 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = "Deleted ${selectedEntries.size} item(s)",
+                    detail = I18nMessage(Res.string.msg_deleted_items, selectedEntries.size),
                     progress = 1f,
                 )
                 refreshAllPanes()
@@ -685,7 +708,7 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = "Cancelled",
+                    detail = I18nMessage(Res.string.msg_cancelled),
                     progress = null,
                 )
                 refreshAllPanes()
@@ -694,7 +717,8 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message ?: "Delete failed",
+                    detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
+                        ?: I18nMessage(Res.string.msg_delete_failed),
                     progress = null,
                 )
                 refreshAllPanes()
@@ -719,7 +743,7 @@ class DefaultRootComponent(
     }
 
     private suspend fun restorePersistedState() {
-        var restoreError: String? = null
+        var restoreError: I18nMessage? = null
         settingsRepository.loadSettings().fold(
             onSuccess = { loadedSettings ->
                 if (loadedSettings != null) {
@@ -729,7 +753,10 @@ class DefaultRootComponent(
                 }
             },
             onFailure = { failure ->
-                restoreError = failure.message ?: "Failed to load settings"
+                restoreError = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) } ?: I18nMessage(
+                    Res.string.msg_string_literal,
+                    "Failed to load settings"
+                )
             },
         )
 
@@ -743,7 +770,8 @@ class DefaultRootComponent(
                 }
             },
             onFailure = { failure ->
-                restoreError = restoreError ?: failure.message ?: "Failed to restore session"
+                restoreError = restoreError ?: failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
+                        ?: I18nMessage(Res.string.msg_string_literal, "Failed to restore session")
                 layoutMode.value = settings.value.defaultLayoutMode
                 applyDefaultViewMode()
             },
@@ -752,7 +780,7 @@ class DefaultRootComponent(
         sessionRestoreState.value = if (restoreError == null) {
             SessionRestoreState.Ready
         } else {
-            SessionRestoreState.Failed(restoreError)
+            SessionRestoreState.Failed(restoreError!!)
         }
         persistenceReady = true
         recordRecentLocations(
@@ -812,9 +840,9 @@ class DefaultRootComponent(
         appendTask(
             BackgroundTask(
                 id = taskId,
-                title = "Create ${paths.size} folder(s)",
+                title = I18nMessage(Res.string.msg_create_folders, paths.size),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = parentLocation,
+                detail = I18nMessage(Res.string.msg_string_literal, parentLocation),
                 progress = 0f,
             )
         )
@@ -824,7 +852,10 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = paths.joinToString(limit = 3, truncated = " ..."),
+                    detail = I18nMessage(
+                        Res.string.msg_string_literal,
+                        paths.joinToString(limit = 3, truncated = " ...")
+                    ),
                     progress = 0f,
                 )
                 paths.forEachIndexed { index, path ->
@@ -836,7 +867,7 @@ class DefaultRootComponent(
                     updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
-                        detail = path,
+                        detail = I18nMessage(Res.string.msg_string_literal, path),
                         progress = (index + 1).toFloat() / paths.size,
                     )
                 }
@@ -844,7 +875,7 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = "Created ${paths.size} folder(s)",
+                    detail = I18nMessage(Res.string.msg_created_folders, paths.size),
                     progress = 1f,
                 )
                 paneComponent(paneId).refresh()
@@ -853,7 +884,7 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = "Cancelled",
+                    detail = I18nMessage(Res.string.msg_cancelled),
                     progress = null,
                 )
                 paneComponent(paneId).refresh()
@@ -862,7 +893,8 @@ class DefaultRootComponent(
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message ?: "Create directory failed",
+                    detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
+                        ?: I18nMessage(Res.string.msg_create_folder_failed),
                     progress = null,
                 )
                 paneComponent(paneId).refresh()
@@ -987,7 +1019,7 @@ class DefaultRootComponent(
     private fun updateTask(
         taskId: String,
         status: BackgroundTaskStatus,
-        detail: String,
+        detail: I18nMessage,
         progress: Float? = null,
     ) {
         tasks.value = tasks.value.map { task ->

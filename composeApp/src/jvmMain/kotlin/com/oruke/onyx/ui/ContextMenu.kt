@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_menu
 import onyx.composeapp.generated.resources.action_copy
@@ -75,7 +75,6 @@ internal fun BoxScope.PaneContextMenu(
     onPaste: () -> Unit,
     onRefresh: () -> Unit,
     onClose: () -> Unit,
-    palette: OnyxPalette,
 ) {
     Popup(
         popupPositionProvider = remember(anchorOffset) {
@@ -100,8 +99,8 @@ internal fun BoxScope.PaneContextMenu(
         Column(
             modifier = Modifier
                 .width(220.dp)
-                .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
-                .background(palette.floatingSurface, RoundedCornerShape(6.dp))
+                .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(6.dp))
+                .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(6.dp))
                 .padding(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
@@ -109,35 +108,30 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_open),
                 enabled = canOpenSelection,
                 iconKey = AllIconsKeys.Actions.ListFiles,
-                palette = palette,
                 onClick = onOpenSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_open_in_new_tab),
                 enabled = canOpenSelectionInNewTab,
                 iconKey = AllIconsKeys.General.OpenDisk,
-                palette = palette,
                 onClick = onOpenSelectionInNewTab,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_rename),
                 enabled = canRenameSelection,
                 iconKey = AllIconsKeys.Actions.ListFiles,
-                palette = palette,
                 onClick = onRenameSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_new_file),
                 enabled = true,
                 iconKey = AllIconsKeys.FileTypes.Any_type,
-                palette = palette,
                 onClick = onCreateFile,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_new_directory),
                 enabled = true,
                 iconKey = AllIconsKeys.Nodes.Folder,
-                palette = palette,
                 onClick = onCreateDirectory,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -145,35 +139,30 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_delete_selected),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.DeleteTag,
-                palette = palette,
                 onClick = onDeleteSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_copy_path),
                 enabled = canCopyPath,
                 iconKey = AllIconsKeys.Actions.Copy,
-                palette = palette,
                 onClick = onCopyPath,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_copy),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.Copy,
-                palette = palette,
                 onClick = onCopySelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_cut),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.MenuCut,
-                palette = palette,
                 onClick = onCutSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_paste),
                 enabled = canPaste,
                 iconKey = AllIconsKeys.Actions.MenuPaste,
-                palette = palette,
                 onClick = onPaste,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -181,14 +170,12 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_refresh_active),
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Refresh,
-                palette = palette,
                 onClick = onRefresh,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_close_menu),
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Close,
-                palette = palette,
                 onClick = onClose,
             )
         }
@@ -200,13 +187,12 @@ internal fun ContextMenuItem(
     text: String,
     enabled: Boolean,
     iconKey: org.jetbrains.jewel.ui.icon.IconKey,
-    palette: OnyxPalette,
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    val background = if (enabled && isHovered) palette.rowHoverBackground else Color.Transparent
-    val contentColor = if (enabled) palette.foreground else palette.disabledForeground
+    val background = if (enabled && isHovered) LocalOnyxPalette.current.rowHoverBackground else Color.Transparent
+    val contentColor = if (enabled) LocalOnyxPalette.current.foreground else LocalOnyxPalette.current.disabledForeground
 
     Row(
         modifier = Modifier

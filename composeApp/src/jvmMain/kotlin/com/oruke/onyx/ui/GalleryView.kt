@@ -18,8 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -45,6 +44,7 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.TextStyle
@@ -60,9 +60,9 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.FileDropTarget
-import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.FileDropZone
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.windowBounds
 import org.jetbrains.jewel.ui.component.Icon
@@ -72,6 +72,14 @@ import kotlin.math.roundToInt
 
 // ── Gallery item (high-density grid) ────────────────────────────────────────
 
+/**
+ * 画廊视图中的单个文件/文件夹展示项 (Gallery Item)。
+ * 
+ * 采用网格布局 (Grid) 呈现，重点突出文件的缩略图或图标。
+ * - 如果是图片文件 (jpg, png, webp 等)，会使用 Coil 异步加载并居中裁剪显示。
+ * - 否则显示高清 Jewel SVG 矢量图标。
+ * - 包含复杂的鼠标交互（点击、双击、拖拽、右键菜单、框选）。
+ */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun GalleryItem(
@@ -83,7 +91,6 @@ internal fun GalleryItem(
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
-    palette: OnyxPalette,
     paneId: PaneId,
     fileDropTarget: FileDropTarget?,
     onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
@@ -109,9 +116,9 @@ internal fun GalleryItem(
 
     val itemBackground by animateColorAsState(
         targetValue = when {
-            isDirectoryDropTarget -> palette.rowHoverBackground
-            selected && paneActive -> palette.selectionBackground
-            selected && !paneActive -> palette.inactiveSelectionBackground
+            isDirectoryDropTarget -> LocalOnyxPalette.current.rowHoverBackground
+            selected && paneActive -> LocalOnyxPalette.current.selectionBackground
+            selected && !paneActive -> LocalOnyxPalette.current.inactiveSelectionBackground
             else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 120),
@@ -131,7 +138,7 @@ internal fun GalleryItem(
             .background(itemBackground, RoundedCornerShape(6.dp))
             .border(
                 width = 1.dp,
-                color = if (selected) palette.outline else Color.Transparent,
+                color = if (selected) LocalOnyxPalette.current.outline else Color.Transparent,
                 shape = RoundedCornerShape(6.dp)
             )
             .onGloballyPositioned { coordinates ->
@@ -229,8 +236,8 @@ internal fun GalleryItem(
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(RoundedCornerShape(4.dp))
-                        .background(palette.inactiveSelectionBackground)
-                        .border(1.dp, palette.outline, RoundedCornerShape(4.dp))
+                        .background(LocalOnyxPalette.current.inactiveSelectionBackground)
+                        .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
                 )
             } else {
                 val iconKey =
@@ -266,7 +273,7 @@ internal fun GalleryItem(
                     },
                 textStyle = TextStyle(
                     fontSize = 12.sp,
-                    color = if (selected) palette.selectionForeground else palette.foreground,
+                    color = if (selected) LocalOnyxPalette.current.selectionForeground else LocalOnyxPalette.current.foreground,
                     textAlign = TextAlign.Center
                 ),
                 singleLine = true,
@@ -276,7 +283,7 @@ internal fun GalleryItem(
                 text = entry?.name ?: "",
                 fontWeight = if (entry?.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
                 fontSize = 12.sp,
-                color = palette.foreground,
+                color = LocalOnyxPalette.current.foreground,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,

@@ -29,7 +29,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.buildBreadcrumbs
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -42,7 +42,6 @@ internal fun HybridAddressBar(
     location: String,
     onActivate: () -> Unit,
     onOpenLocation: (String) -> Unit,
-    palette: OnyxPalette,
 ) {
     var editing by remember { mutableStateOf(false) }
     var draftLocation by remember(location) { mutableStateOf(location) }
@@ -57,8 +56,8 @@ internal fun HybridAddressBar(
             onValueChange = { draftLocation = it },
             modifier = Modifier
                 .fillMaxWidth()
-                .background(palette.inputBackground, RoundedCornerShape(4.dp))
-                .border(1.dp, palette.accent, RoundedCornerShape(4.dp))
+                .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
+                .border(1.dp, LocalOnyxPalette.current.accent, RoundedCornerShape(4.dp))
                 .padding(horizontal = 6.dp, vertical = 3.dp)
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -74,7 +73,7 @@ internal fun HybridAddressBar(
                         else -> false
                     }
                 },
-            textStyle = TextStyle(color = palette.foreground, fontSize = 12.sp),
+            textStyle = TextStyle(color = LocalOnyxPalette.current.foreground, fontSize = 12.sp),
             singleLine = true,
         )
     } else {
@@ -83,7 +82,6 @@ internal fun HybridAddressBar(
             onActivate = onActivate,
             onEdit = { editing = true },
             onOpenLocation = onOpenLocation,
-            palette = palette,
         )
     }
 }
@@ -94,7 +92,6 @@ internal fun BreadcrumbAddressBar(
     onActivate: () -> Unit,
     onEdit: () -> Unit,
     onOpenLocation: (String) -> Unit,
-    palette: OnyxPalette,
 ) {
     val scrollState = rememberScrollState()
     val breadcrumbs = remember(location) { buildBreadcrumbs(location) }
@@ -107,7 +104,7 @@ internal fun BreadcrumbAddressBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(palette.inputBackground, RoundedCornerShape(4.dp))
+            .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
             .horizontalScroll(scrollState)
             .clickable(onClick = onEdit)
             .padding(horizontal = 6.dp, vertical = 3.dp),
@@ -124,7 +121,7 @@ internal fun BreadcrumbAddressBar(
             }
             Text(
                 text = crumb.label,
-                color = if (index == breadcrumbs.lastIndex) palette.foreground else palette.mutedForeground,
+                color = if (index == breadcrumbs.lastIndex) LocalOnyxPalette.current.foreground else LocalOnyxPalette.current.mutedForeground,
                 fontSize = 12.sp,
                 fontWeight = if (index == breadcrumbs.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.clickable {

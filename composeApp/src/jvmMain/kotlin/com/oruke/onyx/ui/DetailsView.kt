@@ -73,12 +73,12 @@ import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.ui.theme.DetailsColumnGap
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.detailsColumnWeight
+import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.horizontalResizePointerIcon
-import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.orEmpty
 import com.oruke.onyx.ui.theme.sortHint
 import com.oruke.onyx.ui.theme.toIntOffset
@@ -90,9 +90,9 @@ import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_size
 import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_directory_badge
-import onyx.composeapp.generated.resources.label_file_badge
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
+import onyx.composeapp.generated.resources.label_file_badge
 import onyx.composeapp.generated.resources.label_loading_entries
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
@@ -119,7 +119,6 @@ internal fun PaneEntriesContent(
     onToggleSort: (DetailsColumn) -> Unit,
     onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
-    palette: OnyxPalette,
     paneId: PaneId,
     fileDropTarget: FileDropTarget?,
     onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
@@ -141,7 +140,7 @@ internal fun PaneEntriesContent(
             ) {
                 Text(
                     text = stringResource(Res.string.label_loading_entries),
-                    color = palette.mutedForeground,
+                    color = LocalOnyxPalette.current.mutedForeground,
                     fontSize = 12.sp
                 )
             }
@@ -154,7 +153,7 @@ internal fun PaneEntriesContent(
             ) {
                 Text(
                     text = "${stringResource(Res.string.label_error_prefix)} ${state.reason.orEmpty()}".trim(),
-                    color = palette.foreground,
+                    color = LocalOnyxPalette.current.foreground,
                     fontSize = 12.sp,
                 )
             }
@@ -175,7 +174,7 @@ internal fun PaneEntriesContent(
                 ) {
                     Text(
                         text = stringResource(Res.string.label_empty_directory),
-                        color = palette.mutedForeground,
+                        color = LocalOnyxPalette.current.mutedForeground,
                         fontSize = 12.sp
                     )
                 }
@@ -190,7 +189,6 @@ internal fun PaneEntriesContent(
                     sort = sort,
                     onToggleSort = onToggleSort,
                     onResizeColumn = onResizeColumn,
-                    palette = palette,
                 )
 
                 // ── File list ──────────────────────────────────────────
@@ -214,7 +212,6 @@ internal fun PaneEntriesContent(
                                     onActivate = onActivate,
                                     onOpenEntry = onOpenEntry,
                                     onSelectEntry = onSelectEntry,
-                                    palette = palette,
                                     paneId = paneId,
                                     fileDropTarget = fileDropTarget,
                                     onStartFileDrag = onStartFileDrag,
@@ -244,7 +241,6 @@ internal fun PaneEntriesContent(
                                 onActivate = onActivate,
                                 onOpenEntry = onOpenEntry,
                                 onSelectEntry = onSelectEntry,
-                                palette = palette,
                                 paneId = paneId,
                                 fileDropTarget = fileDropTarget,
                                 onStartFileDrag = onStartFileDrag,
@@ -282,7 +278,6 @@ internal fun PaneEntriesContent(
                                     onConfirmInlineEdit = onConfirmInlineEdit,
                                     onCancelInlineEdit = onCancelInlineEdit,
                                     onDismissContextMenu = onDismissContextMenu,
-                                    palette = palette,
                                 )
                             }
                         }
@@ -308,7 +303,6 @@ internal fun PaneEntriesContent(
                                     onConfirmInlineEdit = onConfirmInlineEdit,
                                     onCancelInlineEdit = onCancelInlineEdit,
                                     onDismissContextMenu = onDismissContextMenu,
-                                    palette = palette,
                                 )
                             } else {
                                 EntryRow(
@@ -322,7 +316,6 @@ internal fun PaneEntriesContent(
                                     onActivate = onActivate,
                                     onOpenEntry = onOpenEntry,
                                     onSelectEntry = onSelectEntry,
-                                    palette = palette,
                                     paneId = paneId,
                                     fileDropTarget = fileDropTarget,
                                     onStartFileDrag = onStartFileDrag,
@@ -354,13 +347,12 @@ internal fun InlineEditEntryRow(
     onConfirmInlineEdit: () -> Unit,
     onCancelInlineEdit: () -> Unit,
     onDismissContextMenu: () -> Unit,
-    palette: OnyxPalette,
 ) {
     val focusRequester = remember { FocusRequester() }
     val rowBackground by animateColorAsState(
         targetValue = when {
-            selected -> palette.selectionBackground
-            zebra -> palette.surfaceVariant
+            selected -> LocalOnyxPalette.current.selectionBackground
+            zebra -> LocalOnyxPalette.current.surfaceVariant
             else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 120),
@@ -420,7 +412,7 @@ internal fun InlineEditEntryRow(
                                 .focusRequester(focusRequester),
                             textStyle = TextStyle(
                                 fontSize = 12.sp,
-                                color = if (selected) palette.selectionForeground else palette.foreground,
+                                color = if (selected) LocalOnyxPalette.current.selectionForeground else LocalOnyxPalette.current.foreground,
                             ),
                             singleLine = true,
                         )
@@ -432,7 +424,7 @@ internal fun InlineEditEntryRow(
                         text = "-",
                         modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
-                        color = palette.mutedForeground,
+                        color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -444,7 +436,7 @@ internal fun InlineEditEntryRow(
                         text = "-",
                         modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
-                        color = palette.mutedForeground,
+                        color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -473,7 +465,6 @@ internal fun DetailsHeader(
     sort: DetailsSort,
     onToggleSort: (DetailsColumn) -> Unit,
     onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
-    palette: OnyxPalette,
 ) {
     var headerWidthPx by remember { mutableStateOf(1) }
     val visibleColumns = remember(columns) { visibleDetailsColumns(columns) }
@@ -485,7 +476,7 @@ internal fun DetailsHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(palette.headerBackground)
+            .background(LocalOnyxPalette.current.headerBackground)
             .height(24.dp)
             .onSizeChanged { headerWidthPx = it.width.coerceAtLeast(1) }
             .padding(horizontal = 8.dp),
@@ -498,7 +489,6 @@ internal fun DetailsHeader(
                     text = stringResource(Res.string.label_column_name),
                     sortHint = sortHint(column, sort),
                     modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
-                    palette = palette,
                     onClick = { onToggleSort(column) },
                 )
 
@@ -506,7 +496,6 @@ internal fun DetailsHeader(
                     text = stringResource(Res.string.label_column_size),
                     sortHint = sortHint(column, sort),
                     modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
-                    palette = palette,
                     onClick = { onToggleSort(column) },
                 )
 
@@ -514,20 +503,17 @@ internal fun DetailsHeader(
                     text = stringResource(Res.string.label_column_modified),
                     sortHint = sortHint(column, sort),
                     modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
-                    palette = palette,
                     onClick = { onToggleSort(column) },
                 )
                 DetailsColumn.TYPE -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_type),
                     sortHint = sortHint(column, sort),
                     modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
-                    palette = palette,
                     onClick = { onToggleSort(column) },
                 )
             }
             if (nextColumn != null) {
                 DetailsColumnResizeGap(
-                    palette = palette,
                     onResize = { deltaPx ->
                         onResizeColumn(column, nextColumn, deltaPx / headerWidthPx.toFloat() * totalWeight)
                     },
@@ -542,7 +528,6 @@ internal fun SortHeaderCell(
     text: String,
     sortHint: String?,
     modifier: Modifier = Modifier,
-    palette: OnyxPalette,
     onClick: () -> Unit,
     textAlign: TextAlign = TextAlign.Start,
 ) {
@@ -559,7 +544,7 @@ internal fun SortHeaderCell(
                 modifier = Modifier.weight(1f),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 11.sp,
-                color = palette.mutedForeground,
+                color = LocalOnyxPalette.current.mutedForeground,
                 textAlign = textAlign,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -577,7 +562,6 @@ internal fun SortHeaderCell(
 
 @Composable
 internal fun DetailsColumnResizeGap(
-    palette: OnyxPalette,
     onResize: (Float) -> Unit,
 ) {
     Box(
@@ -596,7 +580,7 @@ internal fun DetailsColumnResizeGap(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(1.dp)
-                .background(palette.outlineVariant),
+                .background(LocalOnyxPalette.current.outlineVariant),
         )
     }
 }
@@ -616,7 +600,6 @@ internal fun EntryRow(
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
-    palette: OnyxPalette,
     paneId: PaneId,
     fileDropTarget: FileDropTarget?,
     onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
@@ -635,10 +618,10 @@ internal fun EntryRow(
     val preserveMultiSelectionForDrag = selected && selectedEntryCount > 1
     val rowBackground by animateColorAsState(
         targetValue = when {
-            isDirectoryDropTarget -> palette.rowHoverBackground
-            selected && paneActive -> palette.selectionBackground
-            selected && !paneActive -> palette.inactiveSelectionBackground
-            zebra -> palette.surfaceVariant
+            isDirectoryDropTarget -> LocalOnyxPalette.current.rowHoverBackground
+            selected && paneActive -> LocalOnyxPalette.current.selectionBackground
+            selected && !paneActive -> LocalOnyxPalette.current.inactiveSelectionBackground
+            zebra -> LocalOnyxPalette.current.surfaceVariant
             else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 120),
@@ -746,7 +729,7 @@ internal fun EntryRow(
                             modifier = Modifier.weight(1f),
                             fontWeight = if (entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
                             fontSize = 12.sp,
-                            color = palette.foreground,
+                            color = LocalOnyxPalette.current.foreground,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -758,7 +741,7 @@ internal fun EntryRow(
                         text = formatFileSize(entry.sizeBytes),
                         modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
-                        color = palette.mutedForeground,
+                        color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -770,7 +753,7 @@ internal fun EntryRow(
                         text = formatModifiedTime(entry.modifiedAtEpochMillis),
                         modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
-                        color = palette.mutedForeground,
+                        color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -781,7 +764,7 @@ internal fun EntryRow(
                         text = if (entry.kind == VFileKind.DIRECTORY) stringResource(Res.string.label_directory_badge) else entry.name.substringAfterLast('.', missingDelimiterValue = stringResource(Res.string.label_file_badge)).uppercase(),
                         modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
-                        color = palette.mutedForeground,
+                        color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,

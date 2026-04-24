@@ -2,6 +2,7 @@ package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.core.model.BackgroundTask
+import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
@@ -48,7 +49,7 @@ sealed interface SessionRestoreState {
     data object Ready : SessionRestoreState
 
     data class Failed(
-        val reason: String?,
+        val reason: I18nMessage?,
     ) : SessionRestoreState
 }
 

@@ -24,7 +24,7 @@ import coil3.compose.AsyncImage
 import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import org.jetbrains.jewel.ui.Orientation
@@ -39,13 +39,12 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 internal fun InspectorPanel(
     entry: VFile?,
     state: PaneInspectorState,
-    palette: OnyxPalette,
 ) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
             .width(260.dp)
-            .background(palette.surfaceVariant)
+            .background(LocalOnyxPalette.current.surfaceVariant)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -53,7 +52,7 @@ internal fun InspectorPanel(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
                     text = "No item selected",
-                    color = palette.mutedForeground,
+                    color = LocalOnyxPalette.current.mutedForeground,
                     fontSize = 12.sp
                 )
             }
@@ -71,8 +70,8 @@ internal fun InspectorPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(200.dp)
-                    .background(palette.surface, RoundedCornerShape(8.dp))
-                    .border(1.dp, palette.outlineVariant, RoundedCornerShape(8.dp))
+                    .background(LocalOnyxPalette.current.surface, RoundedCornerShape(8.dp))
+                    .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(8.dp))
                     .padding(8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -96,7 +95,7 @@ internal fun InspectorPanel(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = entry.name,
-                    color = palette.foreground,
+                    color = LocalOnyxPalette.current.foreground,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 3,
@@ -105,29 +104,29 @@ internal fun InspectorPanel(
 
                 Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
 
-                InspectorDetailRow("Type", if (entry.kind == VFileKind.DIRECTORY) "Directory" else "File", palette)
+                InspectorDetailRow("Type", if (entry.kind == VFileKind.DIRECTORY) "Directory" else "File")
                 if (entry.kind != VFileKind.DIRECTORY) {
-                    InspectorDetailRow("Size", formatFileSize(entry.sizeBytes), palette)
+                    InspectorDetailRow("Size", formatFileSize(entry.sizeBytes))
                 }
-                InspectorDetailRow("Modified", formatModifiedTime(entry.modifiedAtEpochMillis), palette)
-                InspectorDetailRow("Location", entry.parentLocation ?: "Unknown", palette)
+                InspectorDetailRow("Modified", formatModifiedTime(entry.modifiedAtEpochMillis))
+                InspectorDetailRow("Location", entry.parentLocation ?: "Unknown")
             }
         }
     }
 }
 
 @Composable
-internal fun InspectorDetailRow(label: String, value: String, palette: OnyxPalette) {
+internal fun InspectorDetailRow(label: String, value: String) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             text = label,
-            color = palette.mutedForeground,
+            color = LocalOnyxPalette.current.mutedForeground,
             fontSize = 11.sp,
             fontWeight = FontWeight.Medium
         )
         Text(
             text = value,
-            color = palette.foreground,
+            color = LocalOnyxPalette.current.foreground,
             fontSize = 12.sp,
             maxLines = 4,
             overflow = TextOverflow.Ellipsis

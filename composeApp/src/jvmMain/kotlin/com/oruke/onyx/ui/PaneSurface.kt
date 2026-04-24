@@ -58,7 +58,7 @@ import com.oruke.onyx.core.model.PaneInlineEditState
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.windowBounds
 import onyx.composeapp.generated.resources.Res
@@ -117,7 +117,6 @@ internal fun PaneSurface(
     onFileDragEnd: (IntOffset?) -> Unit,
     onFileDropZoneChange: (FileDropZone) -> Unit,
     fileDropTarget: FileDropTarget?,
-    palette: OnyxPalette,
 ) {
     val focusRequester = remember { FocusRequester() }
     var showContextMenu by remember { mutableStateOf(false) }
@@ -129,7 +128,7 @@ internal fun PaneSurface(
             fileDropTarget.directoryEntryId == null &&
             fileDropTarget.targetDirectoryLocation == state.location
         ) {
-            palette.rowHoverBackground.copy(alpha = 0.28f)
+            LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.28f)
         } else {
             Color.Transparent
         },
@@ -152,9 +151,9 @@ internal fun PaneSurface(
         modifier = modifier
             .border(
                 width = 1.dp,
-                color = if (active) palette.outline else palette.outlineVariant,
+                color = if (active) LocalOnyxPalette.current.outline else LocalOnyxPalette.current.outlineVariant,
             )
-            .background(palette.surface)
+            .background(LocalOnyxPalette.current.surface)
             .onGloballyPositioned { coordinates ->
                 paneBounds = coordinates.windowBounds()
                 reportPaneDropZone()
@@ -267,7 +266,6 @@ internal fun PaneSurface(
         PaneTabBar(
             state = state,
             active = active,
-            palette = palette,
             onActivate = onActivate,
             onSelectTab = component::selectTab,
             onCloseTab = component::closeTab,
@@ -288,7 +286,7 @@ internal fun PaneSurface(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(palette.headerBackground)
+                .background(LocalOnyxPalette.current.headerBackground)
                 .height(28.dp)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -297,7 +295,6 @@ internal fun PaneSurface(
             ToolbarIconButton(
                 enabled = state.canGoBack,
                 onClick = { onActivate(); component.goBack() },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_go_back),
             ) {
                 Icon(key = AllIconsKeys.Actions.Back, contentDescription = stringResource(Res.string.action_go_back))
@@ -305,7 +302,6 @@ internal fun PaneSurface(
             ToolbarIconButton(
                 enabled = state.canGoForward,
                 onClick = { onActivate(); component.goForward() },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_go_forward),
             ) {
                 Icon(
@@ -316,7 +312,6 @@ internal fun PaneSurface(
             ToolbarIconButton(
                 enabled = true,
                 onClick = { onActivate(); component.goUp() },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_go_up),
             ) {
                 Icon(key = AllIconsKeys.General.ArrowUp, contentDescription = stringResource(Res.string.action_go_up))
@@ -324,7 +319,6 @@ internal fun PaneSurface(
             ToolbarIconButton(
                 enabled = true,
                 onClick = { onActivate(); component.openDirectory(System.getProperty("user.home")) },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_go_home),
             ) {
                 Icon(
@@ -335,14 +329,13 @@ internal fun PaneSurface(
             ToolbarIconButton(
                 enabled = true,
                 onClick = { onActivate(); onToggleFavoriteLocation(state.location) },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_toggle_favorite),
                 selected = currentLocationFavorite,
             ) {
                 Text(
                     text = if (currentLocationFavorite) "★" else "☆",
                     fontSize = 11.sp,
-                    color = if (currentLocationFavorite) Color(0xFFFFC94D) else palette.foreground,
+                    color = if (currentLocationFavorite) Color(0xFFFFC94D) else LocalOnyxPalette.current.foreground,
                 )
             }
 
@@ -354,7 +347,6 @@ internal fun PaneSurface(
                     location = state.location,
                     onActivate = onActivate,
                     onOpenLocation = component::openDirectory,
-                    palette = palette,
                 )
             }
 
@@ -368,8 +360,8 @@ internal fun PaneSurface(
                     onValueChange = onFilterQueryChange,
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(palette.inputBackground, RoundedCornerShape(4.dp))
-                        .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
+                        .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
+                        .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
                         .padding(horizontal = 6.dp)
                         .onFocusChanged { focusState ->
                             if (focusState.isFocused) {
@@ -379,17 +371,17 @@ internal fun PaneSurface(
                     textStyle = TextStyle(
                         fontSize = 11.sp,
                         lineHeight = 16.sp,
-                        color = palette.foreground,
+                        color = LocalOnyxPalette.current.foreground,
                     ),
                     singleLine = true,
-                    cursorBrush = SolidColor(palette.accent),
+                    cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
                     decorationBox = { innerTextField ->
                         Box(contentAlignment = Alignment.CenterStart) {
                             if (filterQuery.isEmpty()) {
                                 Text(
                                     text = stringResource(Res.string.label_filter_placeholder),
                                     fontSize = 11.sp,
-                                    color = palette.disabledForeground,
+                                    color = LocalOnyxPalette.current.disabledForeground,
                                 )
                             }
                             innerTextField()
@@ -403,7 +395,6 @@ internal fun PaneSurface(
             ToolbarIconButton(
                 enabled = true,
                 onClick = { onActivate(); component.refresh() },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_refresh_active),
             ) {
                 Icon(
@@ -414,7 +405,6 @@ internal fun PaneSurface(
             ToolbarIconButton(
                 enabled = true,
                 onClick = { onActivate(); component.toggleHiddenItems() },
-                palette = palette,
                 tooltip = stringResource(Res.string.action_toggle_hidden_files),
                 selected = state.showHiddenItems,
             ) {
@@ -430,7 +420,6 @@ internal fun PaneSurface(
         state.operationFeedback?.let { feedback ->
             OperationFeedbackBar(
                 feedback = feedback,
-                palette = palette,
                 onDismiss = onDismissOperationFeedback,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -475,7 +464,6 @@ internal fun PaneSurface(
                     onToggleSort = component::toggleSort,
                     onResizeColumn = component::resizeDetailsColumn,
                     onSelectEntry = component::selectEntry,
-                    palette = palette,
                     paneId = state.paneId,
                     fileDropTarget = fileDropTarget,
                     onStartFileDrag = onFileDragStart,
@@ -550,7 +538,6 @@ internal fun PaneSurface(
                             showContextMenu = false
                         },
                         onClose = { showContextMenu = false },
-                        palette = palette,
                     )
                 }
             }
@@ -560,7 +547,6 @@ internal fun PaneSurface(
                 InspectorPanel(
                     entry = singleSelectedEntry,
                     state = state.inspectorState,
-                    palette = palette,
                 )
             }
         }

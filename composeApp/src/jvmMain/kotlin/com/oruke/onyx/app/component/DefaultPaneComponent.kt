@@ -6,6 +6,7 @@ import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
+import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneInlineEditMode
 import com.oruke.onyx.core.model.PaneInlineEditState
@@ -24,6 +25,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_new_directory
+import onyx.composeapp.generated.resources.action_new_file
+import onyx.composeapp.generated.resources.msg_string_literal
 import java.nio.file.Path
 import java.util.*
 import kotlin.io.path.pathString
@@ -140,7 +145,7 @@ class DefaultPaneComponent(
                             updateFailure(
                                 tabId = tab.id,
                                 kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                detail = failure.message,
+                                detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
                             )
                         }
                 }
@@ -172,14 +177,17 @@ class DefaultPaneComponent(
         if (tab.inlineEditState != null) {
             return
         }
-        val nextName = generateCreateName(tab, PaneInlineEditMode.CREATE_FILE)
-        updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                inlineEditState = PaneInlineEditState(
-                    mode = PaneInlineEditMode.CREATE_FILE,
-                    draftName = nextName,
-                ),
-            )
+        scope.launch {
+            val baseName = org.jetbrains.compose.resources.getString(Res.string.action_new_file)
+            val nextName = generateCreateName(tab, baseName)
+            updateTab(tab.id) { currentTab ->
+                currentTab.copy(
+                    inlineEditState = PaneInlineEditState(
+                        mode = PaneInlineEditMode.CREATE_FILE,
+                        draftName = nextName,
+                    ),
+                )
+            }
         }
     }
 
@@ -188,14 +196,17 @@ class DefaultPaneComponent(
         if (tab.inlineEditState != null) {
             return
         }
-        val nextName = generateCreateName(tab, PaneInlineEditMode.CREATE_DIRECTORY)
-        updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                inlineEditState = PaneInlineEditState(
-                    mode = PaneInlineEditMode.CREATE_DIRECTORY,
-                    draftName = nextName,
-                ),
-            )
+        scope.launch {
+            val baseName = org.jetbrains.compose.resources.getString(Res.string.action_new_directory)
+            val nextName = generateCreateName(tab, baseName)
+            updateTab(tab.id) { currentTab ->
+                currentTab.copy(
+                    inlineEditState = PaneInlineEditState(
+                        mode = PaneInlineEditMode.CREATE_DIRECTORY,
+                        draftName = nextName,
+                    ),
+                )
+            }
         }
     }
 
@@ -227,7 +238,7 @@ class DefaultPaneComponent(
                     updateFailure(
                         tabId = tab.id,
                         kind = PaneOperationFeedbackKind.COPY_PATH_FAILED,
-                        detail = failure.message,
+                        detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
                     )
                 }
         }
@@ -281,7 +292,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.RENAME_FAILED,
-                            detail = failure.message,
+                            detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
                         )
                     }
                 }
@@ -299,7 +310,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.CREATE_FILE_FAILED,
-                            detail = failure.message,
+                            detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
                         )
                     }
                 }
@@ -317,7 +328,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.CREATE_DIRECTORY_FAILED,
-                            detail = failure.message,
+                            detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
                         )
                     }
                 }
@@ -820,7 +831,7 @@ class DefaultPaneComponent(
     private fun updateFailure(
         tabId: String,
         kind: PaneOperationFeedbackKind,
-        detail: String?,
+        detail: I18nMessage?,
     ) {
         updateTab(tabId) { currentTab ->
             currentTab.copy(
@@ -839,13 +850,8 @@ class DefaultPaneComponent(
         }
     }
 
-    private fun generateCreateName(tab: PaneTabState, mode: PaneInlineEditMode): String {
+    private fun generateCreateName(tab: PaneTabState, baseName: String): String {
         val existingNames = tab.allEntries.mapTo(mutableSetOf()) { it.name }
-        val baseName = when (mode) {
-            PaneInlineEditMode.CREATE_FILE -> "New File"
-            PaneInlineEditMode.CREATE_DIRECTORY -> "New Folder"
-            PaneInlineEditMode.RENAME -> ""
-        }
         var candidate = baseName
         var suffixIndex = 1
         while (candidate in existingNames) {

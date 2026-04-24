@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.ViewMode
-import com.oruke.onyx.ui.theme.OnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_directory_file_count
@@ -46,14 +46,13 @@ internal fun StatusBar(
     activePane: PaneId,
     activeTaskCount: Int,
     onSetActiveViewMode: (ViewMode) -> Unit,
-    palette: OnyxPalette,
 ) {
     val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(24.dp)
-            .background(palette.statusBarBackground)
+            .background(LocalOnyxPalette.current.statusBarBackground)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -70,12 +69,12 @@ internal fun StatusBar(
                     status.fileCount,
                 ),
                 fontSize = 11.sp,
-                color = palette.mutedForeground,
+                color = LocalOnyxPalette.current.mutedForeground,
             )
             Text(
                 text = stringResource(Res.string.label_item_count, status.totalItemCount),
                 fontSize = 11.sp,
-                color = palette.mutedForeground,
+                color = LocalOnyxPalette.current.mutedForeground,
             )
             if (activeState.filterQuery.isNotBlank()) {
                 Text(
@@ -85,7 +84,7 @@ internal fun StatusBar(
                         status.totalItemCount,
                     ),
                     fontSize = 11.sp,
-                    color = palette.mutedForeground,
+                    color = LocalOnyxPalette.current.mutedForeground,
                 )
             }
             val selectedSizeText = stringResource(
@@ -96,13 +95,13 @@ internal fun StatusBar(
             Text(
                 text = selectedSizeText,
                 fontSize = 11.sp,
-                color = palette.mutedForeground,
+                color = LocalOnyxPalette.current.mutedForeground,
             )
             if (activeTaskCount > 0) {
                 Text(
                     text = stringResource(Res.string.label_task_summary, activeTaskCount),
                     fontSize = 11.sp,
-                    color = palette.mutedForeground,
+                    color = LocalOnyxPalette.current.mutedForeground,
                 )
             }
         }
@@ -114,7 +113,6 @@ internal fun StatusBar(
             LayoutIconButton(
                 selected = activeState.viewMode == ViewMode.DETAILS,
                 onClick = { onSetActiveViewMode(ViewMode.DETAILS) },
-                palette = palette,
                 tooltip = stringResource(Res.string.label_mode_details),
             ) {
                 Icon(
@@ -125,7 +123,6 @@ internal fun StatusBar(
             LayoutIconButton(
                 selected = activeState.viewMode == ViewMode.GALLERY,
                 onClick = { onSetActiveViewMode(ViewMode.GALLERY) },
-                palette = palette,
                 tooltip = stringResource(Res.string.label_mode_gallery),
             ) {
                 Icon(
@@ -141,7 +138,6 @@ internal fun StatusBar(
 internal fun ZoomSlider(
     value: Int,
     onValueChange: (Int) -> Unit,
-    palette: OnyxPalette,
 ) {
     val fraction = ((value - 50) / 150f).coerceIn(0f, 1f)
     val sliderWidthDp = 120
@@ -171,20 +167,20 @@ internal fun ZoomSlider(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(3.dp)
-                .background(palette.outlineVariant, RoundedCornerShape(1.dp)),
+                .background(LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(1.dp)),
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth(fraction)
                 .height(3.dp)
-                .background(palette.accent, RoundedCornerShape(1.dp)),
+                .background(LocalOnyxPalette.current.accent, RoundedCornerShape(1.dp)),
         )
         Box(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .offset(x = (fraction * (sliderWidthDp - 8)).dp)
                 .size(8.dp)
-                .background(palette.accent, RoundedCornerShape(4.dp)),
+                .background(LocalOnyxPalette.current.accent, RoundedCornerShape(4.dp)),
         )
     }
 }

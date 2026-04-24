@@ -2,9 +2,9 @@
 composeMultiplatform = "1.10.1"
 decompose = "3.4.0"
 jcifs-ng = "2.1.9"
-jewel = "0.27.0"
-jewel-platform = "243"
-intellij-platform-build = "243.28141.18"
+jewel = "0.34.0-253.32098.37"
+jewel-platform = "253"
+intellij-platform-build = "253.32098.37"
 junit = "4.13.2"
 koin = "4.1.1"
 kotlin = "2.3.20"
@@ -13,6 +13,7 @@ kotlinx-serialization = "1.9.0"
 ktor = "3.4.2"
 coil = "3.4.0"
 sevenzipjbinding = "16.02-2.01"
+jna = "5.14.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -36,9 +37,11 @@ ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 jcifs-ng = { module = "eu.agno3.jcifs:jcifs-ng", version.ref = "jcifs-ng" }
 sevenzipjbinding = { module = "net.sf.sevenzipjbinding:sevenzipjbinding", version.ref = "sevenzipjbinding" }
-jewel-int-ui-standalone = { module = "org.jetbrains.jewel:jewel-int-ui-standalone-243", version.ref = "jewel" }
-jewel-int-ui-decorated-window = { module = "org.jetbrains.jewel:jewel-int-ui-decorated-window-243", version.ref = "jewel" }
+jewel-ui = { module = "org.jetbrains.jewel:jewel-ui", version.ref = "jewel" }
+jewel-int-ui-standalone = { module = "org.jetbrains.jewel:jewel-int-ui-standalone", version.ref = "jewel" }
+jewel-int-ui-decorated-window = { module = "org.jetbrains.jewel:jewel-int-ui-decorated-window", version.ref = "jewel" }
 intellij-platform-icons = { module = "com.jetbrains.intellij.platform:icons", version.ref = "intellij-platform-build" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 
 [plugins]
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

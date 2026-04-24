@@ -28,7 +28,7 @@ data class PaneInspectorState(
 
 data class PaneOperationFeedback(
     val kind: PaneOperationFeedbackKind,
-    val detail: String? = null,
+    val detail: I18nMessage? = null,
 )
 
 enum class PaneOperationFeedbackKind {

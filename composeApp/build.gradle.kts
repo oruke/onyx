@@ -37,9 +37,11 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.jcifs.ng)
             implementation(libs.sevenzipjbinding)
+            implementation(libs.jewel.ui)
             implementation(libs.jewel.int.ui.standalone)
             implementation(libs.jewel.int.ui.decorated.window)
             implementation(libs.intellij.platform.icons)
+            implementation(libs.jna)
         }
         jvmTest.dependencies {
             implementation(libs.kotlin.test)
