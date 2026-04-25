@@ -54,7 +54,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
+import androidx.compose.foundation.Image
+import com.oruke.onyx.ui.theme.rememberThumbnail
 import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
@@ -135,7 +136,7 @@ internal fun GalleryItem(
         modifier = Modifier
             .padding(4.dp)
             .widthIn(min = 100.dp, max = 160.dp)
-            .height(140.dp)
+            .height(180.dp)
             .background(itemBackground, RoundedCornerShape(6.dp))
             .border(
                 width = 1.dp,
@@ -215,34 +216,52 @@ internal fun GalleryItem(
                     if (entry != null) onOpenEntry(entry)
                 },
             )
-            .padding(8.dp),
+            .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
     ) {
         val isImage = isImageFile(entry?.name)
 
         Box(
-            modifier = Modifier.size(80.dp),
+            modifier = Modifier.size(120.dp),
             contentAlignment = Alignment.Center
         ) {
             if (isImage && entry != null) {
-                AsyncImage(
-                    model = entry.location,
-                    contentDescription = entry.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(LocalOnyxPalette.current.inactiveSelectionBackground)
-                        .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
-                )
+                val (thumbnail, _) = rememberThumbnail(entry.location, 512)
+                if (thumbnail != null) {
+                    Image(
+                        bitmap = thumbnail,
+                        contentDescription = entry.name,
+                        contentScale = ContentScale.Fit,
+                        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(LocalOnyxPalette.current.inactiveSelectionBackground)
+                            .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(LocalOnyxPalette.current.inactiveSelectionBackground)
+                            .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            key = AllIconsKeys.FileTypes.Any_type,
+                            contentDescription = null,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
             } else {
                 val iconKey =
                     if (entry?.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry?.name)
                 Icon(
                     key = iconKey,
                     contentDescription = null,
-                    modifier = Modifier.size(64.dp)
+                    modifier = Modifier.size(72.dp)
                 )
             }
         }

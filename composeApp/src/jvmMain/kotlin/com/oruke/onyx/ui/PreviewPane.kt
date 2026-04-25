@@ -27,19 +27,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
+import java.io.File
+import androidx.compose.foundation.Image
+import com.oruke.onyx.ui.theme.rememberThumbnail
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
+import com.oruke.onyx.ui.theme.isImageFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import java.io.File
+
 
 /**
  * 右侧预览面板组件 (Preview Pane)
@@ -83,16 +86,18 @@ internal fun PreviewPane(
                         .height(200.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val isImage = selectedEntry.name.lowercase().let {
-                        it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".gif") || it.endsWith(".webp") || it.endsWith(".bmp")
-                    }
+                    val isImage = isImageFile(selectedEntry.name)
                     if (isImage) {
-                        AsyncImage(
-                            model = selectedEntry.location,
-                            contentDescription = selectedEntry.name,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        val (thumbnail, _) = rememberThumbnail(selectedEntry.location, 800)
+                        if (thumbnail != null) {
+                            Image(
+                                bitmap = thumbnail,
+                                contentDescription = selectedEntry.name,
+                                contentScale = ContentScale.Fit,
+                                filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
                     } else {
                         val iconKey = if (selectedEntry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(selectedEntry.name)
                         Icon(

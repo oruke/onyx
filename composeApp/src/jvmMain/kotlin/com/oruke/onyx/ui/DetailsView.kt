@@ -197,7 +197,7 @@ internal fun PaneEntriesContent(
                     LazyVerticalGrid(
                         columns = GridCells.Adaptive(140.dp),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(8.dp),
+                        contentPadding = PaddingValues(4.dp),
                         userScrollEnabled = !contextMenuVisible,
                     ) {
                         if (shouldCreateInlineEntry) {

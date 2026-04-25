@@ -20,18 +20,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import com.oruke.onyx.ui.theme.rememberThumbnail
 import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
+import com.oruke.onyx.ui.theme.isImageFile
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+
 
 // ── Inspector Panel ─────────────────────────────────────────────────────────
 
@@ -60,11 +64,7 @@ internal fun InspectorPanel(
         }
 
         if (state.previewVisible) {
-            val isImage = entry.name.lowercase().let {
-                it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".gif") || it.endsWith(
-                    ".webp"
-                ) || it.endsWith(".bmp")
-            }
+            val isImage = isImageFile(entry.name)
 
             Box(
                 modifier = Modifier
@@ -76,11 +76,16 @@ internal fun InspectorPanel(
                 contentAlignment = Alignment.Center
             ) {
                 if (isImage) {
-                    AsyncImage(
-                        model = entry.location,
-                        contentDescription = entry.name,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    val (thumbnail, _) = rememberThumbnail(entry.location, 480)
+                    if (thumbnail != null) {
+                        Image(
+                            bitmap = thumbnail,
+                            contentDescription = entry.name,
+                            contentScale = ContentScale.Fit,
+                            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 } else {
                     Icon(
                         key = if (entry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else AllIconsKeys.FileTypes.Any_type,
