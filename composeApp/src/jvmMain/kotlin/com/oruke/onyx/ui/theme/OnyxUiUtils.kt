@@ -160,10 +160,10 @@ internal fun detailsColumnWeight(
 
 internal fun defaultDetailsColumnWeight(column: DetailsColumn): Float {
     return when (column) {
-        DetailsColumn.NAME -> 0.58f
+        DetailsColumn.NAME -> 0.50f
+        DetailsColumn.TYPE -> 0.10f
         DetailsColumn.SIZE -> 0.16f
-        DetailsColumn.MODIFIED -> 0.26f
-        DetailsColumn.TYPE -> 0.08f
+        DetailsColumn.MODIFIED -> 0.24f
     }
 }
 
@@ -276,6 +276,16 @@ internal fun taskStatusLabel(status: BackgroundTaskStatus): String {
 }
 
 internal fun String?.orEmpty(): String = this ?: ""
+
+/**
+ * 判断文件名是否为图片类型。
+ * 统一用于 GalleryView 缩略图渲染和其他图片判断场景。
+ */
+internal fun isImageFile(fileName: String?): Boolean {
+    if (fileName == null) return false
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    return ext in setOf("png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "tiff", "tif")
+}
 
 /**
  * 根据文件扩展名映射到合适的 Jewel 高清矢量图标 (SVG)。

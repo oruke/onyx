@@ -1023,7 +1023,9 @@ class DefaultPaneComponent(
     ): List<VFile> {
         val comparator = when (sort.column) {
             DetailsColumn.NAME -> compareBy<VFile> { it.name.lowercase() }
-            DetailsColumn.TYPE -> compareBy<VFile> { it.kind.name }
+            DetailsColumn.TYPE -> compareBy<VFile> {
+                if (it.kind == VFileKind.DIRECTORY) "" else it.name.substringAfterLast('.', "").lowercase()
+            }
             DetailsColumn.SIZE -> compareBy<VFile> { it.sizeBytes ?: -1L }
             DetailsColumn.MODIFIED -> compareBy<VFile> { it.modifiedAtEpochMillis ?: Long.MIN_VALUE }
         }
@@ -1138,9 +1140,10 @@ private fun defaultDetailsColumns(): List<DetailsColumn> {
 
 private fun defaultDetailsColumnWeights(): Map<DetailsColumn, Float> {
     return mapOf(
-        DetailsColumn.NAME to 0.58f,
+        DetailsColumn.NAME to 0.50f,
+        DetailsColumn.TYPE to 0.10f,
         DetailsColumn.SIZE to 0.16f,
-        DetailsColumn.MODIFIED to 0.26f,
+        DetailsColumn.MODIFIED to 0.24f,
     )
 }
 

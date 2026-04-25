@@ -92,7 +92,6 @@ import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_directory_badge
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
-import onyx.composeapp.generated.resources.label_file_badge
 import onyx.composeapp.generated.resources.label_loading_entries
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
@@ -183,13 +182,15 @@ internal fun PaneEntriesContent(
 
             Column(modifier = Modifier.fillMaxSize()) {
                 // ── Column headers ─────────────────────────────────────
-                DetailsHeader(
-                    columns = columns,
-                    columnWeights = columnWeights,
-                    sort = sort,
-                    onToggleSort = onToggleSort,
-                    onResizeColumn = onResizeColumn,
-                )
+                if (viewMode == ViewMode.DETAILS) {
+                    DetailsHeader(
+                        columns = columns,
+                        columnWeights = columnWeights,
+                        sort = sort,
+                        onToggleSort = onToggleSort,
+                        onResizeColumn = onResizeColumn,
+                    )
+                }
 
                 // ── File list ──────────────────────────────────────────
                 if (viewMode == ViewMode.GALLERY) {
@@ -447,7 +448,7 @@ internal fun InlineEditEntryRow(
                         text = "-",
                         modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
-                        color = Color.Transparent,
+                        color = LocalOnyxPalette.current.mutedForeground,
                         maxLines = 1,
                     )
                 }
@@ -760,8 +761,14 @@ internal fun EntryRow(
                     )
                 }
                 DetailsColumn.TYPE -> {
+                    val typeText = if (entry.kind == VFileKind.DIRECTORY) {
+                        stringResource(Res.string.label_directory_badge)
+                    } else {
+                        val ext = entry.name.substringAfterLast('.', "")
+                        ext.ifEmpty { "-" }
+                    }
                     Text(
-                        text = if (entry.kind == VFileKind.DIRECTORY) stringResource(Res.string.label_directory_badge) else entry.name.substringAfterLast('.', missingDelimiterValue = stringResource(Res.string.label_file_badge)).uppercase(),
+                        text = typeText,
                         modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground,

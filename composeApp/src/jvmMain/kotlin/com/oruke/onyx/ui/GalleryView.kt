@@ -63,6 +63,7 @@ import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
+import com.oruke.onyx.ui.theme.isImageFile
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.windowBounds
 import org.jetbrains.jewel.ui.component.Icon
@@ -218,11 +219,7 @@ internal fun GalleryItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically)
     ) {
-        val isImage = entry?.name?.lowercase()?.let {
-            it.endsWith(".png") || it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".gif") || it.endsWith(".webp") || it.endsWith(
-                ".bmp"
-            )
-        } == true
+        val isImage = isImageFile(entry?.name)
 
         Box(
             modifier = Modifier.size(80.dp),
