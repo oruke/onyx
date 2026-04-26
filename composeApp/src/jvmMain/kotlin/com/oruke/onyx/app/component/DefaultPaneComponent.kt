@@ -395,21 +395,12 @@ class DefaultPaneComponent(
         deltaWeight: Float,
     ) {
         val tab = activeTab() ?: return
-        val columnWeight = tab.detailsColumnWeights[column] ?: defaultDetailsColumnWeight(column)
-        val nextColumnWeight = tab.detailsColumnWeights[nextColumn] ?: defaultDetailsColumnWeight(nextColumn)
-        val combinedWeight = columnWeight + nextColumnWeight
-        if (combinedWeight <= MIN_DETAILS_COLUMN_WEIGHT * 2) {
-            return
-        }
-
-        val nextColumnWeightValue = (columnWeight + deltaWeight)
-            .coerceIn(MIN_DETAILS_COLUMN_WEIGHT, combinedWeight - MIN_DETAILS_COLUMN_WEIGHT)
-        val nextAdjacentWeightValue = combinedWeight - nextColumnWeightValue
+        val currentWidth = tab.detailsColumnWeights[column] ?: defaultDetailsColumnWidth(column)
+        val newWidth = (currentWidth + deltaWeight).coerceAtLeast(MIN_DETAILS_COLUMN_WIDTH)
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
                 detailsColumnWeights = currentTab.detailsColumnWeights + mapOf(
-                    column to nextColumnWeightValue,
-                    nextColumn to nextAdjacentWeightValue,
+                    column to newWidth,
                 )
             )
         }
@@ -1056,7 +1047,7 @@ class DefaultPaneComponent(
     )
 }
 
-private const val MIN_DETAILS_COLUMN_WEIGHT = 0.08f
+private const val MIN_DETAILS_COLUMN_WIDTH = 40f
 
 private fun PaneTabState.toPaneState(
     paneId: PaneId,
@@ -1110,7 +1101,12 @@ private fun TabSessionSnapshot.toPaneTabState(): PaneTabState {
         canGoBack = backStack.isNotEmpty(),
         canGoForward = forwardStack.isNotEmpty(),
         detailsColumns = detailsColumns,
-        detailsColumnWeights = detailsColumnWeights,
+        // 迁移旧的比例权重（所有值 < 2.0）为新的绝对 dp 宽度
+        detailsColumnWeights = if (detailsColumnWeights.values.all { it < 2f }) {
+            defaultDetailsColumnWeights()
+        } else {
+            detailsColumnWeights
+        },
         detailsSort = detailsSort,
         viewMode = viewMode,
         filterQuery = filterQuery,
@@ -1140,15 +1136,15 @@ private fun defaultDetailsColumns(): List<DetailsColumn> {
 
 private fun defaultDetailsColumnWeights(): Map<DetailsColumn, Float> {
     return mapOf(
-        DetailsColumn.NAME to 0.50f,
-        DetailsColumn.TYPE to 0.10f,
-        DetailsColumn.SIZE to 0.16f,
-        DetailsColumn.MODIFIED to 0.24f,
+        DetailsColumn.NAME to 300f,
+        DetailsColumn.TYPE to 80f,
+        DetailsColumn.SIZE to 100f,
+        DetailsColumn.MODIFIED to 180f,
     )
 }
 
-private fun defaultDetailsColumnWeight(column: DetailsColumn): Float {
-    return defaultDetailsColumnWeights()[column] ?: MIN_DETAILS_COLUMN_WEIGHT
+private fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
+    return defaultDetailsColumnWeights()[column] ?: MIN_DETAILS_COLUMN_WIDTH
 }
 
 private fun locationTitle(location: String): String {

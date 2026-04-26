@@ -151,19 +151,19 @@ internal fun visibleDetailsColumns(columns: List<DetailsColumn>): List<DetailsCo
     return columns
 }
 
-internal fun detailsColumnWeight(
-    weights: Map<DetailsColumn, Float>,
+internal fun detailsColumnWidth(
+    widths: Map<DetailsColumn, Float>,
     column: DetailsColumn,
 ): Float {
-    return (weights[column] ?: defaultDetailsColumnWeight(column)).coerceAtLeast(0.01f)
+    return (widths[column] ?: defaultDetailsColumnWidth(column)).coerceAtLeast(40f)
 }
 
-internal fun defaultDetailsColumnWeight(column: DetailsColumn): Float {
+internal fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
     return when (column) {
-        DetailsColumn.NAME -> 0.50f
-        DetailsColumn.TYPE -> 0.10f
-        DetailsColumn.SIZE -> 0.16f
-        DetailsColumn.MODIFIED -> 0.24f
+        DetailsColumn.NAME -> 300f
+        DetailsColumn.TYPE -> 80f
+        DetailsColumn.SIZE -> 100f
+        DetailsColumn.MODIFIED -> 180f
     }
 }
 

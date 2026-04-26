@@ -3,13 +3,17 @@ package com.oruke.onyx.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,19 +27,26 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -57,6 +68,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,7 +87,7 @@ import com.oruke.onyx.ui.theme.DetailsColumnGap
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.detailsColumnWeight
+import com.oruke.onyx.ui.theme.detailsColumnWidth
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
@@ -98,6 +111,7 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
 // ── File entries ────────────────────────────────────────────────────────────
@@ -130,6 +144,7 @@ internal fun PaneEntriesContent(
     onUpdateInlineEditDraft: (String) -> Unit,
     onConfirmInlineEdit: () -> Unit,
     onCancelInlineEdit: () -> Unit,
+    onBeginRename: () -> Unit = {},
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -180,15 +195,18 @@ internal fun PaneEntriesContent(
                 return
             }
 
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().clipToBounds()) {
+                val horizontalScrollState = rememberScrollState()
+
                 // ── Column headers ─────────────────────────────────────
                 if (viewMode == ViewMode.DETAILS) {
                     DetailsHeader(
                         columns = columns,
-                        columnWeights = columnWeights,
+                        columnWidths = columnWeights,
                         sort = sort,
                         onToggleSort = onToggleSort,
                         onResizeColumn = onResizeColumn,
+                        scrollState = horizontalScrollState,
                     )
                 }
 
@@ -257,77 +275,88 @@ internal fun PaneEntriesContent(
                         }
                     }
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 4.dp),
-                        userScrollEnabled = !contextMenuVisible,
-                    ) {
-                        if (shouldCreateInlineEntry) {
-                            item(key = "inline-create") {
-                                InlineEditEntryRow(
-                                    columns = columns,
-                                    columnWeights = columnWeights,
-                                    draftName = inlineEditDraftName,
-                                    iconKey = if (inlineEditMode == PaneInlineEditMode.CREATE_DIRECTORY) {
-                                        AllIconsKeys.Nodes.Folder
-                                    } else {
-                                        AllIconsKeys.FileTypes.Any_type
-                                    },
-                                    selected = false,
-                                    zebra = false,
-                                    onUpdateInlineEditDraft = onUpdateInlineEditDraft,
-                                    onConfirmInlineEdit = onConfirmInlineEdit,
-                                    onCancelInlineEdit = onCancelInlineEdit,
-                                    onDismissContextMenu = onDismissContextMenu,
-                                )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                                .padding(bottom = 12.dp),
+                            contentPadding = PaddingValues(bottom = 4.dp),
+                            userScrollEnabled = !contextMenuVisible,
+                        ) {
+                            if (shouldCreateInlineEntry) {
+                                item(key = "inline-create") {
+                                    InlineEditEntryRow(
+                                        columns = columns,
+                                        columnWidths = columnWeights,
+                                        draftName = inlineEditDraftName,
+                                        iconKey = if (inlineEditMode == PaneInlineEditMode.CREATE_DIRECTORY) {
+                                            AllIconsKeys.Nodes.Folder
+                                        } else {
+                                            AllIconsKeys.FileTypes.Any_type
+                                        },
+                                        selected = false,
+                                        zebra = false,
+                                        onUpdateInlineEditDraft = onUpdateInlineEditDraft,
+                                        onConfirmInlineEdit = onConfirmInlineEdit,
+                                        onCancelInlineEdit = onCancelInlineEdit,
+                                        onDismissContextMenu = onDismissContextMenu,
+                                        scrollState = horizontalScrollState,
+                                    )
+                                }
+                            }
+                            itemsIndexed(
+                                items = state.entries,
+                                key = { _, entry -> entry.id },
+                            ) { index, entry ->
+                                val isRenamingEntry = inlineEditMode == PaneInlineEditMode.RENAME &&
+                                        inlineTargetEntryId == entry.id
+                                if (isRenamingEntry) {
+                                    InlineEditEntryRow(
+                                        columns = columns,
+                                        columnWidths = columnWeights,
+                                        draftName = inlineEditDraftName,
+                                        iconKey = if (entry.kind == VFileKind.DIRECTORY) {
+                                            AllIconsKeys.Nodes.Folder
+                                        } else {
+                                            AllIconsKeys.FileTypes.Any_type
+                                        },
+                                        selected = selectedEntryIds.contains(entry.id),
+                                        zebra = index % 2 == 1,
+                                        onUpdateInlineEditDraft = onUpdateInlineEditDraft,
+                                        onConfirmInlineEdit = onConfirmInlineEdit,
+                                        onCancelInlineEdit = onCancelInlineEdit,
+                                        onDismissContextMenu = onDismissContextMenu,
+                                        scrollState = horizontalScrollState,
+                                    )
+                                } else {
+                                    EntryRow(
+                                        columns = columns,
+                                        columnWidths = columnWeights,
+                                        entry = entry,
+                                        zebra = index % 2 == 1,
+                                        selected = selectedEntryIds.contains(entry.id),
+                                        selectedEntryCount = selectedEntryIds.size,
+                                        paneActive = paneActive,
+                                        onActivate = onActivate,
+                                        onOpenEntry = onOpenEntry,
+                                        onSelectEntry = onSelectEntry,
+                                        onBeginRename = onBeginRename,
+                                        paneId = paneId,
+                                        fileDropTarget = fileDropTarget,
+                                        onStartFileDrag = onStartFileDrag,
+                                        onFileDragPositionChange = onFileDragPositionChange,
+                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDropZoneChange = onFileDropZoneChange,
+                                        onShowContextMenu = onShowContextMenu,
+                                        onDismissContextMenu = onDismissContextMenu,
+                                        scrollState = horizontalScrollState,
+                                    )
+                                }
                             }
                         }
-                        itemsIndexed(
-                            items = state.entries,
-                            key = { _, entry -> entry.id },
-                        ) { index, entry ->
-                            val isRenamingEntry = inlineEditMode == PaneInlineEditMode.RENAME &&
-                                    inlineTargetEntryId == entry.id
-                            if (isRenamingEntry) {
-                                InlineEditEntryRow(
-                                    columns = columns,
-                                    columnWeights = columnWeights,
-                                    draftName = inlineEditDraftName,
-                                    iconKey = if (entry.kind == VFileKind.DIRECTORY) {
-                                        AllIconsKeys.Nodes.Folder
-                                    } else {
-                                        AllIconsKeys.FileTypes.Any_type
-                                    },
-                                    selected = selectedEntryIds.contains(entry.id),
-                                    zebra = index % 2 == 1,
-                                    onUpdateInlineEditDraft = onUpdateInlineEditDraft,
-                                    onConfirmInlineEdit = onConfirmInlineEdit,
-                                    onCancelInlineEdit = onCancelInlineEdit,
-                                    onDismissContextMenu = onDismissContextMenu,
-                                )
-                            } else {
-                                EntryRow(
-                                    columns = columns,
-                                    columnWeights = columnWeights,
-                                    entry = entry,
-                                    zebra = index % 2 == 1,
-                                    selected = selectedEntryIds.contains(entry.id),
-                                    selectedEntryCount = selectedEntryIds.size,
-                                    paneActive = paneActive,
-                                    onActivate = onActivate,
-                                    onOpenEntry = onOpenEntry,
-                                    onSelectEntry = onSelectEntry,
-                                    paneId = paneId,
-                                    fileDropTarget = fileDropTarget,
-                                    onStartFileDrag = onStartFileDrag,
-                                    onFileDragPositionChange = onFileDragPositionChange,
-                                    onFileDragEnd = onFileDragEnd,
-                                    onFileDropZoneChange = onFileDropZoneChange,
-                                    onShowContextMenu = onShowContextMenu,
-                                    onDismissContextMenu = onDismissContextMenu,
-                                )
-                            }
-                        }
+                        HorizontalScrollbar(
+                            adapter = rememberScrollbarAdapter(horizontalScrollState),
+                            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                        )
                     }
                 }
             }
@@ -339,7 +368,7 @@ internal fun PaneEntriesContent(
 @Composable
 internal fun InlineEditEntryRow(
     columns: List<DetailsColumn>,
-    columnWeights: Map<DetailsColumn, Float>,
+    columnWidths: Map<DetailsColumn, Float>,
     draftName: String,
     iconKey: org.jetbrains.jewel.ui.icon.IconKey,
     selected: Boolean,
@@ -348,8 +377,10 @@ internal fun InlineEditEntryRow(
     onConfirmInlineEdit: () -> Unit,
     onCancelInlineEdit: () -> Unit,
     onDismissContextMenu: () -> Unit,
+    scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
     val focusRequester = remember { FocusRequester() }
+    var hasFocused by remember { mutableStateOf(false) }
     val rowBackground by animateColorAsState(
         targetValue = when {
             selected -> LocalOnyxPalette.current.selectionBackground
@@ -359,16 +390,16 @@ internal fun InlineEditEntryRow(
         animationSpec = tween(durationMillis = 120),
     )
 
-    LaunchedEffect(draftName) {
+    LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .horizontalScroll(scrollState)
             .background(rowBackground)
             .padding(horizontal = 8.dp, vertical = 1.dp)
-            .height(22.dp)
+            .height(IntrinsicSize.Min)
             .onPointerEvent(PointerEventType.Press) {
                 if (it.buttons.isSecondaryPressed) {
                     onDismissContextMenu()
@@ -394,10 +425,11 @@ internal fun InlineEditEntryRow(
         horizontalArrangement = Arrangement.spacedBy(DetailsColumnGap),
     ) {
         visibleDetailsColumns(columns).forEach { column ->
+            val colWidth = detailsColumnWidth(columnWidths, column).dp
             when (column) {
                 DetailsColumn.NAME -> {
                     Row(
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier.width(colWidth).height(22.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -410,12 +442,23 @@ internal fun InlineEditEntryRow(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .focusRequester(focusRequester),
+                                .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(2.dp))
+                                .background(LocalOnyxPalette.current.surface, RoundedCornerShape(2.dp))
+                                .padding(horizontal = 4.dp)
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { focusState ->
+                                    if (focusState.isFocused) {
+                                        hasFocused = true
+                                    } else if (hasFocused) {
+                                        onConfirmInlineEdit()
+                                    }
+                                },
                             textStyle = TextStyle(
                                 fontSize = 12.sp,
-                                color = if (selected) LocalOnyxPalette.current.selectionForeground else LocalOnyxPalette.current.foreground,
+                                color = LocalOnyxPalette.current.foreground,
                             ),
                             singleLine = true,
+                            cursorBrush = SolidColor(LocalOnyxPalette.current.foreground),
                         )
                     }
                 }
@@ -423,7 +466,7 @@ internal fun InlineEditEntryRow(
                 DetailsColumn.SIZE -> {
                     Text(
                         text = "-",
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier.width(colWidth),
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
@@ -435,7 +478,7 @@ internal fun InlineEditEntryRow(
                 DetailsColumn.MODIFIED -> {
                     Text(
                         text = "-",
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier.width(colWidth),
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
@@ -446,7 +489,7 @@ internal fun InlineEditEntryRow(
                 DetailsColumn.TYPE -> {
                     Text(
                         text = "-",
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier.width(colWidth),
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground,
                         maxLines = 1,
@@ -462,61 +505,59 @@ internal fun InlineEditEntryRow(
 @Composable
 internal fun DetailsHeader(
     columns: List<DetailsColumn>,
-    columnWeights: Map<DetailsColumn, Float>,
+    columnWidths: Map<DetailsColumn, Float>,
     sort: DetailsSort,
     onToggleSort: (DetailsColumn) -> Unit,
     onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
+    scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
-    var headerWidthPx by remember { mutableStateOf(1) }
+    val density = LocalDensity.current
     val visibleColumns = remember(columns) { visibleDetailsColumns(columns) }
-    val totalWeight = visibleColumns
-        .sumOf { column -> detailsColumnWeight(columnWeights, column).toDouble() }
-        .toFloat()
-        .coerceAtLeast(1f)
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .horizontalScroll(scrollState)
             .background(LocalOnyxPalette.current.headerBackground)
             .height(24.dp)
-            .onSizeChanged { headerWidthPx = it.width.coerceAtLeast(1) }
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         visibleColumns.forEachIndexed { index, column ->
             val nextColumn = visibleColumns.getOrNull(index + 1)
+            val colWidth = detailsColumnWidth(columnWidths, column).dp
             when (column) {
                 DetailsColumn.NAME -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_name),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                    modifier = Modifier.width(colWidth),
                     onClick = { onToggleSort(column) },
                 )
 
                 DetailsColumn.SIZE -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_size),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                    modifier = Modifier.width(colWidth),
                     onClick = { onToggleSort(column) },
                 )
 
                 DetailsColumn.MODIFIED -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_modified),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                    modifier = Modifier.width(colWidth),
                     onClick = { onToggleSort(column) },
                 )
                 DetailsColumn.TYPE -> SortHeaderCell(
                     text = stringResource(Res.string.label_column_type),
                     sortHint = sortHint(column, sort),
-                    modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                    modifier = Modifier.width(colWidth),
                     onClick = { onToggleSort(column) },
                 )
             }
             if (nextColumn != null) {
                 DetailsColumnResizeGap(
                     onResize = { deltaPx ->
-                        onResizeColumn(column, nextColumn, deltaPx / headerWidthPx.toFloat() * totalWeight)
+                        val deltaDp = with(density) { deltaPx / this.density }
+                        onResizeColumn(column, nextColumn, deltaDp)
                     },
                 )
             }
@@ -592,7 +633,7 @@ internal fun DetailsColumnResizeGap(
 @Composable
 internal fun EntryRow(
     columns: List<DetailsColumn>,
-    columnWeights: Map<DetailsColumn, Float>,
+    columnWidths: Map<DetailsColumn, Float>,
     entry: VFile,
     zebra: Boolean,
     selected: Boolean,
@@ -601,6 +642,7 @@ internal fun EntryRow(
     onActivate: () -> Unit,
     onOpenEntry: (VFile) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
+    onBeginRename: () -> Unit = {},
     paneId: PaneId,
     fileDropTarget: FileDropTarget?,
     onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
@@ -609,6 +651,7 @@ internal fun EntryRow(
     onFileDropZoneChange: (FileDropZone) -> Unit,
     onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     onDismissContextMenu: () -> Unit,
+    scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     var rangeSelection by remember { mutableStateOf(false) }
@@ -617,6 +660,8 @@ internal fun EntryRow(
     var rowCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val isDirectoryDropTarget = fileDropTarget?.directoryEntryId == entry.id
     val preserveMultiSelectionForDrag = selected && selectedEntryCount > 1
+    val coroutineScope = rememberCoroutineScope()
+    var renameTimerJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val rowBackground by animateColorAsState(
         targetValue = when {
             isDirectoryDropTarget -> LocalOnyxPalette.current.rowHoverBackground
@@ -630,7 +675,7 @@ internal fun EntryRow(
 
     Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .horizontalScroll(scrollState)
             .onGloballyPositioned { coordinates ->
                 rowCoordinates = coordinates
             }
@@ -645,6 +690,8 @@ internal fun EntryRow(
                 val pointerPosition = event.changes.firstOrNull()?.position ?: return@onPointerEvent
                 when {
                     event.buttons.isSecondaryPressed -> {
+                        renameTimerJob?.cancel()
+                        renameTimerJob = null
                         val windowPosition = rowCoordinates?.localToWindow(pointerPosition) ?: pointerPosition
                         onActivate()
                         onShowContextMenu(
@@ -657,8 +704,22 @@ internal fun EntryRow(
                     event.buttons.isPrimaryPressed -> {
                         onActivate()
                         onDismissContextMenu()
+                        // 慢速双击重命名逻辑：仅当已经是单选 + 当前项已选中 + 无修饰键时启动定时器
+                        val wasSingleSelected = selected && selectedEntryCount == 1 &&
+                                !additiveSelection && !rangeSelection
                         if (!preserveMultiSelectionForDrag || additiveSelection || rangeSelection) {
                             onSelectEntry(entry.id, additiveSelection, rangeSelection)
+                        }
+                        if (wasSingleSelected && !additiveSelection && !rangeSelection) {
+                            // 启动 500ms 慢速重命名定时器
+                            renameTimerJob?.cancel()
+                            renameTimerJob = coroutineScope.launch {
+                                kotlinx.coroutines.delay(500)
+                                onBeginRename()
+                            }
+                        } else {
+                            renameTimerJob?.cancel()
+                            renameTimerJob = null
                         }
                     }
                 }
@@ -666,6 +727,8 @@ internal fun EntryRow(
             .pointerInput(entry.id, paneId) {
                 detectDragGestures(
                     onDragStart = { offset ->
+                        renameTimerJob?.cancel()
+                        renameTimerJob = null
                         dragPosition = rowCoordinates?.localToWindow(offset)?.toIntOffset()
                         onStartFileDrag(paneId, dragOperation)
                         dragPosition?.let(onFileDragPositionChange)
@@ -690,6 +753,9 @@ internal fun EntryRow(
                     onActivate()
                 },
                 onDoubleClick = {
+                    // 双击时取消重命名定时器
+                    renameTimerJob?.cancel()
+                    renameTimerJob = null
                     onActivate()
                     onDismissContextMenu()
                     onOpenEntry(entry)
@@ -701,11 +767,12 @@ internal fun EntryRow(
         horizontalArrangement = Arrangement.spacedBy(DetailsColumnGap),
     ) {
         visibleDetailsColumns(columns).forEach { column ->
+            val colWidth = detailsColumnWidth(columnWidths, column).dp
             when (column) {
                 DetailsColumn.NAME -> {
                     Row(
                         modifier = Modifier
-                            .weight(detailsColumnWeight(columnWeights, column))
+                            .width(colWidth)
                             .onGloballyPositioned { coordinates ->
                                 if (entry.kind == VFileKind.DIRECTORY) {
                                     onFileDropZoneChange(
@@ -740,7 +807,7 @@ internal fun EntryRow(
                 DetailsColumn.SIZE -> {
                     Text(
                         text = formatFileSize(entry.sizeBytes),
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier.width(colWidth),
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
@@ -752,7 +819,7 @@ internal fun EntryRow(
                 DetailsColumn.MODIFIED -> {
                     Text(
                         text = formatModifiedTime(entry.modifiedAtEpochMillis),
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier.width(colWidth),
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
@@ -769,7 +836,7 @@ internal fun EntryRow(
                     }
                     Text(
                         text = typeText,
-                        modifier = Modifier.weight(detailsColumnWeight(columnWeights, column)),
+                        modifier = Modifier.width(colWidth),
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
@@ -781,4 +848,3 @@ internal fun EntryRow(
         }
     }
 }
-

@@ -481,6 +481,7 @@ internal fun PaneSurface(
                         showContextMenu = true
                     },
                     onDismissContextMenu = { showContextMenu = false },
+                    onBeginRename = onBeginRename,
                 )
 
                 if (showContextMenu) {
