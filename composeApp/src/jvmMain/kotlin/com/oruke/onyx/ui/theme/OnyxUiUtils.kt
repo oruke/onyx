@@ -21,6 +21,7 @@ import onyx.composeapp.generated.resources.label_task_status_cancelled
 import onyx.composeapp.generated.resources.label_task_status_failed
 import onyx.composeapp.generated.resources.label_task_status_queued
 import onyx.composeapp.generated.resources.label_task_status_running
+import onyx.composeapp.generated.resources.label_task_status_paused
 import onyx.composeapp.generated.resources.label_task_status_succeeded
 import org.jetbrains.compose.resources.stringResource
 import java.awt.Cursor
@@ -269,6 +270,7 @@ internal fun taskStatusLabel(status: BackgroundTaskStatus): String {
     return when (status) {
         BackgroundTaskStatus.QUEUED -> stringResource(Res.string.label_task_status_queued)
         BackgroundTaskStatus.RUNNING -> stringResource(Res.string.label_task_status_running)
+        BackgroundTaskStatus.PAUSED -> stringResource(Res.string.label_task_status_paused)
         BackgroundTaskStatus.SUCCEEDED -> stringResource(Res.string.label_task_status_succeeded)
         BackgroundTaskStatus.FAILED -> stringResource(Res.string.label_task_status_failed)
         BackgroundTaskStatus.CANCELLED -> stringResource(Res.string.label_task_status_cancelled)

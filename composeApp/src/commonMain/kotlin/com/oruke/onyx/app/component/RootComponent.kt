@@ -156,5 +156,9 @@ interface RootComponent {
 
     fun cancelTask(taskId: String)
 
+    fun pauseTask(taskId: String)
+
+    fun resumeTask(taskId: String)
+
     fun clearAllTasks()
 }

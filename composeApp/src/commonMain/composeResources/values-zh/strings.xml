@@ -116,12 +116,16 @@
     <string name="label_sort_ascending">升序</string>
     <string name="label_sort_descending">降序</string>
 
-    <string name="label_task_center">任务中心</string>
+    <string name="label_task_center">任务</string>
     <string name="label_task_status_queued">排队中</string>
     <string name="label_task_status_running">执行中</string>
+    <string name="label_task_status_paused">已暂停</string>
     <string name="label_task_status_succeeded">已完成</string>
     <string name="label_task_status_failed">失败</string>
     <string name="label_task_status_cancelled">已取消</string>
+    <string name="label_task_errors_count">%1$d 个错误</string>
+    <string name="action_pause_task">暂停</string>
+    <string name="action_resume_task">恢复</string>
 
     <string name="label_directory_badge">文件夹</string>
     <string name="label_file_badge">文件</string>

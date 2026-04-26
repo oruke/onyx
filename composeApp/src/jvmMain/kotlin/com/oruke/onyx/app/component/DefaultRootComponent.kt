@@ -10,6 +10,7 @@ import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
+import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.I18nMessage
@@ -24,6 +25,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -95,6 +97,7 @@ class DefaultRootComponent(
     private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     private val showPreviewPane = MutableStateFlow(false)
     private val taskJobs = mutableMapOf<String, Job>()
+    private val taskPauseFlags = mutableMapOf<String, MutableStateFlow<Boolean>>()
     private var pendingDeleteRequest: PendingDeleteRequest? = null
     private var pendingTransferRequest: PendingTransferRequest? = null
     private val persistenceMutex = Mutex()
@@ -530,9 +533,18 @@ class DefaultRootComponent(
         conflictStrategies: Map<String, TransferConflictStrategy>,
     ) {
         val taskId = UUID.randomUUID().toString()
+        val taskKind = when (operation) {
+            FileTransferOperation.COPY -> BackgroundTaskKind.COPY
+            FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
+        }
+        val pauseFlag = MutableStateFlow(false)
+        taskPauseFlags[taskId] = pauseFlag
+        val startTime = System.currentTimeMillis()
+
         appendTask(
             BackgroundTask(
                 id = taskId,
+                kind = taskKind,
                 title = when (operation) {
                     FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_items, entries.size)
                     FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_items, entries.size)
@@ -540,6 +552,8 @@ class DefaultRootComponent(
                 status = BackgroundTaskStatus.QUEUED,
                 detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
                 progress = 0f,
+                totalCount = entries.size,
+                startTimeMillis = startTime,
             )
         )
 
@@ -560,6 +574,14 @@ class DefaultRootComponent(
 
                 entries.forEachIndexed { index, entry ->
                     ensureActive()
+                    // 文件级暂停检测
+                    while (pauseFlag.value) {
+                        ensureActive()
+                        delay(200)
+                    }
+                    updateTaskFields(taskId) { task ->
+                        task.copy(currentFileName = entry.name)
+                    }
                     val conflictStrategy = conflictStrategies[entry.id] ?: TransferConflictStrategy.KEEP_BOTH
                     val result = when (operation) {
                         FileTransferOperation.COPY -> {
@@ -584,13 +606,15 @@ class DefaultRootComponent(
                         status = BackgroundTaskStatus.RUNNING,
                         detail = I18nMessage(
                             Res.string.msg_string_literal,
-                            "${entry.name} -> $targetDirectoryLocation"
+                            "${entry.name} → $targetDirectoryLocation"
                         ),
                         progress = (index + 1).toFloat() / entries.size,
+                        processedCount = index + 1,
                     )
                 }
 
                 taskJobs.remove(taskId)
+                taskPauseFlags.remove(taskId)
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
@@ -602,13 +626,16 @@ class DefaultRootComponent(
                             I18nMessage(Res.string.msg_moved_items, entries.size, targetDirectoryLocation)
                     },
                     progress = 1f,
+                    processedCount = entries.size,
                 )
                 if (clearClipboardOnSuccess) {
                     clipboard.value = null
                 }
                 refreshAllPanes()
+                scheduleTaskAutoCleanup(taskId)
             } catch (_: CancellationException) {
                 taskJobs.remove(taskId)
+                taskPauseFlags.remove(taskId)
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -618,6 +645,7 @@ class DefaultRootComponent(
                 refreshAllPanes()
             } catch (failure: Throwable) {
                 taskJobs.remove(taskId)
+                taskPauseFlags.remove(taskId)
                 updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -664,10 +692,13 @@ class DefaultRootComponent(
         appendTask(
             BackgroundTask(
                 id = taskId,
+                kind = BackgroundTaskKind.DELETE,
                 title = I18nMessage(Res.string.msg_delete_items, selectedEntries.size),
                 status = BackgroundTaskStatus.QUEUED,
                 detail = I18nMessage(Res.string.msg_string_literal, paneState(request.paneId).location),
                 progress = 0f,
+                totalCount = selectedEntries.size,
+                startTimeMillis = System.currentTimeMillis(),
             )
         )
 
@@ -701,8 +732,10 @@ class DefaultRootComponent(
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = I18nMessage(Res.string.msg_deleted_items, selectedEntries.size),
                     progress = 1f,
+                    processedCount = selectedEntries.size,
                 )
                 refreshAllPanes()
+                scheduleTaskAutoCleanup(taskId)
             } catch (_: CancellationException) {
                 taskJobs.remove(taskId)
                 updateTask(
@@ -729,6 +762,7 @@ class DefaultRootComponent(
 
     override fun dismissTask(taskId: String) {
         taskJobs.remove(taskId)?.cancel()
+        taskPauseFlags.remove(taskId)
         tasks.value = tasks.value.filterNot { task -> task.id == taskId }
     }
 
@@ -736,10 +770,32 @@ class DefaultRootComponent(
         taskJobs[taskId]?.cancel()
     }
 
+    override fun pauseTask(taskId: String) {
+        taskPauseFlags[taskId]?.value = true
+        updateTaskFields(taskId) { task ->
+            task.copy(status = BackgroundTaskStatus.PAUSED)
+        }
+    }
+
+    override fun resumeTask(taskId: String) {
+        taskPauseFlags[taskId]?.value = false
+        updateTaskFields(taskId) { task ->
+            task.copy(status = BackgroundTaskStatus.RUNNING)
+        }
+    }
+
     override fun clearAllTasks() {
         taskJobs.values.forEach { job -> job.cancel() }
         taskJobs.clear()
+        taskPauseFlags.clear()
         tasks.value = emptyList()
+    }
+
+    private fun scheduleTaskAutoCleanup(taskId: String) {
+        scope.launch {
+            delay(5000)
+            tasks.value = tasks.value.filterNot { task -> task.id == taskId }
+        }
     }
 
     private suspend fun restorePersistedState() {
@@ -840,10 +896,13 @@ class DefaultRootComponent(
         appendTask(
             BackgroundTask(
                 id = taskId,
+                kind = BackgroundTaskKind.COPY,
                 title = I18nMessage(Res.string.msg_create_folders, paths.size),
                 status = BackgroundTaskStatus.QUEUED,
                 detail = I18nMessage(Res.string.msg_string_literal, parentLocation),
                 progress = 0f,
+                totalCount = paths.size,
+                startTimeMillis = System.currentTimeMillis(),
             )
         )
 
@@ -877,8 +936,10 @@ class DefaultRootComponent(
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = I18nMessage(Res.string.msg_created_folders, paths.size),
                     progress = 1f,
+                    processedCount = paths.size,
                 )
                 paneComponent(paneId).refresh()
+                scheduleTaskAutoCleanup(taskId)
             } catch (_: CancellationException) {
                 taskJobs.remove(taskId)
                 updateTask(
@@ -1021,6 +1082,7 @@ class DefaultRootComponent(
         status: BackgroundTaskStatus,
         detail: I18nMessage,
         progress: Float? = null,
+        processedCount: Int? = null,
     ) {
         tasks.value = tasks.value.map { task ->
             if (task.id == taskId) {
@@ -1028,10 +1090,17 @@ class DefaultRootComponent(
                     status = status,
                     detail = detail,
                     progress = progress,
+                    processedCount = processedCount ?: task.processedCount,
                 )
             } else {
                 task
             }
+        }
+    }
+
+    private fun updateTaskFields(taskId: String, transform: (BackgroundTask) -> BackgroundTask) {
+        tasks.value = tasks.value.map { task ->
+            if (task.id == taskId) transform(task) else task
         }
     }
 

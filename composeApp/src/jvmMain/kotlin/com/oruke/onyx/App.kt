@@ -31,7 +31,6 @@ import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.app.component.rememberRootComponent
-import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.VFileKind
@@ -46,7 +45,7 @@ import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
 import com.oruke.onyx.ui.SettingsDialog
 import com.oruke.onyx.ui.StatusBar
-import com.oruke.onyx.ui.TaskCenterWindow
+import com.oruke.onyx.ui.JobsBar
 import com.oruke.onyx.ui.TitleBarContent
 import com.oruke.onyx.ui.theme.FileDragState
 import com.oruke.onyx.ui.theme.FileDropTarget
@@ -147,7 +146,7 @@ private fun AppContent(
     var fileDragState by remember { mutableStateOf<FileDragState?>(null) }
     var fileDropTarget by remember { mutableStateOf<FileDropTarget?>(null) }
     var fileDragPosition by remember { mutableStateOf<IntOffset?>(null) }
-    var taskCenterVisible by remember { mutableStateOf(false) }
+
     var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     var appContentSize by remember { mutableStateOf(IntSize.Zero) }
     var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
@@ -248,21 +247,7 @@ private fun AppContent(
         fileDragPosition = null
     }
 
-    LaunchedEffect(state.tasks.size) {
-        if (state.tasks.isNotEmpty()) {
-            taskCenterVisible = true
-        }
-    }
 
-    if (taskCenterVisible && state.tasks.isNotEmpty()) {
-        TaskCenterWindow(
-            tasks = state.tasks,
-            onDismissTask = rootComponent::dismissTask,
-            onCancelTask = rootComponent::cancelTask,
-            onClearAllTasks = rootComponent::clearAllTasks,
-            onClose = { taskCenterVisible = false },
-        )
-    }
 
     when (val dialogState = state.dialogState) {
         is RootDialogState.DeleteSelectionConfirmation -> {
@@ -594,15 +579,24 @@ private fun AppContent(
                         }
                     }
 
+                    // ── Jobs Bar ─────────────────────────────────────────────
+                    if (state.tasks.isNotEmpty()) {
+                        JobsBar(
+                            tasks = state.tasks,
+                            onPauseTask = rootComponent::pauseTask,
+                            onResumeTask = rootComponent::resumeTask,
+                            onCancelTask = rootComponent::cancelTask,
+                            onDismissTask = rootComponent::dismissTask,
+                            onClearAllTasks = rootComponent::clearAllTasks,
+                        )
+                    }
+
                     // ── Status bar ──────────────────────────────────────────────
                     if (state.settings.statusBarVisible) {
                         StatusBar(
                             primaryPane = state.primaryPane,
                             secondaryPane = state.secondaryPane,
                             activePane = state.activePane,
-                            activeTaskCount = state.tasks.count { task ->
-                                task.status == BackgroundTaskStatus.QUEUED || task.status == BackgroundTaskStatus.RUNNING
-                            },
                             onSetActiveViewMode = { mode ->
                                 when (state.activePane) {
                                     PaneId.PRIMARY -> rootComponent.primaryPane.setViewMode(mode)

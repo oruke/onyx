@@ -118,12 +118,16 @@
     <string name="label_sort_ascending">昇順</string>
     <string name="label_sort_descending">降順</string>
 
-    <string name="label_task_center">タスクセンター</string>
+    <string name="label_task_center">ジョブ</string>
     <string name="label_task_status_queued">待機中</string>
     <string name="label_task_status_running">実行中</string>
+    <string name="label_task_status_paused">一時停止</string>
     <string name="label_task_status_succeeded">完了</string>
     <string name="label_task_status_failed">失敗</string>
     <string name="label_task_status_cancelled">キャンセル済み</string>
+    <string name="label_task_errors_count">%1$d 件エラー</string>
+    <string name="action_pause_task">一時停止</string>
+    <string name="action_resume_task">再開</string>
 
     <string name="label_directory_badge">フォルダー</string>
     <string name="label_file_badge">ファイル</string>

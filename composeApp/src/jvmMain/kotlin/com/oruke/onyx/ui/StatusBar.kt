@@ -31,7 +31,7 @@ import onyx.composeapp.generated.resources.label_item_count
 import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_mode_gallery
 import onyx.composeapp.generated.resources.label_selected_size
-import onyx.composeapp.generated.resources.label_task_summary
+
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -44,7 +44,6 @@ internal fun StatusBar(
     primaryPane: PaneState,
     secondaryPane: PaneState,
     activePane: PaneId,
-    activeTaskCount: Int,
     onSetActiveViewMode: (ViewMode) -> Unit,
 ) {
     val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
@@ -97,13 +96,6 @@ internal fun StatusBar(
                 fontSize = 11.sp,
                 color = LocalOnyxPalette.current.mutedForeground,
             )
-            if (activeTaskCount > 0) {
-                Text(
-                    text = stringResource(Res.string.label_task_summary, activeTaskCount),
-                    fontSize = 11.sp,
-                    color = LocalOnyxPalette.current.mutedForeground,
-                )
-            }
         }
 
         Row(

@@ -30,7 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -115,6 +117,7 @@ internal fun GalleryItem(
 
     val isInlineEdit = draftName != null && onUpdateInlineEditDraft != null
     val focusRequester = remember { FocusRequester() }
+    var hasFocused by remember { mutableStateOf(false) }
 
     val itemBackground by animateColorAsState(
         targetValue = when {
@@ -272,7 +275,17 @@ internal fun GalleryItem(
                 onValueChange = { onUpdateInlineEditDraft(it) },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(2.dp))
+                    .background(LocalOnyxPalette.current.surface, RoundedCornerShape(2.dp))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
                     .focusRequester(focusRequester)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            hasFocused = true
+                        } else if (hasFocused) {
+                            onConfirmInlineEdit()
+                        }
+                    }
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
@@ -289,10 +302,11 @@ internal fun GalleryItem(
                     },
                 textStyle = TextStyle(
                     fontSize = 12.sp,
-                    color = if (selected) LocalOnyxPalette.current.selectionForeground else LocalOnyxPalette.current.foreground,
+                    color = LocalOnyxPalette.current.foreground,
                     textAlign = TextAlign.Center
                 ),
                 singleLine = true,
+                cursorBrush = SolidColor(LocalOnyxPalette.current.foreground),
             )
         } else {
             Text(
