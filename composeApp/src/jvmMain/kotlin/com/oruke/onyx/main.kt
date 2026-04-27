@@ -2,6 +2,9 @@ package com.oruke.onyx
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.window.application
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.onyx_logo
+import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
@@ -28,6 +31,7 @@ fun main() = application {
         DecoratedWindow(
             onCloseRequest = ::exitApplication,
             title = "Onyx",
+            icon = painterResource(Res.drawable.onyx_logo),
         ) {
             WindowApp()
         }
