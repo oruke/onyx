@@ -1,0 +1,9 @@
+-dontwarn javax.servlet.**
+-dontwarn jcifs.**
+-dontwarn androidx.compose.material.**
+-dontwarn com.ibm.security.**
+-dontwarn com.intellij.openapi.**
+-dontwarn com.sun.jna.**
+-dontwarn org.slf4j.**
+-dontwarn io.ktor.**
+-dontwarn org.bouncycastle.**
