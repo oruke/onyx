@@ -623,6 +623,16 @@ private fun AppContent(
                                     PaneId.SECONDARY -> rootComponent.secondaryPane.setViewMode(mode)
                                 }
                             },
+                            galleryItemSizeDp = when (state.activePane) {
+                                PaneId.PRIMARY -> state.primaryPane.galleryItemSizeDp
+                                PaneId.SECONDARY -> state.secondaryPane.galleryItemSizeDp
+                            },
+                            onGalleryItemSizeChange = { size ->
+                                when (state.activePane) {
+                                    PaneId.PRIMARY -> rootComponent.primaryPane.setGalleryItemSize(size)
+                                    PaneId.SECONDARY -> rootComponent.secondaryPane.setGalleryItemSize(size)
+                                }
+                            },
                         )
                     }
                 }

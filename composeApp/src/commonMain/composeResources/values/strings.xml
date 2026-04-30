@@ -174,4 +174,7 @@
     <string name="label_inspector_file">File</string>
 
     <string name="label_column_visibility">Columns</string>
+
+    <string name="label_empty_directory_hint">Right-click to create files or folders</string>
+    <string name="action_open_terminal">Open Terminal Here</string>
 </resources>

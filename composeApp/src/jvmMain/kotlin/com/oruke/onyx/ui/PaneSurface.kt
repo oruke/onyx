@@ -248,6 +248,21 @@ internal fun PaneSurface(
                         true
                     }
 
+                    event.key == Key.D && (event.isCtrlPressed || event.isMetaPressed) -> {
+                        onToggleFavoriteLocation(state.location)
+                        true
+                    }
+
+                    event.key == Key.F5 -> {
+                        component.refresh()
+                        true
+                    }
+
+                    event.key == Key.Backspace -> {
+                        component.goUp()
+                        true
+                    }
+
                     else -> false
                 }
             }
@@ -418,6 +433,11 @@ internal fun PaneSurface(
         Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
 
         state.operationFeedback?.let { feedback ->
+            // 3 秒后自动消失
+            LaunchedEffect(feedback) {
+                kotlinx.coroutines.delay(3000)
+                onDismissOperationFeedback()
+            }
             OperationFeedbackBar(
                 feedback = feedback,
                 onDismiss = onDismissOperationFeedback,
@@ -484,6 +504,7 @@ internal fun PaneSurface(
                     },
                     onDismissContextMenu = { showContextMenu = false },
                     onBeginRename = onBeginRename,
+                    galleryItemSizeDp = state.galleryItemSizeDp,
                 )
 
                 if (showContextMenu) {
@@ -539,6 +560,32 @@ internal fun PaneSurface(
                         onRefresh = {
                             component.refresh()
                             showContextMenu = false
+                        },
+                        onOpenTerminal = {
+                            showContextMenu = false
+                            val location = state.location
+                            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                val dir = java.io.File(location)
+                                if (!dir.isDirectory) return@launch
+                                val terminal = System.getenv("TERMINAL")
+                                val candidates = listOfNotNull(
+                                    terminal,
+                                    "x-terminal-emulator",
+                                    "gnome-terminal",
+                                    "konsole",
+                                    "kitty",
+                                    "alacritty",
+                                    "xterm",
+                                )
+                                for (cmd in candidates) {
+                                    try {
+                                        ProcessBuilder(cmd).directory(dir).start()
+                                        return@launch
+                                    } catch (_: Exception) {
+                                        // 尝试下一个候选
+                                    }
+                                }
+                            }
                         },
                         onClose = { showContextMenu = false },
                     )

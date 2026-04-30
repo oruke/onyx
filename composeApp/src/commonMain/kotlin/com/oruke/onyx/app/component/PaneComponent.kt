@@ -33,6 +33,7 @@ data class PaneState(
     val operationFeedback: PaneOperationFeedback?,
     val showHiddenItems: Boolean,
     val hiddenColumns: Set<DetailsColumn>,
+    val galleryItemSizeDp: Int,
     val entriesState: PaneEntriesState,
 )
 
@@ -56,6 +57,7 @@ data class PaneTabState(
     val operationFeedback: PaneOperationFeedback?,
     val showHiddenItems: Boolean,
     val hiddenColumns: Set<DetailsColumn>,
+    val galleryItemSizeDp: Int,
     val entriesState: PaneEntriesState,
     val allEntries: List<VFile>,
     val backStack: List<String>,
@@ -100,6 +102,8 @@ interface PaneComponent {
     fun toggleHiddenItems()
 
     fun toggleColumnVisibility(column: DetailsColumn)
+
+    fun setGalleryItemSize(sizeDp: Int)
 
     fun resizeDetailsColumn(
         column: DetailsColumn,

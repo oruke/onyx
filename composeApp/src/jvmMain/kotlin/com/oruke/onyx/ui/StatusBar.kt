@@ -45,6 +45,8 @@ internal fun StatusBar(
     secondaryPane: PaneState,
     activePane: PaneId,
     onSetActiveViewMode: (ViewMode) -> Unit,
+    galleryItemSizeDp: Int = 160,
+    onGalleryItemSizeChange: (Int) -> Unit = {},
 ) {
     val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
     Row(
@@ -102,6 +104,13 @@ internal fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            // 画廊视图缩放滑块
+            if (activeState.viewMode == ViewMode.GALLERY) {
+                ZoomSlider(
+                    value = galleryItemSizeDp,
+                    onValueChange = onGalleryItemSizeChange,
+                )
+            }
             LayoutIconButton(
                 selected = activeState.viewMode == ViewMode.DETAILS,
                 onClick = { onSetActiveViewMode(ViewMode.DETAILS) },
@@ -130,8 +139,11 @@ internal fun StatusBar(
 internal fun ZoomSlider(
     value: Int,
     onValueChange: (Int) -> Unit,
+    minValue: Int = 80,
+    maxValue: Int = 320,
 ) {
-    val fraction = ((value - 50) / 150f).coerceIn(0f, 1f)
+    val range = (maxValue - minValue).toFloat()
+    val fraction = ((value - minValue) / range).coerceIn(0f, 1f)
     val sliderWidthDp = 120
     val density = androidx.compose.ui.platform.LocalDensity.current
     val sliderWidthPx = with(density) { sliderWidthDp.dp.toPx() }
@@ -144,13 +156,13 @@ internal fun ZoomSlider(
                 detectDragGestures { change, _ ->
                     val x = change.position.x.coerceIn(0f, sliderWidthPx)
                     val newFraction = x / sliderWidthPx
-                    onValueChange((50 + (newFraction * 150).toInt()).coerceIn(50, 200))
+                    onValueChange((minValue + (newFraction * range).toInt()).coerceIn(minValue, maxValue))
                 }
             }
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
                     val newFraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
-                    onValueChange((50 + (newFraction * 150).toInt()).coerceIn(50, 200))
+                    onValueChange((minValue + (newFraction * range).toInt()).coerceIn(minValue, maxValue))
                 }
             },
         contentAlignment = Alignment.Center,

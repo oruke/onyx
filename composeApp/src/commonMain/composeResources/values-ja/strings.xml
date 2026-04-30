@@ -174,4 +174,7 @@
     <string name="label_inspector_file">ファイル</string>
 
     <string name="label_column_visibility">カラム設定</string>
+
+    <string name="label_empty_directory_hint">右クリックでファイルやフォルダーを作成</string>
+    <string name="action_open_terminal">ここでターミナルを開く</string>
 </resources>

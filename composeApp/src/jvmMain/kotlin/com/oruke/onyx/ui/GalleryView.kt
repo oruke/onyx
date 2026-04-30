@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -106,6 +107,7 @@ internal fun GalleryItem(
     onUpdateInlineEditDraft: ((String) -> Unit)? = null,
     onConfirmInlineEdit: (() -> Unit)? = null,
     onCancelInlineEdit: (() -> Unit)? = null,
+    galleryItemSizeDp: Int = 160,
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     var rangeSelection by remember { mutableStateOf(false) }
@@ -135,11 +137,14 @@ internal fun GalleryItem(
         }
     }
 
+    val itemWidth = galleryItemSizeDp.dp
+    val itemHeight = (galleryItemSizeDp * 1.15f).dp
+
     Column(
         modifier = Modifier
             .padding(4.dp)
-            .widthIn(min = 100.dp, max = 160.dp)
-            .height(180.dp)
+            .width(itemWidth)
+            .height(itemHeight)
             .background(itemBackground, RoundedCornerShape(6.dp))
             .border(
                 width = 1.dp,

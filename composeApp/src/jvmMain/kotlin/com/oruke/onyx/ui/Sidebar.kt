@@ -248,7 +248,7 @@ internal fun SidebarTree(
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 260.dp),
+            .heightIn(min = 120.dp, max = 600.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         items(

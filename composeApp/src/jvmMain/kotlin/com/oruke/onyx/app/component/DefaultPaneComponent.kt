@@ -3,6 +3,7 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.FileWatcher
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
@@ -21,9 +22,13 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_new_directory
@@ -52,8 +57,12 @@ class DefaultPaneComponent(
 
     override val state: StateFlow<PaneState> = mutableState.asStateFlow()
 
+    private val fileWatcher = FileWatcher()
+    private var fileWatcherJob: Job? = null
+
     init {
         refresh()
+        startWatching(mutableState.value.location)
     }
 
     override fun refresh() {
@@ -400,6 +409,14 @@ class DefaultPaneComponent(
         }
     }
 
+    override fun setGalleryItemSize(sizeDp: Int) {
+        val tab = activeTab() ?: return
+        val clamped = sizeDp.coerceIn(80, 320)
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(galleryItemSizeDp = clamped)
+        }
+    }
+
     override fun resizeDetailsColumn(
         column: DetailsColumn,
         nextColumn: DetailsColumn,
@@ -727,6 +744,7 @@ class DefaultPaneComponent(
             )
         }
         loadTab(tabId = tab.id, location = normalizedLocation)
+        startWatching(normalizedLocation)
     }
 
     private fun loadTab(
@@ -768,6 +786,29 @@ class DefaultPaneComponent(
         if (tab != null) {
             loadTab(tabId = tab.id, location = tab.location)
         }
+    }
+
+    /**
+     * 开始监听指定目录的文件变更，有变更时自动刷新。
+     * 每次调用会取消前一个监听。
+     */
+    private fun startWatching(location: String) {
+        fileWatcherJob?.cancel()
+        val path = try {
+            Path.of(location)
+        } catch (_: Exception) {
+            return
+        }
+        if (!java.nio.file.Files.isDirectory(path)) return
+        fileWatcherJob = fileWatcher.watch(path)
+            .onEach {
+                val tab = activeTab() ?: return@onEach
+                if (tab.location == location) {
+                    loadTab(tabId = tab.id, location = tab.location)
+                }
+            }
+            .catch { /* 监听异常静默忽略 */ }
+            .launchIn(scope)
     }
 
     private fun createInitialState(
@@ -812,6 +853,7 @@ class DefaultPaneComponent(
             operationFeedback = null,
             showHiddenItems = false,
             hiddenColumns = emptySet(),
+            galleryItemSizeDp = 160,
             entriesState = PaneEntriesState.Idle,
             allEntries = emptyList(),
             backStack = emptyList(),
@@ -1087,6 +1129,7 @@ private fun PaneTabState.toPaneState(
         operationFeedback = operationFeedback,
         showHiddenItems = showHiddenItems,
         hiddenColumns = hiddenColumns,
+        galleryItemSizeDp = galleryItemSizeDp,
         entriesState = entriesState,
     )
 }
@@ -1132,6 +1175,7 @@ private fun TabSessionSnapshot.toPaneTabState(): PaneTabState {
         operationFeedback = null,
         showHiddenItems = showHiddenItems,
         hiddenColumns = emptySet(),
+        galleryItemSizeDp = 160,
         entriesState = PaneEntriesState.Idle,
         allEntries = emptyList(),
         backStack = backStack,

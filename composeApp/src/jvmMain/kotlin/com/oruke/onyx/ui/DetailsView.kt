@@ -65,6 +65,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -106,6 +107,7 @@ import onyx.composeapp.generated.resources.label_column_size
 import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_directory_badge
 import onyx.composeapp.generated.resources.label_empty_directory
+import onyx.composeapp.generated.resources.label_empty_directory_hint
 import onyx.composeapp.generated.resources.label_error_prefix
 import onyx.composeapp.generated.resources.label_column_visibility
 import onyx.composeapp.generated.resources.label_loading_entries
@@ -150,6 +152,7 @@ internal fun PaneEntriesContent(
     onConfirmInlineEdit: () -> Unit,
     onCancelInlineEdit: () -> Unit,
     onBeginRename: () -> Unit = {},
+    galleryItemSizeDp: Int = 160,
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -188,14 +191,30 @@ internal fun PaneEntriesContent(
 
             if (state.entries.isEmpty() && !shouldCreateInlineEntry) {
                 Box(
-                    modifier = Modifier.fillMaxSize().padding(12.dp),
-                    contentAlignment = Alignment.CenterStart,
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = stringResource(Res.string.label_empty_directory),
-                        color = LocalOnyxPalette.current.mutedForeground,
-                        fontSize = 12.sp
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            key = AllIconsKeys.Nodes.Folder,
+                            contentDescription = null,
+                            modifier = Modifier.alpha(0.4f),
+                        )
+                        Text(
+                            text = stringResource(Res.string.label_empty_directory),
+                            color = LocalOnyxPalette.current.mutedForeground,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            text = stringResource(Res.string.label_empty_directory_hint),
+                            color = LocalOnyxPalette.current.disabledForeground,
+                            fontSize = 11.sp,
+                        )
+                    }
                 }
                 return
             }
@@ -220,7 +239,7 @@ internal fun PaneEntriesContent(
                 // ── File list ──────────────────────────────────────────
                 if (viewMode == ViewMode.GALLERY) {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(140.dp),
+                        columns = GridCells.Adaptive(galleryItemSizeDp.dp),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(4.dp),
                         userScrollEnabled = !contextMenuVisible,
@@ -249,6 +268,7 @@ internal fun PaneEntriesContent(
                                     onUpdateInlineEditDraft = onUpdateInlineEditDraft,
                                     onConfirmInlineEdit = onConfirmInlineEdit,
                                     onCancelInlineEdit = onCancelInlineEdit,
+                                    galleryItemSizeDp = galleryItemSizeDp,
                                 )
                             }
                         }
@@ -278,6 +298,7 @@ internal fun PaneEntriesContent(
                                 onUpdateInlineEditDraft = if (isRenamingEntry) onUpdateInlineEditDraft else null,
                                 onConfirmInlineEdit = if (isRenamingEntry) onConfirmInlineEdit else null,
                                 onCancelInlineEdit = if (isRenamingEntry) onCancelInlineEdit else null,
+                                galleryItemSizeDp = galleryItemSizeDp,
                             )
                         }
                     }

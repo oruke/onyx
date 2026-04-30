@@ -144,6 +144,8 @@ internal fun TitleBarContent(
                 ZoomSlider(
                     value = uiScale,
                     onValueChange = onUiScaleChange,
+                    minValue = 50,
+                    maxValue = 200,
                 )
             }
         }

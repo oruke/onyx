@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -42,6 +43,7 @@ import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
 import onyx.composeapp.generated.resources.action_open_in_new_tab
+import onyx.composeapp.generated.resources.action_open_terminal
 import onyx.composeapp.generated.resources.action_paste
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_rename
@@ -74,6 +76,7 @@ internal fun BoxScope.PaneContextMenu(
     onCutSelection: () -> Unit,
     onPaste: () -> Unit,
     onRefresh: () -> Unit,
+    onOpenTerminal: () -> Unit,
     onClose: () -> Unit,
 ) {
     Popup(
@@ -108,6 +111,7 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_open),
                 enabled = canOpenSelection,
                 iconKey = AllIconsKeys.Actions.ListFiles,
+                shortcutHint = "Enter",
                 onClick = onOpenSelection,
             )
             ContextMenuItem(
@@ -120,18 +124,21 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_rename),
                 enabled = canRenameSelection,
                 iconKey = AllIconsKeys.Actions.ListFiles,
+                shortcutHint = "F2",
                 onClick = onRenameSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_new_file),
                 enabled = true,
                 iconKey = AllIconsKeys.FileTypes.Any_type,
+                shortcutHint = "Ctrl+N",
                 onClick = onCreateFile,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_new_directory),
                 enabled = true,
                 iconKey = AllIconsKeys.Nodes.Folder,
+                shortcutHint = "Ctrl+Shift+N",
                 onClick = onCreateDirectory,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -139,6 +146,7 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_delete_selected),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.DeleteTag,
+                shortcutHint = "Del",
                 onClick = onDeleteSelection,
             )
             ContextMenuItem(
@@ -151,18 +159,21 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_copy),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.Copy,
+                shortcutHint = "Ctrl+C",
                 onClick = onCopySelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_cut),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.MenuCut,
+                shortcutHint = "Ctrl+X",
                 onClick = onCutSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_paste),
                 enabled = canPaste,
                 iconKey = AllIconsKeys.Actions.MenuPaste,
+                shortcutHint = "Ctrl+V",
                 onClick = onPaste,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -170,12 +181,20 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_refresh_active),
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Refresh,
+                shortcutHint = "F5",
                 onClick = onRefresh,
+            )
+            ContextMenuItem(
+                text = stringResource(Res.string.action_open_terminal),
+                enabled = true,
+                iconKey = AllIconsKeys.General.OpenDisk,
+                onClick = onOpenTerminal,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_close_menu),
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Close,
+                shortcutHint = "Esc",
                 onClick = onClose,
             )
         }
@@ -188,6 +207,7 @@ internal fun ContextMenuItem(
     enabled: Boolean,
     iconKey: org.jetbrains.jewel.ui.icon.IconKey,
     onClick: () -> Unit,
+    shortcutHint: String? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -207,6 +227,14 @@ internal fun ContextMenuItem(
     ) {
         Icon(key = iconKey, contentDescription = null)
         Text(text = text, fontSize = 12.sp, color = contentColor)
+        if (shortcutHint != null) {
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = shortcutHint,
+                fontSize = 11.sp,
+                color = LocalOnyxPalette.current.mutedForeground,
+            )
+        }
     }
 }
 

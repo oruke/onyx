@@ -172,4 +172,7 @@
     <string name="label_inspector_file">文件</string>
 
     <string name="label_column_visibility">列设置</string>
+
+    <string name="label_empty_directory_hint">右键点击以创建文件或文件夹</string>
+    <string name="action_open_terminal">在此打开终端</string>
 </resources>
