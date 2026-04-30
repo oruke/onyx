@@ -139,7 +139,7 @@ internal fun GalleryItem(
 
     val itemWidth = galleryItemSizeDp.dp
     val itemHeight = (galleryItemSizeDp * 1.15f).dp
-    val thumbnailSize = (galleryItemSizeDp * 0.75f).dp
+    val thumbnailSize = (galleryItemSizeDp * 0.85f).dp
     val iconSize = (galleryItemSizeDp * 0.45f).dp
     val placeholderIconSize = (galleryItemSizeDp * 0.2f).dp
 
@@ -227,7 +227,7 @@ internal fun GalleryItem(
                     if (entry != null) onOpenEntry(entry)
                 },
             )
-            .padding(4.dp),
+            .padding(2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
     ) {
