@@ -223,64 +223,74 @@ internal fun PaneEntriesContent(
             }
 
             // ── 框选状态 ──
-            val itemBoundsMap = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
+            val itemCoordsMap = remember { mutableStateMapOf<String, LayoutCoordinates>() }
             var rubberBandStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var rubberBandEnd by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var isRubberBanding by remember { mutableStateOf(false) }
-            var pendingDragStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var containerCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
             Box(
                 modifier = Modifier.fillMaxSize()
                     .clipToBounds()
                     .onGloballyPositioned { containerCoordinates = it }
-                    // Press: Final pass — 子组件已处理，未消费 = 空白区域
-                    .onPointerEvent(PointerEventType.Press, androidx.compose.ui.input.pointer.PointerEventPass.Final) { event ->
-                        val change = event.changes.firstOrNull() ?: return@onPointerEvent
-                        if (!event.buttons.isPrimaryPressed) return@onPointerEvent
-                        if (change.isConsumed) return@onPointerEvent
-                        // 点击在空白区域：记录起点，等拖拽距离超过阈值后才真正开始框选
-                        pendingDragStart = change.position
-                        onActivate()
-                        onDismissContextMenu()
-                        onSelectEntries(emptySet())
-                    }
-                    // Move: 检测拖拽
-                    .onPointerEvent(PointerEventType.Move) { event ->
-                        val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
-                        val pending = pendingDragStart
-                        if (pending != null && !isRubberBanding) {
-                            // 拖拽距离超过 4px 才开始框选
-                            val dx = pos.x - pending.x
-                            val dy = pos.y - pending.y
-                            if (dx * dx + dy * dy > 16f) {
-                                isRubberBanding = true
-                                rubberBandStart = pending
-                                rubberBandEnd = pos
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            // 等待 Press 事件（Final pass，子组件已处理完毕）
+                            val down = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
+                            if (down.type != PointerEventType.Press) return@awaitEachGesture
+                            val change = down.changes.firstOrNull() ?: return@awaitEachGesture
+                            if (!down.buttons.isPrimaryPressed) return@awaitEachGesture
+
+                            // 手动 hit-test：检查点击位置是否在任一 item 上
+                            val container = containerCoordinates ?: return@awaitEachGesture
+                            val hitPos = change.position
+                            val hitItem = itemCoordsMap.any { (_, coords) ->
+                                coords.isAttached &&
+                                    container.localBoundingBoxOf(coords, clipBounds = false).contains(hitPos)
                             }
-                        }
-                        if (isRubberBanding) {
-                            rubberBandEnd = pos
-                            event.changes.forEach { it.consume() }
-                            // 计算框选矩形
-                            val start = rubberBandStart ?: return@onPointerEvent
-                            val selRect = androidx.compose.ui.geometry.Rect(
-                                left = minOf(start.x, pos.x),
-                                top = minOf(start.y, pos.y),
-                                right = maxOf(start.x, pos.x),
-                                bottom = maxOf(start.y, pos.y),
-                            )
-                            val hitIds = itemBoundsMap
-                                .filter { (_, bounds) -> bounds.overlaps(selRect) }
-                                .keys
-                                .toSet()
-                            onSelectEntries(hitIds)
-                        }
-                    }
-                    // Release: 结束框选
-                    .onPointerEvent(PointerEventType.Release) { _ ->
-                        pendingDragStart = null
-                        if (isRubberBanding) {
+                            if (hitItem) return@awaitEachGesture
+
+                            // 空白区域点击 → 准备框选
+                            onActivate()
+                            onDismissContextMenu()
+                            onSelectEntries(emptySet())
+                            val startPos = hitPos
+
+                            // 拖拽循环
+                            do {
+                                val event = awaitPointerEvent()
+                                val dragChange = event.changes.firstOrNull() ?: break
+                                val pos = dragChange.position
+
+                                if (!isRubberBanding) {
+                                    val dx = pos.x - startPos.x
+                                    val dy = pos.y - startPos.y
+                                    if (dx * dx + dy * dy > 16f) {
+                                        isRubberBanding = true
+                                        rubberBandStart = startPos
+                                    }
+                                }
+
+                                if (isRubberBanding) {
+                                    rubberBandEnd = pos
+                                    dragChange.consume()
+                                    val selRect = androidx.compose.ui.geometry.Rect(
+                                        left = minOf(startPos.x, pos.x),
+                                        top = minOf(startPos.y, pos.y),
+                                        right = maxOf(startPos.x, pos.x),
+                                        bottom = maxOf(startPos.y, pos.y),
+                                    )
+                                    val hitIds = itemCoordsMap
+                                        .filter { (_, coords) ->
+                                            coords.isAttached &&
+                                                container.localBoundingBoxOf(coords, clipBounds = false).overlaps(selRect)
+                                        }
+                                        .keys
+                                        .toSet()
+                                    onSelectEntries(hitIds)
+                                }
+                            } while (dragChange.pressed)
+
                             isRubberBanding = false
                             rubberBandStart = null
                             rubberBandEnd = null
@@ -347,10 +357,7 @@ internal fun PaneEntriesContent(
                                 val isRenamingEntry =
                                     inlineEditMode == PaneInlineEditMode.RENAME && inlineTargetEntryId == entry.id
                                 Box(modifier = Modifier.onGloballyPositioned { coords ->
-                                    containerCoordinates?.let { parent ->
-                                        val local = parent.localBoundingBoxOf(coords, clipBounds = false)
-                                        itemBoundsMap[entry.id] = local
-                                    }
+                                    itemCoordsMap[entry.id] = coords
                                 }) {
                                     GalleryItem(
                                         entry = entry,
@@ -413,10 +420,7 @@ internal fun PaneEntriesContent(
                                     val isRenamingEntry = inlineEditMode == PaneInlineEditMode.RENAME &&
                                             inlineTargetEntryId == entry.id
                                     Box(modifier = Modifier.onGloballyPositioned { coords ->
-                                        containerCoordinates?.let { parent ->
-                                            val local = parent.localBoundingBoxOf(coords, clipBounds = false)
-                                            itemBoundsMap[entry.id] = local
-                                        }
+                                        itemCoordsMap[entry.id] = coords
                                     }) {
                                         if (isRenamingEntry) {
                                             InlineEditEntryRow(
