@@ -226,7 +226,6 @@ internal fun GalleryItem(
                     onDismissContextMenu()
                     if (entry != null) onOpenEntry(entry)
                 },
-            )
             ),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
