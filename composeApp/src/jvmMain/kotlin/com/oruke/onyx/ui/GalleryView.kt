@@ -144,7 +144,7 @@ internal fun GalleryItem(
 
     Column(
         modifier = Modifier
-            .padding(2.dp)
+            .padding(4.dp)
             .width(itemWidth)
             .height(itemHeight)
             .background(itemBackground, RoundedCornerShape(6.dp))
@@ -232,7 +232,7 @@ internal fun GalleryItem(
         val isImage = isImageFile(entry?.name)
 
         Box(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(3.dp).clip(RoundedCornerShape(4.dp)),
             contentAlignment = Alignment.Center
         ) {
             if (isImage && entry != null) {
