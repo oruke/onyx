@@ -226,58 +226,64 @@ internal fun PaneEntriesContent(
             val itemBoundsMap = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
             var rubberBandStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var rubberBandEnd by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+            var isRubberBanding by remember { mutableStateOf(false) }
+            var pendingDragStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var containerCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
             Box(
                 modifier = Modifier.fillMaxSize()
                     .clipToBounds()
                     .onGloballyPositioned { containerCoordinates = it }
-                    .pointerInput(state.entries) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                val down = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                                if (down.type != PointerEventType.Press) continue
-                                val change = down.changes.firstOrNull() ?: continue
-                                if (!down.buttons.isPrimaryPressed) continue
-                                // 仅在空白区域开始框选：检查按下位置是否在任一 item 上
-                                val hitPos = change.position
-                                val hitItem = itemBoundsMap.any { (_, bounds) -> bounds.contains(hitPos) }
-                                if (hitItem) continue
-                                // 按下在空白区域 → 开始框选
-                                onActivate()
-                                onDismissContextMenu()
-                                rubberBandStart = hitPos
-                                rubberBandEnd = hitPos
-                                onSelectEntries(emptySet())
-
-                                // 拖拽循环
-                                while (true) {
-                                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                                    val currentChange = event.changes.firstOrNull() ?: break
-                                    if (event.type == PointerEventType.Move) {
-                                        rubberBandEnd = currentChange.position
-                                        currentChange.consume()
-                                        // 计算框选矩形
-                                        val start = rubberBandStart ?: break
-                                        val selRect = androidx.compose.ui.geometry.Rect(
-                                            left = minOf(start.x, rubberBandEnd!!.x),
-                                            top = minOf(start.y, rubberBandEnd!!.y),
-                                            right = maxOf(start.x, rubberBandEnd!!.x),
-                                            bottom = maxOf(start.y, rubberBandEnd!!.y),
-                                        )
-                                        val hitIds = itemBoundsMap
-                                            .filter { (_, bounds) -> bounds.overlaps(selRect) }
-                                            .keys
-                                            .toSet()
-                                        onSelectEntries(hitIds)
-                                    }
-                                    if (event.type == PointerEventType.Release || !currentChange.pressed) {
-                                        rubberBandStart = null
-                                        rubberBandEnd = null
-                                        break
-                                    }
-                                }
+                    // Press: Final pass — 子组件已处理，未消费 = 空白区域
+                    .onPointerEvent(PointerEventType.Press, androidx.compose.ui.input.pointer.PointerEventPass.Final) { event ->
+                        val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                        if (!event.buttons.isPrimaryPressed) return@onPointerEvent
+                        if (change.isConsumed) return@onPointerEvent
+                        // 点击在空白区域：记录起点，等拖拽距离超过阈值后才真正开始框选
+                        pendingDragStart = change.position
+                        onActivate()
+                        onDismissContextMenu()
+                        onSelectEntries(emptySet())
+                    }
+                    // Move: 检测拖拽
+                    .onPointerEvent(PointerEventType.Move) { event ->
+                        val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
+                        val pending = pendingDragStart
+                        if (pending != null && !isRubberBanding) {
+                            // 拖拽距离超过 4px 才开始框选
+                            val dx = pos.x - pending.x
+                            val dy = pos.y - pending.y
+                            if (dx * dx + dy * dy > 16f) {
+                                isRubberBanding = true
+                                rubberBandStart = pending
+                                rubberBandEnd = pos
                             }
+                        }
+                        if (isRubberBanding) {
+                            rubberBandEnd = pos
+                            event.changes.forEach { it.consume() }
+                            // 计算框选矩形
+                            val start = rubberBandStart ?: return@onPointerEvent
+                            val selRect = androidx.compose.ui.geometry.Rect(
+                                left = minOf(start.x, pos.x),
+                                top = minOf(start.y, pos.y),
+                                right = maxOf(start.x, pos.x),
+                                bottom = maxOf(start.y, pos.y),
+                            )
+                            val hitIds = itemBoundsMap
+                                .filter { (_, bounds) -> bounds.overlaps(selRect) }
+                                .keys
+                                .toSet()
+                            onSelectEntries(hitIds)
+                        }
+                    }
+                    // Release: 结束框选
+                    .onPointerEvent(PointerEventType.Release) { _ ->
+                        pendingDragStart = null
+                        if (isRubberBanding) {
+                            isRubberBanding = false
+                            rubberBandStart = null
+                            rubberBandEnd = null
                         }
                     },
             ) {

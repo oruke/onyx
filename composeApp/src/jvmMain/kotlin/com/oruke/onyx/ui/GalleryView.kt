@@ -225,14 +225,14 @@ internal fun GalleryItem(
                     onDismissContextMenu()
                     if (entry != null) onOpenEntry(entry)
                 },
-            ),
+            ).padding(2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
         val isImage = isImageFile(entry?.name)
 
         Box(
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(3.dp).clip(RoundedCornerShape(4.dp)),
+            modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(4.dp)),
             contentAlignment = Alignment.Center
         ) {
             if (isImage && entry != null) {
