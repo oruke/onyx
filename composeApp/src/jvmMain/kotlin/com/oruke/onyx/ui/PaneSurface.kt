@@ -61,6 +61,10 @@ import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.windowBounds
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_go_back
 import onyx.composeapp.generated.resources.action_go_forward
@@ -79,7 +83,7 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 // ── Pane surface ───────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class, DelicateCoroutinesApi::class)
 @Composable
 internal fun PaneSurface(
     state: PaneState,
@@ -564,7 +568,7 @@ internal fun PaneSurface(
                         onOpenTerminal = {
                             showContextMenu = false
                             val location = state.location
-                            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            GlobalScope.launch(Dispatchers.IO) {
                                 val dir = java.io.File(location)
                                 if (!dir.isDirectory) return@launch
                                 val terminal = System.getenv("TERMINAL")

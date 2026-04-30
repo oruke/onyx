@@ -139,6 +139,9 @@ internal fun GalleryItem(
 
     val itemWidth = galleryItemSizeDp.dp
     val itemHeight = (galleryItemSizeDp * 1.15f).dp
+    val thumbnailSize = (galleryItemSizeDp * 0.75f).dp
+    val iconSize = (galleryItemSizeDp * 0.45f).dp
+    val placeholderIconSize = (galleryItemSizeDp * 0.2f).dp
 
     Column(
         modifier = Modifier
@@ -231,7 +234,7 @@ internal fun GalleryItem(
         val isImage = isImageFile(entry?.name)
 
         Box(
-            modifier = Modifier.size(120.dp),
+            modifier = Modifier.size(thumbnailSize),
             contentAlignment = Alignment.Center
         ) {
             if (isImage && entry != null) {
@@ -259,7 +262,7 @@ internal fun GalleryItem(
                         Icon(
                             key = AllIconsKeys.FileTypes.Any_type,
                             contentDescription = null,
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(placeholderIconSize)
                         )
                     }
                 }
@@ -269,7 +272,7 @@ internal fun GalleryItem(
                 Icon(
                     key = iconKey,
                     contentDescription = null,
-                    modifier = Modifier.size(72.dp)
+                    modifier = Modifier.size(iconSize)
                 )
             }
         }
