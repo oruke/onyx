@@ -145,7 +145,6 @@ internal fun GalleryItem(
 
     Column(
         modifier = Modifier
-            .padding(4.dp)
             .width(itemWidth)
             .height(itemHeight)
             .background(itemBackground, RoundedCornerShape(6.dp))
@@ -248,15 +247,11 @@ internal fun GalleryItem(
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(4.dp))
-                            .background(LocalOnyxPalette.current.inactiveSelectionBackground)
-                            .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
                     )
                 } else {
                     Box(
                         modifier = Modifier.fillMaxSize()
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(LocalOnyxPalette.current.inactiveSelectionBackground)
-                            .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp)),
+                            .clip(RoundedCornerShape(4.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
