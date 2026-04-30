@@ -139,7 +139,6 @@ internal fun GalleryItem(
 
     val itemWidth = galleryItemSizeDp.dp
     val itemHeight = (galleryItemSizeDp * 1.15f).dp
-    val thumbnailSize = (galleryItemSizeDp * 0.85f).dp
     val iconSize = (galleryItemSizeDp * 0.45f).dp
     val placeholderIconSize = (galleryItemSizeDp * 0.2f).dp
 
@@ -233,7 +232,7 @@ internal fun GalleryItem(
         val isImage = isImageFile(entry?.name)
 
         Box(
-            modifier = Modifier.size(thumbnailSize),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
             if (isImage && entry != null) {
