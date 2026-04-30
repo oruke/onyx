@@ -283,7 +283,8 @@ internal fun GalleryItem(
                         if (focusState.isFocused) {
                             hasFocused = true
                         } else if (hasFocused) {
-                            onConfirmInlineEdit()
+                            // 失焦时取消编辑，避免 Alt+Tab 等场景下误提交空名称
+                            onCancelInlineEdit()
                         }
                     }
                     .onPreviewKeyEvent { event ->

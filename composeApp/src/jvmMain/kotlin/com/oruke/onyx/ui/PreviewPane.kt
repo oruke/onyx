@@ -27,7 +27,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
 import androidx.compose.foundation.Image
 import com.oruke.onyx.ui.theme.rememberThumbnail
 import com.oruke.onyx.core.model.VFile
@@ -39,6 +40,17 @@ import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.isImageFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.label_inspector_directory
+import onyx.composeapp.generated.resources.label_inspector_file
+import onyx.composeapp.generated.resources.label_inspector_modified
+import onyx.composeapp.generated.resources.label_inspector_size
+import onyx.composeapp.generated.resources.label_inspector_type
+import onyx.composeapp.generated.resources.label_preview_loading
+import onyx.composeapp.generated.resources.label_preview_no_selection
+import onyx.composeapp.generated.resources.label_preview_too_large
+import onyx.composeapp.generated.resources.label_preview_unavailable
+import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -53,7 +65,6 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
  * - 显示基础的元数据信息（名称、类型、大小、修改时间）。
  *
  * @param selectedEntry 当前选中的虚拟文件对象。若为空则显示占位提示。
- * @param palette Onyx 动态外观调色板，用于保持全局视觉一致性。
  * @param modifier 外部传入的布局修饰符。
  */
 @Composable
@@ -68,7 +79,7 @@ internal fun PreviewPane(
     ) {
         if (selectedEntry == null) {
             Text(
-                text = "No item selected",
+                text = stringResource(Res.string.label_preview_no_selection),
                 color = LocalOnyxPalette.current.mutedForeground,
                 modifier = Modifier.align(Alignment.Center)
             )
@@ -125,22 +136,30 @@ internal fun PreviewPane(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                val typeLabel = stringResource(Res.string.label_inspector_type)
+                val typeValue = if (selectedEntry.kind == VFileKind.DIRECTORY) {
+                    stringResource(Res.string.label_inspector_directory)
+                } else {
+                    selectedEntry.name.substringAfterLast('.', stringResource(Res.string.label_inspector_file)).uppercase()
+                }
                 Text(
-                    text = "Type: ${if (selectedEntry.kind == VFileKind.DIRECTORY) "Folder" else selectedEntry.name.substringAfterLast('.', "File").uppercase()}",
+                    text = "$typeLabel: $typeValue",
                     fontSize = 12.sp,
                     color = LocalOnyxPalette.current.mutedForeground
                 )
 
                 if (selectedEntry.kind == VFileKind.FILE) {
+                    val sizeLabel = stringResource(Res.string.label_inspector_size)
                     Text(
-                        text = "Size: ${formatFileSize(selectedEntry.sizeBytes)}",
+                        text = "$sizeLabel: ${formatFileSize(selectedEntry.sizeBytes)}",
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.mutedForeground
                     )
                 }
 
+                val modifiedLabel = stringResource(Res.string.label_inspector_modified)
                 Text(
-                    text = "Modified: ${formatModifiedTime(selectedEntry.modifiedAtEpochMillis)}",
+                    text = "$modifiedLabel: ${formatModifiedTime(selectedEntry.modifiedAtEpochMillis)}",
                     fontSize = 12.sp,
                     color = LocalOnyxPalette.current.mutedForeground
                 )
@@ -154,25 +173,28 @@ internal fun PreviewPane(
                 }
 
                 if (isText && selectedEntry.kind == VFileKind.FILE) {
-                    var previewText by remember(selectedEntry.location) { mutableStateOf<String?>("Loading preview...") }
-                    
+                    val loadingText = stringResource(Res.string.label_preview_loading)
+                    val tooLargeText = stringResource(Res.string.label_preview_too_large)
+                    val unavailableText = stringResource(Res.string.label_preview_unavailable)
+                    var previewText by remember(selectedEntry.location) { mutableStateOf<String?>(loadingText) }
+
                     LaunchedEffect(selectedEntry.location) {
                         previewText = withContext(Dispatchers.IO) {
                             try {
-                                val file = File(selectedEntry.location)
+                                val path = Path.of(selectedEntry.location)
                                 // 限制仅读取 1MB 以下的文件，防止 OOM (Out Of Memory)
-                                if (file.exists() && file.length() < 1024 * 1024) {
-                                    file.bufferedReader().useLines { lines ->
+                                if (Files.exists(path) && Files.size(path) < 1024 * 1024) {
+                                    Files.newBufferedReader(path).useLines { lines ->
                                         // 截取前 100 行，避免长文本在 Compose 中渲染卡顿
                                         lines.take(100).joinToString("\n")
                                     }
-                                } else if (file.length() >= 1024 * 1024) {
-                                    "File too large for preview"
+                                } else if (Files.exists(path) && Files.size(path) >= 1024 * 1024) {
+                                    tooLargeText
                                 } else {
-                                    "Preview not available"
+                                    unavailableText
                                 }
                             } catch (e: Exception) {
-                                "Preview not available"
+                                unavailableText
                             }
                         }
                     }

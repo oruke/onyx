@@ -93,8 +93,11 @@ object ThumbnailLoader {
                 null,
                 true
             )
+            val previous = current
             current = surface.makeImageSnapshot()
             surface.close()
+            // 释放中间 SkiaImage 的 native 内存（不释放原始输入图像）
+            if (previous !== skImage) previous.close()
             cw = nw
             ch = nh
         }
@@ -112,11 +115,16 @@ object ThumbnailLoader {
             )
             val result = surface.makeImageSnapshot()
             surface.close()
+            // 释放最后一个中间图像
+            if (current !== skImage) current.close()
             return result
         }
 
         return current
     }
+
+    /** 缩略图加载的文件大小上限（50MB），超过此大小跳过缩略图生成以避免 OOM */
+    private const val MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024
 
     fun loadThumbnail(filePath: String, maxDimension: Int = 400): ImageBitmap? {
         val cacheKey = "$filePath@$maxDimension"
@@ -125,6 +133,8 @@ object ThumbnailLoader {
         return try {
             val file = File(filePath)
             if (!file.exists() || !file.isFile) return null
+            // 文件大小上限检查，避免大文件 readBytes() 导致 OOM
+            if (file.length() > MAX_FILE_SIZE_BYTES) return null
 
             // 1. 用 Skia 原生解码器读取（比 ImageIO 支持格式更多、颜色更准）
             val bytes = file.readBytes()

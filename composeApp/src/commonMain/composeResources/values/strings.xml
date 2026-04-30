@@ -160,4 +160,16 @@
     <string name="msg_create_folder_failed">Create directory failed</string>
     <string name="msg_cancelled">Cancelled</string>
     <string name="msg_string_literal">%1$s</string>
+
+    <string name="label_preview_no_selection">No item selected</string>
+    <string name="label_preview_loading">Loading preview…</string>
+    <string name="label_preview_too_large">File too large for preview</string>
+    <string name="label_preview_unavailable">Preview not available</string>
+    <string name="label_inspector_type">Type</string>
+    <string name="label_inspector_size">Size</string>
+    <string name="label_inspector_modified">Modified</string>
+    <string name="label_inspector_location">Location</string>
+    <string name="label_inspector_unknown">Unknown</string>
+    <string name="label_inspector_directory">Directory</string>
+    <string name="label_inspector_file">File</string>
 </resources>

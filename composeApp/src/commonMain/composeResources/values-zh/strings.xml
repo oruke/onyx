@@ -158,4 +158,16 @@
     <string name="msg_create_folder_failed">创建文件夹失败</string>
     <string name="msg_cancelled">已取消</string>
     <string name="msg_string_literal">%1$s</string>
+
+    <string name="label_preview_no_selection">未选择项目</string>
+    <string name="label_preview_loading">正在加载预览…</string>
+    <string name="label_preview_too_large">文件过大，无法预览</string>
+    <string name="label_preview_unavailable">无法预览</string>
+    <string name="label_inspector_type">类型</string>
+    <string name="label_inspector_size">大小</string>
+    <string name="label_inspector_modified">修改时间</string>
+    <string name="label_inspector_location">位置</string>
+    <string name="label_inspector_unknown">未知</string>
+    <string name="label_inspector_directory">文件夹</string>
+    <string name="label_inspector_file">文件</string>
 </resources>

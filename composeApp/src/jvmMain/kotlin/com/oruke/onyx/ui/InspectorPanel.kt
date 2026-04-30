@@ -30,6 +30,16 @@ import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.isImageFile
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.label_inspector_directory
+import onyx.composeapp.generated.resources.label_inspector_file
+import onyx.composeapp.generated.resources.label_inspector_location
+import onyx.composeapp.generated.resources.label_inspector_modified
+import onyx.composeapp.generated.resources.label_inspector_size
+import onyx.composeapp.generated.resources.label_inspector_type
+import onyx.composeapp.generated.resources.label_inspector_unknown
+import onyx.composeapp.generated.resources.label_preview_no_selection
+import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
@@ -55,7 +65,7 @@ internal fun InspectorPanel(
         if (entry == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = "No item selected",
+                    text = stringResource(Res.string.label_preview_no_selection),
                     color = LocalOnyxPalette.current.mutedForeground,
                     fontSize = 12.sp
                 )
@@ -109,12 +119,29 @@ internal fun InspectorPanel(
 
                 Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
 
-                InspectorDetailRow("Type", if (entry.kind == VFileKind.DIRECTORY) "Directory" else "File")
-                if (entry.kind != VFileKind.DIRECTORY) {
-                    InspectorDetailRow("Size", formatFileSize(entry.sizeBytes))
+                val typeValue = if (entry.kind == VFileKind.DIRECTORY) {
+                    stringResource(Res.string.label_inspector_directory)
+                } else {
+                    stringResource(Res.string.label_inspector_file)
                 }
-                InspectorDetailRow("Modified", formatModifiedTime(entry.modifiedAtEpochMillis))
-                InspectorDetailRow("Location", entry.parentLocation ?: "Unknown")
+                InspectorDetailRow(
+                    label = stringResource(Res.string.label_inspector_type),
+                    value = typeValue,
+                )
+                if (entry.kind != VFileKind.DIRECTORY) {
+                    InspectorDetailRow(
+                        label = stringResource(Res.string.label_inspector_size),
+                        value = formatFileSize(entry.sizeBytes),
+                    )
+                }
+                InspectorDetailRow(
+                    label = stringResource(Res.string.label_inspector_modified),
+                    value = formatModifiedTime(entry.modifiedAtEpochMillis),
+                )
+                InspectorDetailRow(
+                    label = stringResource(Res.string.label_inspector_location),
+                    value = entry.parentLocation ?: stringResource(Res.string.label_inspector_unknown),
+                )
             }
         }
     }

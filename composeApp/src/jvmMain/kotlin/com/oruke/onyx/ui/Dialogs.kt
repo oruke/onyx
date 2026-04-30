@@ -300,7 +300,7 @@ internal fun SettingsOption(
     ) {
         Text(
             text = text,
-            color = if (selected) Color.White else LocalOnyxPalette.current.foreground,
+            color = if (selected) LocalOnyxPalette.current.selectionForeground else LocalOnyxPalette.current.foreground,
             fontSize = 11.sp,
         )
     }
