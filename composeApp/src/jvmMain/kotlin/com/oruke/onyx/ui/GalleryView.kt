@@ -145,6 +145,7 @@ internal fun GalleryItem(
 
     Column(
         modifier = Modifier
+            .padding(2.dp)
             .width(itemWidth)
             .height(itemHeight)
             .background(itemBackground, RoundedCornerShape(6.dp))
@@ -226,9 +227,9 @@ internal fun GalleryItem(
                     if (entry != null) onOpenEntry(entry)
                 },
             )
-            .padding(2.dp),
+            ),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
         val isImage = isImageFile(entry?.name)
 

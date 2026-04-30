@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -153,6 +155,7 @@ internal fun PaneEntriesContent(
     onCancelInlineEdit: () -> Unit,
     onBeginRename: () -> Unit = {},
     galleryItemSizeDp: Int = 160,
+    onSelectEntries: (Set<String>) -> Unit = {},
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -219,155 +222,103 @@ internal fun PaneEntriesContent(
                 return
             }
 
-            Column(modifier = Modifier.fillMaxSize().clipToBounds()) {
-                val horizontalScrollState = rememberScrollState()
+            // ── 框选状态 ──
+            val itemBoundsMap = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
+            var rubberBandStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+            var rubberBandEnd by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+            var containerCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
-                // ── Column headers ─────────────────────────────────────
-                if (viewMode == ViewMode.DETAILS) {
-                    DetailsHeader(
-                        columns = columns,
-                        columnWidths = columnWeights,
-                        hiddenColumns = hiddenColumns,
-                        sort = sort,
-                        onToggleSort = onToggleSort,
-                        onResizeColumn = onResizeColumn,
-                        onToggleColumnVisibility = onToggleColumnVisibility,
-                        scrollState = horizontalScrollState,
-                    )
-                }
+            Box(
+                modifier = Modifier.fillMaxSize()
+                    .clipToBounds()
+                    .onGloballyPositioned { containerCoordinates = it }
+                    .pointerInput(state.entries) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val down = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                if (down.type != PointerEventType.Press) continue
+                                val change = down.changes.firstOrNull() ?: continue
+                                if (!down.buttons.isPrimaryPressed) continue
+                                // 仅在空白区域开始框选：检查按下位置是否在任一 item 上
+                                val hitPos = change.position
+                                val hitItem = itemBoundsMap.any { (_, bounds) -> bounds.contains(hitPos) }
+                                if (hitItem) continue
+                                // 按下在空白区域 → 开始框选
+                                onActivate()
+                                onDismissContextMenu()
+                                rubberBandStart = hitPos
+                                rubberBandEnd = hitPos
+                                onSelectEntries(emptySet())
 
-                // ── File list ──────────────────────────────────────────
-                if (viewMode == ViewMode.GALLERY) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(galleryItemSizeDp.dp),
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(4.dp),
-                        userScrollEnabled = !contextMenuVisible,
-                    ) {
-                        if (shouldCreateInlineEntry) {
-                            item(
-                                key = "inline-create",
-                                span = { androidx.compose.foundation.lazy.grid.GridItemSpan(1) }) {
-                                GalleryItem(
-                                    entry = null,
-                                    draftName = inlineEditDraftName,
-                                    selected = false,
-                                    selectedEntryCount = 0,
-                                    paneActive = paneActive,
-                                    onActivate = onActivate,
-                                    onOpenEntry = onOpenEntry,
-                                    onSelectEntry = onSelectEntry,
-                                    paneId = paneId,
-                                    fileDropTarget = fileDropTarget,
-                                    onStartFileDrag = onStartFileDrag,
-                                    onFileDragPositionChange = onFileDragPositionChange,
-                                    onFileDragEnd = onFileDragEnd,
-                                    onFileDropZoneChange = onFileDropZoneChange,
-                                    onShowContextMenu = onShowContextMenu,
-                                    onDismissContextMenu = onDismissContextMenu,
-                                    onUpdateInlineEditDraft = onUpdateInlineEditDraft,
-                                    onConfirmInlineEdit = onConfirmInlineEdit,
-                                    onCancelInlineEdit = onCancelInlineEdit,
-                                    galleryItemSizeDp = galleryItemSizeDp,
-                                )
+                                // 拖拽循环
+                                while (true) {
+                                    val event = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                                    val currentChange = event.changes.firstOrNull() ?: break
+                                    if (event.type == PointerEventType.Move) {
+                                        rubberBandEnd = currentChange.position
+                                        currentChange.consume()
+                                        // 计算框选矩形
+                                        val start = rubberBandStart ?: break
+                                        val selRect = androidx.compose.ui.geometry.Rect(
+                                            left = minOf(start.x, rubberBandEnd!!.x),
+                                            top = minOf(start.y, rubberBandEnd!!.y),
+                                            right = maxOf(start.x, rubberBandEnd!!.x),
+                                            bottom = maxOf(start.y, rubberBandEnd!!.y),
+                                        )
+                                        val hitIds = itemBoundsMap
+                                            .filter { (_, bounds) -> bounds.overlaps(selRect) }
+                                            .keys
+                                            .toSet()
+                                        onSelectEntries(hitIds)
+                                    }
+                                    if (event.type == PointerEventType.Release || !currentChange.pressed) {
+                                        rubberBandStart = null
+                                        rubberBandEnd = null
+                                        break
+                                    }
+                                }
                             }
                         }
-                        gridItemsIndexed(
-                            items = state.entries,
-                            key = { _, entry -> entry.id },
-                        ) { _, entry ->
-                            val isRenamingEntry =
-                                inlineEditMode == PaneInlineEditMode.RENAME && inlineTargetEntryId == entry.id
-                            GalleryItem(
-                                entry = entry,
-                                draftName = if (isRenamingEntry) inlineEditDraftName else null,
-                                selected = selectedEntryIds.contains(entry.id),
-                                selectedEntryCount = selectedEntryIds.size,
-                                paneActive = paneActive,
-                                onActivate = onActivate,
-                                onOpenEntry = onOpenEntry,
-                                onSelectEntry = onSelectEntry,
-                                paneId = paneId,
-                                fileDropTarget = fileDropTarget,
-                                onStartFileDrag = onStartFileDrag,
-                                onFileDragPositionChange = onFileDragPositionChange,
-                                onFileDragEnd = onFileDragEnd,
-                                onFileDropZoneChange = onFileDropZoneChange,
-                                onShowContextMenu = onShowContextMenu,
-                                onDismissContextMenu = onDismissContextMenu,
-                                onUpdateInlineEditDraft = if (isRenamingEntry) onUpdateInlineEditDraft else null,
-                                onConfirmInlineEdit = if (isRenamingEntry) onConfirmInlineEdit else null,
-                                onCancelInlineEdit = if (isRenamingEntry) onCancelInlineEdit else null,
-                                galleryItemSizeDp = galleryItemSizeDp,
-                            )
-                        }
+                    },
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    val horizontalScrollState = rememberScrollState()
+
+                    // ── Column headers ─────────────────────────────────────
+                    if (viewMode == ViewMode.DETAILS) {
+                        DetailsHeader(
+                            columns = columns,
+                            columnWidths = columnWeights,
+                            hiddenColumns = hiddenColumns,
+                            sort = sort,
+                            onToggleSort = onToggleSort,
+                            onResizeColumn = onResizeColumn,
+                            onToggleColumnVisibility = onToggleColumnVisibility,
+                            scrollState = horizontalScrollState,
+                        )
                     }
-                } else {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize()
-                                .padding(bottom = 12.dp),
-                            contentPadding = PaddingValues(bottom = 4.dp),
+
+                    // ── File list ──────────────────────────────────────────
+                    if (viewMode == ViewMode.GALLERY) {
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(galleryItemSizeDp.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(4.dp),
                             userScrollEnabled = !contextMenuVisible,
                         ) {
                             if (shouldCreateInlineEntry) {
-                                item(key = "inline-create") {
-                                    InlineEditEntryRow(
-                                        columns = columns,
-                                        columnWidths = columnWeights,
+                                item(
+                                    key = "inline-create",
+                                    span = { androidx.compose.foundation.lazy.grid.GridItemSpan(1) }) {
+                                    GalleryItem(
+                                        entry = null,
                                         draftName = inlineEditDraftName,
-                                        iconKey = if (inlineEditMode == PaneInlineEditMode.CREATE_DIRECTORY) {
-                                            AllIconsKeys.Nodes.Folder
-                                        } else {
-                                            AllIconsKeys.FileTypes.Any_type
-                                        },
                                         selected = false,
-                                        zebra = false,
-                                        onUpdateInlineEditDraft = onUpdateInlineEditDraft,
-                                        onConfirmInlineEdit = onConfirmInlineEdit,
-                                        onCancelInlineEdit = onCancelInlineEdit,
-                                        onDismissContextMenu = onDismissContextMenu,
-                                        scrollState = horizontalScrollState,
-                                    )
-                                }
-                            }
-                            itemsIndexed(
-                                items = state.entries,
-                                key = { _, entry -> entry.id },
-                            ) { index, entry ->
-                                val isRenamingEntry = inlineEditMode == PaneInlineEditMode.RENAME &&
-                                        inlineTargetEntryId == entry.id
-                                if (isRenamingEntry) {
-                                    InlineEditEntryRow(
-                                        columns = columns,
-                                        columnWidths = columnWeights,
-                                        draftName = inlineEditDraftName,
-                                        iconKey = if (entry.kind == VFileKind.DIRECTORY) {
-                                            AllIconsKeys.Nodes.Folder
-                                        } else {
-                                            AllIconsKeys.FileTypes.Any_type
-                                        },
-                                        selected = selectedEntryIds.contains(entry.id),
-                                        zebra = index % 2 == 1,
-                                        onUpdateInlineEditDraft = onUpdateInlineEditDraft,
-                                        onConfirmInlineEdit = onConfirmInlineEdit,
-                                        onCancelInlineEdit = onCancelInlineEdit,
-                                        onDismissContextMenu = onDismissContextMenu,
-                                        scrollState = horizontalScrollState,
-                                    )
-                                } else {
-                                    EntryRow(
-                                        columns = columns,
-                                        columnWidths = columnWeights,
-                                        entry = entry,
-                                        zebra = index % 2 == 1,
-                                        selected = selectedEntryIds.contains(entry.id),
-                                        selectedEntryCount = selectedEntryIds.size,
+                                        selectedEntryCount = 0,
                                         paneActive = paneActive,
                                         onActivate = onActivate,
                                         onOpenEntry = onOpenEntry,
                                         onSelectEntry = onSelectEntry,
-                                        onBeginRename = onBeginRename,
                                         paneId = paneId,
                                         fileDropTarget = fileDropTarget,
                                         onStartFileDrag = onStartFileDrag,
@@ -376,16 +327,169 @@ internal fun PaneEntriesContent(
                                         onFileDropZoneChange = onFileDropZoneChange,
                                         onShowContextMenu = onShowContextMenu,
                                         onDismissContextMenu = onDismissContextMenu,
-                                        scrollState = horizontalScrollState,
+                                        onUpdateInlineEditDraft = onUpdateInlineEditDraft,
+                                        onConfirmInlineEdit = onConfirmInlineEdit,
+                                        onCancelInlineEdit = onCancelInlineEdit,
+                                        galleryItemSizeDp = galleryItemSizeDp,
+                                    )
+                                }
+                            }
+                            gridItemsIndexed(
+                                items = state.entries,
+                                key = { _, entry -> entry.id },
+                            ) { _, entry ->
+                                val isRenamingEntry =
+                                    inlineEditMode == PaneInlineEditMode.RENAME && inlineTargetEntryId == entry.id
+                                Box(modifier = Modifier.onGloballyPositioned { coords ->
+                                    containerCoordinates?.let { parent ->
+                                        val local = parent.localBoundingBoxOf(coords, clipBounds = false)
+                                        itemBoundsMap[entry.id] = local
+                                    }
+                                }) {
+                                    GalleryItem(
+                                        entry = entry,
+                                        draftName = if (isRenamingEntry) inlineEditDraftName else null,
+                                        selected = selectedEntryIds.contains(entry.id),
+                                        selectedEntryCount = selectedEntryIds.size,
+                                        paneActive = paneActive,
+                                        onActivate = onActivate,
+                                        onOpenEntry = onOpenEntry,
+                                        onSelectEntry = onSelectEntry,
+                                        paneId = paneId,
+                                        fileDropTarget = fileDropTarget,
+                                        onStartFileDrag = onStartFileDrag,
+                                        onFileDragPositionChange = onFileDragPositionChange,
+                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDropZoneChange = onFileDropZoneChange,
+                                        onShowContextMenu = onShowContextMenu,
+                                        onDismissContextMenu = onDismissContextMenu,
+                                        onUpdateInlineEditDraft = if (isRenamingEntry) onUpdateInlineEditDraft else null,
+                                        onConfirmInlineEdit = if (isRenamingEntry) onConfirmInlineEdit else null,
+                                        onCancelInlineEdit = if (isRenamingEntry) onCancelInlineEdit else null,
+                                        galleryItemSizeDp = galleryItemSizeDp,
                                     )
                                 }
                             }
                         }
-                        HorizontalScrollbar(
-                            adapter = rememberScrollbarAdapter(horizontalScrollState),
-                            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
-                        )
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize()
+                                    .padding(bottom = 12.dp),
+                                contentPadding = PaddingValues(bottom = 4.dp),
+                                userScrollEnabled = !contextMenuVisible,
+                            ) {
+                                if (shouldCreateInlineEntry) {
+                                    item(key = "inline-create") {
+                                        InlineEditEntryRow(
+                                            columns = columns,
+                                            columnWidths = columnWeights,
+                                            draftName = inlineEditDraftName,
+                                            iconKey = if (inlineEditMode == PaneInlineEditMode.CREATE_DIRECTORY) {
+                                                AllIconsKeys.Nodes.Folder
+                                            } else {
+                                                AllIconsKeys.FileTypes.Any_type
+                                            },
+                                            selected = false,
+                                            zebra = false,
+                                            onUpdateInlineEditDraft = onUpdateInlineEditDraft,
+                                            onConfirmInlineEdit = onConfirmInlineEdit,
+                                            onCancelInlineEdit = onCancelInlineEdit,
+                                            onDismissContextMenu = onDismissContextMenu,
+                                            scrollState = horizontalScrollState,
+                                        )
+                                    }
+                                }
+                                itemsIndexed(
+                                    items = state.entries,
+                                    key = { _, entry -> entry.id },
+                                ) { index, entry ->
+                                    val isRenamingEntry = inlineEditMode == PaneInlineEditMode.RENAME &&
+                                            inlineTargetEntryId == entry.id
+                                    Box(modifier = Modifier.onGloballyPositioned { coords ->
+                                        containerCoordinates?.let { parent ->
+                                            val local = parent.localBoundingBoxOf(coords, clipBounds = false)
+                                            itemBoundsMap[entry.id] = local
+                                        }
+                                    }) {
+                                        if (isRenamingEntry) {
+                                            InlineEditEntryRow(
+                                                columns = columns,
+                                                columnWidths = columnWeights,
+                                                draftName = inlineEditDraftName,
+                                                iconKey = if (entry.kind == VFileKind.DIRECTORY) {
+                                                    AllIconsKeys.Nodes.Folder
+                                                } else {
+                                                    AllIconsKeys.FileTypes.Any_type
+                                                },
+                                                selected = selectedEntryIds.contains(entry.id),
+                                                zebra = index % 2 == 1,
+                                                onUpdateInlineEditDraft = onUpdateInlineEditDraft,
+                                                onConfirmInlineEdit = onConfirmInlineEdit,
+                                                onCancelInlineEdit = onCancelInlineEdit,
+                                                onDismissContextMenu = onDismissContextMenu,
+                                                scrollState = horizontalScrollState,
+                                            )
+                                        } else {
+                                            EntryRow(
+                                                columns = columns,
+                                                columnWidths = columnWeights,
+                                                entry = entry,
+                                                zebra = index % 2 == 1,
+                                                selected = selectedEntryIds.contains(entry.id),
+                                                selectedEntryCount = selectedEntryIds.size,
+                                                paneActive = paneActive,
+                                                onActivate = onActivate,
+                                                onOpenEntry = onOpenEntry,
+                                                onSelectEntry = onSelectEntry,
+                                                onBeginRename = onBeginRename,
+                                                paneId = paneId,
+                                                fileDropTarget = fileDropTarget,
+                                                onStartFileDrag = onStartFileDrag,
+                                                onFileDragPositionChange = onFileDragPositionChange,
+                                                onFileDragEnd = onFileDragEnd,
+                                                onFileDropZoneChange = onFileDropZoneChange,
+                                                onShowContextMenu = onShowContextMenu,
+                                                onDismissContextMenu = onDismissContextMenu,
+                                                scrollState = horizontalScrollState,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalScrollbar(
+                                adapter = rememberScrollbarAdapter(horizontalScrollState),
+                                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                            )
+                        }
                     }
+                }
+
+                // ── 橡皮筋选择框绘制 ──
+                val rbStart = rubberBandStart
+                val rbEnd = rubberBandEnd
+                if (rbStart != null && rbEnd != null) {
+                    val left = minOf(rbStart.x, rbEnd.x)
+                    val top = minOf(rbStart.y, rbEnd.y)
+                    val w = maxOf(rbStart.x, rbEnd.x) - left
+                    val h = maxOf(rbStart.y, rbEnd.y) - top
+                    Box(
+                        modifier = Modifier
+                            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                            .size(
+                                width = with(LocalDensity.current) { w.toDp() },
+                                height = with(LocalDensity.current) { h.toDp() },
+                            )
+                            .background(
+                                LocalOnyxPalette.current.selectionBackground.copy(alpha = 0.25f),
+                                RoundedCornerShape(2.dp),
+                            )
+                            .border(
+                                1.dp,
+                                LocalOnyxPalette.current.outline.copy(alpha = 0.6f),
+                                RoundedCornerShape(2.dp),
+                            )
+                    )
                 }
             }
         }

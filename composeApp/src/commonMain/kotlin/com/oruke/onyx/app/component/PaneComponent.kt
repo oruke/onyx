@@ -117,6 +117,9 @@ interface PaneComponent {
         range: Boolean = false,
     )
 
+    /** 批量设置选中项（用于框选等场景） */
+    fun selectEntries(entryIds: Set<String>)
+
     fun moveSelection(
         offset: Int,
         extendSelection: Boolean = false,

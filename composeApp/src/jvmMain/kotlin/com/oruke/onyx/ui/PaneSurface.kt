@@ -509,6 +509,7 @@ internal fun PaneSurface(
                     onDismissContextMenu = { showContextMenu = false },
                     onBeginRename = onBeginRename,
                     galleryItemSizeDp = state.galleryItemSizeDp,
+                    onSelectEntries = component::selectEntries,
                 )
 
                 if (showContextMenu) {

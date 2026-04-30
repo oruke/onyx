@@ -485,6 +485,13 @@ class DefaultPaneComponent(
         }
     }
 
+    override fun selectEntries(entryIds: Set<String>) {
+        val tab = activeTab() ?: return
+        updateTab(tab.id) { currentTab ->
+            currentTab.copy(selectedEntryIds = entryIds)
+        }
+    }
+
     override fun moveSelection(
         offset: Int,
         extendSelection: Boolean,
