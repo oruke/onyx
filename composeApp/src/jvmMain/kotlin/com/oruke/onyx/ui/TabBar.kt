@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.PaneState
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.toIntOffset
@@ -87,7 +88,7 @@ internal fun PaneTabBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(26.dp)
+            .height(LocalOnyxAppearance.current.tabBarHeight)
             .background(LocalOnyxPalette.current.headerBackground)
             .onGloballyPositioned { coordinates ->
                 barBounds = coordinates.windowBounds()

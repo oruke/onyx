@@ -389,6 +389,17 @@ class DefaultPaneComponent(
         }
     }
 
+    override fun toggleColumnVisibility(column: DetailsColumn) {
+        // NAME 列不可隐藏
+        if (column == DetailsColumn.NAME) return
+        val tab = activeTab() ?: return
+        updateTab(tab.id) { currentTab ->
+            val hidden = currentTab.hiddenColumns.toMutableSet()
+            if (column in hidden) hidden.remove(column) else hidden.add(column)
+            currentTab.copy(hiddenColumns = hidden)
+        }
+    }
+
     override fun resizeDetailsColumn(
         column: DetailsColumn,
         nextColumn: DetailsColumn,
@@ -800,6 +811,7 @@ class DefaultPaneComponent(
             inspectorState = PaneInspectorState(),
             operationFeedback = null,
             showHiddenItems = false,
+            hiddenColumns = emptySet(),
             entriesState = PaneEntriesState.Idle,
             allEntries = emptyList(),
             backStack = emptyList(),
@@ -1074,6 +1086,7 @@ private fun PaneTabState.toPaneState(
         inspectorState = inspectorState,
         operationFeedback = operationFeedback,
         showHiddenItems = showHiddenItems,
+        hiddenColumns = hiddenColumns,
         entriesState = entriesState,
     )
 }
@@ -1118,6 +1131,7 @@ private fun TabSessionSnapshot.toPaneTabState(): PaneTabState {
         inspectorState = PaneInspectorState(),
         operationFeedback = null,
         showHiddenItems = showHiddenItems,
+        hiddenColumns = emptySet(),
         entriesState = PaneEntriesState.Idle,
         allEntries = emptyList(),
         backStack = backStack,

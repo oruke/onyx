@@ -172,4 +172,6 @@
     <string name="label_inspector_unknown">不明</string>
     <string name="label_inspector_directory">フォルダー</string>
     <string name="label_inspector_file">ファイル</string>
+
+    <string name="label_column_visibility">カラム設定</string>
 </resources>

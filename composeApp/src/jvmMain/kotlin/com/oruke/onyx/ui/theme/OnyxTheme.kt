@@ -6,6 +6,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 
 data class OnyxPalette(
@@ -98,11 +100,34 @@ fun rememberOnyxPalette(): OnyxPalette {
     }
 }
 
+/**
+ * Onyx 主题入口
+ *
+ * @param uiScale UI 缩放百分比（75~200），通过修改 LocalDensity 实现全局缩放，
+ *                所有子组件的 dp/sp 值自动按比例缩放，无需修改下游代码。
+ * @param appearance 动态外观参数，由 OnyxSettings 构建。
+ */
 @Composable
-fun OnyxTheme(content: @Composable () -> Unit) {
+fun OnyxTheme(
+    uiScale: Int = 100,
+    appearance: OnyxAppearance = OnyxAppearance(),
+    content: @Composable () -> Unit,
+) {
     val palette = rememberOnyxPalette()
+    val baseDensity = LocalDensity.current
+    val scaledDensity = remember(uiScale, baseDensity) {
+        val scaleFactor = uiScale.coerceIn(75, 200) / 100f
+        Density(
+            density = baseDensity.density * scaleFactor,
+            fontScale = baseDensity.fontScale * scaleFactor,
+        )
+    }
     IntUiTheme(isDark = isSystemInDarkTheme()) {
-        CompositionLocalProvider(LocalOnyxPalette provides palette) {
+        CompositionLocalProvider(
+            LocalOnyxPalette provides palette,
+            LocalOnyxAppearance provides appearance,
+            LocalDensity provides scaledDensity,
+        ) {
             content()
         }
     }

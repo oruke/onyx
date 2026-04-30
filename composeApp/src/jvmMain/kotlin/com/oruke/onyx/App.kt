@@ -52,6 +52,7 @@ import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.LocalTooltipController
+import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.TabDropTarget
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.TooltipController
@@ -61,6 +62,7 @@ import com.oruke.onyx.ui.theme.containsPoint
 import com.oruke.onyx.ui.theme.dropIndex
 import com.oruke.onyx.ui.theme.key
 import com.oruke.onyx.ui.theme.paneState
+import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import com.oruke.onyx.ui.theme.rememberOnyxPalette
 import com.oruke.onyx.ui.theme.toIntOffset
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
@@ -77,6 +79,11 @@ fun DecoratedWindowScope.WindowApp() {
     val rootComponent = rememberRootComponent()
     val state by rootComponent.state.collectAsState()
     val palette = rememberOnyxPalette()
+    val appearance = rememberOnyxAppearance(
+        listRowHeightDp = state.settings.listRowHeightDp,
+        listFontSizeSp = state.settings.listFontSizeSp,
+        zebraStripeEnabled = state.settings.zebraStripeEnabled,
+    )
     var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     val onUiScaleChange: (Int) -> Unit = { value ->
         rootComponent.updateSettings(
@@ -112,11 +119,17 @@ fun DecoratedWindowScope.WindowApp() {
             )
         }
 
-        AppContent(
-            rootComponent = rootComponent,
-            state = state,
-            externalTooltipRequest = titleBarTooltipRequest,
-        )
+        // AppContent 在 OnyxTheme 内部渲染，uiScale 通过 LocalDensity 生效
+        OnyxTheme(
+            uiScale = state.settings.uiScale,
+            appearance = appearance,
+        ) {
+            AppContent(
+                rootComponent = rootComponent,
+                state = state,
+                externalTooltipRequest = titleBarTooltipRequest,
+            )
+        }
     }
 }
 
@@ -124,9 +137,16 @@ fun DecoratedWindowScope.WindowApp() {
 fun App() {
     val rootComponent = rememberRootComponent()
     val state by rootComponent.state.collectAsState()
-    val palette = rememberOnyxPalette()
+    val appearance = rememberOnyxAppearance(
+        listRowHeightDp = state.settings.listRowHeightDp,
+        listFontSizeSp = state.settings.listFontSizeSp,
+        zebraStripeEnabled = state.settings.zebraStripeEnabled,
+    )
 
-    CompositionLocalProvider(LocalOnyxPalette provides palette) {
+    OnyxTheme(
+        uiScale = state.settings.uiScale,
+        appearance = appearance,
+    ) {
         AppContent(
             rootComponent = rootComponent,
             state = state,

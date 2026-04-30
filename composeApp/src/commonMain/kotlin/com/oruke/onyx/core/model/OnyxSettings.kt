@@ -13,6 +13,12 @@ data class OnyxSettings(
     val statusBarVisible: Boolean = true,
     val favoriteLocations: List<String> = emptyList(),
     val recentLocations: List<String> = emptyList(),
+    // 动态外观系统持久化字段
+    val listRowHeightDp: Int = 22,
+    val listFontSizeSp: Int = 12,
+    val zebraStripeEnabled: Boolean = true,
+    // 列可见性控制
+    val hiddenDetailsColumns: Set<DetailsColumn> = emptySet(),
 )
 
 @Serializable

@@ -172,4 +172,6 @@
     <string name="label_inspector_unknown">Unknown</string>
     <string name="label_inspector_directory">Directory</string>
     <string name="label_inspector_file">File</string>
+
+    <string name="label_column_visibility">Columns</string>
 </resources>

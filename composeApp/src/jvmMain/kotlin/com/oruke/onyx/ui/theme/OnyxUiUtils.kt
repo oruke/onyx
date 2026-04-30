@@ -148,8 +148,13 @@ internal fun formatModifiedTime(modifiedAtEpochMillis: Long?): String {
 
 // ── Column helpers ──────────────────────────────────────────────────────────
 
-internal fun visibleDetailsColumns(columns: List<DetailsColumn>): List<DetailsColumn> {
-    return columns
+internal fun visibleDetailsColumns(
+    columns: List<DetailsColumn>,
+    hiddenColumns: Set<DetailsColumn> = emptySet(),
+): List<DetailsColumn> {
+    if (hiddenColumns.isEmpty()) return columns
+    // NAME 列不可隐藏，确保始终可见
+    return columns.filter { it == DetailsColumn.NAME || it !in hiddenColumns }
 }
 
 internal fun detailsColumnWidth(

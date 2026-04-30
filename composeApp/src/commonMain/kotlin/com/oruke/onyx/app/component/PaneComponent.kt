@@ -32,6 +32,7 @@ data class PaneState(
     val inspectorState: PaneInspectorState,
     val operationFeedback: PaneOperationFeedback?,
     val showHiddenItems: Boolean,
+    val hiddenColumns: Set<DetailsColumn>,
     val entriesState: PaneEntriesState,
 )
 
@@ -54,6 +55,7 @@ data class PaneTabState(
     val inspectorState: PaneInspectorState,
     val operationFeedback: PaneOperationFeedback?,
     val showHiddenItems: Boolean,
+    val hiddenColumns: Set<DetailsColumn>,
     val entriesState: PaneEntriesState,
     val allEntries: List<VFile>,
     val backStack: List<String>,
@@ -96,6 +98,8 @@ interface PaneComponent {
     fun toggleSort(column: DetailsColumn)
 
     fun toggleHiddenItems()
+
+    fun toggleColumnVisibility(column: DetailsColumn)
 
     fun resizeDetailsColumn(
         column: DetailsColumn,

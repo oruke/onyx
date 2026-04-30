@@ -61,6 +61,7 @@ import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -86,6 +87,7 @@ import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.ui.theme.DetailsColumnGap
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.detailsColumnWidth
 import com.oruke.onyx.ui.theme.fileIconKey
@@ -105,6 +107,7 @@ import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_directory_badge
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_error_prefix
+import onyx.composeapp.generated.resources.label_column_visibility
 import onyx.composeapp.generated.resources.label_loading_entries
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
@@ -122,6 +125,7 @@ internal fun PaneEntriesContent(
     viewMode: ViewMode,
     columns: List<DetailsColumn>,
     columnWeights: Map<DetailsColumn, Float>,
+    hiddenColumns: Set<DetailsColumn>,
     sort: DetailsSort,
     selectedEntryIds: Set<String>,
     state: PaneEntriesState,
@@ -131,6 +135,7 @@ internal fun PaneEntriesContent(
     onOpenEntry: (VFile) -> Unit,
     onToggleSort: (DetailsColumn) -> Unit,
     onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
+    onToggleColumnVisibility: (DetailsColumn) -> Unit,
     onSelectEntry: (String, Boolean, Boolean) -> Unit,
     paneId: PaneId,
     fileDropTarget: FileDropTarget?,
@@ -203,9 +208,11 @@ internal fun PaneEntriesContent(
                     DetailsHeader(
                         columns = columns,
                         columnWidths = columnWeights,
+                        hiddenColumns = hiddenColumns,
                         sort = sort,
                         onToggleSort = onToggleSort,
                         onResizeColumn = onResizeColumn,
+                        onToggleColumnVisibility = onToggleColumnVisibility,
                         scrollState = horizontalScrollState,
                     )
                 }
@@ -503,64 +510,139 @@ internal fun InlineEditEntryRow(
 
 // ── Details header ──────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun DetailsHeader(
     columns: List<DetailsColumn>,
     columnWidths: Map<DetailsColumn, Float>,
+    hiddenColumns: Set<DetailsColumn>,
     sort: DetailsSort,
     onToggleSort: (DetailsColumn) -> Unit,
     onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
+    onToggleColumnVisibility: (DetailsColumn) -> Unit,
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
     val density = LocalDensity.current
-    val visibleColumns = remember(columns) { visibleDetailsColumns(columns) }
+    val visibleColumns = remember(columns, hiddenColumns) { visibleDetailsColumns(columns, hiddenColumns) }
+    var showColumnMenu by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .horizontalScroll(scrollState)
-            .background(LocalOnyxPalette.current.headerBackground)
-            .height(24.dp)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        visibleColumns.forEachIndexed { index, column ->
-            val nextColumn = visibleColumns.getOrNull(index + 1)
-            val colWidth = detailsColumnWidth(columnWidths, column).dp
-            when (column) {
-                DetailsColumn.NAME -> SortHeaderCell(
-                    text = stringResource(Res.string.label_column_name),
-                    sortHint = sortHint(column, sort),
-                    modifier = Modifier.width(colWidth),
-                    onClick = { onToggleSort(column) },
-                )
+    Box {
+        Row(
+            modifier = Modifier
+                .horizontalScroll(scrollState)
+                .background(LocalOnyxPalette.current.headerBackground)
+                .height(LocalOnyxAppearance.current.headerHeight)
+                .padding(horizontal = 8.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = { showColumnMenu = true },
+                    )
+                }
+                .onPointerEvent(PointerEventType.Press) {
+                    // 右键点击打开列可见性菜单
+                    if (it.buttons.isSecondaryPressed) {
+                        showColumnMenu = true
+                    }
+                },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            visibleColumns.forEachIndexed { index, column ->
+                val nextColumn = visibleColumns.getOrNull(index + 1)
+                val colWidth = detailsColumnWidth(columnWidths, column).dp
+                when (column) {
+                    DetailsColumn.NAME -> SortHeaderCell(
+                        text = stringResource(Res.string.label_column_name),
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.width(colWidth),
+                        onClick = { onToggleSort(column) },
+                    )
 
-                DetailsColumn.SIZE -> SortHeaderCell(
-                    text = stringResource(Res.string.label_column_size),
-                    sortHint = sortHint(column, sort),
-                    modifier = Modifier.width(colWidth),
-                    onClick = { onToggleSort(column) },
-                )
+                    DetailsColumn.SIZE -> SortHeaderCell(
+                        text = stringResource(Res.string.label_column_size),
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.width(colWidth),
+                        onClick = { onToggleSort(column) },
+                    )
 
-                DetailsColumn.MODIFIED -> SortHeaderCell(
-                    text = stringResource(Res.string.label_column_modified),
-                    sortHint = sortHint(column, sort),
-                    modifier = Modifier.width(colWidth),
-                    onClick = { onToggleSort(column) },
-                )
-                DetailsColumn.TYPE -> SortHeaderCell(
-                    text = stringResource(Res.string.label_column_type),
-                    sortHint = sortHint(column, sort),
-                    modifier = Modifier.width(colWidth),
-                    onClick = { onToggleSort(column) },
-                )
+                    DetailsColumn.MODIFIED -> SortHeaderCell(
+                        text = stringResource(Res.string.label_column_modified),
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.width(colWidth),
+                        onClick = { onToggleSort(column) },
+                    )
+                    DetailsColumn.TYPE -> SortHeaderCell(
+                        text = stringResource(Res.string.label_column_type),
+                        sortHint = sortHint(column, sort),
+                        modifier = Modifier.width(colWidth),
+                        onClick = { onToggleSort(column) },
+                    )
+                }
+                if (nextColumn != null) {
+                    DetailsColumnResizeGap(
+                        onResize = { deltaPx ->
+                            val deltaDp = with(density) { deltaPx / this.density }
+                            onResizeColumn(column, nextColumn, deltaDp)
+                        },
+                    )
+                }
             }
-            if (nextColumn != null) {
-                DetailsColumnResizeGap(
-                    onResize = { deltaPx ->
-                        val deltaDp = with(density) { deltaPx / this.density }
-                        onResizeColumn(column, nextColumn, deltaDp)
-                    },
-                )
+        }
+
+        // 列可见性右键菜单
+        if (showColumnMenu) {
+            androidx.compose.ui.window.Popup(
+                onDismissRequest = { showColumnMenu = false },
+                alignment = Alignment.TopStart,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(4.dp))
+                        .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
+                        .padding(4.dp)
+                        .width(160.dp),
+                ) {
+                    // 菜单标题
+                    Text(
+                        text = stringResource(Res.string.label_column_visibility),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = LocalOnyxPalette.current.mutedForeground,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                    columns.forEach { column ->
+                        val isVisible = column !in hiddenColumns
+                        val isName = column == DetailsColumn.NAME
+                        val label = when (column) {
+                            DetailsColumn.NAME -> stringResource(Res.string.label_column_name)
+                            DetailsColumn.TYPE -> stringResource(Res.string.label_column_type)
+                            DetailsColumn.SIZE -> stringResource(Res.string.label_column_size)
+                            DetailsColumn.MODIFIED -> stringResource(Res.string.label_column_modified)
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !isName) {
+                                    onToggleColumnVisibility(column)
+                                }
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = if (isVisible) "✓" else " ",
+                                fontSize = 12.sp,
+                                color = if (isName) LocalOnyxPalette.current.disabledForeground
+                                        else LocalOnyxPalette.current.accent,
+                            )
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                color = if (isName) LocalOnyxPalette.current.disabledForeground
+                                        else LocalOnyxPalette.current.foreground,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -586,7 +668,7 @@ internal fun SortHeaderCell(
                 text = text,
                 modifier = Modifier.weight(1f),
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 11.sp,
+                fontSize = LocalOnyxAppearance.current.headerFontSize,
                 color = LocalOnyxPalette.current.mutedForeground,
                 textAlign = textAlign,
                 maxLines = 1,
@@ -663,12 +745,13 @@ internal fun EntryRow(
     val preserveMultiSelectionForDrag = selected && selectedEntryCount > 1
     val coroutineScope = rememberCoroutineScope()
     var renameTimerJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val appearance = LocalOnyxAppearance.current
     val rowBackground by animateColorAsState(
         targetValue = when {
             isDirectoryDropTarget -> LocalOnyxPalette.current.rowHoverBackground
             selected && paneActive -> LocalOnyxPalette.current.selectionBackground
             selected && !paneActive -> LocalOnyxPalette.current.inactiveSelectionBackground
-            zebra -> LocalOnyxPalette.current.surfaceVariant
+            zebra && appearance.zebraStripeEnabled -> appearance.zebraStripeColor ?: LocalOnyxPalette.current.surfaceVariant
             else -> Color.Transparent
         },
         animationSpec = tween(durationMillis = 120),
@@ -763,7 +846,7 @@ internal fun EntryRow(
                 },
             )
             .padding(horizontal = 8.dp, vertical = 1.dp)
-            .height(22.dp),
+            .height(LocalOnyxAppearance.current.listRowHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DetailsColumnGap),
     ) {
@@ -797,7 +880,7 @@ internal fun EntryRow(
                             text = entry.name,
                             modifier = Modifier.weight(1f),
                             fontWeight = if (entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
-                            fontSize = 12.sp,
+                            fontSize = LocalOnyxAppearance.current.listFontSize,
                             color = LocalOnyxPalette.current.foreground,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -809,7 +892,7 @@ internal fun EntryRow(
                     Text(
                         text = formatFileSize(entry.sizeBytes),
                         modifier = Modifier.width(colWidth),
-                        fontSize = 12.sp,
+                        fontSize = LocalOnyxAppearance.current.listFontSize,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
@@ -821,7 +904,7 @@ internal fun EntryRow(
                     Text(
                         text = formatModifiedTime(entry.modifiedAtEpochMillis),
                         modifier = Modifier.width(colWidth),
-                        fontSize = 12.sp,
+                        fontSize = LocalOnyxAppearance.current.listFontSize,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
@@ -838,7 +921,7 @@ internal fun EntryRow(
                     Text(
                         text = typeText,
                         modifier = Modifier.width(colWidth),
-                        fontSize = 12.sp,
+                        fontSize = LocalOnyxAppearance.current.listFontSize,
                         color = LocalOnyxPalette.current.mutedForeground,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
