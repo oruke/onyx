@@ -8,7 +8,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitDragOrCancellation
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -227,76 +230,177 @@ internal fun PaneEntriesContent(
             var rubberBandStart by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var rubberBandEnd by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var isRubberBanding by remember { mutableStateOf(false) }
+            var addRubberBandSelection by remember { mutableStateOf(false) }
+            var rubberBandBaseSelection by remember { mutableStateOf(emptySet<String>()) }
+            var isFileDragging by remember { mutableStateOf(false) }
+            var pendingDragOrigin by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
             var containerCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+
+            // 子组件通过此回调同步通知 parent 文件拖拽开始/结束
+            val wrappedOnStartFileDrag: (PaneId, FileTransferOperation) -> Unit = { pid, op ->
+                isFileDragging = true
+                pendingDragOrigin = null
+                onStartFileDrag(pid, op)
+            }
+            val wrappedOnFileDragEnd: (IntOffset?) -> Unit = { pos ->
+                isFileDragging = false
+                onFileDragEnd(pos)
+            }
+            // 子组件通过此回调通知容器从文件行启动框选（坐标为窗口坐标）
+            val wrappedOnStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit =
+                { entryId, windowPos, addSelection ->
+                    val container = containerCoordinates
+                    if (container != null) {
+                        val containerPos = container.windowToLocal(windowPos)
+                        pendingDragOrigin = null
+                        isRubberBanding = true
+                        rubberBandStart = containerPos
+                        rubberBandEnd = containerPos
+                        addRubberBandSelection = addSelection
+                        rubberBandBaseSelection = if (addSelection) selectedEntryIds else emptySet()
+                        onActivate()
+                        onDismissContextMenu()
+                        if (!addSelection) {
+                            onSelectEntries(emptySet())
+                        }
+                    }
+                }
 
             Box(
                 modifier = Modifier.fillMaxSize()
                     .clipToBounds()
                     .onGloballyPositioned { containerCoordinates = it }
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            // 等待 Press 事件（Final pass，子组件已处理完毕）
-                            val down = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Final)
-                            if (down.type != PointerEventType.Press) return@awaitEachGesture
-                            val change = down.changes.firstOrNull() ?: return@awaitEachGesture
-                            if (!down.buttons.isPrimaryPressed) return@awaitEachGesture
+                    // Press: 仅空白区域记录起点，文件行区域由子组件处理
+                    .onPointerEvent(PointerEventType.Press) { event ->
+                        if (event.changes.any { it.isConsumed }) return@onPointerEvent
+                        if (!event.buttons.isPrimaryPressed) return@onPointerEvent
+                        val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
 
-                            // 手动 hit-test：检查点击位置是否在任一 item 上
-                            val container = containerCoordinates ?: return@awaitEachGesture
-                            val hitPos = change.position
-                            val hitItem = itemCoordsMap.any { (_, coords) ->
+                        // hit-test: 只有点击在空白区域时才由 parent 处理框选
+                        val container = containerCoordinates
+                        val hitItem = if (container != null) {
+                            itemCoordsMap.any { (_, coords) ->
                                 coords.isAttached &&
-                                    container.localBoundingBoxOf(coords, clipBounds = false).contains(hitPos)
+                                    container.localBoundingBoxOf(coords, clipBounds = false).contains(pos)
                             }
-                            if (hitItem) return@awaitEachGesture
+                        } else false
 
-                            // 空白区域点击 → 准备框选
-                            onActivate()
-                            onDismissContextMenu()
-                            onSelectEntries(emptySet())
-                            val startPos = hitPos
+                        if (hitItem) {
+                            // 点击在文件项上 → 不设置 pendingDragOrigin，让子组件全权处理
+                            pendingDragOrigin = null
+                        } else {
+                            // 点击在空白区域 → parent 负责框选
+                            pendingDragOrigin = pos
+                            isRubberBanding = false
+                            isFileDragging = false
+                        }
+                    }
+                    // Move: 检测拖拽（空白区域直接启动，文件行区域由 onStartRubberBand 回调触发后继续跟踪）
+                    .onPointerEvent(PointerEventType.Move) { event ->
+                        if (isFileDragging) return@onPointerEvent
+                        if (event.changes.any { it.isConsumed }) return@onPointerEvent
 
-                            // 拖拽循环
-                            do {
-                                val event = awaitPointerEvent()
-                                val dragChange = event.changes.firstOrNull() ?: break
-                                val pos = dragChange.position
+                        val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
 
-                                if (!isRubberBanding) {
-                                    val dx = pos.x - startPos.x
-                                    val dy = pos.y - startPos.y
-                                    if (dx * dx + dy * dy > 16f) {
-                                        isRubberBanding = true
-                                        rubberBandStart = startPos
-                                    }
+                        // 空白区域拖拽：由 pendingDragOrigin 启动
+                        val origin = pendingDragOrigin
+                        if (origin != null && !isRubberBanding) {
+                            val dx = pos.x - origin.x
+                            val dy = pos.y - origin.y
+                            if (dx * dx + dy * dy > 36f) {
+                                isRubberBanding = true
+                                rubberBandStart = origin
+                                addRubberBandSelection = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
+                                rubberBandBaseSelection = if (addRubberBandSelection) selectedEntryIds else emptySet()
+                                onActivate()
+                                onDismissContextMenu()
+                                if (!addRubberBandSelection) {
+                                    onSelectEntries(emptySet())
                                 }
+                            }
+                        }
 
-                                if (isRubberBanding) {
-                                    rubberBandEnd = pos
-                                    dragChange.consume()
-                                    val selRect = androidx.compose.ui.geometry.Rect(
-                                        left = minOf(startPos.x, pos.x),
-                                        top = minOf(startPos.y, pos.y),
-                                        right = maxOf(startPos.x, pos.x),
-                                        bottom = maxOf(startPos.y, pos.y),
-                                    )
-                                    val hitIds = itemCoordsMap
-                                        .filter { (_, coords) ->
-                                            coords.isAttached &&
-                                                container.localBoundingBoxOf(coords, clipBounds = false).overlaps(selRect)
-                                        }
-                                        .keys
-                                        .toSet()
-                                    onSelectEntries(hitIds)
+                        // 框选进行中（无论是空白区域启动还是子组件回调启动）：持续更新
+                        if (isRubberBanding) {
+                            val rbOrigin = rubberBandStart ?: return@onPointerEvent
+                            rubberBandEnd = pos
+                            event.changes.forEach { it.consume() }
+                            val container = containerCoordinates ?: return@onPointerEvent
+                            val selRect = androidx.compose.ui.geometry.Rect(
+                                left = minOf(rbOrigin.x, pos.x),
+                                top = minOf(rbOrigin.y, pos.y),
+                                right = maxOf(rbOrigin.x, pos.x),
+                                bottom = maxOf(rbOrigin.y, pos.y),
+                            )
+                            val hitIds = itemCoordsMap
+                                .filter { (_, coords) ->
+                                    coords.isAttached &&
+                                        container.localBoundingBoxOf(coords, clipBounds = false).overlaps(selRect)
                                 }
-                            } while (dragChange.pressed)
-
+                                .keys
+                                .toSet()
+                            onSelectEntries(rubberBandBaseSelection + hitIds)
+                        }
+                    }
+                    // Release: 结束
+                    .onPointerEvent(PointerEventType.Release) { event ->
+                        val pos = event.changes.firstOrNull()?.position
+                        val container = containerCoordinates
+                        if (!isRubberBanding && pendingDragOrigin != null && pos != null && container != null) {
+                            // 这是一次点击（不是拖拽）：若 release 位置不在任何 item 上，清空选择
+                            val hitItem = itemCoordsMap.entries.find { (_, coords) ->
+                                coords.isAttached && container.localBoundingBoxOf(coords, clipBounds = false).contains(pos)
+                            }
+                            if (hitItem == null) {
+                                onSelectEntries(emptySet())
+                            }
+                        }
+                        pendingDragOrigin = null
+                        isFileDragging = false
+                        if (isRubberBanding) {
                             isRubberBanding = false
                             rubberBandStart = null
                             rubberBandEnd = null
                         }
                     },
             ) {
+                // 框选跟踪覆盖层：从文件行触发框选时接管后续拖拽
+                Box(
+                    modifier = Modifier.fillMaxSize().then(
+                        if (isRubberBanding) {
+                            Modifier.pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var current = down
+                                    while (current.pressed) {
+                                        rubberBandEnd = current.position
+                                        val selRect = androidx.compose.ui.geometry.Rect(
+                                            left = minOf(rubberBandStart!!.x, current.position.x),
+                                            top = minOf(rubberBandStart!!.y, current.position.y),
+                                            right = maxOf(rubberBandStart!!.x, current.position.x),
+                                            bottom = maxOf(rubberBandStart!!.y, current.position.y),
+                                        )
+                                        val hitIds = itemCoordsMap
+                                            .filter { (_, coords) ->
+                                                coords.isAttached &&
+                                                    containerCoordinates?.localBoundingBoxOf(coords, clipBounds = false)
+                                                        ?.overlaps(selRect) == true
+                                            }
+                                            .keys
+                                            .toSet()
+                                        onSelectEntries(rubberBandBaseSelection + hitIds)
+                                        val next = awaitDragOrCancellation(current.id) ?: break
+                                        current = next
+                                        current.consume()
+                                    }
+                                    isRubberBanding = false
+                                    rubberBandStart = null
+                                    rubberBandEnd = null
+                                }
+                            }
+                        } else Modifier
+                    )
+                )
                 Column(modifier = Modifier.fillMaxSize()) {
                     val horizontalScrollState = rememberScrollState()
 
@@ -337,9 +441,9 @@ internal fun PaneEntriesContent(
                                         onSelectEntry = onSelectEntry,
                                         paneId = paneId,
                                         fileDropTarget = fileDropTarget,
-                                        onStartFileDrag = onStartFileDrag,
+                                        onStartFileDrag = wrappedOnStartFileDrag,
                                         onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDragEnd = wrappedOnFileDragEnd,
                                         onFileDropZoneChange = onFileDropZoneChange,
                                         onShowContextMenu = onShowContextMenu,
                                         onDismissContextMenu = onDismissContextMenu,
@@ -347,6 +451,7 @@ internal fun PaneEntriesContent(
                                         onConfirmInlineEdit = onConfirmInlineEdit,
                                         onCancelInlineEdit = onCancelInlineEdit,
                                         galleryItemSizeDp = galleryItemSizeDp,
+                                        onStartRubberBand = wrappedOnStartRubberBand,
                                     )
                                 }
                             }
@@ -370,9 +475,9 @@ internal fun PaneEntriesContent(
                                         onSelectEntry = onSelectEntry,
                                         paneId = paneId,
                                         fileDropTarget = fileDropTarget,
-                                        onStartFileDrag = onStartFileDrag,
+                                        onStartFileDrag = wrappedOnStartFileDrag,
                                         onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = onFileDragEnd,
+                                        onFileDragEnd = wrappedOnFileDragEnd,
                                         onFileDropZoneChange = onFileDropZoneChange,
                                         onShowContextMenu = onShowContextMenu,
                                         onDismissContextMenu = onDismissContextMenu,
@@ -380,6 +485,7 @@ internal fun PaneEntriesContent(
                                         onConfirmInlineEdit = if (isRenamingEntry) onConfirmInlineEdit else null,
                                         onCancelInlineEdit = if (isRenamingEntry) onCancelInlineEdit else null,
                                         galleryItemSizeDp = galleryItemSizeDp,
+                                        onStartRubberBand = wrappedOnStartRubberBand,
                                     )
                                 }
                             }
@@ -455,12 +561,13 @@ internal fun PaneEntriesContent(
                                                 onBeginRename = onBeginRename,
                                                 paneId = paneId,
                                                 fileDropTarget = fileDropTarget,
-                                                onStartFileDrag = onStartFileDrag,
+                                                onStartFileDrag = wrappedOnStartFileDrag,
                                                 onFileDragPositionChange = onFileDragPositionChange,
-                                                onFileDragEnd = onFileDragEnd,
+                                                onFileDragEnd = wrappedOnFileDragEnd,
                                                 onFileDropZoneChange = onFileDropZoneChange,
                                                 onShowContextMenu = onShowContextMenu,
                                                 onDismissContextMenu = onDismissContextMenu,
+                                                onStartRubberBand = wrappedOnStartRubberBand,
                                                 scrollState = horizontalScrollState,
                                             )
                                         }
@@ -869,15 +976,19 @@ internal fun EntryRow(
     onFileDropZoneChange: (FileDropZone) -> Unit,
     onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     onDismissContextMenu: () -> Unit,
+    onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit = { _, _, _ -> },
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
+    // 用 rememberUpdatedState 捕获最新的 selected 值，避免 pointerInput 重启
+    val currentSelected by androidx.compose.runtime.rememberUpdatedState(selected)
     var rangeSelection by remember { mutableStateOf(false) }
     var dragOperation by remember { mutableStateOf(FileTransferOperation.MOVE) }
     var dragPosition by remember { mutableStateOf<IntOffset?>(null) }
     var rowCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var nameAreaCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val isDirectoryDropTarget = fileDropTarget?.directoryEntryId == entry.id
-    val preserveMultiSelectionForDrag = selected && selectedEntryCount > 1
+    var pendingDeselectOthers by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     var renameTimerJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val appearance = LocalOnyxAppearance.current
@@ -923,14 +1034,23 @@ internal fun EntryRow(
                     event.buttons.isPrimaryPressed -> {
                         onActivate()
                         onDismissContextMenu()
-                        // 慢速双击重命名逻辑：仅当已经是单选 + 当前项已选中 + 无修饰键时启动定时器
-                        val wasSingleSelected = selected && selectedEntryCount == 1 &&
-                                !additiveSelection && !rangeSelection
-                        if (!preserveMultiSelectionForDrag || additiveSelection || rangeSelection) {
+                        pendingDeselectOthers = false
+
+                        if (additiveSelection || rangeSelection) {
+                            // 修饰键点击：立即处理（Ctrl切换/Shift范围）
                             onSelectEntry(entry.id, additiveSelection, rangeSelection)
+                        } else if (selectedEntryCount > 1) {
+                            // 多选中无修饰键点击：延迟到 release 再取消其它选中
+                            pendingDeselectOthers = true
+                        } else {
+                            // 单选或无选中：立即选中
+                            onSelectEntry(entry.id, false, false)
                         }
-                        if (wasSingleSelected && !additiveSelection && !rangeSelection) {
-                            // 启动 500ms 慢速重命名定时器
+
+                        // 慢速双击重命名逻辑
+                        val canRename = selected && selectedEntryCount == 1 &&
+                                !additiveSelection && !rangeSelection
+                        if (canRename) {
                             renameTimerJob?.cancel()
                             renameTimerJob = coroutineScope.launch {
                                 kotlinx.coroutines.delay(500)
@@ -944,27 +1064,75 @@ internal fun EntryRow(
                 }
             }
             .pointerInput(entry.id, paneId) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        renameTimerJob?.cancel()
-                        renameTimerJob = null
-                        dragPosition = rowCoordinates?.localToWindow(offset)?.toIntOffset()
-                        onStartFileDrag(paneId, dragOperation)
-                        dragPosition?.let(onFileDragPositionChange)
-                    },
-                    onDragCancel = {
-                        dragPosition = null
-                        onFileDragEnd(null)
-                    },
-                    onDragEnd = {
-                        onFileDragEnd(dragPosition)
-                        dragPosition = null
-                    },
-                    onDrag = { change, _ ->
-                        dragPosition = rowCoordinates?.localToWindow(change.position)?.toIntOffset()
-                        dragPosition?.let(onFileDragPositionChange)
-                    },
-                )
+                awaitPointerEventScope {
+                    while (true) {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val startPos = down.position
+                        var dragStarted = false
+                        // 在按下瞬间捕获选中状态（避免 onPointerEvent(Press) 先选中后导致误判）
+                        val wasSelectedAtPress = currentSelected
+
+                        // 判断按下位置是否在名称列范围内
+                        val nameCoords = nameAreaCoords
+                        val rowCoords = rowCoordinates
+                        val inNameColumn = if (nameCoords != null && rowCoords != null && nameCoords.isAttached) {
+                            val nameRect = rowCoords.localBoundingBoxOf(nameCoords, clipBounds = false)
+                            nameRect.contains(startPos)
+                        } else {
+                            // 若无法判定范围，保守回退为名称列行为
+                            true
+                        }
+
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) {
+                                if (dragStarted) {
+                                    onFileDragEnd(dragPosition)
+                                    dragPosition = null
+                                } else if (pendingDeselectOthers) {
+                                    onSelectEntry(entry.id, false, false)
+                                    pendingDeselectOthers = false
+                                }
+                                break
+                            }
+
+                            val dx = change.position.x - startPos.x
+                            val dy = change.position.y - startPos.y
+                            if (!dragStarted && dx * dx + dy * dy > 36f) {
+                                dragStarted = true
+                                pendingDeselectOthers = false
+                                renameTimerJob?.cancel()
+                                renameTimerJob = null
+                                change.consume()
+
+                                if (wasSelectedAtPress || inNameColumn) {
+                                    // 按下时已选中 或 名称列内拖拽 → 文件拖动
+                                    if (!wasSelectedAtPress) {
+                                        // 未选中但在名称列：自动选中再拖拽（Dolphin 行为）
+                                        onSelectEntry(entry.id, false, false)
+                                    }
+                                    dragPosition = rowCoordinates?.localToWindow(change.position)?.toIntOffset()
+                                    onStartFileDrag(paneId, dragOperation)
+                                    dragPosition?.let(onFileDragPositionChange)
+                                } else {
+                                    // 按下时未选中 + 非名称列拖拽 → 启动框选，退出循环让 overlay 接管
+                                    val addSel = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
+                                    val windowStartPos = rowCoordinates?.localToWindow(startPos) ?: startPos
+                                    onStartRubberBand(entry.id, windowStartPos, addSel)
+                                    break
+                                }
+                            } else if (dragStarted) {
+                                change.consume()
+                                if (wasSelectedAtPress || inNameColumn) {
+                                    // 文件拖动：持续更新位置
+                                    dragPosition = rowCoordinates?.localToWindow(change.position)?.toIntOffset()
+                                    dragPosition?.let(onFileDragPositionChange)
+                                }
+                            }
+                        }
+                    }
+                }
             }
             .background(rowBackground)
             .combinedClickable(
@@ -990,36 +1158,41 @@ internal fun EntryRow(
             when (column) {
                 DetailsColumn.NAME -> {
                     Row(
-                        modifier = Modifier
-                            .width(colWidth)
-                            .onGloballyPositioned { coordinates ->
-                                if (entry.kind == VFileKind.DIRECTORY) {
-                                    onFileDropZoneChange(
-                                        FileDropZone(
-                                            paneId = paneId,
-                                            targetDirectoryLocation = entry.location,
-                                            bounds = coordinates.windowBounds(),
-                                            directoryEntryId = entry.id,
-                                        )
-                                    )
-                                }
-                            },
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.width(colWidth),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            key = if (entry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry.name),
-                            contentDescription = null,
-                        )
-                        Text(
-                            text = entry.name,
-                            modifier = Modifier.weight(1f),
-                            fontWeight = if (entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
-                            fontSize = LocalOnyxAppearance.current.listFontSize,
-                            color = LocalOnyxPalette.current.foreground,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            modifier = Modifier
+                                .weight(1f, fill = false) // 使其宽度紧凑贴合图标和文字，最大不超过 colWidth
+                                .onGloballyPositioned { coordinates ->
+                                    nameAreaCoords = coordinates
+                                    if (entry.kind == VFileKind.DIRECTORY) {
+                                        onFileDropZoneChange(
+                                            FileDropZone(
+                                                paneId = paneId,
+                                                targetDirectoryLocation = entry.location,
+                                                bounds = coordinates.windowBounds(),
+                                                directoryEntryId = entry.id,
+                                            )
+                                        )
+                                    }
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(
+                                key = if (entry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry.name),
+                                contentDescription = null,
+                            )
+                            Text(
+                                text = entry.name,
+                                fontWeight = if (entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
+                                fontSize = LocalOnyxAppearance.current.listFontSize,
+                                color = LocalOnyxPalette.current.foreground,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
 

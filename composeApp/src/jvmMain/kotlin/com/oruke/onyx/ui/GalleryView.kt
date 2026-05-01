@@ -6,7 +6,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectDragGestures
+
+import androidx.compose.foundation.gestures.awaitDragOrCancellation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +44,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isPrimaryPressed
@@ -108,14 +113,16 @@ internal fun GalleryItem(
     onConfirmInlineEdit: (() -> Unit)? = null,
     onCancelInlineEdit: (() -> Unit)? = null,
     galleryItemSizeDp: Int = 160,
+    onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit = { _, _, _ -> },
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
+    val currentSelected by androidx.compose.runtime.rememberUpdatedState(selected)
     var rangeSelection by remember { mutableStateOf(false) }
     var dragOperation by remember { mutableStateOf(FileTransferOperation.MOVE) }
     var dragPosition by remember { mutableStateOf<IntOffset?>(null) }
     var rowCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val isDirectoryDropTarget = fileDropTarget?.directoryEntryId == entry?.id
-    val preserveMultiSelectionForDrag = selected && selectedEntryCount > 1
+    var pendingDeselectOthers by remember { mutableStateOf(false) }
 
     val isInlineEdit = draftName != null && onUpdateInlineEditDraft != null
     val focusRequester = remember { FocusRequester() }
@@ -190,33 +197,56 @@ internal fun GalleryItem(
                     event.buttons.isPrimaryPressed -> {
                         onActivate()
                         onDismissContextMenu()
-                        if (!preserveMultiSelectionForDrag || additiveSelection || rangeSelection) {
+                        pendingDeselectOthers = false
+                        if (additiveSelection || rangeSelection) {
                             onSelectEntry(entry.id, additiveSelection, rangeSelection)
+                        } else if (selectedEntryCount > 1) {
+                            pendingDeselectOthers = true
+                        } else {
+                            onSelectEntry(entry.id, false, false)
                         }
                     }
                 }
             }
             .pointerInput(entry?.id, paneId) {
                 if (entry == null) return@pointerInput
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        dragPosition = rowCoordinates?.localToWindow(offset)?.toIntOffset()
-                        onStartFileDrag(paneId, dragOperation)
-                        dragPosition?.let(onFileDragPositionChange)
-                    },
-                    onDragCancel = {
-                        dragPosition = null
-                        onFileDragEnd(null)
-                    },
-                    onDragEnd = {
-                        onFileDragEnd(dragPosition)
-                        dragPosition = null
-                    },
-                    onDrag = { change, _ ->
-                        dragPosition = rowCoordinates?.localToWindow(change.position)?.toIntOffset()
-                        dragPosition?.let(onFileDragPositionChange)
-                    },
-                )
+                val entryId = entry.id
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var dragStarted = false
+                    val wasSelectedAtPress = currentSelected
+                    val drag = awaitTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
+                    if (drag != null) {
+                        pendingDeselectOthers = false
+                        if (!wasSelectedAtPress) {
+                            // 未选中项拖拽 → 启动框选
+                            val addSel = additiveSelection
+                            val windowStartPos = rowCoordinates?.localToWindow(down.position) ?: down.position
+                            onStartRubberBand(entryId, windowStartPos, addSel)
+                            // 由父组件 overlay 接管后续拖拽跟踪
+                        } else {
+                            var current: PointerInputChange = drag
+                            dragStarted = true
+                            pendingDeselectOthers = false
+                            dragPosition = rowCoordinates?.localToWindow(current.position)?.toIntOffset()
+                            onStartFileDrag(paneId, dragOperation)
+                            dragPosition?.let(onFileDragPositionChange)
+                            while (current.pressed) {
+                                val next = awaitDragOrCancellation(current.id) ?: break
+                                current = next
+                                current.consume()
+                                dragPosition = rowCoordinates?.localToWindow(current.position)?.toIntOffset()
+                                dragPosition?.let(onFileDragPositionChange)
+                            }
+                            onFileDragEnd(dragPosition)
+                            dragPosition = null
+                        }
+                    }
+                    if (!dragStarted && pendingDeselectOthers) {
+                        onSelectEntry(entryId, false, false)
+                        pendingDeselectOthers = false
+                    }
+                }
             }
             .combinedClickable(
                 onClick = { onActivate() },
