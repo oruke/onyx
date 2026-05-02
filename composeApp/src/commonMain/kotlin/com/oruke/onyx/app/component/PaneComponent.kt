@@ -35,6 +35,8 @@ data class PaneState(
     val hiddenColumns: Set<DetailsColumn>,
     val galleryItemSizeDp: Int,
     val entriesState: PaneEntriesState,
+    val folderTreeVisible: Boolean = false,
+    val folderTreeState: PaneFolderTreeState = PaneFolderTreeState(),
 )
 
 data class PaneTabState(
@@ -76,6 +78,27 @@ sealed interface PaneEntriesState {
     data class Failure(
         val reason: String?,
     ) : PaneEntriesState
+}
+
+// ── 面板目录树 ────────────────────────────────────────────────────────
+
+data class PaneFolderTreeState(
+    val roots: List<PaneFolderTreeNode> = emptyList(),
+)
+
+data class PaneFolderTreeNode(
+    val location: String,
+    val label: String,
+    val expanded: Boolean = false,
+    val loadState: PaneFolderTreeNodeLoadState = PaneFolderTreeNodeLoadState.IDLE,
+    val children: List<PaneFolderTreeNode> = emptyList(),
+)
+
+enum class PaneFolderTreeNodeLoadState {
+    IDLE,
+    LOADING,
+    READY,
+    FAILURE,
 }
 
 interface PaneComponent {
@@ -169,4 +192,12 @@ interface PaneComponent {
     )
 
     fun restoreSession(snapshot: PaneSessionSnapshot)
+
+    // ── 面板目录树 ────────────────────────────────────────────────────
+
+    fun toggleFolderTree()
+
+    fun toggleFolderTreeNode(location: String)
+
+    fun retryFolderTreeNode(location: String)
 }

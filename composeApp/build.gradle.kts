@@ -37,6 +37,7 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.jcifs.ng)
             implementation(libs.sevenzipjbinding)
+            implementation(libs.sevenzipjbinding.all.platforms)
             implementation(libs.jewel.ui)
             implementation(libs.jewel.int.ui.standalone)
             implementation(libs.jewel.int.ui.decorated.window)

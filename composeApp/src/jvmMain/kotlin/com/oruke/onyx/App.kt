@@ -38,6 +38,7 @@ import com.oruke.onyx.ui.ConfirmationDialog
 import com.oruke.onyx.ui.ConflictResolutionDialog
 import com.oruke.onyx.ui.CreateDirectoriesDialog
 import com.oruke.onyx.ui.FileDragOverlay
+
 import com.oruke.onyx.ui.OnyxTooltipOverlay
 import com.oruke.onyx.ui.PaneSidebar
 import com.oruke.onyx.ui.PaneSurface
@@ -75,8 +76,8 @@ import org.jetbrains.jewel.window.newFullscreenControls
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 @Composable
-fun DecoratedWindowScope.WindowApp() {
-    val rootComponent = rememberRootComponent()
+fun DecoratedWindowScope.WindowApp(rootComponent: RootComponent) {
+    // rootComponent 由 main.kt 在 application 级别创建并传入
     val state by rootComponent.state.collectAsState()
     val palette = rememberOnyxPalette()
     val appearance = rememberOnyxAppearance(
@@ -134,8 +135,8 @@ fun DecoratedWindowScope.WindowApp() {
 }
 
 @Composable
-fun App() {
-    val rootComponent = rememberRootComponent()
+fun App(rootComponent: RootComponent = rememberRootComponent()) {
+    // 独立使用时仍可默认创建 rootComponent
     val state by rootComponent.state.collectAsState()
     val appearance = rememberOnyxAppearance(
         listRowHeightDp = state.settings.listRowHeightDp,
@@ -653,6 +654,8 @@ private fun AppContent(
                         appWindowOrigin = appWindowOrigin,
                     )
                 }
+
+
             }
         }
     }

@@ -74,6 +74,7 @@ import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_toggle_favorite
 import onyx.composeapp.generated.resources.action_toggle_hidden_files
 import onyx.composeapp.generated.resources.label_filter_placeholder
+import onyx.composeapp.generated.resources.action_toggle_folder_tree
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -340,11 +341,22 @@ internal fun PaneSurface(
                 onClick = { onActivate(); component.openDirectory(System.getProperty("user.home")) },
                 tooltip = stringResource(Res.string.action_go_home),
             ) {
+                Icon(key = AllIconsKeys.Nodes.HomeFolder, contentDescription = stringResource(Res.string.action_go_home))
+            }
+
+            // 目录树切换
+            ToolbarIconButton(
+                enabled = true,
+                onClick = { onActivate(); component.toggleFolderTree() },
+                tooltip = stringResource(Res.string.action_toggle_folder_tree),
+                selected = state.folderTreeVisible,
+            ) {
                 Icon(
-                    key = AllIconsKeys.Nodes.HomeFolder,
-                    contentDescription = stringResource(Res.string.action_go_home),
+                    key = AllIconsKeys.Actions.ShowAsTree,
+                    contentDescription = stringResource(Res.string.action_toggle_folder_tree),
                 )
             }
+
             ToolbarIconButton(
                 enabled = true,
                 onClick = { onActivate(); onToggleFavoriteLocation(state.location) },
@@ -449,8 +461,28 @@ internal fun PaneSurface(
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
         }
 
-        // ── File list & Inspector ──────────────────────────────────────────────────
+        // ── Folder tree + File list & Inspector ─────────────────────────────────
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // ── 面板目录树 ────────────────────────────────────────────
+            if (state.folderTreeVisible) {
+                PaneFolderTree(
+                    treeState = state.folderTreeState,
+                    currentLocation = state.location,
+                    onNodeClick = { location ->
+                        onActivate()
+                        component.openDirectory(location)
+                    },
+                    onNodeToggle = { location ->
+                        component.toggleFolderTreeNode(location)
+                    },
+                    onRetryNode = { location ->
+                        component.retryFolderTreeNode(location)
+                    },
+                    modifier = Modifier.width(200.dp),
+                )
+                Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
+            }
+
             Box(
                 modifier = Modifier
                     .weight(1f)

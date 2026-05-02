@@ -175,4 +175,11 @@
 
     <string name="label_empty_directory_hint">右键点击以创建文件或文件夹</string>
     <string name="action_open_terminal">在此打开终端</string>
+
+    <string name="action_image_fit_window">适应</string>
+    <string name="action_image_actual_size">1:1</string>
+    <string name="action_image_rotate_cw">↻</string>
+    <string name="action_image_rotate_ccw">↺</string>
+
+    <string name="action_toggle_folder_tree">目录树</string>
 </resources>

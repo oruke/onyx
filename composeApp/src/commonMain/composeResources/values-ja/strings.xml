@@ -177,4 +177,11 @@
 
     <string name="label_empty_directory_hint">右クリックでファイルやフォルダーを作成</string>
     <string name="action_open_terminal">ここでターミナルを開く</string>
+
+    <string name="action_image_fit_window">フィット</string>
+    <string name="action_image_actual_size">1:1</string>
+    <string name="action_image_rotate_cw">↻</string>
+    <string name="action_image_rotate_ccw">↺</string>
+
+    <string name="action_toggle_folder_tree">フォルダツリー</string>
 </resources>

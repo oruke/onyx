@@ -14,6 +14,8 @@ import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.ImageFitMode
+import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
@@ -71,6 +73,7 @@ class DefaultRootComponent(
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
         scope = scope,
+        onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
     )
     override val secondaryPane: PaneComponent = DefaultPaneComponent(
         paneId = PaneId.SECONDARY,
@@ -80,6 +83,7 @@ class DefaultRootComponent(
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
         scope = scope,
+        onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
     )
 
     private val layoutMode = MutableStateFlow(PaneLayoutMode.DUAL_VERTICAL)
@@ -96,6 +100,7 @@ class DefaultRootComponent(
     private val clipboard = MutableStateFlow<ClipboardPayload?>(null)
     private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     private val showPreviewPane = MutableStateFlow(false)
+    override val imageViewerState = MutableStateFlow(ImageViewerState())
     private val taskJobs = mutableMapOf<String, Job>()
     private val taskPauseFlags = mutableMapOf<String, MutableStateFlow<Boolean>>()
     private var pendingDeleteRequest: PendingDeleteRequest? = null
@@ -789,6 +794,80 @@ class DefaultRootComponent(
         taskJobs.clear()
         taskPauseFlags.clear()
         tasks.value = emptyList()
+    }
+
+    // ── 图片查看器 ────────────────────────────────────────────────────────────
+
+    override fun openImageViewer(file: VFile, allImages: List<VFile>) {
+        val index = allImages.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
+        imageViewerState.value = ImageViewerState(
+            visible = true,
+            currentFile = file,
+            allImages = allImages,
+            currentIndex = index,
+            zoomFactor = 1f,
+            fitMode = ImageFitMode.FIT_WINDOW,
+            rotation = 0,
+        )
+    }
+
+    override fun closeImageViewer() {
+        imageViewerState.value = ImageViewerState()
+    }
+
+    override fun imageViewerNext() {
+        val current = imageViewerState.value
+        if (!current.visible || current.allImages.isEmpty()) return
+        val nextIndex = (current.currentIndex + 1) % current.allImages.size
+        val nextFile = current.allImages[nextIndex]
+        imageViewerState.value = current.copy(
+            currentIndex = nextIndex,
+            currentFile = nextFile,
+            zoomFactor = 1f,
+            fitMode = ImageFitMode.FIT_WINDOW,
+            rotation = 0,
+        )
+    }
+
+    override fun imageViewerPrevious() {
+        val current = imageViewerState.value
+        if (!current.visible || current.allImages.isEmpty()) return
+        val prevIndex = if (current.currentIndex <= 0) current.allImages.lastIndex else current.currentIndex - 1
+        val prevFile = current.allImages[prevIndex]
+        imageViewerState.value = current.copy(
+            currentIndex = prevIndex,
+            currentFile = prevFile,
+            zoomFactor = 1f,
+            fitMode = ImageFitMode.FIT_WINDOW,
+            rotation = 0,
+        )
+    }
+
+    override fun imageViewerSetZoom(factor: Float) {
+        val current = imageViewerState.value
+        if (!current.visible) return
+        imageViewerState.value = current.copy(
+            zoomFactor = factor.coerceIn(0.1f, 10f),
+            fitMode = ImageFitMode.ACTUAL_SIZE, // 手动缩放时退出适应模式
+        )
+    }
+
+    override fun imageViewerSetFitMode(mode: ImageFitMode) {
+        val current = imageViewerState.value
+        if (!current.visible) return
+        imageViewerState.value = current.copy(
+            fitMode = mode,
+            zoomFactor = 1f,
+        )
+    }
+
+    override fun imageViewerRotate(clockwise: Boolean) {
+        val current = imageViewerState.value
+        if (!current.visible) return
+        val delta = if (clockwise) 90 else -90
+        imageViewerState.value = current.copy(
+            rotation = (current.rotation + delta + 360) % 360,
+        )
     }
 
     private fun scheduleTaskAutoCleanup(taskId: String) {

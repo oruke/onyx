@@ -3,9 +3,12 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.ImageFitMode
+import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.flow.StateFlow
 
 data class RootState(
@@ -91,6 +94,7 @@ enum class FileTransferOperation {
 
 interface RootComponent {
     val state: StateFlow<RootState>
+    val imageViewerState: StateFlow<ImageViewerState>
     val primaryPane: PaneComponent
     val secondaryPane: PaneComponent
 
@@ -161,4 +165,20 @@ interface RootComponent {
     fun resumeTask(taskId: String)
 
     fun clearAllTasks()
+
+    // ── 图片查看器 ────────────────────────────────────────────────────
+
+    fun openImageViewer(file: VFile, allImages: List<VFile>)
+
+    fun closeImageViewer()
+
+    fun imageViewerNext()
+
+    fun imageViewerPrevious()
+
+    fun imageViewerSetZoom(factor: Float)
+
+    fun imageViewerSetFitMode(mode: ImageFitMode)
+
+    fun imageViewerRotate(clockwise: Boolean)
 }

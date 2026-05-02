@@ -1,7 +1,19 @@
 package com.oruke.onyx
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPosition
+import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
+import com.oruke.onyx.app.component.rememberRootComponent
+import com.oruke.onyx.ui.ImageViewerContent
+import com.oruke.onyx.ui.theme.OnyxTheme
+import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.onyx_logo
 import org.jetbrains.compose.resources.painterResource
@@ -28,12 +40,56 @@ fun main() = application {
         theme = theme,
         styling = styling,
     ) {
+        // rootComponent 在 application 级别创建，供主窗口和图片查看器共享
+        val rootComponent = rememberRootComponent()
+        val state by rootComponent.state.collectAsState()
+
+        // ── 主窗口 ──────────────────────────────────────────────────
         DecoratedWindow(
             onCloseRequest = ::exitApplication,
             title = "Onyx",
             icon = painterResource(Res.drawable.onyx_logo),
         ) {
-            WindowApp()
+            WindowApp(rootComponent)
+        }
+
+        // ── 图片查看器窗口 ──────────────────────────────────────────
+        // imageViewerState 独立收集，不触发主窗口 RootState 重组
+        val imageViewerState by rootComponent.imageViewerState.collectAsState()
+        if (imageViewerState.visible) {
+            // WindowState 必须 remember，避免每次重组重置窗口位置和大小
+            val viewerWindowState = remember {
+                WindowState(
+                    size = DpSize(1200.dp, 800.dp),
+                    position = WindowPosition.PlatformDefault,
+                )
+            }
+            Window(
+                onCloseRequest = rootComponent::closeImageViewer,
+                title = imageViewerState.currentFile?.name ?: "Onyx Viewer",
+                icon = painterResource(Res.drawable.onyx_logo),
+                state = viewerWindowState,
+            ) {
+                val appearance = rememberOnyxAppearance(
+                    listRowHeightDp = state.settings.listRowHeightDp,
+                    listFontSizeSp = state.settings.listFontSizeSp,
+                    zebraStripeEnabled = state.settings.zebraStripeEnabled,
+                )
+                OnyxTheme(
+                    uiScale = state.settings.uiScale,
+                    appearance = appearance,
+                ) {
+                    ImageViewerContent(
+                        state = imageViewerState,
+                        onClose = rootComponent::closeImageViewer,
+                        onNext = rootComponent::imageViewerNext,
+                        onPrevious = rootComponent::imageViewerPrevious,
+                        onSetZoom = rootComponent::imageViewerSetZoom,
+                        onSetFitMode = rootComponent::imageViewerSetFitMode,
+                        onRotate = rootComponent::imageViewerRotate,
+                    )
+                }
+            }
         }
     }
 }
