@@ -1,6 +1,9 @@
 package com.oruke.onyx.ui.theme
 
+import androidx.compose.foundation.LocalScrollbarStyle
+import androidx.compose.foundation.ScrollbarStyle
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -8,6 +11,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 
 data class OnyxPalette(
@@ -122,11 +126,23 @@ fun OnyxTheme(
             fontScale = baseDensity.fontScale * scaleFactor,
         )
     }
-    IntUiTheme(isDark = isSystemInDarkTheme()) {
+    val dark = isSystemInDarkTheme()
+    val scrollbarStyle = remember(dark) {
+        ScrollbarStyle(
+            minimalHeight = 24.dp,
+            thickness = 8.dp,
+            shape = RoundedCornerShape(4.dp),
+            hoverDurationMillis = 200,
+            unhoverColor = if (dark) Color.White.copy(alpha = 0.28f) else Color.Black.copy(alpha = 0.20f),
+            hoverColor = if (dark) Color.White.copy(alpha = 0.48f) else Color.Black.copy(alpha = 0.38f),
+        )
+    }
+    IntUiTheme(isDark = dark) {
         CompositionLocalProvider(
             LocalOnyxPalette provides palette,
             LocalOnyxAppearance provides appearance,
             LocalDensity provides scaledDensity,
+            LocalScrollbarStyle provides scrollbarStyle,
         ) {
             content()
         }

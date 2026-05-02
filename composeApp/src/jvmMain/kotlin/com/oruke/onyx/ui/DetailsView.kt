@@ -4,6 +4,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.HorizontalScrollbar
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,7 +30,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -420,80 +423,90 @@ internal fun PaneEntriesContent(
 
                     // ── File list ──────────────────────────────────────────
                     if (viewMode == ViewMode.GALLERY) {
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(galleryItemSizeDp.dp),
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(4.dp),
-                            userScrollEnabled = !contextMenuVisible,
-                        ) {
-                            if (shouldCreateInlineEntry) {
-                                item(
-                                    key = "inline-create",
-                                    span = { androidx.compose.foundation.lazy.grid.GridItemSpan(1) }) {
-                                    GalleryItem(
-                                        entry = null,
-                                        draftName = inlineEditDraftName,
-                                        selected = false,
-                                        selectedEntryCount = 0,
-                                        paneActive = paneActive,
-                                        onActivate = onActivate,
-                                        onOpenEntry = onOpenEntry,
-                                        onSelectEntry = onSelectEntry,
-                                        paneId = paneId,
-                                        fileDropTarget = fileDropTarget,
-                                        onStartFileDrag = wrappedOnStartFileDrag,
-                                        onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = wrappedOnFileDragEnd,
-                                        onFileDropZoneChange = onFileDropZoneChange,
-                                        onShowContextMenu = onShowContextMenu,
-                                        onDismissContextMenu = onDismissContextMenu,
-                                        onUpdateInlineEditDraft = onUpdateInlineEditDraft,
-                                        onConfirmInlineEdit = onConfirmInlineEdit,
-                                        onCancelInlineEdit = onCancelInlineEdit,
-                                        galleryItemSizeDp = galleryItemSizeDp,
-                                        onStartRubberBand = wrappedOnStartRubberBand,
-                                    )
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            val gridState = rememberLazyGridState()
+                            LazyVerticalGrid(
+                                columns = GridCells.Adaptive(galleryItemSizeDp.dp),
+                                state = gridState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(4.dp),
+                                userScrollEnabled = !contextMenuVisible,
+                            ) {
+                                if (shouldCreateInlineEntry) {
+                                    item(
+                                        key = "inline-create",
+                                        span = { androidx.compose.foundation.lazy.grid.GridItemSpan(1) }) {
+                                        GalleryItem(
+                                            entry = null,
+                                            draftName = inlineEditDraftName,
+                                            selected = false,
+                                            selectedEntryCount = 0,
+                                            paneActive = paneActive,
+                                            onActivate = onActivate,
+                                            onOpenEntry = onOpenEntry,
+                                            onSelectEntry = onSelectEntry,
+                                            paneId = paneId,
+                                            fileDropTarget = fileDropTarget,
+                                            onStartFileDrag = wrappedOnStartFileDrag,
+                                            onFileDragPositionChange = onFileDragPositionChange,
+                                            onFileDragEnd = wrappedOnFileDragEnd,
+                                            onFileDropZoneChange = onFileDropZoneChange,
+                                            onShowContextMenu = onShowContextMenu,
+                                            onDismissContextMenu = onDismissContextMenu,
+                                            onUpdateInlineEditDraft = onUpdateInlineEditDraft,
+                                            onConfirmInlineEdit = onConfirmInlineEdit,
+                                            onCancelInlineEdit = onCancelInlineEdit,
+                                            galleryItemSizeDp = galleryItemSizeDp,
+                                            onStartRubberBand = wrappedOnStartRubberBand,
+                                        )
+                                    }
+                                }
+                                gridItemsIndexed(
+                                    items = state.entries,
+                                    key = { _, entry -> entry.id },
+                                ) { _, entry ->
+                                    val isRenamingEntry =
+                                        inlineEditMode == PaneInlineEditMode.RENAME && inlineTargetEntryId == entry.id
+                                    Box(modifier = Modifier.onGloballyPositioned { coords ->
+                                        itemCoordsMap[entry.id] = coords
+                                    }) {
+                                        GalleryItem(
+                                            entry = entry,
+                                            draftName = if (isRenamingEntry) inlineEditDraftName else null,
+                                            selected = selectedEntryIds.contains(entry.id),
+                                            selectedEntryCount = selectedEntryIds.size,
+                                            paneActive = paneActive,
+                                            onActivate = onActivate,
+                                            onOpenEntry = onOpenEntry,
+                                            onSelectEntry = onSelectEntry,
+                                            paneId = paneId,
+                                            fileDropTarget = fileDropTarget,
+                                            onStartFileDrag = wrappedOnStartFileDrag,
+                                            onFileDragPositionChange = onFileDragPositionChange,
+                                            onFileDragEnd = wrappedOnFileDragEnd,
+                                            onFileDropZoneChange = onFileDropZoneChange,
+                                            onShowContextMenu = onShowContextMenu,
+                                            onDismissContextMenu = onDismissContextMenu,
+                                            onUpdateInlineEditDraft = if (isRenamingEntry) onUpdateInlineEditDraft else null,
+                                            onConfirmInlineEdit = if (isRenamingEntry) onConfirmInlineEdit else null,
+                                            onCancelInlineEdit = if (isRenamingEntry) onCancelInlineEdit else null,
+                                            galleryItemSizeDp = galleryItemSizeDp,
+                                            onStartRubberBand = wrappedOnStartRubberBand,
+                                            onBeginRename = onBeginRename,
+                                        )
+                                    }
                                 }
                             }
-                            gridItemsIndexed(
-                                items = state.entries,
-                                key = { _, entry -> entry.id },
-                            ) { _, entry ->
-                                val isRenamingEntry =
-                                    inlineEditMode == PaneInlineEditMode.RENAME && inlineTargetEntryId == entry.id
-                                Box(modifier = Modifier.onGloballyPositioned { coords ->
-                                    itemCoordsMap[entry.id] = coords
-                                }) {
-                                    GalleryItem(
-                                        entry = entry,
-                                        draftName = if (isRenamingEntry) inlineEditDraftName else null,
-                                        selected = selectedEntryIds.contains(entry.id),
-                                        selectedEntryCount = selectedEntryIds.size,
-                                        paneActive = paneActive,
-                                        onActivate = onActivate,
-                                        onOpenEntry = onOpenEntry,
-                                        onSelectEntry = onSelectEntry,
-                                        paneId = paneId,
-                                        fileDropTarget = fileDropTarget,
-                                        onStartFileDrag = wrappedOnStartFileDrag,
-                                        onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = wrappedOnFileDragEnd,
-                                        onFileDropZoneChange = onFileDropZoneChange,
-                                        onShowContextMenu = onShowContextMenu,
-                                        onDismissContextMenu = onDismissContextMenu,
-                                        onUpdateInlineEditDraft = if (isRenamingEntry) onUpdateInlineEditDraft else null,
-                                        onConfirmInlineEdit = if (isRenamingEntry) onConfirmInlineEdit else null,
-                                        onCancelInlineEdit = if (isRenamingEntry) onCancelInlineEdit else null,
-                                        galleryItemSizeDp = galleryItemSizeDp,
-                                        onStartRubberBand = wrappedOnStartRubberBand,
-                                        onBeginRename = onBeginRename,
-                                    )
-                                }
-                            }
+                            VerticalScrollbar(
+                                adapter = rememberScrollbarAdapter(gridState),
+                                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                            )
                         }
                     } else {
                         Box(modifier = Modifier.fillMaxSize()) {
+                            val listState = rememberLazyListState()
                             LazyColumn(
+                                state = listState,
                                 modifier = Modifier.fillMaxSize()
                                     .padding(bottom = 12.dp),
                                 contentPadding = PaddingValues(bottom = 4.dp),
@@ -578,6 +591,10 @@ internal fun PaneEntriesContent(
                             HorizontalScrollbar(
                                 adapter = rememberScrollbarAdapter(horizontalScrollState),
                                 modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
+                            )
+                            VerticalScrollbar(
+                                adapter = rememberScrollbarAdapter(listState),
+                                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                             )
                         }
                     }
