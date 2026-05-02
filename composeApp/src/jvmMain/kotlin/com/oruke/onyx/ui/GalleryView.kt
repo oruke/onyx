@@ -296,15 +296,53 @@ internal fun GalleryItem(
             } else if (isArchive && entry != null) {
                 val (archiveThumbnail, _) = rememberArchiveThumbnail(entry.location, 512)
                 if (archiveThumbnail != null) {
-                    Image(
-                        bitmap = archiveThumbnail,
-                        contentDescription = entry.name,
-                        contentScale = ContentScale.Fit,
-                        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(4.dp))
-                    )
+                    // 缩略图 + 格式标签叠加
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Image(
+                            bitmap = archiveThumbnail,
+                            contentDescription = entry.name,
+                            contentScale = ContentScale.Fit,
+                            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(4.dp))
+                        )
+                        // 底部渐变遮罩，增强标签可读性
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(28.dp)
+                                .align(Alignment.BottomCenter)
+                                .clip(RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp))
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))
+                                    )
+                                )
+                        )
+                        // 右下角格式标签
+                        val ext = entry.name.substringAfterLast('.', "").uppercase()
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(3.dp)
+                                .background(
+                                    Color.Black.copy(alpha = 0.65f),
+                                    RoundedCornerShape(3.dp),
+                                )
+                                .padding(horizontal = 4.dp, vertical = 1.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = ext,
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                lineHeight = 11.sp,
+                            )
+                        }
+                    }
                 } else {
                     Icon(
                         key = AllIconsKeys.FileTypes.Archive,
