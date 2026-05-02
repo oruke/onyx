@@ -43,6 +43,7 @@ kotlin {
             implementation(libs.jewel.int.ui.decorated.window)
             implementation(libs.intellij.platform.icons)
             implementation(libs.jna)
+            implementation(libs.zoomimage.compose)
         }
         jvmTest.dependencies {
             implementation(libs.kotlin.test)

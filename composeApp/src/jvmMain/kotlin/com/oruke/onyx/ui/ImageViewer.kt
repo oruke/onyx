@@ -1,12 +1,8 @@
 package com.oruke.onyx.ui
 
-
-
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -22,48 +18,39 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oruke.onyx.core.model.ImageFitMode
+import com.github.panpf.zoomimage.ZoomImage
+import com.github.panpf.zoomimage.compose.rememberZoomState
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.rememberThumbnail
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_image_actual_size
@@ -74,7 +61,6 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
@@ -82,15 +68,14 @@ import javax.imageio.ImageIO
 /**
  * 图片查看器内容。
  *
- * 供独立窗口使用，不含覆盖层逻辑。
+ * 供独立窗口使用，使用 zoomimage 库处理缩放/平移/手势。
  *
  * 功能：
- * - 居中显示图片，支持鼠标滚轮缩放 + 拖拽平移
- * - 顶部工具栏：← 上一张 / → 下一张 / 适应窗口 / 1:1 / 旋转 / 关闭
+ * - 居中显示图片，支持鼠标滚轮缩放 + 拖拽平移（由 ZoomImage 处理）
+ * - 顶部工具栏：← 上一张 / → 下一张 / 适应窗口 / 1:1 / 旋转
  * - 底部信息栏：文件名 | 分辨率 | 大小 | 索引/总数
- * - 快捷键：Esc 关闭、← → 翻页、+ - 缩放、0 适应窗口
+ * - 快捷键：Esc 关闭、← → 翻页
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun ImageViewerContent(
     state: ImageViewerState,
@@ -98,13 +83,12 @@ internal fun ImageViewerContent(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSetZoom: (Float) -> Unit,
-    onSetFitMode: (ImageFitMode) -> Unit,
+    onSetFitMode: (com.oruke.onyx.core.model.ImageFitMode) -> Unit,
     onRotate: (Boolean) -> Unit,
 ) {
     val currentFile = state.currentFile ?: return
 
     // ── 图片加载 ──────────────────────────────────────────────────
-    // 用大尺寸 rememberThumbnail 加载（适合大多数图片）
     val (bitmap, isLoading) = rememberThumbnail(currentFile.location, 4096)
 
     // 原图分辨率（用于信息栏显示）
@@ -131,25 +115,20 @@ internal fun ImageViewerContent(
         }
     }
 
-    // ── 缩放 & 平移状态 ──────────────────────────────────────────
-    var panOffset by remember(currentFile.location) { mutableStateOf(Offset.Zero) }
-    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+    // ── ZoomImage 状态 ────────────────────────────────────────────
+    val zoomState = rememberZoomState()
+    val coroutineScope = rememberCoroutineScope()
 
-    // 根据 fitMode 计算实际缩放
-    val effectiveZoom = when (state.fitMode) {
-        ImageFitMode.FIT_WINDOW -> 1f // graphicsLayer 的 contentScale 处理
-        ImageFitMode.ACTUAL_SIZE -> state.zoomFactor
-        ImageFitMode.FILL_WIDTH -> state.zoomFactor
-    }
-
-    val contentScale = when (state.fitMode) {
-        ImageFitMode.FIT_WINDOW -> ContentScale.Fit
-        ImageFitMode.ACTUAL_SIZE -> ContentScale.None
-        ImageFitMode.FILL_WIDTH -> ContentScale.FillWidth
+    // 切换图片时重置缩放
+    LaunchedEffect(currentFile.location) {
+        zoomState.zoomable.reset()
     }
 
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    // 当前缩放比例（用于工具栏显示）
+    val currentScale = zoomState.zoomable.transform.scaleX
 
     Box(
         modifier = Modifier
@@ -157,14 +136,6 @@ internal fun ImageViewerContent(
             .background(Color.Black)
             .focusRequester(focusRequester)
             .focusable()
-            .onGloballyPositioned { containerSize = it.size }
-            .onPointerEvent(PointerEventType.Scroll) { event ->
-                val scrollDelta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                if (scrollDelta != 0f) {
-                    val factor = if (scrollDelta > 0) 0.9f else 1.1f
-                    onSetZoom(state.zoomFactor * factor)
-                }
-            }
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
@@ -172,18 +143,35 @@ internal fun ImageViewerContent(
                     Key.DirectionRight -> { onNext(); true }
                     Key.DirectionLeft -> { onPrevious(); true }
                     Key.Equals, Key.NumPadAdd -> {
-                        onSetZoom(state.zoomFactor * 1.25f)
+                        coroutineScope.launch {
+                            val target = (currentScale * 1.25f).coerceAtMost(
+                                zoomState.zoomable.maxScale
+                            )
+                            zoomState.zoomable.scale(
+                                targetScale = target,
+                                animated = true,
+                            )
+                        }
                         true
                     }
                     Key.Minus, Key.NumPadSubtract -> {
-                        onSetZoom(state.zoomFactor / 1.25f)
+                        coroutineScope.launch {
+                            val target = (currentScale / 1.25f).coerceAtLeast(
+                                zoomState.zoomable.minScale
+                            )
+                            zoomState.zoomable.scale(
+                                targetScale = target,
+                                animated = true,
+                            )
+                        }
                         true
                     }
                     Key.Zero -> {
-                        if (event.isCtrlPressed || event.isMetaPressed) {
-                            onSetFitMode(ImageFitMode.ACTUAL_SIZE)
-                        } else {
-                            onSetFitMode(ImageFitMode.FIT_WINDOW)
+                        coroutineScope.launch {
+                            zoomState.zoomable.scale(
+                                targetScale = zoomState.zoomable.minScale,
+                                animated = true,
+                            )
                         }
                         true
                     }
@@ -195,18 +183,7 @@ internal fun ImageViewerContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(vertical = 48.dp)
-                .pointerInput(currentFile.location) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        if (zoom != 1f) {
-                            onSetZoom(state.zoomFactor * zoom)
-                        }
-                        panOffset = Offset(
-                            x = panOffset.x + pan.x,
-                            y = panOffset.y + pan.y,
-                        )
-                    }
-                },
+                .padding(vertical = 48.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (isLoading) {
@@ -216,26 +193,11 @@ internal fun ImageViewerContent(
                     fontSize = 24.sp,
                 )
             } else if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
+                ZoomImage(
+                    painter = remember(bitmap) { BitmapPainter(bitmap) },
                     contentDescription = currentFile.name,
-                    contentScale = contentScale,
-                    filterQuality = FilterQuality.High,
-                    modifier = Modifier
-                        .then(
-                            if (state.fitMode == ImageFitMode.FIT_WINDOW) {
-                                Modifier.fillMaxSize()
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .graphicsLayer {
-                            scaleX = effectiveZoom
-                            scaleY = effectiveZoom
-                            translationX = panOffset.x
-                            translationY = panOffset.y
-                            rotationZ = state.rotation.toFloat()
-                        },
+                    modifier = Modifier.fillMaxSize(),
+                    zoomState = zoomState,
                 )
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -270,38 +232,76 @@ internal fun ImageViewerContent(
             Spacer(Modifier.width(16.dp))
             ViewerToolbarButton(
                 label = stringResource(Res.string.action_image_fit_window),
-                onClick = { onSetFitMode(ImageFitMode.FIT_WINDOW) },
-                active = state.fitMode == ImageFitMode.FIT_WINDOW,
+                onClick = {
+                    coroutineScope.launch {
+                        zoomState.zoomable.scale(
+                            targetScale = zoomState.zoomable.minScale,
+                            animated = true,
+                        )
+                    }
+                },
             )
             Spacer(Modifier.width(4.dp))
             ViewerToolbarButton(
                 label = stringResource(Res.string.action_image_actual_size),
-                onClick = { onSetFitMode(ImageFitMode.ACTUAL_SIZE) },
-                active = state.fitMode == ImageFitMode.ACTUAL_SIZE,
+                onClick = {
+                    coroutineScope.launch {
+                        zoomState.zoomable.scale(
+                            targetScale = 1f,
+                            animated = true,
+                        )
+                    }
+                },
             )
             Spacer(Modifier.width(16.dp))
 
             // 缩放百分比显示
             Text(
-                text = "${(effectiveZoom * 100).toInt()}%",
+                text = "${(currentScale * 100).toInt()}%",
                 color = Color.White.copy(alpha = 0.8f),
                 fontSize = 12.sp,
                 modifier = Modifier.widthIn(min = 48.dp),
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.width(4.dp))
-            ViewerToolbarButton(label = "−", onClick = { onSetZoom(state.zoomFactor / 1.25f) })
+            ViewerToolbarButton(label = "−", onClick = {
+                coroutineScope.launch {
+                    val target = (currentScale / 1.25f).coerceAtLeast(
+                        zoomState.zoomable.minScale
+                    )
+                    zoomState.zoomable.scale(targetScale = target, animated = true)
+                }
+            })
             Spacer(Modifier.width(4.dp))
-            ViewerToolbarButton(label = "+", onClick = { onSetZoom(state.zoomFactor * 1.25f) })
+            ViewerToolbarButton(label = "+", onClick = {
+                coroutineScope.launch {
+                    val target = (currentScale * 1.25f).coerceAtMost(
+                        zoomState.zoomable.maxScale
+                    )
+                    zoomState.zoomable.scale(targetScale = target, animated = true)
+                }
+            })
             Spacer(Modifier.width(16.dp))
             ViewerToolbarButton(
                 label = stringResource(Res.string.action_image_rotate_ccw),
-                onClick = { onRotate(false) },
+                onClick = {
+                    coroutineScope.launch {
+                        zoomState.zoomable.rotate(
+                            targetRotation = (zoomState.zoomable.transform.rotation.toInt() - 90 + 360) % 360,
+                        )
+                    }
+                },
             )
             Spacer(Modifier.width(4.dp))
             ViewerToolbarButton(
                 label = stringResource(Res.string.action_image_rotate_cw),
-                onClick = { onRotate(true) },
+                onClick = {
+                    coroutineScope.launch {
+                        zoomState.zoomable.rotate(
+                            targetRotation = (zoomState.zoomable.transform.rotation.toInt() + 90) % 360,
+                        )
+                    }
+                },
             )
             Spacer(Modifier.weight(1f))
         }

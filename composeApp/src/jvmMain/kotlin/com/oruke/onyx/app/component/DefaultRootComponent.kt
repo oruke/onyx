@@ -848,7 +848,6 @@ class DefaultRootComponent(
         if (!current.visible) return
         imageViewerState.value = current.copy(
             zoomFactor = factor.coerceIn(0.1f, 10f),
-            fitMode = ImageFitMode.ACTUAL_SIZE, // 手动缩放时退出适应模式
         )
     }
 
