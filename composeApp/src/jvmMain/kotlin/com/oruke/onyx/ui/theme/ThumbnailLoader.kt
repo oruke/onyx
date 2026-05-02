@@ -16,7 +16,13 @@ import org.jetbrains.skia.MipmapMode
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
+import net.sf.sevenzipjbinding.ISequentialOutStream
+import net.sf.sevenzipjbinding.PropID
+import net.sf.sevenzipjbinding.SevenZip
+import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.RandomAccessFile
 import kotlin.math.max
 import kotlin.math.min
 import org.jetbrains.skia.Image as SkiaImage
@@ -126,6 +132,14 @@ object ThumbnailLoader {
     /** 缩略图加载的文件大小上限（50MB），超过此大小跳过缩略图生成以避免 OOM */
     private const val MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024
 
+    /** 压缩包内单张图片的提取大小上限（20MB） */
+    private const val MAX_ARCHIVE_IMAGE_BYTES = 20L * 1024 * 1024
+
+    /** 图片扩展名集合（用于压缩包内条目筛选） */
+    private val IMAGE_EXTENSIONS = setOf(
+        "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "tif",
+    )
+
     fun loadThumbnail(filePath: String, maxDimension: Int = 400): ImageBitmap? {
         val cacheKey = "$filePath@$maxDimension"
         getCached(cacheKey)?.let { return it }
@@ -161,6 +175,98 @@ object ThumbnailLoader {
             null
         }
     }
+
+    /**
+     * 从压缩包中提取第一张图片，生成缩略图。
+     *
+     * 扫描压缩包内所有条目，按路径排序后取第一张图片类型的文件，
+     * 解压到内存中并复用 Skia 管线生成缩略图。
+     */
+    fun loadArchiveThumbnail(archivePath: String, maxDimension: Int = 400): ImageBitmap? {
+        val cacheKey = "archive:$archivePath@$maxDimension"
+        getCached(cacheKey)?.let { return it }
+
+        return try {
+            val file = File(archivePath)
+            if (!file.exists() || !file.isFile) return null
+
+            val raf = RandomAccessFile(archivePath, "r")
+            val inStream = RandomAccessFileInStream(raf)
+            val archive = SevenZip.openInArchive(null, inStream)
+
+            try {
+                val numItems = archive.numberOfItems
+
+                // 找到第一张图片条目（按路径排序，优先取浅层文件）
+                data class ImageEntry(val index: Int, val path: String, val size: Long)
+
+                val imageEntries = mutableListOf<ImageEntry>()
+                for (i in 0 until numItems) {
+                    val isDir = archive.getProperty(i, PropID.IS_FOLDER) as? Boolean ?: false
+                    if (isDir) continue
+                    val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                    val ext = itemPath.substringAfterLast('.', "").lowercase()
+                    if (ext !in IMAGE_EXTENSIONS) continue
+                    val size = (archive.getProperty(i, PropID.SIZE) as? Long) ?: 0L
+                    if (size > MAX_ARCHIVE_IMAGE_BYTES) continue
+                    imageEntries += ImageEntry(i, itemPath, size)
+                }
+
+                if (imageEntries.isEmpty()) return null
+
+                // 按路径排序取第一张（确保稳定）
+                val target = imageEntries.sortedBy { it.path }.first()
+
+                // 解压到内存
+                val buffer = ByteArrayOutputStream(target.size.toInt().coerceAtLeast(1024))
+                archive.extract(
+                    intArrayOf(target.index),
+                    false,
+                    object : net.sf.sevenzipjbinding.IArchiveExtractCallback {
+                        override fun getStream(
+                            index: Int,
+                            extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode,
+                        ): ISequentialOutStream? {
+                            if (extractAskMode != net.sf.sevenzipjbinding.ExtractAskMode.EXTRACT) return null
+                            if (index != target.index) return null
+                            return ISequentialOutStream { data ->
+                                buffer.write(data)
+                                data.size
+                            }
+                        }
+                        override fun prepareOperation(extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode) {}
+                        override fun setOperationResult(result: net.sf.sevenzipjbinding.ExtractOperationResult) {}
+                        override fun setTotal(total: Long) {}
+                        override fun setCompleted(complete: Long) {}
+                    },
+                )
+
+                val imageBytes = buffer.toByteArray()
+                if (imageBytes.isEmpty()) return null
+
+                val skImage = SkiaImage.makeFromEncoded(imageBytes) ?: return null
+
+                val w = skImage.width
+                val h = skImage.height
+                val scale = min(maxDimension.toFloat() / w, maxDimension.toFloat() / h)
+                    .coerceAtMost(1f)
+                val newW = max(1, (w * scale).toInt())
+                val newH = max(1, (h * scale).toInt())
+
+                val scaled = progressiveDownscale(skImage, newW, newH)
+                val composeBitmap = scaled.toComposeImageBitmap()
+
+                putCache(cacheKey, composeBitmap)
+                composeBitmap
+            } finally {
+                archive.close()
+                inStream.close()
+                raf.close()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 }
 
 /**
@@ -179,6 +285,29 @@ fun rememberThumbnail(filePath: String, maxDimension: Int = 400): Pair<ImageBitm
         loading = true
         bitmap = withContext(Dispatchers.IO) {
             ThumbnailLoader.loadThumbnail(filePath, maxDimension)
+        }
+        loading = false
+    }
+
+    return bitmap to loading
+}
+
+/**
+ * Composable：异步加载压缩包缩略图（提取压缩包内第一张图片）
+ *
+ * @param archivePath 压缩包文件路径
+ * @param maxDimension 最大边长（像素），推荐 300~600
+ * @return (ImageBitmap?, isLoading)
+ */
+@Composable
+fun rememberArchiveThumbnail(archivePath: String, maxDimension: Int = 400): Pair<ImageBitmap?, Boolean> {
+    var bitmap by remember(archivePath, maxDimension) { mutableStateOf<ImageBitmap?>(null) }
+    var loading by remember(archivePath, maxDimension) { mutableStateOf(true) }
+
+    LaunchedEffect(archivePath, maxDimension) {
+        loading = true
+        bitmap = withContext(Dispatchers.IO) {
+            ThumbnailLoader.loadArchiveThumbnail(archivePath, maxDimension)
         }
         loading = false
     }

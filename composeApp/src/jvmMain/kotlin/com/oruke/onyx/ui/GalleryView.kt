@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import com.oruke.onyx.ui.theme.rememberThumbnail
+import com.oruke.onyx.ui.theme.rememberArchiveThumbnail
 import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
@@ -72,6 +73,7 @@ import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
+import com.oruke.onyx.ui.theme.isArchiveFile
 import com.oruke.onyx.ui.theme.isImageFile
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.windowBounds
@@ -260,6 +262,7 @@ internal fun GalleryItem(
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
         val isImage = isImageFile(entry?.name)
+        val isArchive = !isImage && isArchiveFile(entry?.name)
 
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(4.dp)),
@@ -289,6 +292,25 @@ internal fun GalleryItem(
                             modifier = Modifier.size(placeholderIconSize)
                         )
                     }
+                }
+            } else if (isArchive && entry != null) {
+                val (archiveThumbnail, _) = rememberArchiveThumbnail(entry.location, 512)
+                if (archiveThumbnail != null) {
+                    Image(
+                        bitmap = archiveThumbnail,
+                        contentDescription = entry.name,
+                        contentScale = ContentScale.Fit,
+                        filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(4.dp))
+                    )
+                } else {
+                    Icon(
+                        key = AllIconsKeys.FileTypes.Archive,
+                        contentDescription = null,
+                        modifier = Modifier.size(iconSize)
+                    )
                 }
             } else {
                 val iconKey =
