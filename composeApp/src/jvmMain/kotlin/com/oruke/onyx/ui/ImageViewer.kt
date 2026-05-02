@@ -158,6 +158,13 @@ internal fun ImageViewerContent(
             .focusRequester(focusRequester)
             .focusable()
             .onGloballyPositioned { containerSize = it.size }
+            .onPointerEvent(PointerEventType.Scroll) { event ->
+                val scrollDelta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                if (scrollDelta != 0f) {
+                    val factor = if (scrollDelta > 0) 0.9f else 1.1f
+                    onSetZoom(state.zoomFactor * factor)
+                }
+            }
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
@@ -198,13 +205,6 @@ internal fun ImageViewerContent(
                             x = panOffset.x + pan.x,
                             y = panOffset.y + pan.y,
                         )
-                    }
-                }
-                .onPointerEvent(PointerEventType.Scroll) { event ->
-                    val scrollDelta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                    if (scrollDelta != 0f) {
-                        val factor = if (scrollDelta > 0) 0.9f else 1.1f
-                        onSetZoom(state.zoomFactor * factor)
                     }
                 },
             contentAlignment = Alignment.Center,
@@ -304,7 +304,6 @@ internal fun ImageViewerContent(
                 onClick = { onRotate(true) },
             )
             Spacer(Modifier.weight(1f))
-            ViewerToolbarButton(label = "✕", onClick = onClose)
         }
 
         // ── 底部信息栏 ────────────────────────────────────────────
@@ -358,9 +357,10 @@ internal fun ImageViewerContent(
         }
 
         // ── 左右翻页点击区域 ──────────────────────────────────────
-        // 左侧 15% 点击 = 上一张
+        // 左侧 20% 点击 = 上一张
         Box(
             modifier = Modifier
+                .fillMaxWidth(0.2f)
                 .fillMaxSize()
                 .align(Alignment.CenterStart)
                 .padding(vertical = 48.dp)
@@ -368,12 +368,12 @@ internal fun ImageViewerContent(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onPrevious,
-                )
-                .fillMaxWidth(0.15f),
+                ),
         )
-        // 右侧 15% 点击 = 下一张
+        // 右侧 20% 点击 = 下一张
         Box(
             modifier = Modifier
+                .fillMaxWidth(0.2f)
                 .fillMaxSize()
                 .align(Alignment.CenterEnd)
                 .padding(vertical = 48.dp)
@@ -381,8 +381,7 @@ internal fun ImageViewerContent(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onNext,
-                )
-                .fillMaxWidth(0.15f),
+                ),
         )
     }
 }
