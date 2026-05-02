@@ -81,6 +81,8 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 // ── Gallery item (high-density grid) ────────────────────────────────────────
 
@@ -116,6 +118,7 @@ internal fun GalleryItem(
     onCancelInlineEdit: (() -> Unit)? = null,
     galleryItemSizeDp: Int = 160,
     onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit = { _, _, _ -> },
+    onBeginRename: () -> Unit = {},
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     val currentSelected by androidx.compose.runtime.rememberUpdatedState(selected)
@@ -125,6 +128,8 @@ internal fun GalleryItem(
     var rowCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val isDirectoryDropTarget = fileDropTarget?.directoryEntryId == entry?.id
     var pendingDeselectOthers by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    var renameTimerJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     val isInlineEdit = draftName != null && onUpdateInlineEditDraft != null
     val focusRequester = remember { FocusRequester() }
@@ -177,6 +182,8 @@ internal fun GalleryItem(
             }
             .onPointerEvent(PointerEventType.Press) { event ->
                 if (entry == null) return@onPointerEvent
+                // 内联编辑期间，不处理选中逻辑（避免 selectEntry 清除编辑状态）
+                if (isInlineEdit) return@onPointerEvent
                 additiveSelection = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
                 rangeSelection = event.keyboardModifiers.isShiftPressed
                 dragOperation = if (event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed) {
@@ -187,6 +194,8 @@ internal fun GalleryItem(
                 val pointerPosition = event.changes.firstOrNull()?.position ?: return@onPointerEvent
                 when {
                     event.buttons.isSecondaryPressed -> {
+                        renameTimerJob?.cancel()
+                        renameTimerJob = null
                         val windowPosition = rowCoordinates?.localToWindow(pointerPosition) ?: pointerPosition
                         onActivate()
                         onShowContextMenu(
@@ -207,6 +216,20 @@ internal fun GalleryItem(
                         } else {
                             onSelectEntry(entry.id, false, false)
                         }
+
+                        // 慢速双击重命名逻辑
+                        val canRename = selected && selectedEntryCount == 1 &&
+                                !additiveSelection && !rangeSelection
+                        if (canRename) {
+                            renameTimerJob?.cancel()
+                            renameTimerJob = coroutineScope.launch {
+                                kotlinx.coroutines.delay(500)
+                                onBeginRename()
+                            }
+                        } else {
+                            renameTimerJob?.cancel()
+                            renameTimerJob = null
+                        }
                     }
                 }
             }
@@ -219,6 +242,8 @@ internal fun GalleryItem(
                     val wasSelectedAtPress = currentSelected
                     val drag = awaitTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
                     if (drag != null) {
+                        renameTimerJob?.cancel()
+                        renameTimerJob = null
                         pendingDeselectOthers = false
                         if (!wasSelectedAtPress) {
                             // 未选中项拖拽 → 启动框选
@@ -253,6 +278,8 @@ internal fun GalleryItem(
             .combinedClickable(
                 onClick = { onActivate() },
                 onDoubleClick = {
+                    renameTimerJob?.cancel()
+                    renameTimerJob = null
                     onActivate()
                     onDismissContextMenu()
                     if (entry != null) onOpenEntry(entry)

@@ -168,7 +168,7 @@ internal fun PaneSurface(
             .onPreviewKeyEvent { event ->
                 if (!active || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (inlineEditState != null) {
-                    when (event.key) {
+                    return@onPreviewKeyEvent when (event.key) {
                         Key.Enter -> {
                             onConfirmInlineEdit()
                             true
@@ -179,9 +179,8 @@ internal fun PaneSurface(
                             true
                         }
 
+                        // 内联编辑期间，其他所有按键交给 BasicTextField 处理
                         else -> false
-                    }.let { handled ->
-                        if (handled) return@onPreviewKeyEvent true
                     }
                 }
 

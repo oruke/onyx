@@ -486,6 +486,7 @@ internal fun PaneEntriesContent(
                                         onCancelInlineEdit = if (isRenamingEntry) onCancelInlineEdit else null,
                                         galleryItemSizeDp = galleryItemSizeDp,
                                         onStartRubberBand = wrappedOnStartRubberBand,
+                                        onBeginRename = onBeginRename,
                                     )
                                 }
                             }
