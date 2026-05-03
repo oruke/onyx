@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_extract_here
 import onyx.composeapp.generated.resources.msg_cancelled
 import onyx.composeapp.generated.resources.msg_copied_items
@@ -761,6 +762,83 @@ class DefaultRootComponent(
                     status = BackgroundTaskStatus.FAILED,
                     detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
                 )
+            }
+        }
+        taskJobs[taskId] = job
+    }
+
+    override fun batchRenameInPane(paneId: PaneId) {
+        val selectedEntries = selectedEntriesInPane(paneId)
+            .filter { it.kind == VFileKind.FILE }
+        if (selectedEntries.size < 2) return
+        dialogState.value = RootDialogState.BatchRename(
+            paneId = paneId,
+            entries = selectedEntries,
+        )
+    }
+
+    override fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>) {
+        dismissDialog()
+        if (renameMap.isEmpty()) return
+
+        val taskId = UUID.randomUUID().toString()
+        appendTask(
+            BackgroundTask(
+                id = taskId,
+                kind = BackgroundTaskKind.RENAME,
+                title = I18nMessage(Res.string.action_batch_rename),
+                status = BackgroundTaskStatus.QUEUED,
+                detail = I18nMessage(Res.string.msg_string_literal, "${renameMap.size} files"),
+                progress = 0f,
+                totalCount = renameMap.size,
+                startTimeMillis = System.currentTimeMillis(),
+            )
+        )
+
+        val job = scope.launch {
+            try {
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.RUNNING,
+                    detail = I18nMessage(Res.string.msg_string_literal, "Starting..."),
+                    progress = 0f,
+                )
+                renameMap.forEachIndexed { index, (entry, newName) ->
+                    ensureActive()
+                    updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = I18nMessage(Res.string.msg_string_literal, "${entry.name} → $newName"),
+                        progress = index.toFloat() / renameMap.size,
+                    )
+                    fileCommandService.rename(entry, newName).getOrThrow()
+                }
+
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.SUCCEEDED,
+                    detail = I18nMessage(Res.string.msg_string_literal, "${renameMap.size} files renamed"),
+                    progress = 1f,
+                    processedCount = renameMap.size,
+                )
+                refreshAllPanes()
+                scheduleTaskAutoCleanup(taskId)
+            } catch (_: CancellationException) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.CANCELLED,
+                    detail = I18nMessage(Res.string.msg_cancelled),
+                )
+            } catch (e: Throwable) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.FAILED,
+                    detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
+                )
+                refreshAllPanes()
             }
         }
         taskJobs[taskId] = job

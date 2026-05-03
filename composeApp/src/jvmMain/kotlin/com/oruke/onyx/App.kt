@@ -34,6 +34,7 @@ import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.ui.BatchRenameDialog
 import com.oruke.onyx.ui.ConfirmationDialog
 import com.oruke.onyx.ui.ConflictResolutionDialog
 import com.oruke.onyx.ui.CreateDirectoriesDialog
@@ -305,6 +306,16 @@ private fun AppContent(
             )
         }
 
+        is RootDialogState.BatchRename -> {
+            BatchRenameDialog(
+                entries = dialogState.entries,
+                onConfirm = { renameMap ->
+                    rootComponent.executeBatchRename(dialogState.paneId, renameMap)
+                },
+                onDismiss = rootComponent::dismissDialog,
+            )
+        }
+
         null -> Unit
     }
 
@@ -374,6 +385,7 @@ private fun AppContent(
                                     onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
                                     onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
                                     onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.PRIMARY) },
+                                    onBatchRename = { rootComponent.batchRenameInPane(PaneId.PRIMARY) },
                                     onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                                     onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
                                     onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
@@ -422,6 +434,7 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.PRIMARY) },
+                                        onBatchRename = { rootComponent.batchRenameInPane(PaneId.PRIMARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
                                         onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
@@ -467,6 +480,7 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.secondaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.SECONDARY) },
+                                        onBatchRename = { rootComponent.batchRenameInPane(PaneId.SECONDARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
                                         onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },
@@ -516,6 +530,7 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.PRIMARY) },
+                                        onBatchRename = { rootComponent.batchRenameInPane(PaneId.PRIMARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
                                         onPaste = { rootComponent.requestPasteIntoPane(PaneId.PRIMARY) },
@@ -561,6 +576,7 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.secondaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.SECONDARY) },
+                                        onBatchRename = { rootComponent.batchRenameInPane(PaneId.SECONDARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
                                         onPaste = { rootComponent.requestPasteIntoPane(PaneId.SECONDARY) },

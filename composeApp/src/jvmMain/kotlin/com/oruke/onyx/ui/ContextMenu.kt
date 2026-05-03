@@ -34,6 +34,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_close_menu
 import onyx.composeapp.generated.resources.action_copy
 import onyx.composeapp.generated.resources.action_copy_path
@@ -67,9 +68,11 @@ internal fun BoxScope.PaneContextMenu(
     canCopyPath: Boolean,
     canPaste: Boolean,
     canExtractSelection: Boolean,
+    canBatchRename: Boolean,
     onOpenSelection: () -> Unit,
     onOpenSelectionInNewTab: () -> Unit,
     onRenameSelection: () -> Unit,
+    onBatchRename: () -> Unit,
     onCreateFile: () -> Unit,
     onCreateDirectory: () -> Unit,
     onDeleteSelection: () -> Unit,
@@ -158,6 +161,14 @@ internal fun BoxScope.PaneContextMenu(
                     enabled = true,
                     iconKey = AllIconsKeys.Actions.Uninstall,
                     onClick = onExtractSelection,
+                )
+            }
+            if (canBatchRename) {
+                ContextMenuItem(
+                    text = stringResource(Res.string.action_batch_rename),
+                    enabled = true,
+                    iconKey = AllIconsKeys.Actions.Edit,
+                    onClick = onBatchRename,
                 )
             }
             ContextMenuItem(

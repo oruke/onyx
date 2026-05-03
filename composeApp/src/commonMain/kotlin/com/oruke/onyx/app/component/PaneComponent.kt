@@ -35,8 +35,6 @@ data class PaneState(
     val hiddenColumns: Set<DetailsColumn>,
     val galleryItemSizeDp: Int,
     val entriesState: PaneEntriesState,
-    val folderTreeVisible: Boolean = false,
-    val folderTreeState: PaneFolderTreeState = PaneFolderTreeState(),
     val inlineExpandedLocations: Set<String> = emptySet(),
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
 )
@@ -96,26 +94,6 @@ data class InlineExpandedEntry(
     val error: Boolean = false,
 )
 
-// ── 面板目录树 ────────────────────────────────────────────────────────
-
-data class PaneFolderTreeState(
-    val roots: List<PaneFolderTreeNode> = emptyList(),
-)
-
-data class PaneFolderTreeNode(
-    val location: String,
-    val label: String,
-    val expanded: Boolean = false,
-    val loadState: PaneFolderTreeNodeLoadState = PaneFolderTreeNodeLoadState.IDLE,
-    val children: List<PaneFolderTreeNode> = emptyList(),
-)
-
-enum class PaneFolderTreeNodeLoadState {
-    IDLE,
-    LOADING,
-    READY,
-    FAILURE,
-}
 
 interface PaneComponent {
     val state: StateFlow<PaneState>
@@ -212,12 +190,4 @@ interface PaneComponent {
     // ── 内联展开 ────────────────────────────────────────────────────────
 
     fun toggleInlineExpand(directoryLocation: String)
-
-    // ── 面板目录树 ────────────────────────────────────────────────────
-
-    fun toggleFolderTree()
-
-    fun toggleFolderTreeNode(location: String)
-
-    fun retryFolderTreeNode(location: String)
 }

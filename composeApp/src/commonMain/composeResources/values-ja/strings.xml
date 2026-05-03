@@ -184,5 +184,23 @@
     <string name="action_image_rotate_cw">↻</string>
     <string name="action_image_rotate_ccw">↺</string>
 
-    <string name="action_toggle_folder_tree">フォルダツリー</string>
+    <string name="action_batch_rename">一括リネーム</string>
+    <string name="label_batch_rename_title">一括リネーム</string>
+    <string name="label_batch_rename_mode_find_replace">検索と置換</string>
+    <string name="label_batch_rename_mode_prefix_suffix">接頭辞 / 接尾辞</string>
+    <string name="label_batch_rename_mode_counter">連番</string>
+    <string name="label_batch_rename_mode_case">大文字小文字</string>
+    <string name="label_batch_rename_find">検索</string>
+    <string name="label_batch_rename_replace">置換</string>
+    <string name="label_batch_rename_regex">正規表現</string>
+    <string name="label_batch_rename_prefix">接頭辞</string>
+    <string name="label_batch_rename_suffix">接尾辞</string>
+    <string name="label_batch_rename_template">テンプレート</string>
+    <string name="label_batch_rename_counter_start">開始値</string>
+    <string name="label_batch_rename_counter_digits">桁数</string>
+    <string name="label_batch_rename_before">変更前</string>
+    <string name="label_batch_rename_after">変更後</string>
+    <string name="label_case_uppercase">大文字</string>
+    <string name="label_case_lowercase">小文字</string>
+    <string name="label_case_titlecase">先頭大文字</string>
 </resources>

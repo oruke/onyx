@@ -182,5 +182,23 @@
     <string name="action_image_rotate_cw">↻</string>
     <string name="action_image_rotate_ccw">↺</string>
 
-    <string name="action_toggle_folder_tree">目录树</string>
+    <string name="action_batch_rename">批量重命名</string>
+    <string name="label_batch_rename_title">批量重命名</string>
+    <string name="label_batch_rename_mode_find_replace">查找替换</string>
+    <string name="label_batch_rename_mode_prefix_suffix">前缀 / 后缀</string>
+    <string name="label_batch_rename_mode_counter">序号</string>
+    <string name="label_batch_rename_mode_case">大小写</string>
+    <string name="label_batch_rename_find">查找</string>
+    <string name="label_batch_rename_replace">替换为</string>
+    <string name="label_batch_rename_regex">正则表达式</string>
+    <string name="label_batch_rename_prefix">前缀</string>
+    <string name="label_batch_rename_suffix">后缀</string>
+    <string name="label_batch_rename_template">模板</string>
+    <string name="label_batch_rename_counter_start">起始值</string>
+    <string name="label_batch_rename_counter_digits">位数</string>
+    <string name="label_batch_rename_before">原文件名</string>
+    <string name="label_batch_rename_after">新文件名</string>
+    <string name="label_case_uppercase">全大写</string>
+    <string name="label_case_lowercase">全小写</string>
+    <string name="label_case_titlecase">首字母大写</string>
 </resources>

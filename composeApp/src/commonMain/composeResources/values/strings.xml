@@ -184,5 +184,23 @@
     <string name="action_image_rotate_cw">↻</string>
     <string name="action_image_rotate_ccw">↺</string>
 
-    <string name="action_toggle_folder_tree">Folder Tree</string>
+    <string name="action_batch_rename">Batch Rename</string>
+    <string name="label_batch_rename_title">Batch Rename</string>
+    <string name="label_batch_rename_mode_find_replace">Find &amp; Replace</string>
+    <string name="label_batch_rename_mode_prefix_suffix">Prefix / Suffix</string>
+    <string name="label_batch_rename_mode_counter">Counter</string>
+    <string name="label_batch_rename_mode_case">Case</string>
+    <string name="label_batch_rename_find">Find</string>
+    <string name="label_batch_rename_replace">Replace</string>
+    <string name="label_batch_rename_regex">Regex</string>
+    <string name="label_batch_rename_prefix">Prefix</string>
+    <string name="label_batch_rename_suffix">Suffix</string>
+    <string name="label_batch_rename_template">Template</string>
+    <string name="label_batch_rename_counter_start">Start</string>
+    <string name="label_batch_rename_counter_digits">Digits</string>
+    <string name="label_batch_rename_before">Before</string>
+    <string name="label_batch_rename_after">After</string>
+    <string name="label_case_uppercase">UPPERCASE</string>
+    <string name="label_case_lowercase">lowercase</string>
+    <string name="label_case_titlecase">Title Case</string>
 </resources>

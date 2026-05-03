@@ -81,6 +81,11 @@ sealed interface RootDialogState {
     data class Settings(
         val draft: OnyxSettings,
     ) : RootDialogState
+
+    data class BatchRename(
+        val paneId: PaneId,
+        val entries: List<VFile>,
+    ) : RootDialogState
 }
 
 enum class CreateDirectoriesDialogError {
@@ -157,6 +162,10 @@ interface RootComponent {
     fun requestDeleteSelectedInPane(paneId: PaneId)
 
     fun extractSelectedInPane(paneId: PaneId)
+
+    fun batchRenameInPane(paneId: PaneId)
+
+    fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>)
 
     fun dismissTask(taskId: String)
 

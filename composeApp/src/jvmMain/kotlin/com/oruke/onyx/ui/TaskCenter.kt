@@ -511,5 +511,6 @@ private fun taskKindIcon(kind: BackgroundTaskKind) = when (kind) {
     BackgroundTaskKind.MOVE -> AllIconsKeys.Actions.MenuCut
     BackgroundTaskKind.DELETE -> AllIconsKeys.Actions.GC
     BackgroundTaskKind.EXTRACT -> AllIconsKeys.Actions.Uninstall
+    BackgroundTaskKind.RENAME -> AllIconsKeys.Actions.Edit
     BackgroundTaskKind.EXTERNAL_IMPORT -> AllIconsKeys.Actions.Download
 }

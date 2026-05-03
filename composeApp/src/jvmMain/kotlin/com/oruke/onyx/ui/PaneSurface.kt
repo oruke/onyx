@@ -74,7 +74,6 @@ import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_toggle_favorite
 import onyx.composeapp.generated.resources.action_toggle_hidden_files
 import onyx.composeapp.generated.resources.label_filter_placeholder
-import onyx.composeapp.generated.resources.action_toggle_folder_tree
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -99,6 +98,7 @@ internal fun PaneSurface(
     onFilterQueryChange: (String) -> Unit,
     onDeleteSelection: () -> Unit,
     onExtractSelection: () -> Unit,
+    onBatchRename: () -> Unit,
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
     onPaste: () -> Unit,
@@ -344,19 +344,6 @@ internal fun PaneSurface(
                 Icon(key = AllIconsKeys.Nodes.HomeFolder, contentDescription = stringResource(Res.string.action_go_home))
             }
 
-            // 目录树切换
-            ToolbarIconButton(
-                enabled = true,
-                onClick = { onActivate(); component.toggleFolderTree() },
-                tooltip = stringResource(Res.string.action_toggle_folder_tree),
-                selected = state.folderTreeVisible,
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.ShowAsTree,
-                    contentDescription = stringResource(Res.string.action_toggle_folder_tree),
-                )
-            }
-
             ToolbarIconButton(
                 enabled = true,
                 onClick = { onActivate(); onToggleFavoriteLocation(state.location) },
@@ -461,27 +448,8 @@ internal fun PaneSurface(
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
         }
 
-        // ── Folder tree + File list & Inspector ─────────────────────────────────
+        // ── File list & Inspector ─────────────────────────────────
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            // ── 面板目录树 ────────────────────────────────────────────
-            if (state.folderTreeVisible) {
-                PaneFolderTree(
-                    treeState = state.folderTreeState,
-                    currentLocation = state.location,
-                    onNodeClick = { location ->
-                        onActivate()
-                        component.openDirectory(location)
-                    },
-                    onNodeToggle = { location ->
-                        component.toggleFolderTreeNode(location)
-                    },
-                    onRetryNode = { location ->
-                        component.retryFolderTreeNode(location)
-                    },
-                    modifier = Modifier.width(200.dp),
-                )
-                Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
-            }
 
             Box(
                 modifier = Modifier
@@ -563,6 +531,7 @@ internal fun PaneSurface(
                         canExtractSelection = selectedCount > 0 && selectedEntries.any { entry ->
                             entry.kind == VFileKind.FILE && com.oruke.onyx.app.filesystem.ArchiveService.isArchive(entry.name)
                         },
+                        canBatchRename = selectedCount >= 2 && selectedEntries.any { it.kind == VFileKind.FILE },
                         onOpenSelection = {
                             onOpenSelected()
                             showContextMenu = false
@@ -573,6 +542,10 @@ internal fun PaneSurface(
                         },
                         onRenameSelection = {
                             onBeginRename()
+                            showContextMenu = false
+                        },
+                        onBatchRename = {
+                            onBatchRename()
                             showContextMenu = false
                         },
                         onCreateFile = {

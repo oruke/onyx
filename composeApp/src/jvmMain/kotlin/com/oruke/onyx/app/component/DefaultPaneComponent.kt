@@ -856,111 +856,6 @@ class DefaultPaneComponent(
         }
     }
 
-    // ── 面板目录树 ────────────────────────────────────────────────────────
-
-    override fun toggleFolderTree() {
-        val state = mutableState.value
-        val nextVisible = !state.folderTreeVisible
-        if (nextVisible && state.folderTreeState.roots.isEmpty()) {
-            // 首次展开：初始化根节点
-            initFolderTreeRoots()
-        }
-        mutableState.value = state.copy(folderTreeVisible = nextVisible)
-    }
-
-    override fun toggleFolderTreeNode(location: String) {
-        val state = mutableState.value
-        val node = findFolderTreeNode(state.folderTreeState.roots, location)
-        if (node == null) return
-        if (node.expanded) {
-            // 折叠
-            val updated = state.folderTreeState.updateNode(location) { it.copy(expanded = false) }
-            mutableState.value = state.copy(folderTreeState = updated)
-        } else {
-            // 展开 + 加载
-            val updated = state.folderTreeState.updateNode(location) {
-                it.copy(expanded = true, loadState = PaneFolderTreeNodeLoadState.LOADING)
-            }
-            mutableState.value = state.copy(folderTreeState = updated)
-            loadFolderTreeChildren(location)
-        }
-    }
-
-    override fun retryFolderTreeNode(location: String) {
-        val state = mutableState.value
-        val updated = state.folderTreeState.updateNode(location) {
-            it.copy(loadState = PaneFolderTreeNodeLoadState.LOADING)
-        }
-        mutableState.value = state.copy(folderTreeState = updated)
-        loadFolderTreeChildren(location)
-    }
-
-    private fun initFolderTreeRoots() {
-        val roots = FileSystems.getDefault().rootDirectories.map { root ->
-            PaneFolderTreeNode(
-                location = root.pathString,
-                label = root.pathString,
-                expanded = false,
-                loadState = PaneFolderTreeNodeLoadState.IDLE,
-            )
-        }
-
-        // 将面板当前 location 的祖先链自动展开
-        val currentPath = Path.of(mutableState.value.location)
-        val ancestorLocations = mutableListOf<String>()
-        var p: Path? = currentPath
-        while (p != null) {
-            ancestorLocations.add(0, p.pathString)
-            p = p.parent
-        }
-
-        var treeState = PaneFolderTreeState(roots = roots)
-
-        // 自动展开到当前目录
-        for (loc in ancestorLocations) {
-            treeState = treeState.updateNode(loc) {
-                it.copy(expanded = true, loadState = PaneFolderTreeNodeLoadState.LOADING)
-            }
-            loadFolderTreeChildren(loc)
-        }
-
-        mutableState.value = mutableState.value.copy(folderTreeState = treeState)
-    }
-
-    private fun loadFolderTreeChildren(location: String) {
-        scope.launch {
-            fileRepository.list(location).fold(
-                onSuccess = { entries ->
-                    val dirs = entries
-                        .filter { it.kind == VFileKind.DIRECTORY }
-                        .sortedBy { it.name.lowercase() }
-                        .map { dir ->
-                            PaneFolderTreeNode(
-                                location = dir.location,
-                                label = dir.name,
-                                expanded = false,
-                                loadState = PaneFolderTreeNodeLoadState.IDLE,
-                            )
-                        }
-                    val state = mutableState.value
-                    val updated = state.folderTreeState.updateNode(location) {
-                        it.copy(
-                            children = dirs,
-                            loadState = PaneFolderTreeNodeLoadState.READY,
-                        )
-                    }
-                    mutableState.value = state.copy(folderTreeState = updated)
-                },
-                onFailure = {
-                    val state = mutableState.value
-                    val updated = state.folderTreeState.updateNode(location) {
-                        it.copy(loadState = PaneFolderTreeNodeLoadState.FAILURE)
-                    }
-                    mutableState.value = state.copy(folderTreeState = updated)
-                },
-            )
-        }
-    }
 
     private fun navigateActiveTab(
         location: String,
@@ -1184,8 +1079,6 @@ class DefaultPaneComponent(
             paneId = paneId,
             activeTabId = state.activeTabId,
             tabs = nextTabs,
-            folderTreeVisible = state.folderTreeVisible,
-            folderTreeState = state.folderTreeState,
             inlineExpandedLocations = state.inlineExpandedLocations,
             inlineExpandedEntries = state.inlineExpandedEntries,
         )
@@ -1417,8 +1310,6 @@ private fun PaneTabState.toPaneState(
     paneId: PaneId,
     activeTabId: String,
     tabs: List<PaneTabState>,
-    folderTreeVisible: Boolean = false,
-    folderTreeState: PaneFolderTreeState = PaneFolderTreeState(),
     inlineExpandedLocations: Set<String> = emptySet(),
     inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
 ): PaneState {
@@ -1445,8 +1336,6 @@ private fun PaneTabState.toPaneState(
         hiddenColumns = hiddenColumns,
         galleryItemSizeDp = galleryItemSizeDp,
         entriesState = entriesState,
-        folderTreeVisible = folderTreeVisible,
-        folderTreeState = folderTreeState,
         inlineExpandedLocations = inlineExpandedLocations,
         inlineExpandedEntries = inlineExpandedEntries,
     )
@@ -1538,32 +1427,3 @@ private fun isImageFileName(fileName: String): Boolean {
     return ext in imageExtensions
 }
 
-// ── 面板目录树辅助函数 ──────────────────────────────────────────────────
-
-private fun findFolderTreeNode(
-    nodes: List<PaneFolderTreeNode>,
-    location: String,
-): PaneFolderTreeNode? {
-    for (node in nodes) {
-        if (node.location == location) return node
-        val found = findFolderTreeNode(node.children, location)
-        if (found != null) return found
-    }
-    return null
-}
-
-private fun PaneFolderTreeState.updateNode(
-    location: String,
-    transform: (PaneFolderTreeNode) -> PaneFolderTreeNode,
-): PaneFolderTreeState {
-    fun List<PaneFolderTreeNode>.update(): List<PaneFolderTreeNode> {
-        return map { node ->
-            when {
-                node.location == location -> transform(node)
-                node.children.isNotEmpty() -> node.copy(children = node.children.update())
-                else -> node
-            }
-        }
-    }
-    return copy(roots = roots.update())
-}
