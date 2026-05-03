@@ -3,6 +3,7 @@ package com.oruke.onyx.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -20,13 +21,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
@@ -44,30 +50,47 @@ internal fun HybridAddressBar(
     onOpenLocation: (String) -> Unit,
 ) {
     var editing by remember { mutableStateOf(false) }
-    var draftLocation by remember(location) { mutableStateOf(location) }
+    var draftValue by remember(location) {
+        mutableStateOf(TextFieldValue(location, TextRange(location.length)))
+    }
 
     LaunchedEffect(location) {
-        if (!editing) draftLocation = location
+        if (!editing) draftValue = TextFieldValue(location, TextRange(location.length))
     }
 
     if (editing) {
+        val focusRequester = remember { FocusRequester() }
+
         BasicTextField(
-            value = draftLocation,
-            onValueChange = { draftLocation = it },
+            value = draftValue,
+            onValueChange = { draftValue = it },
             modifier = Modifier
                 .fillMaxWidth()
                 .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
                 .border(1.dp, LocalOnyxPalette.current.accent, RoundedCornerShape(4.dp))
                 .padding(horizontal = 6.dp, vertical = 3.dp)
+                .focusRequester(focusRequester)
+                .onFocusChanged { state ->
+                    if (!state.isFocused && editing) {
+                        // 焦点离开 → 取消编辑，恢复原始路径
+                        editing = false
+                        draftValue = TextFieldValue(location, TextRange(location.length))
+                    }
+                }
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when (event.key) {
                         Key.Enter -> {
-                            onActivate(); editing = false; onOpenLocation(draftLocation); true
+                            onActivate()
+                            editing = false
+                            onOpenLocation(draftValue.text)
+                            true
                         }
 
                         Key.Escape -> {
-                            editing = false; draftLocation = location; true
+                            editing = false
+                            draftValue = TextFieldValue(location, TextRange(location.length))
+                            true
                         }
 
                         else -> false
@@ -76,11 +99,20 @@ internal fun HybridAddressBar(
             textStyle = TextStyle(color = LocalOnyxPalette.current.foreground, fontSize = 12.sp),
             singleLine = true,
         )
+
+        // 进入编辑模式时自动聚焦并全选
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            draftValue = TextFieldValue(location, TextRange(0, location.length))
+        }
     } else {
         BreadcrumbAddressBar(
             location = location,
             onActivate = onActivate,
-            onEdit = { editing = true },
+            onEdit = {
+                draftValue = TextFieldValue(location, TextRange(0, location.length))
+                editing = true
+            },
             onOpenLocation = onOpenLocation,
         )
     }
@@ -106,7 +138,11 @@ internal fun BreadcrumbAddressBar(
             .fillMaxWidth()
             .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
             .horizontalScroll(scrollState)
-            .clickable(onClick = onEdit)
+            // 双击空白区域进入编辑模式（替代单击，防止误触）
+            .combinedClickable(
+                onClick = { /* 单击空白 → 不做任何事 */ },
+                onDoubleClick = { onEdit() },
+            )
             .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -132,4 +168,3 @@ internal fun BreadcrumbAddressBar(
         }
     }
 }
-
