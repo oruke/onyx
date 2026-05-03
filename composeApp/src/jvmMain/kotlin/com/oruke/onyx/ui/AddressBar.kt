@@ -60,6 +60,9 @@ internal fun HybridAddressBar(
 
     if (editing) {
         val focusRequester = remember { FocusRequester() }
+        // 保护标志：首次组合时 onFocusChanged 会以 isFocused=false 触发，
+        // 必须等获得过焦点之后才响应失焦退出。
+        var hasFocused by remember { mutableStateOf(false) }
 
         BasicTextField(
             value = draftValue,
@@ -71,8 +74,10 @@ internal fun HybridAddressBar(
                 .padding(horizontal = 6.dp, vertical = 3.dp)
                 .focusRequester(focusRequester)
                 .onFocusChanged { state ->
-                    if (!state.isFocused && editing) {
-                        // 焦点离开 → 取消编辑，恢复原始路径
+                    if (state.isFocused) {
+                        hasFocused = true
+                    } else if (hasFocused && editing) {
+                        // 获得过焦点后才响应失焦 → 退出编辑
                         editing = false
                         draftValue = TextFieldValue(location, TextRange(location.length))
                     }
