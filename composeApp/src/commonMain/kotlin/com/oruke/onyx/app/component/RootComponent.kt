@@ -85,6 +85,12 @@ sealed interface RootDialogState {
     data class BatchRename(
         val paneId: PaneId,
         val entries: List<VFile>,
+        val executing: Boolean = false,
+        val progress: Float = 0f,
+        val processedCount: Int = 0,
+        val currentDetail: String = "",
+        val completed: Boolean = false,
+        val errorMessage: String? = null,
     ) : RootDialogState
 }
 
@@ -166,6 +172,8 @@ interface RootComponent {
     fun batchRenameInPane(paneId: PaneId)
 
     fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>)
+
+    fun resetBatchRenameForContinue(paneId: PaneId)
 
     fun dismissTask(taskId: String)
 

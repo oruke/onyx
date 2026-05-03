@@ -308,7 +308,7 @@ private fun AppContent(
 
         is RootDialogState.BatchRename -> {
             BatchRenameDialog(
-                entries = dialogState.entries,
+                state = dialogState,
                 onConfirm = { renameMap ->
                     rootComponent.executeBatchRename(dialogState.paneId, renameMap)
                 },

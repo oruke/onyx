@@ -66,6 +66,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_filter
 import onyx.composeapp.generated.resources.action_go_back
 import onyx.composeapp.generated.resources.action_go_forward
 import onyx.composeapp.generated.resources.action_go_home
@@ -125,6 +126,8 @@ internal fun PaneSurface(
     fileDropTarget: FileDropTarget?,
 ) {
     val focusRequester = remember { FocusRequester() }
+    val filterFocusRequester = remember { FocusRequester() }
+    var showFilterBar by remember { mutableStateOf(false) }
     var showContextMenu by remember { mutableStateOf(false) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
@@ -247,9 +250,17 @@ internal fun PaneSurface(
                     event.key == Key.Escape -> {
                         if (showContextMenu) {
                             showContextMenu = false
+                        } else if (showFilterBar) {
+                            showFilterBar = false
+                            onFilterQueryChange("")
                         } else {
                             component.clearSelection()
                         }
+                        true
+                    }
+
+                    event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed) -> {
+                        showFilterBar = true
                         true
                     }
 
@@ -370,42 +381,72 @@ internal fun PaneSurface(
 
             Spacer(modifier = Modifier.width(4.dp))
 
-            Box(
-                modifier = Modifier.width(190.dp).height(22.dp)
+            ToolbarIconButton(
+                enabled = true,
+                onClick = {
+                    onActivate()
+                    showFilterBar = !showFilterBar
+                    if (!showFilterBar) onFilterQueryChange("")
+                },
+                tooltip = stringResource(Res.string.action_filter) + " (Ctrl+F)",
+                selected = showFilterBar || filterQuery.isNotEmpty(),
             ) {
-                BasicTextField(
-                    value = filterQuery,
-                    onValueChange = onFilterQueryChange,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
-                        .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp)
-                        .onFocusChanged { focusState ->
-                            if (focusState.isFocused) {
-                                onActivate()
+                Icon(
+                    key = AllIconsKeys.Actions.Find,
+                    contentDescription = stringResource(Res.string.action_filter),
+                )
+            }
+
+            if (showFilterBar) {
+                LaunchedEffect(showFilterBar) {
+                    filterFocusRequester.requestFocus()
+                }
+                Box(
+                    modifier = Modifier.width(190.dp).height(22.dp)
+                ) {
+                    BasicTextField(
+                        value = filterQuery,
+                        onValueChange = onFilterQueryChange,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .focusRequester(filterFocusRequester)
+                            .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
+                            .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp)
+                            .onFocusChanged { focusState ->
+                                if (focusState.isFocused) {
+                                    onActivate()
+                                }
+                            }
+                            .onPreviewKeyEvent { event ->
+                                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                                    showFilterBar = false
+                                    onFilterQueryChange("")
+                                    focusRequester.requestFocus()
+                                    true
+                                } else false
+                            },
+                        textStyle = TextStyle(
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp,
+                            color = LocalOnyxPalette.current.foreground,
+                        ),
+                        singleLine = true,
+                        cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
+                        decorationBox = { innerTextField ->
+                            Box(contentAlignment = Alignment.CenterStart) {
+                                if (filterQuery.isEmpty()) {
+                                    Text(
+                                        text = stringResource(Res.string.label_filter_placeholder),
+                                        fontSize = 11.sp,
+                                        color = LocalOnyxPalette.current.disabledForeground,
+                                    )
+                                }
+                                innerTextField()
                             }
                         },
-                    textStyle = TextStyle(
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp,
-                        color = LocalOnyxPalette.current.foreground,
-                    ),
-                    singleLine = true,
-                    cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
-                    decorationBox = { innerTextField ->
-                        Box(contentAlignment = Alignment.CenterStart) {
-                            if (filterQuery.isEmpty()) {
-                                Text(
-                                    text = stringResource(Res.string.label_filter_placeholder),
-                                    fontSize = 11.sp,
-                                    color = LocalOnyxPalette.current.disabledForeground,
-                                )
-                            }
-                            innerTextField()
-                        }
-                    },
-                )
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(4.dp))
@@ -531,7 +572,7 @@ internal fun PaneSurface(
                         canExtractSelection = selectedCount > 0 && selectedEntries.any { entry ->
                             entry.kind == VFileKind.FILE && com.oruke.onyx.app.filesystem.ArchiveService.isArchive(entry.name)
                         },
-                        canBatchRename = selectedCount >= 2 && selectedEntries.any { it.kind == VFileKind.FILE },
+                        canBatchRename = selectedCount >= 2,
                         onOpenSelection = {
                             onOpenSelected()
                             showContextMenu = false

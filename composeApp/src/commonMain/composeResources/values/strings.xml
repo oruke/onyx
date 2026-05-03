@@ -184,7 +184,10 @@
     <string name="action_image_rotate_cw">↻</string>
     <string name="action_image_rotate_ccw">↺</string>
 
+    <string name="action_filter">Filter</string>
+
     <string name="action_batch_rename">Batch Rename</string>
+    <string name="action_batch_rename_continue">Continue</string>
     <string name="label_batch_rename_title">Batch Rename</string>
     <string name="label_batch_rename_mode_find_replace">Find &amp; Replace</string>
     <string name="label_batch_rename_mode_prefix_suffix">Prefix / Suffix</string>
@@ -200,6 +203,12 @@
     <string name="label_batch_rename_counter_digits">Digits</string>
     <string name="label_batch_rename_before">Before</string>
     <string name="label_batch_rename_after">After</string>
+    <string name="label_batch_rename_progress_detail">%1$d/%2$d — %3$s</string>
+    <string name="label_batch_rename_completed_detail">✓ %1$d/%2$d completed</string>
+    <string name="label_batch_rename_error_prefix">✗ %1$s</string>
+    <string name="label_batch_rename_file_count">%1$d files</string>
+    <string name="label_batch_rename_changes_count">%1$d changes</string>
+    <string name="label_batch_rename_counter_ext_hint">Extension preserved automatically</string>
     <string name="label_case_uppercase">UPPERCASE</string>
     <string name="label_case_lowercase">lowercase</string>
     <string name="label_case_titlecase">Title Case</string>

@@ -184,7 +184,10 @@
     <string name="action_image_rotate_cw">↻</string>
     <string name="action_image_rotate_ccw">↺</string>
 
+    <string name="action_filter">フィルター</string>
+
     <string name="action_batch_rename">一括リネーム</string>
+    <string name="action_batch_rename_continue">続行</string>
     <string name="label_batch_rename_title">一括リネーム</string>
     <string name="label_batch_rename_mode_find_replace">検索と置換</string>
     <string name="label_batch_rename_mode_prefix_suffix">接頭辞 / 接尾辞</string>
@@ -200,6 +203,12 @@
     <string name="label_batch_rename_counter_digits">桁数</string>
     <string name="label_batch_rename_before">変更前</string>
     <string name="label_batch_rename_after">変更後</string>
+    <string name="label_batch_rename_progress_detail">%1$d/%2$d — %3$s</string>
+    <string name="label_batch_rename_completed_detail">✓ %1$d/%2$d 完了</string>
+    <string name="label_batch_rename_error_prefix">✗ %1$s</string>
+    <string name="label_batch_rename_file_count">%1$d ファイル</string>
+    <string name="label_batch_rename_changes_count">%1$d 件の変更</string>
+    <string name="label_batch_rename_counter_ext_hint">拡張子は自動的に保持されます</string>
     <string name="label_case_uppercase">大文字</string>
     <string name="label_case_lowercase">小文字</string>
     <string name="label_case_titlecase">先頭大文字</string>

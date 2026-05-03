@@ -769,7 +769,6 @@ class DefaultRootComponent(
 
     override fun batchRenameInPane(paneId: PaneId) {
         val selectedEntries = selectedEntriesInPane(paneId)
-            .filter { it.kind == VFileKind.FILE }
         if (selectedEntries.size < 2) return
         dialogState.value = RootDialogState.BatchRename(
             paneId = paneId,
@@ -778,8 +777,11 @@ class DefaultRootComponent(
     }
 
     override fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>) {
-        dismissDialog()
         if (renameMap.isEmpty()) return
+
+        // 更新对话框状态为执行中
+        val currentDialog = dialogState.value as? RootDialogState.BatchRename ?: return
+        dialogState.value = currentDialog.copy(executing = true, progress = 0f, processedCount = 0, currentDetail = "")
 
         val taskId = UUID.randomUUID().toString()
         appendTask(
@@ -805,12 +807,22 @@ class DefaultRootComponent(
                 )
                 renameMap.forEachIndexed { index, (entry, newName) ->
                     ensureActive()
+                    val detailText = "${entry.name} → $newName"
+                    val prog = (index + 1).toFloat() / renameMap.size
                     updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(Res.string.msg_string_literal, "${entry.name} → $newName"),
-                        progress = index.toFloat() / renameMap.size,
+                        detail = I18nMessage(Res.string.msg_string_literal, detailText),
+                        progress = prog,
                     )
+                    // 同步更新对话框进度
+                    (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
+                        dialogState.value = ds.copy(
+                            progress = prog,
+                            processedCount = index + 1,
+                            currentDetail = detailText,
+                        )
+                    }
                     fileCommandService.rename(entry, newName).getOrThrow()
                 }
 
@@ -822,8 +834,20 @@ class DefaultRootComponent(
                     progress = 1f,
                     processedCount = renameMap.size,
                 )
+                // 标记对话框完成
+                (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
+                    dialogState.value = ds.copy(
+                        executing = false,
+                        completed = true,
+                        progress = 1f,
+                        processedCount = renameMap.size,
+                    )
+                }
                 refreshAllPanes()
                 scheduleTaskAutoCleanup(taskId)
+                // 短暂展示完成状态后自动重置为编辑模式
+                delay(600)
+                resetBatchRenameForContinue(paneId)
             } catch (_: CancellationException) {
                 taskJobs.remove(taskId)
                 updateTask(
@@ -831,6 +855,9 @@ class DefaultRootComponent(
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(Res.string.msg_cancelled),
                 )
+                (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
+                    dialogState.value = ds.copy(executing = false, errorMessage = "Cancelled")
+                }
             } catch (e: Throwable) {
                 taskJobs.remove(taskId)
                 updateTask(
@@ -838,10 +865,27 @@ class DefaultRootComponent(
                     status = BackgroundTaskStatus.FAILED,
                     detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
                 )
+                (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
+                    dialogState.value = ds.copy(executing = false, errorMessage = e.message ?: "Unknown error")
+                }
                 refreshAllPanes()
             }
         }
         taskJobs[taskId] = job
+    }
+
+    override fun resetBatchRenameForContinue(paneId: PaneId) {
+        // 从面板重新读取当前目录下所有文件，作为新一轮批量重命名的输入
+        val paneState = paneState(paneId)
+        val allEntries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
+        if (allEntries.isEmpty()) {
+            dialogState.value = null
+            return
+        }
+        dialogState.value = RootDialogState.BatchRename(
+            paneId = paneId,
+            entries = allEntries,
+        )
     }
 
     private fun executeDeleteRequest(request: PendingDeleteRequest) {
