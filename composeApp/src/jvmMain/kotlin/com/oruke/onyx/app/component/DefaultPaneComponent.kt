@@ -733,6 +733,77 @@ class DefaultPaneComponent(
         loadTab(tabId = activeTab.id, location = activeTab.location)
     }
 
+    // ── 内联展开（文件列表树状展开） ──────────────────────────────────────
+
+    override fun toggleInlineExpand(directoryLocation: String) {
+        val state = mutableState.value
+        if (directoryLocation in state.inlineExpandedLocations) {
+            // 折叠：移除该 location 及其所有后代展开
+            val toRemove = state.inlineExpandedLocations.filter { loc ->
+                loc == directoryLocation || loc.startsWith("$directoryLocation/")
+            }.toSet()
+            mutableState.value = state.copy(
+                inlineExpandedLocations = state.inlineExpandedLocations - toRemove,
+                inlineExpandedEntries = state.inlineExpandedEntries - toRemove,
+            )
+        } else {
+            // 展开：计算深度
+            val depth = state.inlineExpandedEntries.values
+                .firstOrNull { expanded ->
+                    expanded.entries?.any { it.location == directoryLocation } == true
+                }?.depth?.plus(1) ?: 1
+
+            val loading = InlineExpandedEntry(
+                parentLocation = directoryLocation,
+                depth = depth,
+                entries = null,
+            )
+            mutableState.value = state.copy(
+                inlineExpandedLocations = state.inlineExpandedLocations + directoryLocation,
+                inlineExpandedEntries = state.inlineExpandedEntries + (directoryLocation to loading),
+            )
+            loadInlineExpandChildren(directoryLocation, depth)
+        }
+    }
+
+    private fun loadInlineExpandChildren(location: String, depth: Int) {
+        scope.launch {
+            fileRepository.list(location).fold(
+                onSuccess = { entries ->
+                    val state = mutableState.value
+                    if (location !in state.inlineExpandedLocations) return@launch
+                    val sorted = entries.sortedWith(
+                        compareBy<VFile> { it.kind != VFileKind.DIRECTORY }
+                            .thenBy { it.name.lowercase() }
+                    )
+                    mutableState.value = state.copy(
+                        inlineExpandedEntries = state.inlineExpandedEntries + (
+                            location to InlineExpandedEntry(
+                                parentLocation = location,
+                                depth = depth,
+                                entries = sorted,
+                            )
+                        ),
+                    )
+                },
+                onFailure = {
+                    val state = mutableState.value
+                    if (location !in state.inlineExpandedLocations) return@launch
+                    mutableState.value = state.copy(
+                        inlineExpandedEntries = state.inlineExpandedEntries + (
+                            location to InlineExpandedEntry(
+                                parentLocation = location,
+                                depth = depth,
+                                entries = emptyList(),
+                                error = true,
+                            )
+                        ),
+                    )
+                },
+            )
+        }
+    }
+
     // ── 面板目录树 ────────────────────────────────────────────────────────
 
     override fun toggleFolderTree() {
@@ -868,6 +939,11 @@ class DefaultPaneComponent(
                 forwardStack = nextForwardStack,
             )
         }
+        // 导航时清空内联展开状态
+        mutableState.value = mutableState.value.copy(
+            inlineExpandedLocations = emptySet(),
+            inlineExpandedEntries = emptyMap(),
+        )
         loadTab(tabId = tab.id, location = normalizedLocation)
         startWatching(normalizedLocation)
     }
@@ -1056,6 +1132,8 @@ class DefaultPaneComponent(
             tabs = nextTabs,
             folderTreeVisible = state.folderTreeVisible,
             folderTreeState = state.folderTreeState,
+            inlineExpandedLocations = state.inlineExpandedLocations,
+            inlineExpandedEntries = state.inlineExpandedEntries,
         )
     }
 
@@ -1064,9 +1142,47 @@ class DefaultPaneComponent(
     }
 
     private fun currentVisibleEntries(): List<VFile> {
+        val state = mutableState.value
         return when (val entriesState = activeTab()?.entriesState) {
-            is PaneEntriesState.Ready -> entriesState.entries
+            is PaneEntriesState.Ready -> {
+                if (state.inlineExpandedLocations.isEmpty()) {
+                    entriesState.entries
+                } else {
+                    collectVisibleEntries(
+                        entries = entriesState.entries,
+                        expandedLocations = state.inlineExpandedLocations,
+                        expandedEntries = state.inlineExpandedEntries,
+                    )
+                }
+            }
             else -> emptyList()
+        }
+    }
+
+    /**
+     * 递归收集所有可见条目（包括内联展开的子项）。
+     */
+    private fun collectVisibleEntries(
+        entries: List<VFile>,
+        expandedLocations: Set<String>,
+        expandedEntries: Map<String, InlineExpandedEntry>,
+    ): List<VFile> {
+        return buildList {
+            entries.forEach { entry ->
+                add(entry)
+                if (entry.location in expandedLocations) {
+                    val expanded = expandedEntries[entry.location]
+                    if (expanded?.entries != null) {
+                        addAll(
+                            collectVisibleEntries(
+                                entries = expanded.entries,
+                                expandedLocations = expandedLocations,
+                                expandedEntries = expandedEntries,
+                            )
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -1104,8 +1220,20 @@ class DefaultPaneComponent(
             sort = detailsSort,
             filterQuery = filterQuery,
         )
+        // reconcileSelection 需要知道所有可见 ID（包括内联展开子项），
+        // 否则展开子项的选中状态会被 intersect 过滤掉。
+        val state = mutableState.value
+        val allVisibleForSelection = if (state.inlineExpandedLocations.isEmpty()) {
+            visibleEntries
+        } else {
+            collectVisibleEntries(
+                entries = visibleEntries,
+                expandedLocations = state.inlineExpandedLocations,
+                expandedEntries = state.inlineExpandedEntries,
+            )
+        }
         val selection = reconcileSelection(
-            entries = visibleEntries,
+            entries = allVisibleForSelection,
             selectedEntryIds = selectedEntryIds,
             anchorId = selectionAnchorId,
             focusId = selectionFocusId,
@@ -1236,6 +1364,8 @@ private fun PaneTabState.toPaneState(
     tabs: List<PaneTabState>,
     folderTreeVisible: Boolean = false,
     folderTreeState: PaneFolderTreeState = PaneFolderTreeState(),
+    inlineExpandedLocations: Set<String> = emptySet(),
+    inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
 ): PaneState {
     return PaneState(
         paneId = paneId,
@@ -1262,6 +1392,8 @@ private fun PaneTabState.toPaneState(
         entriesState = entriesState,
         folderTreeVisible = folderTreeVisible,
         folderTreeState = folderTreeState,
+        inlineExpandedLocations = inlineExpandedLocations,
+        inlineExpandedEntries = inlineExpandedEntries,
     )
 }
 

@@ -1198,8 +1198,52 @@ class DefaultRootComponent(
 
     private fun selectedEntriesInPane(paneId: PaneId): List<VFile> {
         val paneState = paneState(paneId)
-        val entries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
-        return entries.filter { paneState.selectedEntryIds.contains(it.id) }
+        val topEntries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
+        // 同时包含内联展开的子项，否则选中子项时无法找到 VFile
+        val allEntries = if (paneState.inlineExpandedLocations.isEmpty()) {
+            topEntries
+        } else {
+            collectAllVisibleEntries(topEntries, paneState)
+        }
+        val selected = allEntries.filter { paneState.selectedEntryIds.contains(it.id) }
+        if (selected.size <= 1) return selected
+
+        // 去重：如果某个条目的祖先目录也被选中了，则排除它（复制父目录时已包含子项）
+        val selectedLocations = selected
+            .filter { it.kind == VFileKind.DIRECTORY }
+            .mapTo(mutableSetOf()) { it.location }
+        return selected.filter { entry ->
+            val parent = entry.parentLocation ?: return@filter true
+            // 逐级向上检查是否有祖先被选中
+            !isAncestorSelected(parent, selectedLocations)
+        }
+    }
+
+    private fun isAncestorSelected(location: String, selectedDirLocations: Set<String>): Boolean {
+        var current: String? = location
+        while (current != null) {
+            if (current in selectedDirLocations) return true
+            val lastSep = current.lastIndexOf('/')
+            current = if (lastSep > 0) current.substring(0, lastSep) else null
+        }
+        return false
+    }
+
+    private fun collectAllVisibleEntries(
+        entries: List<VFile>,
+        paneState: PaneState,
+    ): List<VFile> {
+        return buildList {
+            entries.forEach { entry ->
+                add(entry)
+                if (entry.location in paneState.inlineExpandedLocations) {
+                    val expanded = paneState.inlineExpandedEntries[entry.location]
+                    if (expanded?.entries != null) {
+                        addAll(collectAllVisibleEntries(expanded.entries, paneState))
+                    }
+                }
+            }
+        }
     }
 
     private fun buildTransferTaskDetail(

@@ -541,6 +541,12 @@ internal fun PaneSurface(
                     onBeginRename = onBeginRename,
                     galleryItemSizeDp = state.galleryItemSizeDp,
                     onSelectEntries = component::selectEntries,
+                    inlineExpandedLocations = state.inlineExpandedLocations,
+                    inlineExpandedEntries = state.inlineExpandedEntries,
+                    onToggleInlineExpand = { location ->
+                        onActivate()
+                        component.toggleInlineExpand(location)
+                    },
                 )
 
                 if (showContextMenu) {

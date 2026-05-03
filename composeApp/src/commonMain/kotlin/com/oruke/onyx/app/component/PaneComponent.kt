@@ -37,6 +37,8 @@ data class PaneState(
     val entriesState: PaneEntriesState,
     val folderTreeVisible: Boolean = false,
     val folderTreeState: PaneFolderTreeState = PaneFolderTreeState(),
+    val inlineExpandedLocations: Set<String> = emptySet(),
+    val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
 )
 
 data class PaneTabState(
@@ -79,6 +81,20 @@ sealed interface PaneEntriesState {
         val reason: String?,
     ) : PaneEntriesState
 }
+
+// ── 内联展开（文件列表树状展开） ──────────────────────────────────────────
+
+/**
+ * 内联展开子项的加载状态。
+ * [parentLocation] 是展开的目录 location，[depth] 是嵌套深度（从 1 开始），
+ * [entries] 为 null 表示正在加载，非 null 表示已加载完成。
+ */
+data class InlineExpandedEntry(
+    val parentLocation: String,
+    val depth: Int,
+    val entries: List<VFile>? = null,
+    val error: Boolean = false,
+)
 
 // ── 面板目录树 ────────────────────────────────────────────────────────
 
@@ -192,6 +208,10 @@ interface PaneComponent {
     )
 
     fun restoreSession(snapshot: PaneSessionSnapshot)
+
+    // ── 内联展开 ────────────────────────────────────────────────────────
+
+    fun toggleInlineExpand(directoryLocation: String)
 
     // ── 面板目录树 ────────────────────────────────────────────────────
 
