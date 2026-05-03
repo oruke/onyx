@@ -16,6 +16,7 @@ import org.jetbrains.skia.MipmapMode
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
+import com.oruke.onyx.app.filesystem.ArchiveService
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
 import net.sf.sevenzipjbinding.SevenZip
@@ -145,34 +146,90 @@ object ThumbnailLoader {
         getCached(cacheKey)?.let { return it }
 
         return try {
-            val file = File(filePath)
-            if (!file.exists() || !file.isFile) return null
-            // 文件大小上限检查，避免大文件 readBytes() 导致 OOM
-            if (file.length() > MAX_FILE_SIZE_BYTES) return null
+            val bytes: ByteArray
+            if (ArchiveService.isArchiveLocation(filePath)) {
+                // archive:// 协议 → 从压缩包中提取字节
+                val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(filePath)
+                    ?: return null
+                if (innerPath.isBlank()) return null
+                bytes = extractArchiveEntryBytes(archivePath, innerPath) ?: return null
+            } else {
+                val file = File(filePath)
+                if (!file.exists() || !file.isFile) return null
+                if (file.length() > MAX_FILE_SIZE_BYTES) return null
+                bytes = file.readBytes()
+            }
 
-            // 1. 用 Skia 原生解码器读取（比 ImageIO 支持格式更多、颜色更准）
-            val bytes = file.readBytes()
             val skImage = SkiaImage.makeFromEncoded(bytes) ?: return null
 
             val w = skImage.width
             val h = skImage.height
 
-            // 2. 按比例计算目标尺寸（不放大）
             val scale = min(maxDimension.toFloat() / w, maxDimension.toFloat() / h)
                 .coerceAtMost(1f)
             val newW = max(1, (w * scale).toInt())
             val newH = max(1, (h * scale).toInt())
 
-            // 3. 纯 Skia 逐步缩放
             val scaled = progressiveDownscale(skImage, newW, newH)
-
-            // 4. 转换为 Compose ImageBitmap（SkiaImage 可直接转换）
             val composeBitmap = scaled.toComposeImageBitmap()
 
             putCache(cacheKey, composeBitmap)
             composeBitmap
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /**
+     * 从压缩包中提取单个条目的字节数据（同步，需在 IO 线程调用）。
+     */
+    private fun extractArchiveEntryBytes(archivePath: String, innerPath: String): ByteArray? {
+        val raf = RandomAccessFile(archivePath, "r")
+        val inStream = RandomAccessFileInStream(raf)
+        val archive = SevenZip.openInArchive(null, inStream)
+        try {
+            val numItems = archive.numberOfItems
+            var targetIndex = -1
+            for (i in 0 until numItems) {
+                val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                if (itemPath == innerPath) {
+                    targetIndex = i
+                    break
+                }
+            }
+            if (targetIndex < 0) return null
+
+            val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
+            if (size > MAX_ARCHIVE_IMAGE_BYTES) return null
+            val buffer = ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
+            val idx = targetIndex
+            archive.extract(
+                intArrayOf(idx),
+                false,
+                object : net.sf.sevenzipjbinding.IArchiveExtractCallback {
+                    override fun getStream(
+                        index: Int,
+                        extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode,
+                    ): ISequentialOutStream? {
+                        if (extractAskMode != net.sf.sevenzipjbinding.ExtractAskMode.EXTRACT) return null
+                        if (index != idx) return null
+                        return ISequentialOutStream { data ->
+                            buffer.write(data)
+                            data.size
+                        }
+                    }
+                    override fun prepareOperation(extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode) {}
+                    override fun setOperationResult(result: net.sf.sevenzipjbinding.ExtractOperationResult) {}
+                    override fun setTotal(total: Long) {}
+                    override fun setCompleted(complete: Long) {}
+                },
+            )
+            val result = buffer.toByteArray()
+            return if (result.isEmpty()) null else result
+        } finally {
+            archive.close()
+            inStream.close()
+            raf.close()
         }
     }
 

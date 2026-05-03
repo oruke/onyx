@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
@@ -37,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_extract_here
 import onyx.composeapp.generated.resources.msg_cancelled
 import onyx.composeapp.generated.resources.msg_copied_items
 import onyx.composeapp.generated.resources.msg_copy_failed
@@ -64,6 +66,7 @@ class DefaultRootComponent(
     private val externalOpenService: ExternalOpenService,
     private val settingsRepository: SettingsRepository,
     private val sessionRepository: SessionRepository,
+    private val archiveService: ArchiveService,
 ) : RootComponent {
     override val primaryPane: PaneComponent = DefaultPaneComponent(
         paneId = PaneId.PRIMARY,
@@ -685,6 +688,82 @@ class DefaultRootComponent(
             itemCount = selectedEntries.size,
             trashUnavailable = moveToTrashPreferred && !trashService.isSupported,
         )
+    }
+
+    override fun extractSelectedInPane(paneId: PaneId) {
+        val selectedEntries = selectedEntriesInPane(paneId)
+        if (selectedEntries.isEmpty()) return
+        val currentLocation = paneState(paneId).location
+
+        // 筛选出压缩文件
+        val archiveEntries = selectedEntries.filter { entry ->
+            entry.kind == VFileKind.FILE && ArchiveService.isArchive(entry.name)
+        }
+        if (archiveEntries.isEmpty()) return
+
+        val taskId = UUID.randomUUID().toString()
+        appendTask(
+            BackgroundTask(
+                id = taskId,
+                kind = BackgroundTaskKind.EXTRACT,
+                title = I18nMessage(Res.string.action_extract_here),
+                status = BackgroundTaskStatus.QUEUED,
+                detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                progress = 0f,
+                totalCount = archiveEntries.size,
+                startTimeMillis = System.currentTimeMillis(),
+            )
+        )
+
+        val job = scope.launch {
+            try {
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.RUNNING,
+                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                    progress = 0f,
+                )
+                archiveEntries.forEachIndexed { index, entry ->
+                    ensureActive()
+                    updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = I18nMessage(Res.string.msg_string_literal, entry.name),
+                        progress = index.toFloat() / archiveEntries.size,
+                    )
+                    archiveService.extract(
+                        archivePath = entry.location,
+                        targetDirectory = currentLocation,
+                    ).getOrThrow()
+                }
+
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.SUCCEEDED,
+                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                    progress = 1f,
+                    processedCount = archiveEntries.size,
+                )
+                refreshAllPanes()
+                scheduleTaskAutoCleanup(taskId)
+            } catch (_: CancellationException) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.CANCELLED,
+                    detail = I18nMessage(Res.string.msg_cancelled),
+                )
+            } catch (e: Throwable) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.FAILED,
+                    detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
+                )
+            }
+        }
+        taskJobs[taskId] = job
     }
 
     private fun executeDeleteRequest(request: PendingDeleteRequest) {

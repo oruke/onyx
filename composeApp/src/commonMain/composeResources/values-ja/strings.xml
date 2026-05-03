@@ -42,6 +42,7 @@
     <string name="action_cut">切り取り</string>
     <string name="action_paste">貼り付け</string>
     <string name="action_delete_selected">選択項目を削除</string>
+    <string name="action_extract_here">ここに解凍</string>
 
     <string name="action_layout_single">単一</string>
     <string name="action_layout_dual_vertical">左右分割</string>

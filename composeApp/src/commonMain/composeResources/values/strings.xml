@@ -42,6 +42,7 @@
     <string name="action_cut">Cut</string>
     <string name="action_paste">Paste</string>
     <string name="action_delete_selected">Delete Selected</string>
+    <string name="action_extract_here">Extract Here</string>
 
     <string name="action_layout_single">Single</string>
     <string name="action_layout_dual_vertical">Dual Vertical</string>

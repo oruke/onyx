@@ -34,11 +34,23 @@ class ArchiveService {
         private val ARCHIVE_EXTENSIONS = setOf(
             "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz",
             "lzma", "cab", "iso", "arj", "lzh", "z", "cpio",
+            "cbz", "cbr", "epub",
+        )
+        // tar.xx 双扩展名
+        private val ARCHIVE_COMPOUND_EXTENSIONS = setOf(
+            "tar.gz", "tar.bz2", "tar.xz", "tar.lzma", "tar.zst",
         )
 
         fun isArchive(fileName: String): Boolean {
-            val ext = fileName.substringAfterLast('.', "").lowercase()
+            val lower = fileName.lowercase()
+            if (ARCHIVE_COMPOUND_EXTENSIONS.any { lower.endsWith(".$it") }) return true
+            val ext = lower.substringAfterLast('.', "")
             return ext in ARCHIVE_EXTENSIONS
+        }
+
+        /** 判断 location 是否为 archive:// 协议 */
+        fun isArchiveLocation(location: String): Boolean {
+            return location.startsWith(ARCHIVE_SCHEME)
         }
 
         fun archiveLocation(archivePath: String, entryPath: String = ""): String {
@@ -51,6 +63,33 @@ class ArchiveService {
             val bangSlash = rest.indexOf("!/")
             if (bangSlash < 0) return null
             return rest.substring(0, bangSlash) to rest.substring(bangSlash + 2)
+        }
+
+        /**
+         * 计算 archive:// location 的上级路径。
+         * - 压缩包内部子目录 → 上级内部路径
+         * - 压缩包根 → 压缩包所在的物理目录
+         */
+        fun archiveParentLocation(location: String): String? {
+            val (archivePath, innerPath) = parseArchiveLocation(location) ?: return null
+            if (innerPath.isBlank()) {
+                // 已在压缩包根 → 返回压缩包所在的物理目录
+                return java.nio.file.Path.of(archivePath).parent?.toString()
+            }
+            val trimmed = innerPath.trimEnd('/')
+            val lastSlash = trimmed.lastIndexOf('/')
+            val parentInner = if (lastSlash > 0) trimmed.substring(0, lastSlash) else ""
+            return archiveLocation(archivePath, parentInner)
+        }
+
+        /** 从 archive location 提取显示标题 */
+        fun archiveLocationTitle(location: String): String {
+            val (archivePath, innerPath) = parseArchiveLocation(location) ?: return location
+            if (innerPath.isBlank()) {
+                return java.nio.file.Path.of(archivePath).fileName?.toString() ?: archivePath
+            }
+            val trimmed = innerPath.trimEnd('/')
+            return trimmed.substringAfterLast('/')
         }
     }
 
@@ -137,6 +176,59 @@ class ArchiveService {
                     false,
                     ArchiveExtractCallback(archive, targetDir, prefix),
                 )
+            }
+        }
+    }
+
+    /**
+     * 从压缩包中提取单个文件到内存字节数组。
+     *
+     * @param archivePath 压缩包物理路径
+     * @param innerPath   压缩包内条目路径
+     * @return 文件字节数组，如果未找到则返回 null
+     */
+    suspend fun extractToBytes(
+        archivePath: String,
+        innerPath: String,
+    ): Result<ByteArray?> = withContext(Dispatchers.IO) {
+        runCatching {
+            openArchive(archivePath).use { archive ->
+                val numItems = archive.numberOfItems
+                var targetIndex = -1
+                for (i in 0 until numItems) {
+                    val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                    if (itemPath == innerPath) {
+                        targetIndex = i
+                        break
+                    }
+                }
+                if (targetIndex < 0) return@runCatching null
+
+                val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
+                val buffer = java.io.ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
+                val idx = targetIndex
+                archive.extract(
+                    intArrayOf(idx),
+                    false,
+                    object : IArchiveExtractCallback {
+                        override fun getStream(
+                            index: Int,
+                            extractAskMode: ExtractAskMode,
+                        ): ISequentialOutStream? {
+                            if (extractAskMode != ExtractAskMode.EXTRACT) return null
+                            if (index != idx) return null
+                            return ISequentialOutStream { data ->
+                                buffer.write(data)
+                                data.size
+                            }
+                        }
+                        override fun prepareOperation(extractAskMode: ExtractAskMode) {}
+                        override fun setOperationResult(result: ExtractOperationResult) {}
+                        override fun setTotal(total: Long) {}
+                        override fun setCompleted(complete: Long) {}
+                    },
+                )
+                buffer.toByteArray()
             }
         }
     }

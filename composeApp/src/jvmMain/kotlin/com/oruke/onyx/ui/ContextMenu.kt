@@ -39,6 +39,7 @@ import onyx.composeapp.generated.resources.action_copy
 import onyx.composeapp.generated.resources.action_copy_path
 import onyx.composeapp.generated.resources.action_cut
 import onyx.composeapp.generated.resources.action_delete_selected
+import onyx.composeapp.generated.resources.action_extract_here
 import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
@@ -65,12 +66,14 @@ internal fun BoxScope.PaneContextMenu(
     canRenameSelection: Boolean,
     canCopyPath: Boolean,
     canPaste: Boolean,
+    canExtractSelection: Boolean,
     onOpenSelection: () -> Unit,
     onOpenSelectionInNewTab: () -> Unit,
     onRenameSelection: () -> Unit,
     onCreateFile: () -> Unit,
     onCreateDirectory: () -> Unit,
     onDeleteSelection: () -> Unit,
+    onExtractSelection: () -> Unit,
     onCopyPath: () -> Unit,
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
@@ -149,6 +152,14 @@ internal fun BoxScope.PaneContextMenu(
                 shortcutHint = "Del",
                 onClick = onDeleteSelection,
             )
+            if (canExtractSelection) {
+                ContextMenuItem(
+                    text = stringResource(Res.string.action_extract_here),
+                    enabled = true,
+                    iconKey = AllIconsKeys.Actions.Uninstall,
+                    onClick = onExtractSelection,
+                )
+            }
             ContextMenuItem(
                 text = stringResource(Res.string.action_copy_path),
                 enabled = canCopyPath,

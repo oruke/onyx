@@ -128,7 +128,12 @@ class DefaultPaneComponent(
     }
 
     override fun goUp() {
-        val parentLocation = Path.of(mutableState.value.location).parent?.pathString ?: return
+        val currentLocation = mutableState.value.location
+        val parentLocation = if (ArchiveService.isArchiveLocation(currentLocation)) {
+            ArchiveService.archiveParentLocation(currentLocation) ?: return
+        } else {
+            Path.of(currentLocation).parent?.pathString ?: return
+        }
         openDirectory(parentLocation)
     }
 
@@ -148,13 +153,60 @@ class DefaultPaneComponent(
             }
 
             VFileKind.FILE -> {
+                val isInsideArchive = ArchiveService.isArchiveLocation(entry.location)
                 // 压缩包 → 以文件夹方式浏览
                 if (ArchiveService.isArchive(entry.name)) {
-                    openDirectory(ArchiveService.archiveLocation(entry.location))
+                    if (isInsideArchive) {
+                        // 嵌套压缩包：暂不支持，忽略
+                    } else {
+                        openDirectory(ArchiveService.archiveLocation(entry.location))
+                    }
                 } else if (onOpenImageViewer != null && isImageFileName(entry.name)) {
                     val allImages = currentVisibleEntries()
                         .filter { it.kind == VFileKind.FILE && isImageFileName(it.name) }
                     onOpenImageViewer.invoke(entry, allImages)
+                } else if (isInsideArchive) {
+                    // archive:// 内的普通文件 → 先提取到临时目录再外部打开
+                    scope.launch {
+                        try {
+                            val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(entry.location)
+                                ?: return@launch
+                            val archiveService = ArchiveService()
+                            val bytesResult = archiveService.extractToBytes(archivePath, innerPath)
+                            val bytes = bytesResult.getOrNull()
+                            if (bytes == null || bytes.isEmpty()) {
+                                updateFailure(
+                                    tabId = tab.id,
+                                    kind = PaneOperationFeedbackKind.OPEN_FAILED,
+                                    detail = I18nMessage(Res.string.msg_string_literal, "Extract failed"),
+                                )
+                                return@launch
+                            }
+                            // 写入临时文件
+                            val tempDir = java.nio.file.Files.createTempDirectory("onyx-archive-")
+                            val tempFile = tempDir.resolve(entry.name)
+                            java.nio.file.Files.write(tempFile, bytes)
+                            tempFile.toFile().deleteOnExit()
+                            tempDir.toFile().deleteOnExit()
+
+                            val tempVFile = entry.copy(location = tempFile.toString())
+                            externalOpenService.open(tempVFile)
+                                .onSuccess { clearOperationFeedback(tab.id) }
+                                .onFailure { failure ->
+                                    updateFailure(
+                                        tabId = tab.id,
+                                        kind = PaneOperationFeedbackKind.OPEN_FAILED,
+                                        detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
+                                    )
+                                }
+                        } catch (e: Exception) {
+                            updateFailure(
+                                tabId = tab.id,
+                                kind = PaneOperationFeedbackKind.OPEN_FAILED,
+                                detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
+                            )
+                        }
+                    }
                 } else {
                     scope.launch {
                         externalOpenService.open(entry)
@@ -995,6 +1047,8 @@ class DefaultPaneComponent(
      */
     private fun startWatching(location: String) {
         fileWatcherJob?.cancel()
+        // 压缩包内部无文件系统事件，跳过监听
+        if (ArchiveService.isArchiveLocation(location)) return
         val path = try {
             Path.of(location)
         } catch (_: Exception) {
@@ -1346,6 +1400,7 @@ class DefaultPaneComponent(
     }
 
     private fun normalizeLocation(location: String): String {
+        if (ArchiveService.isArchiveLocation(location)) return location
         return Path.of(location).normalize().toAbsolutePath().pathString
     }
 
@@ -1469,6 +1524,9 @@ private fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
 }
 
 private fun locationTitle(location: String): String {
+    if (ArchiveService.isArchiveLocation(location)) {
+        return ArchiveService.archiveLocationTitle(location)
+    }
     val path = Path.of(location)
     return path.fileName?.pathString?.ifBlank { location } ?: path.pathString
 }

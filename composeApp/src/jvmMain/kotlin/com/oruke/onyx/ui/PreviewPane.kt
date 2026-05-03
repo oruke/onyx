@@ -181,6 +181,10 @@ internal fun PreviewPane(
                     LaunchedEffect(selectedEntry.location) {
                         previewText = withContext(Dispatchers.IO) {
                             try {
+                                // archive:// 路径暂不支持文本预览
+                                if (selectedEntry.location.startsWith("archive://")) {
+                                    return@withContext unavailableText
+                                }
                                 val path = Path.of(selectedEntry.location)
                                 // 限制仅读取 1MB 以下的文件，防止 OOM (Out Of Memory)
                                 if (Files.exists(path) && Files.size(path) < 1024 * 1024) {

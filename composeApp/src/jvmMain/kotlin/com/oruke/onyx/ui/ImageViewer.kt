@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.panpf.zoomimage.ZoomImage
 import com.github.panpf.zoomimage.compose.rememberZoomState
+import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.rememberThumbnail
@@ -96,19 +97,31 @@ internal fun ImageViewerContent(
     LaunchedEffect(currentFile.location) {
         nativeResolution = withContext(Dispatchers.IO) {
             try {
-                val path = Path.of(currentFile.location)
-                if (Files.exists(path)) {
-                    val reader = ImageIO.getImageReadersBySuffix(
-                        currentFile.name.substringAfterLast('.', "")
-                    )
-                    if (reader.hasNext()) {
-                        val r = reader.next()
-                        ImageIO.createImageInputStream(path.toFile()).use { stream ->
-                            r.input = stream
-                            IntSize(r.getWidth(0), r.getHeight(0))
-                        }
+                if (ArchiveService.isArchiveLocation(currentFile.location)) {
+                    // archive:// → 从压缩包提取字节后解码
+                    val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(currentFile.location)
+                        ?: return@withContext null
+                    if (innerPath.isBlank()) return@withContext null
+                    val archiveService = ArchiveService()
+                    val bytesResult = archiveService.extractToBytes(archivePath, innerPath)
+                    val bytes = bytesResult.getOrNull() ?: return@withContext null
+                    val skImg = org.jetbrains.skia.Image.makeFromEncoded(bytes)
+                    IntSize(skImg.width, skImg.height)
+                } else {
+                    val path = Path.of(currentFile.location)
+                    if (Files.exists(path)) {
+                        val reader = ImageIO.getImageReadersBySuffix(
+                            currentFile.name.substringAfterLast('.', "")
+                        )
+                        if (reader.hasNext()) {
+                            val r = reader.next()
+                            ImageIO.createImageInputStream(path.toFile()).use { stream ->
+                                r.input = stream
+                                IntSize(r.getWidth(0), r.getHeight(0))
+                            }
+                        } else null
                     } else null
-                } else null
+                }
             } catch (_: Exception) {
                 null
             }

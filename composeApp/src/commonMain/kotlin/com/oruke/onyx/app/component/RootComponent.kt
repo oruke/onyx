@@ -156,6 +156,8 @@ interface RootComponent {
 
     fun requestDeleteSelectedInPane(paneId: PaneId)
 
+    fun extractSelectedInPane(paneId: PaneId)
+
     fun dismissTask(taskId: String)
 
     fun cancelTask(taskId: String)

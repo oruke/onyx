@@ -42,6 +42,7 @@
     <string name="action_cut">剪切</string>
     <string name="action_paste">粘贴</string>
     <string name="action_delete_selected">删除所选</string>
+    <string name="action_extract_here">解压到此处</string>
 
     <string name="action_layout_single">单栏</string>
     <string name="action_layout_dual_vertical">左右双栏</string>

@@ -37,6 +37,7 @@ fun rememberRootComponent(): RootComponent {
             trashService = trashService,
             settingsRepository = JsonSettingsRepository(),
             sessionRepository = JsonSessionRepository(),
+            archiveService = archiveService,
         )
     }
 

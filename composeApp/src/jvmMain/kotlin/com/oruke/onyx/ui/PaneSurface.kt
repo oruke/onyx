@@ -98,6 +98,7 @@ internal fun PaneSurface(
     filterQuery: String,
     onFilterQueryChange: (String) -> Unit,
     onDeleteSelection: () -> Unit,
+    onExtractSelection: () -> Unit,
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
     onPaste: () -> Unit,
@@ -559,6 +560,9 @@ internal fun PaneSurface(
                         canRenameSelection = selectedCount == 1,
                         canCopyPath = selectedCount > 0,
                         canPaste = canPaste,
+                        canExtractSelection = selectedCount > 0 && selectedEntries.any { entry ->
+                            entry.kind == VFileKind.FILE && com.oruke.onyx.app.filesystem.ArchiveService.isArchive(entry.name)
+                        },
                         onOpenSelection = {
                             onOpenSelected()
                             showContextMenu = false
@@ -581,6 +585,10 @@ internal fun PaneSurface(
                         },
                         onDeleteSelection = {
                             onDeleteSelection()
+                            showContextMenu = false
+                        },
+                        onExtractSelection = {
+                            onExtractSelection()
                             showContextMenu = false
                         },
                         onCopyPath = {
