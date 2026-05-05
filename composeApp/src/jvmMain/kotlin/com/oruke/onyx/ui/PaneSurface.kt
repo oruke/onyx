@@ -557,6 +557,8 @@ internal fun PaneSurface(
                         onActivate()
                         component.toggleInlineExpand(location)
                     },
+                    pendingScrollToEntryId = state.pendingScrollToEntryId,
+                    onConsumeScroll = component::consumePendingScroll,
                 )
 
                 if (showContextMenu) {

@@ -166,6 +166,8 @@ internal fun PaneEntriesContent(
     inlineExpandedLocations: Set<String> = emptySet(),
     inlineExpandedEntries: Map<String, com.oruke.onyx.app.component.InlineExpandedEntry> = emptyMap(),
     onToggleInlineExpand: (String) -> Unit = {},
+    pendingScrollToEntryId: String? = null,
+    onConsumeScroll: () -> Unit = {},
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -505,6 +507,17 @@ internal fun PaneEntriesContent(
                                 adapter = rememberScrollbarAdapter(gridState),
                                 modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                             )
+                            // Auto-scroll to focused entry on navigation (one-shot)
+                            if (pendingScrollToEntryId != null) {
+                                LaunchedEffect(pendingScrollToEntryId) {
+                                    val offset = if (shouldCreateInlineEntry) 1 else 0
+                                    val index = state.entries.indexOfFirst { it.id == pendingScrollToEntryId }
+                                    if (index >= 0) {
+                                        gridState.animateScrollToItem(index + offset)
+                                    }
+                                    onConsumeScroll()
+                                }
+                            }
                         }
                     } else {
                         // DETAILS 模式：支持内联展开的扁平化树列表
@@ -620,6 +633,17 @@ internal fun PaneEntriesContent(
                                 adapter = rememberScrollbarAdapter(listState),
                                 modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                             )
+                            // Auto-scroll to focused entry on navigation (one-shot)
+                            if (pendingScrollToEntryId != null) {
+                                LaunchedEffect(pendingScrollToEntryId) {
+                                    val offset = if (shouldCreateInlineEntry) 1 else 0
+                                    val index = flattenedEntries.indexOfFirst { it.entry.id == pendingScrollToEntryId }
+                                    if (index >= 0) {
+                                        listState.animateScrollToItem(index + offset)
+                                    }
+                                    onConsumeScroll()
+                                }
+                            }
                         }
                     }
                 }

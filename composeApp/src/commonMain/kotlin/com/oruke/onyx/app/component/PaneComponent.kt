@@ -37,6 +37,7 @@ data class PaneState(
     val entriesState: PaneEntriesState,
     val inlineExpandedLocations: Set<String> = emptySet(),
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
+    val pendingScrollToEntryId: String? = null,
 )
 
 data class PaneTabState(
@@ -64,6 +65,7 @@ data class PaneTabState(
     val allEntries: List<VFile>,
     val backStack: List<String>,
     val forwardStack: List<String>,
+    val pendingScrollToEntryId: String? = null,
 )
 
 sealed interface PaneEntriesState {
@@ -190,4 +192,7 @@ interface PaneComponent {
     // ── 内联展开 ────────────────────────────────────────────────────────
 
     fun toggleInlineExpand(directoryLocation: String)
+
+    /** UI 滚动到 pendingScrollToEntryId 后调用，清除待滚动标记 */
+    fun consumePendingScroll()
 }

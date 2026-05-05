@@ -1,6 +1,6 @@
 # Maintainer: oruke
 pkgname=onyx-filemanager
-pkgver=1.0.0
+pkgver=$(grep '^app.version=' "${startdir}/../../gradle.properties" | cut -d= -f2)
 pkgrel=1
 pkgdesc='Professional dual-pane file manager built with Compose Desktop'
 arch=('x86_64')

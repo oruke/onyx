@@ -75,7 +75,7 @@ fun main() = application {
 
         DecoratedWindow(
             onCloseRequest = ::exitApplication,
-            title = "Onyx",
+            title = "Onyx ${BuildConfig.VERSION}",
             icon = painterResource(Res.drawable.onyx_logo),
             state = mainWindowState,
         ) {

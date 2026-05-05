@@ -63,6 +63,12 @@ class DefaultPaneComponent(
     private val fileWatcher = FileWatcher()
     private var fileWatcherJob: Job? = null
 
+    /**
+     * key = tabId, value = entry name to auto-select+scroll after load.
+     * Consumed in [loadTab] on success.
+     */
+    private val pendingFocusEntryName = mutableMapOf<String, String>()
+
     init {
         refresh()
         startWatching(mutableState.value.location)
@@ -82,6 +88,11 @@ class DefaultPaneComponent(
     override fun goBack() {
         val tab = activeTab() ?: return
         val previousLocation = tab.backStack.lastOrNull() ?: return
+        // If going back to a parent, pre-set focus to current dir name
+        val currentDirName = locationBaseName(tab.location)
+        if (currentDirName != null && isParentOf(previousLocation, tab.location)) {
+            pendingFocusEntryName[tab.id] = currentDirName
+        }
         val nextBackStack = tab.backStack.dropLast(1)
         val nextForwardStack = tab.forwardStack + tab.location
         updateTab(tab.id) { currentTab ->
@@ -128,16 +139,31 @@ class DefaultPaneComponent(
     }
 
     override fun goUp() {
-        val currentLocation = mutableState.value.location
+        val tab = activeTab() ?: return
+        val currentLocation = tab.location
         val parentLocation = if (ArchiveService.isArchiveLocation(currentLocation)) {
             ArchiveService.archiveParentLocation(currentLocation) ?: return
         } else {
             Path.of(currentLocation).parent?.pathString ?: return
         }
-        openDirectory(parentLocation)
+        val currentDirName = locationBaseName(currentLocation)
+        if (currentDirName != null) {
+            pendingFocusEntryName[tab.id] = currentDirName
+        }
+        navigateActiveTab(
+            location = parentLocation,
+            recordHistory = true,
+        )
     }
 
     override fun openDirectory(location: String) {
+        val tab = activeTab()
+        if (tab != null) {
+            val childName = childSegmentOnPath(ancestor = location, descendant = tab.location)
+            if (childName != null) {
+                pendingFocusEntryName[tab.id] = childName
+            }
+        }
         navigateActiveTab(
             location = location,
             recordHistory = true,
@@ -818,6 +844,15 @@ class DefaultPaneComponent(
         }
     }
 
+    override fun consumePendingScroll() {
+        val tab = activeTab() ?: return
+        if (tab.pendingScrollToEntryId != null) {
+            updateTab(tab.id) { currentTab ->
+                currentTab.copy(pendingScrollToEntryId = null)
+            }
+        }
+    }
+
     private fun loadInlineExpandChildren(location: String, depth: Int) {
         scope.launch {
             fileRepository.list(location).fold(
@@ -903,14 +938,30 @@ class DefaultPaneComponent(
             val result = fileRepository.list(location)
             result.fold(
                 onSuccess = { entries ->
+                    val focusName = pendingFocusEntryName.remove(tabId)
+                    val focusEntry = if (focusName != null) {
+                        entries.firstOrNull { it.name == focusName }
+                    } else null
                     updateTab(tabId) { currentTab ->
-                        currentTab.copy(
-                            allEntries = entries,
-                            entriesState = PaneEntriesState.Ready(entries),
-                        )
+                        if (focusEntry != null) {
+                            currentTab.copy(
+                                allEntries = entries,
+                                entriesState = PaneEntriesState.Ready(entries),
+                                selectedEntryIds = setOf(focusEntry.id),
+                                selectionAnchorId = focusEntry.id,
+                                selectionFocusId = focusEntry.id,
+                                pendingScrollToEntryId = focusEntry.id,
+                            )
+                        } else {
+                            currentTab.copy(
+                                allEntries = entries,
+                                entriesState = PaneEntriesState.Ready(entries),
+                            )
+                        }
                     }
                 },
                 onFailure = { failure ->
+                    pendingFocusEntryName.remove(tabId)
                     updateTab(tabId) { currentTab ->
                         currentTab.copy(entriesState = PaneEntriesState.Failure(failure.message))
                     }
@@ -1338,6 +1389,7 @@ private fun PaneTabState.toPaneState(
         entriesState = entriesState,
         inlineExpandedLocations = inlineExpandedLocations,
         inlineExpandedEntries = inlineExpandedEntries,
+        pendingScrollToEntryId = pendingScrollToEntryId,
     )
 }
 
@@ -1427,3 +1479,43 @@ private fun isImageFileName(fileName: String): Boolean {
     return ext in imageExtensions
 }
 
+/** Extract the last path segment (directory or file name) from a location. */
+private fun locationBaseName(location: String): String? {
+    if (ArchiveService.isArchiveLocation(location)) {
+        return ArchiveService.archiveLocationTitle(location).takeIf { it.isNotBlank() }
+    }
+    return try {
+        Path.of(location).fileName?.pathString?.takeIf { it.isNotBlank() }
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/** Check if [parent] is the direct parent of [child]. */
+private fun isParentOf(parent: String, child: String): Boolean {
+    return try {
+        val parentPath = Path.of(parent).toAbsolutePath().normalize()
+        val childPath = Path.of(child).toAbsolutePath().normalize()
+        childPath.parent == parentPath
+    } catch (_: Exception) {
+        false
+    }
+}
+
+/**
+ * If [ancestor] is a proper ancestor of [descendant], return the name of the
+ * immediate child segment on the path from [ancestor] to [descendant].
+ * e.g. ancestor="/a/b", descendant="/a/b/c/d" → "c"
+ * Returns null if [ancestor] is not a proper ancestor of [descendant].
+ */
+private fun childSegmentOnPath(ancestor: String, descendant: String): String? {
+    return try {
+        val ancestorPath = Path.of(ancestor).toAbsolutePath().normalize()
+        val descendantPath = Path.of(descendant).toAbsolutePath().normalize()
+        if (!descendantPath.startsWith(ancestorPath) || descendantPath == ancestorPath) return null
+        val relative = ancestorPath.relativize(descendantPath)
+        relative.getName(0)?.pathString
+    } catch (_: Exception) {
+        null
+    }
+}

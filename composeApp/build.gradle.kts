@@ -53,6 +53,8 @@ kotlin {
 }
 
 
+val appVersion: String = project.property("app.version") as String
+
 compose.desktop {
     application {
         mainClass = "com.oruke.onyx.MainKt"
@@ -60,10 +62,39 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "com.oruke.onyx"
-            packageVersion = "1.0.0"
+            packageVersion = appVersion
         }
         buildTypes.release.proguard {
             configurationFiles.from(project.file("compose-desktop.pro"))
         }
     }
+}
+
+// 生成 BuildConfig.kt，供运行时读取版本号（兼容 Configuration Cache）
+val generateBuildConfig by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/buildconfig/com/oruke/onyx")
+    val version = appVersion // 在配置阶段捕获值，避免序列化 script 对象
+    outputs.dir(outputDir)
+    inputs.property("appVersion", version)
+    doLast {
+        val dir = outputDir.get().asFile
+        dir.mkdirs()
+        dir.resolve("BuildConfig.kt").writeText(
+            buildString {
+                appendLine("package com.oruke.onyx")
+                appendLine()
+                appendLine("object BuildConfig {")
+                appendLine("    const val VERSION = \"$version\"")
+                appendLine("}")
+            }
+        )
+    }
+}
+
+kotlin.sourceSets.named("jvmMain") {
+    kotlin.srcDir(generateBuildConfig.map { layout.buildDirectory.dir("generated/buildconfig") })
+}
+
+tasks.named("compileKotlinJvm") {
+    dependsOn(generateBuildConfig)
 }
