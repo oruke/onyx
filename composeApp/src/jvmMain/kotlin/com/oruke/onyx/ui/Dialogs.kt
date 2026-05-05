@@ -1,10 +1,15 @@
 package com.oruke.onyx.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -26,6 +32,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +61,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
@@ -61,10 +70,13 @@ import com.oruke.onyx.app.component.CreateDirectoriesDialogError
 import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.DeleteMode
+import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.ViewMode
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
@@ -103,9 +115,26 @@ import onyx.composeapp.generated.resources.label_settings_title
 import onyx.composeapp.generated.resources.label_sidebar_visibility
 import onyx.composeapp.generated.resources.label_status_bar_visibility
 import onyx.composeapp.generated.resources.label_ui_scale
+import onyx.composeapp.generated.resources.label_settings_general
+import onyx.composeapp.generated.resources.label_settings_layout
+import onyx.composeapp.generated.resources.label_settings_appearance
+import onyx.composeapp.generated.resources.label_settings_columns
+import onyx.composeapp.generated.resources.label_language
+import onyx.composeapp.generated.resources.label_locale_system
+import onyx.composeapp.generated.resources.label_locale_english
+import onyx.composeapp.generated.resources.label_locale_chinese
+import onyx.composeapp.generated.resources.label_locale_japanese
+import onyx.composeapp.generated.resources.label_list_row_height
+import onyx.composeapp.generated.resources.label_list_font_size
+import onyx.composeapp.generated.resources.label_zebra_stripe
+import onyx.composeapp.generated.resources.label_column_name
+import onyx.composeapp.generated.resources.label_column_type
+import onyx.composeapp.generated.resources.label_column_size
+import onyx.composeapp.generated.resources.label_column_modified
 import onyx.composeapp.generated.resources.message_apply_to_remaining_conflicts
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
+import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
 
 @Composable
@@ -114,248 +143,253 @@ internal fun SettingsDialog(
     onDraftChange: (OnyxSettings) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    initialWidth: Int = 720,
+    initialHeight: Int = 520,
+    onWindowSizeChanged: ((width: Int, height: Int) -> Unit)? = null,
 ) {
     val draft = state.draft
     val title = stringResource(Res.string.label_settings_title)
+    var category by remember { mutableStateOf(SettingsCategory.GENERAL) }
+
+    val dialogState = rememberDialogState(width = initialWidth.dp, height = initialHeight.dp)
+
+    LaunchedEffect(dialogState) {
+        snapshotFlow { dialogState.size }
+            .collect { size ->
+                val w = size.width; val h = size.height
+                if (w != Dp.Unspecified && h != Dp.Unspecified) {
+                    onWindowSizeChanged?.invoke(w.value.toInt(), h.value.toInt())
+                }
+            }
+    }
+
     DialogWindow(
         onCloseRequest = onDismiss,
         title = title,
-        state = rememberDialogState(width = 560.dp, height = 420.dp),
-        resizable = false,
+        state = dialogState,
+        resizable = true,
     ) {
+        window.minimumSize = java.awt.Dimension(600, 420)
         IntUiTheme(isDark = isSystemInDarkTheme()) {
-            DialogFrame(
-                title = title,
-                body = {
+            val palette = LocalOnyxPalette.current
+            val appearance = LocalOnyxAppearance.current
+            val bodyFs = appearance.listFontSize
+            val labelFs = appearance.headerFontSize
+
+            Column(
+                modifier = Modifier.fillMaxSize().background(palette.appBackground).padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(title, fontSize = (bodyFs.value + 1).sp, fontWeight = FontWeight.SemiBold, color = palette.foreground)
+
+                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    // ── 左侧分类导航 ──
                     Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.width(120.dp).fillMaxHeight().padding(end = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        SettingsSection(
-                            title = stringResource(Res.string.label_default_layout_mode),
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SettingsOption(
-                                    selected = draft.defaultLayoutMode == PaneLayoutMode.SINGLE,
-                                    text = stringResource(Res.string.action_layout_single),
-                                    onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.SINGLE)) },
-                                )
-                                SettingsOption(
-                                    selected = draft.defaultLayoutMode == PaneLayoutMode.DUAL_VERTICAL,
-                                    text = stringResource(Res.string.action_layout_dual_vertical),
-                                    onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_VERTICAL)) },
-                                )
-                                SettingsOption(
-                                    selected = draft.defaultLayoutMode == PaneLayoutMode.DUAL_HORIZONTAL,
-                                    text = stringResource(Res.string.action_layout_dual_horizontal),
-                                    onClick = { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_HORIZONTAL)) },
-                                )
-                            }
+                        SettingsCategory.entries.forEach { cat ->
+                            SettingsNavItem(
+                                text = when (cat) {
+                                    SettingsCategory.GENERAL -> stringResource(Res.string.label_settings_general)
+                                    SettingsCategory.LAYOUT -> stringResource(Res.string.label_settings_layout)
+                                    SettingsCategory.APPEARANCE -> stringResource(Res.string.label_settings_appearance)
+                                    SettingsCategory.COLUMNS -> stringResource(Res.string.label_settings_columns)
+                                },
+                                selected = category == cat,
+                                accent = palette.accent,
+                                foreground = palette.foreground,
+                                fontSize = bodyFs,
+                                onClick = { category = cat },
+                            )
                         }
+                    }
 
-                        SettingsSection(
-                            title = stringResource(Res.string.label_default_view_mode),
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SettingsOption(
-                                    selected = draft.defaultViewMode == ViewMode.DETAILS,
-                                    text = stringResource(Res.string.label_mode_details),
-                                    onClick = { onDraftChange(draft.copy(defaultViewMode = ViewMode.DETAILS)) },
-                                )
-                                SettingsOption(
-                                    selected = draft.defaultViewMode == ViewMode.GALLERY,
-                                    text = stringResource(Res.string.label_mode_gallery),
-                                    onClick = { onDraftChange(draft.copy(defaultViewMode = ViewMode.GALLERY)) },
-                                )
+                    Divider(org.jetbrains.jewel.ui.Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
+
+                    // ── 右侧内容区 ──
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        when (category) {
+                            SettingsCategory.GENERAL -> {
+                                SettingsSection(stringResource(Res.string.label_language), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        listOf(
+                                            AppLocale.SYSTEM to Res.string.label_locale_system,
+                                            AppLocale.ENGLISH to Res.string.label_locale_english,
+                                            AppLocale.SIMPLIFIED_CHINESE to Res.string.label_locale_chinese,
+                                            AppLocale.JAPANESE to Res.string.label_locale_japanese,
+                                        ).forEach { (locale, res) ->
+                                            SettingsOption(
+                                                selected = draft.preferredLocale == locale,
+                                                text = stringResource(res),
+                                                fontSize = labelFs,
+                                                onClick = { onDraftChange(draft.copy(preferredLocale = locale)) },
+                                            )
+                                        }
+                                    }
+                                }
+                                SettingsSection(stringResource(Res.string.label_delete_mode), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SettingsOption(draft.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED, stringResource(Res.string.label_delete_mode_move_to_trash), labelFs) { onDraftChange(draft.copy(deleteMode = DeleteMode.MOVE_TO_TRASH_PREFERRED)) }
+                                        SettingsOption(draft.deleteMode == DeleteMode.PERMANENT, stringResource(Res.string.label_delete_mode_permanent), labelFs) { onDraftChange(draft.copy(deleteMode = DeleteMode.PERMANENT)) }
+                                    }
+                                }
                             }
-                        }
 
-                        SettingsSection(
-                            title = stringResource(Res.string.label_delete_mode),
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SettingsOption(
-                                    selected = draft.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED,
-                                    text = stringResource(Res.string.label_delete_mode_move_to_trash),
-                                    onClick = { onDraftChange(draft.copy(deleteMode = DeleteMode.MOVE_TO_TRASH_PREFERRED)) },
-                                )
-                                SettingsOption(
-                                    selected = draft.deleteMode == DeleteMode.PERMANENT,
-                                    text = stringResource(Res.string.label_delete_mode_permanent),
-                                    onClick = { onDraftChange(draft.copy(deleteMode = DeleteMode.PERMANENT)) },
-                                )
+                            SettingsCategory.LAYOUT -> {
+                                SettingsSection(stringResource(Res.string.label_default_layout_mode), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SettingsOption(draft.defaultLayoutMode == PaneLayoutMode.SINGLE, stringResource(Res.string.action_layout_single), labelFs) { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.SINGLE)) }
+                                        SettingsOption(draft.defaultLayoutMode == PaneLayoutMode.DUAL_VERTICAL, stringResource(Res.string.action_layout_dual_vertical), labelFs) { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_VERTICAL)) }
+                                        SettingsOption(draft.defaultLayoutMode == PaneLayoutMode.DUAL_HORIZONTAL, stringResource(Res.string.action_layout_dual_horizontal), labelFs) { onDraftChange(draft.copy(defaultLayoutMode = PaneLayoutMode.DUAL_HORIZONTAL)) }
+                                    }
+                                }
+                                SettingsSection(stringResource(Res.string.label_default_view_mode), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SettingsOption(draft.defaultViewMode == ViewMode.DETAILS, stringResource(Res.string.label_mode_details), labelFs) { onDraftChange(draft.copy(defaultViewMode = ViewMode.DETAILS)) }
+                                        SettingsOption(draft.defaultViewMode == ViewMode.GALLERY, stringResource(Res.string.label_mode_gallery), labelFs) { onDraftChange(draft.copy(defaultViewMode = ViewMode.GALLERY)) }
+                                    }
+                                }
+                                SettingsSection(stringResource(Res.string.label_sidebar_visibility), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SettingsOption(draft.sidebarVisible, stringResource(Res.string.label_setting_show), labelFs) { onDraftChange(draft.copy(sidebarVisible = true)) }
+                                        SettingsOption(!draft.sidebarVisible, stringResource(Res.string.label_setting_hide), labelFs) { onDraftChange(draft.copy(sidebarVisible = false)) }
+                                    }
+                                }
+                                SettingsSection(stringResource(Res.string.label_status_bar_visibility), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SettingsOption(draft.statusBarVisible, stringResource(Res.string.label_setting_show), labelFs) { onDraftChange(draft.copy(statusBarVisible = true)) }
+                                        SettingsOption(!draft.statusBarVisible, stringResource(Res.string.label_setting_hide), labelFs) { onDraftChange(draft.copy(statusBarVisible = false)) }
+                                    }
+                                }
                             }
-                        }
 
-                        SettingsSection(
-                            title = stringResource(Res.string.label_sidebar_visibility),
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SettingsOption(
-                                    selected = draft.sidebarVisible,
-                                    text = stringResource(Res.string.label_setting_show),
-                                    onClick = { onDraftChange(draft.copy(sidebarVisible = true)) },
-                                )
-                                SettingsOption(
-                                    selected = !draft.sidebarVisible,
-                                    text = stringResource(Res.string.label_setting_hide),
-                                    onClick = { onDraftChange(draft.copy(sidebarVisible = false)) },
-                                )
+                            SettingsCategory.APPEARANCE -> {
+                                SettingsSection(stringResource(Res.string.label_ui_scale), labelFs) {
+                                    SliderRow("${draft.uiScale}%", draft.uiScale, 75, 200, bodyFs) { onDraftChange(draft.copy(uiScale = it)) }
+                                }
+                                SettingsSection(stringResource(Res.string.label_list_row_height), labelFs) {
+                                    SliderRow("${draft.listRowHeightDp}dp", draft.listRowHeightDp, 16, 40, bodyFs) { onDraftChange(draft.copy(listRowHeightDp = it)) }
+                                }
+                                SettingsSection(stringResource(Res.string.label_list_font_size), labelFs) {
+                                    SliderRow("${draft.listFontSizeSp}sp", draft.listFontSizeSp, 10, 18, bodyFs) { onDraftChange(draft.copy(listFontSizeSp = it)) }
+                                }
+                                SettingsSection(stringResource(Res.string.label_zebra_stripe), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SettingsOption(draft.zebraStripeEnabled, stringResource(Res.string.label_setting_show), labelFs) { onDraftChange(draft.copy(zebraStripeEnabled = true)) }
+                                        SettingsOption(!draft.zebraStripeEnabled, stringResource(Res.string.label_setting_hide), labelFs) { onDraftChange(draft.copy(zebraStripeEnabled = false)) }
+                                    }
+                                }
                             }
-                        }
 
-                        SettingsSection(
-                            title = stringResource(Res.string.label_status_bar_visibility),
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                SettingsOption(
-                                    selected = draft.statusBarVisible,
-                                    text = stringResource(Res.string.label_setting_show),
-                                    onClick = { onDraftChange(draft.copy(statusBarVisible = true)) },
+                            SettingsCategory.COLUMNS -> {
+                                val columnEntries = listOf(
+                                    DetailsColumn.NAME to Res.string.label_column_name,
+                                    DetailsColumn.TYPE to Res.string.label_column_type,
+                                    DetailsColumn.SIZE to Res.string.label_column_size,
+                                    DetailsColumn.MODIFIED to Res.string.label_column_modified,
                                 )
-                                SettingsOption(
-                                    selected = !draft.statusBarVisible,
-                                    text = stringResource(Res.string.label_setting_hide),
-                                    onClick = { onDraftChange(draft.copy(statusBarVisible = false)) },
-                                )
-                            }
-                        }
-
-                        SettingsSection(
-                            title = stringResource(Res.string.label_ui_scale),
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                ) {
-                                    Text(
-                                        text = "${draft.uiScale}%",
-                                        fontSize = 11.sp,
-                                        color = LocalOnyxPalette.current.foreground,
-                                        modifier = Modifier.width(52.dp),
-                                    )
-                                    SettingsScaleSlider(
-                                        value = draft.uiScale,
-                                        min = 75,
-                                        max = 200,
-                                        onValueChange = { value -> onDraftChange(draft.copy(uiScale = value)) },
-                                    )
+                                columnEntries.forEach { (col, res) ->
+                                    val isName = col == DetailsColumn.NAME
+                                    val visible = !draft.hiddenDetailsColumns.contains(col)
+                                    SettingsSection(stringResource(res), labelFs) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            SettingsOption(visible, stringResource(Res.string.label_setting_show), labelFs) {
+                                                if (!isName) onDraftChange(draft.copy(hiddenDetailsColumns = draft.hiddenDetailsColumns - col))
+                                            }
+                                            SettingsOption(!visible && !isName, stringResource(Res.string.label_setting_hide), labelFs) {
+                                                if (!isName) onDraftChange(draft.copy(hiddenDetailsColumns = draft.hiddenDetailsColumns + col))
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                },
-                actions = {
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_close_menu),
-                        onClick = onDismiss,
-                    )
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_apply),
-                        emphasized = true,
-                        onClick = onConfirm,
-                    )
-                },
-            )
+                }
+
+                // ── 底部按钮 ──
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    DialogTextButton(stringResource(Res.string.action_close_menu), fontSize = bodyFs, onClick = onDismiss)
+                    DialogTextButton(stringResource(Res.string.action_apply), emphasized = true, fontSize = bodyFs, onClick = onConfirm)
+                }
+            }
         }
     }
 }
 
+private enum class SettingsCategory { GENERAL, LAYOUT, APPEARANCE, COLUMNS }
+
 @Composable
-internal fun SettingsSection(
-    title: String,
-    content: @Composable () -> Unit,
+private fun SettingsNavItem(
+    text: String, selected: Boolean, accent: Color, foreground: Color,
+    fontSize: TextUnit, onClick: () -> Unit,
 ) {
+    val src = remember { MutableInteractionSource() }
+    val hovered by src.collectIsHoveredAsState()
+    val bg by animateColorAsState(when { selected -> accent.copy(alpha = 0.14f); hovered -> accent.copy(alpha = 0.07f); else -> Color.Transparent }, tween(120))
+    val tc by animateColorAsState(when { selected -> accent; hovered -> accent.copy(alpha = 0.8f); else -> foreground }, tween(120))
+    Box(
+        modifier = Modifier.fillMaxWidth().hoverable(src)
+            .background(bg, RoundedCornerShape(5.dp))
+            .clickable(src, null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    ) { Text(text, fontSize = fontSize, color = tc, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal) }
+}
+
+@Composable
+internal fun SettingsSection(title: String, fontSize: TextUnit = 11.sp, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(
-            text = title,
-            fontSize = 12.sp,
-            color = LocalOnyxPalette.current.foreground,
-            fontWeight = FontWeight.Medium,
-        )
+        Text(title, fontSize = fontSize, color = LocalOnyxPalette.current.foreground, fontWeight = FontWeight.Medium)
         content()
     }
 }
 
 @Composable
-internal fun SettingsOption(
-    selected: Boolean,
-    text: String,
-    onClick: () -> Unit,
-) {
-    val background =
-        if (selected) LocalOnyxPalette.current.titleBarActiveBackground else LocalOnyxPalette.current.surface
+internal fun SettingsOption(selected: Boolean, text: String, fontSize: TextUnit = 11.sp, onClick: () -> Unit) {
+    val palette = LocalOnyxPalette.current
+    val src = remember { MutableInteractionSource() }
+    val hovered by src.collectIsHoveredAsState()
+    val bg by animateColorAsState(when { selected -> palette.accent.copy(alpha = 0.14f); hovered -> palette.accent.copy(alpha = 0.07f); else -> palette.surface }, tween(120))
+    val border by animateColorAsState(when { selected -> palette.accent; hovered -> palette.accent.copy(alpha = 0.4f); else -> palette.outlineVariant }, tween(120))
+    val tc by animateColorAsState(when { selected -> palette.accent; hovered -> palette.accent.copy(alpha = 0.85f); else -> palette.foreground }, tween(120))
     Box(
-        modifier = Modifier
-            .background(background, RoundedCornerShape(4.dp))
-            .border(
-                1.dp,
-                if (selected) LocalOnyxPalette.current.accent else LocalOnyxPalette.current.outlineVariant,
-                RoundedCornerShape(4.dp)
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+        modifier = Modifier.hoverable(src).background(bg, RoundedCornerShape(4.dp))
+            .border(1.dp, border, RoundedCornerShape(4.dp))
+            .clickable(src, null, onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            color = if (selected) LocalOnyxPalette.current.selectionForeground else LocalOnyxPalette.current.foreground,
-            fontSize = 11.sp,
-        )
+    ) { Text(text, color = tc, fontSize = fontSize) }
+}
+
+@Composable
+private fun SliderRow(label: String, value: Int, min: Int, max: Int, fontSize: TextUnit, onValueChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(label, fontSize = fontSize, color = LocalOnyxPalette.current.foreground, modifier = Modifier.width(52.dp))
+        SettingsScaleSlider(value, min, max, onValueChange)
     }
 }
 
 @Composable
-internal fun SettingsScaleSlider(
-    value: Int,
-    min: Int,
-    max: Int,
-    onValueChange: (Int) -> Unit,
-) {
+internal fun SettingsScaleSlider(value: Int, min: Int, max: Int, onValueChange: (Int) -> Unit) {
     val clampedValue = value.coerceIn(min, max)
     val fraction = ((clampedValue - min).toFloat() / (max - min)).coerceIn(0f, 1f)
-    val sliderWidthDp = 280
+    val sliderWidthDp = 240
     val density = androidx.compose.ui.platform.LocalDensity.current
     val sliderWidthPx = with(density) { sliderWidthDp.dp.toPx() }
-
     Box(
-        modifier = Modifier
-            .width(sliderWidthDp.dp)
-            .height(16.dp)
-            .pointerInput(Unit) {
-                detectDragGestures { change, _ ->
-                    val x = change.position.x.coerceIn(0f, sliderWidthPx)
-                    val newFraction = x / sliderWidthPx
-                    onValueChange((min + (newFraction * (max - min)).toInt()).coerceIn(min, max))
-                }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    val newFraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
-                    onValueChange((min + (newFraction * (max - min)).toInt()).coerceIn(min, max))
-                }
-            },
+        modifier = Modifier.width(sliderWidthDp.dp).height(16.dp)
+            .pointerInput(Unit) { detectDragGestures { change, _ -> val x = change.position.x.coerceIn(0f, sliderWidthPx); onValueChange((min + ((x / sliderWidthPx) * (max - min)).toInt()).coerceIn(min, max)) } }
+            .pointerInput(Unit) { detectTapGestures { offset -> onValueChange((min + ((offset.x / sliderWidthPx).coerceIn(0f, 1f) * (max - min)).toInt()).coerceIn(min, max)) } },
         contentAlignment = Alignment.CenterStart,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(3.dp)
-                .background(LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(1.dp)),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(fraction)
-                .height(3.dp)
-                .background(LocalOnyxPalette.current.accent, RoundedCornerShape(1.dp)),
-        )
-        Box(
-            modifier = Modifier
-                .offset(x = (fraction * (sliderWidthDp - 8)).dp)
-                .size(8.dp)
-                .background(LocalOnyxPalette.current.accent, RoundedCornerShape(4.dp)),
-        )
+        Box(Modifier.fillMaxWidth().height(3.dp).background(LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(1.dp)))
+        Box(Modifier.fillMaxWidth(fraction).height(3.dp).background(LocalOnyxPalette.current.accent, RoundedCornerShape(1.dp)))
+        Box(Modifier.offset(x = (fraction * (sliderWidthDp - 8)).dp).size(8.dp).background(LocalOnyxPalette.current.accent, RoundedCornerShape(4.dp)))
     }
 }
 
@@ -681,27 +715,31 @@ internal fun DialogTextButton(
     text: String,
     emphasized: Boolean = false,
     destructive: Boolean = false,
+    fontSize: TextUnit = 12.sp,
     onClick: () -> Unit,
 ) {
-    val background = when {
+    val palette = LocalOnyxPalette.current
+    val src = remember { MutableInteractionSource() }
+    val hovered by src.collectIsHoveredAsState()
+    val baseBg = when {
         destructive && emphasized -> Color(0xFFD74E4E)
-        emphasized -> LocalOnyxPalette.current.accent
-        else -> LocalOnyxPalette.current.surfaceVariant
+        emphasized -> palette.accent
+        else -> palette.surfaceVariant
     }
-    val contentColor = if (emphasized) Color.White else LocalOnyxPalette.current.foreground
+    val bg by animateColorAsState(
+        if (hovered) baseBg.copy(alpha = baseBg.alpha * 0.85f) else baseBg, tween(120),
+    )
+    val contentColor = if (emphasized) Color.White else palette.foreground
     Box(
         modifier = Modifier
             .padding(start = 8.dp)
-            .background(background, RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
+            .hoverable(src)
+            .background(bg, RoundedCornerShape(6.dp))
+            .clickable(src, null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = text,
-            fontSize = 12.sp,
-            color = contentColor,
-        )
+        Text(text = text, fontSize = fontSize, color = contentColor)
     }
 }
 

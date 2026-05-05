@@ -1,9 +1,12 @@
 package com.oruke.onyx
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -44,12 +47,39 @@ fun main() = application {
         val rootComponent = rememberRootComponent()
         val state by rootComponent.state.collectAsState()
 
-        // ── 主窗口 ──────────────────────────────────────────────────
+        // ── 主窗口（记忆大小，最小 800×600）──────────────────────────
+        val mainWindowState = remember {
+            WindowState(
+                size = DpSize(
+                    state.settings.mainWindowWidth.dp,
+                    state.settings.mainWindowHeight.dp,
+                ),
+                position = WindowPosition.PlatformDefault,
+            )
+        }
+
+        LaunchedEffect(mainWindowState) {
+            snapshotFlow { mainWindowState.size }
+                .collect { size ->
+                    val w = size.width; val h = size.height
+                    if (w != Dp.Unspecified && h != Dp.Unspecified) {
+                        rootComponent.updateSettings(
+                            state.settings.copy(
+                                mainWindowWidth = w.value.toInt(),
+                                mainWindowHeight = h.value.toInt(),
+                            ),
+                        )
+                    }
+                }
+        }
+
         DecoratedWindow(
             onCloseRequest = ::exitApplication,
             title = "Onyx",
             icon = painterResource(Res.drawable.onyx_logo),
+            state = mainWindowState,
         ) {
+            window.minimumSize = java.awt.Dimension(800, 600)
             WindowApp(rootComponent)
         }
 

@@ -32,17 +32,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
@@ -107,6 +110,9 @@ internal fun BatchRenameDialog(
     state: RootDialogState.BatchRename,
     onConfirm: (List<Pair<VFile, String>>) -> Unit,
     onDismiss: () -> Unit,
+    initialWidth: Int = 800,
+    initialHeight: Int = 620,
+    onWindowSizeChanged: ((width: Int, height: Int) -> Unit)? = null,
 ) {
     val entries = state.entries
     var mode by remember { mutableStateOf(BatchRenameMode.FIND_REPLACE) }
@@ -193,12 +199,25 @@ internal fun BatchRenameDialog(
 
     val title = stringResource(Res.string.label_batch_rename_title)
 
+    val dialogState = rememberDialogState(width = initialWidth.dp, height = initialHeight.dp)
+
+    LaunchedEffect(dialogState) {
+        snapshotFlow { dialogState.size }
+            .collect { size ->
+                val w = size.width; val h = size.height
+                if (w != Dp.Unspecified && h != Dp.Unspecified) {
+                    onWindowSizeChanged?.invoke(w.value.toInt(), h.value.toInt())
+                }
+            }
+    }
+
     DialogWindow(
         onCloseRequest = { if (!state.executing) onDismiss() },
         title = title,
-        state = rememberDialogState(width = 760.dp, height = 600.dp),
+        state = dialogState,
         resizable = true,
     ) {
+        window.minimumSize = java.awt.Dimension(640, 480)
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             val palette = LocalOnyxPalette.current
             val appearance = LocalOnyxAppearance.current

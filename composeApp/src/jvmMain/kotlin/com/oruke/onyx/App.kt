@@ -303,6 +303,13 @@ private fun AppContent(
                 onDraftChange = rootComponent::updateSettingsDraft,
                 onConfirm = rootComponent::confirmDialog,
                 onDismiss = rootComponent::dismissDialog,
+                initialWidth = state.settings.settingsWindowWidth,
+                initialHeight = state.settings.settingsWindowHeight,
+                onWindowSizeChanged = { w, h ->
+                    rootComponent.updateSettings(
+                        state.settings.copy(settingsWindowWidth = w, settingsWindowHeight = h),
+                    )
+                },
             )
         }
 
@@ -313,6 +320,13 @@ private fun AppContent(
                     rootComponent.executeBatchRename(dialogState.paneId, renameMap)
                 },
                 onDismiss = rootComponent::dismissDialog,
+                initialWidth = state.settings.batchRenameWindowWidth,
+                initialHeight = state.settings.batchRenameWindowHeight,
+                onWindowSizeChanged = { w, h ->
+                    rootComponent.updateSettings(
+                        state.settings.copy(batchRenameWindowWidth = w, batchRenameWindowHeight = h),
+                    )
+                },
             )
         }
 

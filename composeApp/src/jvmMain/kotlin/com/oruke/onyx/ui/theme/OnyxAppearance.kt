@@ -2,7 +2,7 @@ package com.oruke.onyx.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -35,7 +35,7 @@ data class OnyxAppearance(
     val tabBarHeight: Dp = 26.dp,
 )
 
-val LocalOnyxAppearance = staticCompositionLocalOf<OnyxAppearance> {
+val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {
     error("No OnyxAppearance provided. Wrap your content in OnyxTheme.")
 }
 

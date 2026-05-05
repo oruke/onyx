@@ -19,6 +19,13 @@ data class OnyxSettings(
     val zebraStripeEnabled: Boolean = true,
     // 列可见性控制
     val hiddenDetailsColumns: Set<DetailsColumn> = emptySet(),
+    // 窗口大小记忆
+    val mainWindowWidth: Int = 1200,
+    val mainWindowHeight: Int = 800,
+    val settingsWindowWidth: Int = 720,
+    val settingsWindowHeight: Int = 520,
+    val batchRenameWindowWidth: Int = 800,
+    val batchRenameWindowHeight: Int = 620,
 )
 
 @Serializable

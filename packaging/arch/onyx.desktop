@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Onyx
+Comment=Professional dual-pane file manager
+Exec=/usr/bin/onyx
+Icon=onyx
+Categories=System;FileManager;
+Terminal=false
+StartupNotify=true
+MimeType=inode/directory;

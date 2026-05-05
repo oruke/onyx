@@ -1,0 +1,42 @@
+# Maintainer: oruke
+pkgname=onyx-filemanager
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Professional dual-pane file manager built with Compose Desktop'
+arch=('x86_64')
+url='https://github.com/oruke/onyx'
+license=('MIT')
+depends=('java-runtime>=17' 'gtk3' 'libxtst')
+makedepends=('java-environment>=17')
+source=()
+sha256sums=()
+
+# 从本地源码构建，不需要 source()
+# 如果要发布到 AUR，改用 git source
+
+build() {
+    cd "${startdir}/../.."
+    JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/default}" \
+        ./gradlew composeApp:createDistributable --no-daemon
+}
+
+package() {
+    cd "${startdir}/../.."
+
+    local _distdir="composeApp/build/compose/binaries/main/app/com.oruke.onyx"
+
+    # 安装应用到 /opt/onyx
+    install -dm755 "${pkgdir}/opt/onyx"
+    cp -r "${_distdir}/"* "${pkgdir}/opt/onyx/"
+
+    # 启动脚本
+    install -Dm755 "packaging/arch/onyx.sh" "${pkgdir}/usr/bin/onyx"
+
+    # Desktop Entry
+    install -Dm644 "packaging/arch/onyx.desktop" "${pkgdir}/usr/share/applications/onyx.desktop"
+
+    # 图标（如果有）
+    if [ -f "packaging/arch/onyx.png" ]; then
+        install -Dm644 "packaging/arch/onyx.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/onyx.png"
+    fi
+}
