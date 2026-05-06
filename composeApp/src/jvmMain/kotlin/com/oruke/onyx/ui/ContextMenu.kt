@@ -41,6 +41,8 @@ import onyx.composeapp.generated.resources.action_copy_path
 import onyx.composeapp.generated.resources.action_cut
 import onyx.composeapp.generated.resources.action_delete_selected
 import onyx.composeapp.generated.resources.action_extract_here
+import onyx.composeapp.generated.resources.action_extract_to_directory
+import onyx.composeapp.generated.resources.action_extract_smart
 import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
@@ -77,6 +79,8 @@ internal fun BoxScope.PaneContextMenu(
     onCreateDirectory: () -> Unit,
     onDeleteSelection: () -> Unit,
     onExtractSelection: () -> Unit,
+    onExtractToDirectory: () -> Unit,
+    onExtractSmart: () -> Unit,
     onCopyPath: () -> Unit,
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
@@ -116,20 +120,20 @@ internal fun BoxScope.PaneContextMenu(
             ContextMenuItem(
                 text = stringResource(Res.string.action_open),
                 enabled = canOpenSelection,
-                iconKey = AllIconsKeys.Actions.ListFiles,
+                iconKey = AllIconsKeys.Actions.MenuOpen,
                 shortcutHint = "Enter",
                 onClick = onOpenSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_open_in_new_tab),
                 enabled = canOpenSelectionInNewTab,
-                iconKey = AllIconsKeys.General.OpenDisk,
+                iconKey = AllIconsKeys.Actions.OpenNewTab,
                 onClick = onOpenSelectionInNewTab,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_rename),
                 enabled = canRenameSelection,
-                iconKey = AllIconsKeys.Actions.ListFiles,
+                iconKey = AllIconsKeys.Actions.Edit,
                 shortcutHint = "F2",
                 onClick = onRenameSelection,
             )
@@ -151,7 +155,7 @@ internal fun BoxScope.PaneContextMenu(
             ContextMenuItem(
                 text = stringResource(Res.string.action_delete_selected),
                 enabled = canOperateOnSelection,
-                iconKey = AllIconsKeys.Actions.DeleteTag,
+                iconKey = AllIconsKeys.General.Delete,
                 shortcutHint = "Del",
                 onClick = onDeleteSelection,
             )
@@ -159,8 +163,20 @@ internal fun BoxScope.PaneContextMenu(
                 ContextMenuItem(
                     text = stringResource(Res.string.action_extract_here),
                     enabled = true,
-                    iconKey = AllIconsKeys.Actions.Uninstall,
+                    iconKey = AllIconsKeys.Nodes.ExtractedFolder,
                     onClick = onExtractSelection,
+                )
+                ContextMenuItem(
+                    text = stringResource(Res.string.action_extract_to_directory),
+                    enabled = true,
+                    iconKey = AllIconsKeys.Nodes.ExtractedFolder,
+                    onClick = onExtractToDirectory,
+                )
+                ContextMenuItem(
+                    text = stringResource(Res.string.action_extract_smart),
+                    enabled = true,
+                    iconKey = AllIconsKeys.Nodes.ExtractedFolder,
+                    onClick = onExtractSmart,
                 )
             }
             if (canBatchRename) {
@@ -209,7 +225,7 @@ internal fun BoxScope.PaneContextMenu(
             ContextMenuItem(
                 text = stringResource(Res.string.action_open_terminal),
                 enabled = true,
-                iconKey = AllIconsKeys.General.OpenDisk,
+                iconKey = AllIconsKeys.Debugger.Console,
                 onClick = onOpenTerminal,
             )
             ContextMenuItem(

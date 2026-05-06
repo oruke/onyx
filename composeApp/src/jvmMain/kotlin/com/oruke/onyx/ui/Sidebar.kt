@@ -57,6 +57,7 @@ internal fun PaneSidebar(
     favoriteLocations: List<String>,
     recentLocations: List<String>,
     treeState: SidebarTreeState,
+    showTree: Boolean,
     onActivate: () -> Unit,
     onOpenLocation: (String) -> Unit,
     onToggleFavoriteLocation: (String) -> Unit,
@@ -141,19 +142,21 @@ internal fun PaneSidebar(
             }
         }
 
-        SidebarSection(
-            title = stringResource(Res.string.label_sidebar_section_tree),
-        ) {
-            SidebarTree(
-                selectedLocation = location,
-                treeState = treeState,
-                onOpenLocation = { treeLocation ->
-                    onActivate()
-                    onOpenLocation(treeLocation)
-                },
-                onToggleNode = onToggleTreeNode,
-                onRetryNode = onRetryTreeNode,
-            )
+        if (showTree) {
+            SidebarSection(
+                title = stringResource(Res.string.label_sidebar_section_tree),
+            ) {
+                SidebarTree(
+                    selectedLocation = location,
+                    treeState = treeState,
+                    onOpenLocation = { treeLocation ->
+                        onActivate()
+                        onOpenLocation(treeLocation)
+                    },
+                    onToggleNode = onToggleTreeNode,
+                    onRetryNode = onRetryTreeNode,
+                )
+            }
         }
     }
 }

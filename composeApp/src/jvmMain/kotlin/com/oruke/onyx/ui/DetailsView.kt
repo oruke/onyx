@@ -168,6 +168,7 @@ internal fun PaneEntriesContent(
     onToggleInlineExpand: (String) -> Unit = {},
     pendingScrollToEntryId: String? = null,
     onConsumeScroll: () -> Unit = {},
+    onBlankAreaContextMenu: (IntOffset) -> Unit = {},
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -206,7 +207,23 @@ internal fun PaneEntriesContent(
 
             if (state.entries.isEmpty() && !shouldCreateInlineEntry) {
                 Box(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    modifier = Modifier.fillMaxSize().padding(24.dp)
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    if (event.type == PointerEventType.Press &&
+                                        event.buttons.isSecondaryPressed
+                                    ) {
+                                        val pos = event.changes.firstOrNull()?.position
+                                        if (pos != null) {
+                                            onActivate()
+                                            onBlankAreaContextMenu(IntOffset(pos.x.toInt(), pos.y.toInt()))
+                                        }
+                                    }
+                                }
+                            }
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(
@@ -279,13 +296,11 @@ internal fun PaneEntriesContent(
                 modifier = Modifier.fillMaxSize()
                     .clipToBounds()
                     .onGloballyPositioned { containerCoordinates = it }
-                    // Press: 仅空白区域记录起点，文件行区域由子组件处理
                     .onPointerEvent(PointerEventType.Press) { event ->
                         if (event.changes.any { it.isConsumed }) return@onPointerEvent
-                        if (!event.buttons.isPrimaryPressed) return@onPointerEvent
                         val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
 
-                        // hit-test: 只有点击在空白区域时才由 parent 处理框选
+                        // hit-test: 判断是否点击在文件项上
                         val container = containerCoordinates
                         val hitItem = if (container != null) {
                             itemCoordsMap.any { (_, coords) ->
@@ -293,6 +308,22 @@ internal fun PaneEntriesContent(
                                     container.localBoundingBoxOf(coords, clipBounds = false).contains(pos)
                             }
                         } else false
+
+                        // 右键点击空白区：显示空白区右键菜单
+                        if (!event.buttons.isPrimaryPressed && event.buttons.isSecondaryPressed && !hitItem) {
+                            onActivate()
+                            onSelectEntries(emptySet())
+                            val windowPos = container?.localToWindow(pos)
+                            val offset = if (windowPos != null) {
+                                IntOffset(windowPos.x.toInt(), windowPos.y.toInt())
+                            } else {
+                                IntOffset(pos.x.toInt(), pos.y.toInt())
+                            }
+                            onBlankAreaContextMenu(offset)
+                            return@onPointerEvent
+                        }
+
+                        if (!event.buttons.isPrimaryPressed) return@onPointerEvent
 
                         if (hitItem) {
                             // 点击在文件项上 → 不设置 pendingDragOrigin，让子组件全权处理

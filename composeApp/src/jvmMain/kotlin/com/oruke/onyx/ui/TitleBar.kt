@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,6 +34,7 @@ import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
 import onyx.composeapp.generated.resources.action_open_settings
 import onyx.composeapp.generated.resources.action_toggle_sidebar
+import onyx.composeapp.generated.resources.action_toggle_preview_pane
 import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_feedback_copy_path_failed
 import onyx.composeapp.generated.resources.label_feedback_create_directory_failed
@@ -160,7 +162,7 @@ internal fun TitleBarContent(
                 tooltip = stringResource(Res.string.action_layout_single),
             ) {
                 Icon(
-                    key = AllIconsKeys.General.Layout,
+                    key = AllIconsKeys.Windows.Maximize,
                     contentDescription = stringResource(Res.string.action_layout_single),
                 )
             }
@@ -192,18 +194,19 @@ internal fun TitleBarContent(
                 tooltip = stringResource(Res.string.action_toggle_sidebar),
             ) {
                 Icon(
-                    key = if (sidebarVisible) AllIconsKeys.Actions.ToggleVisibility else AllIconsKeys.General.Show,
+                    key = AllIconsKeys.Actions.PreviewDetails,
                     contentDescription = stringResource(Res.string.action_toggle_sidebar),
+                    modifier = Modifier.graphicsLayer(scaleX = -1f),
                 )
             }
 
             TitleBarIconButton(
                 onClick = onTogglePreviewPane,
-                tooltip = "Toggle Preview Pane",
+                tooltip = stringResource(Res.string.action_toggle_preview_pane),
             ) {
                 Icon(
                     key = if (showPreviewPane) AllIconsKeys.Actions.Preview else AllIconsKeys.Actions.PreviewDetails,
-                    contentDescription = "Toggle Preview Pane",
+                    contentDescription = stringResource(Res.string.action_toggle_preview_pane),
                 )
             }
 

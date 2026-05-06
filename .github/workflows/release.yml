@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            task: packageDeb packageRpm packageUberJarForCurrentOS
+            artifact-path: |
+              composeApp/build/compose/binaries/main/deb/*.deb
+              composeApp/build/compose/binaries/main/rpm/*.rpm
+              composeApp/build/compose/jars/*.jar
+          - os: windows-latest
+            task: packageMsi packageUberJarForCurrentOS
+            artifact-path: |
+              composeApp/build/compose/binaries/main/msi/*.msi
+              composeApp/build/compose/jars/*.jar
+          - os: macos-latest
+            task: packageDmg packageUberJarForCurrentOS
+            artifact-path: |
+              composeApp/build/compose/binaries/main/dmg/*.dmg
+              composeApp/build/compose/jars/*.jar
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'jetbrains'
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build packages
+        run: ./gradlew ${{ matrix.task }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: ${{ matrix.artifact-path }}
+          if-no-files-found: warn
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: find dist -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

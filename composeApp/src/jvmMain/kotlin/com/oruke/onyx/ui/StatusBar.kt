@@ -127,7 +127,7 @@ internal fun StatusBar(
                 tooltip = stringResource(Res.string.label_mode_gallery),
             ) {
                 Icon(
-                    key = AllIconsKeys.General.Layout,
+                    key = AllIconsKeys.General.LayoutPreviewOnly,
                     contentDescription = stringResource(Res.string.label_mode_gallery),
                 )
             }

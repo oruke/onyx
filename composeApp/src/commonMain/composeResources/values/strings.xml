@@ -23,6 +23,7 @@
     <string name="action_clear_all_tasks">Clear All</string>
     <string name="action_apply">Apply</string>
     <string name="action_toggle_sidebar">Toggle Sidebar</string>
+    <string name="action_toggle_preview_pane">Toggle Preview Pane</string>
     <string name="action_toggle_status_bar">Toggle Status Bar</string>
     <string name="action_toggle_fullscreen">Toggle Full Screen</string>
     <string name="action_zoom_reset">100%</string>
@@ -43,6 +44,10 @@
     <string name="action_paste">Paste</string>
     <string name="action_delete_selected">Delete Selected</string>
     <string name="action_extract_here">Extract Here</string>
+    <string name="action_extract_to_directory">Extract to Directory</string>
+    <string name="action_extract_smart">Smart Extract</string>
+    <string name="label_archive_password">Archive Password</string>
+    <string name="label_archive_password_hint">Enter password for encrypted archive</string>
 
     <string name="action_layout_single">Single</string>
     <string name="action_layout_dual_vertical">Dual Vertical</string>
@@ -86,6 +91,7 @@
     <string name="label_default_view_mode">Default view mode</string>
     <string name="label_delete_mode">Delete mode</string>
     <string name="label_sidebar_visibility">Sidebar</string>
+    <string name="label_sidebar_tree_visibility">Directory Tree</string>
     <string name="label_status_bar_visibility">Status bar</string>
     <string name="label_setting_show">Show</string>
     <string name="label_setting_hide">Hide</string>

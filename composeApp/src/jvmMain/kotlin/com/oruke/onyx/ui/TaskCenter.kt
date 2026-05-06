@@ -426,10 +426,41 @@ private fun TaskDetailRow(
                 modifier = Modifier.weight(1f),
             )
 
-            // 进度计数
-            if (task.totalCount > 0) {
+            // 字节进度 + 文件计数
+            val progressLabel = buildProgressLabel(task)
+            if (progressLabel.isNotEmpty()) {
                 Text(
-                    text = "${task.processedCount} / ${task.totalCount}",
+                    text = progressLabel,
+                    fontSize = 10.sp,
+                    color = palette.mutedForeground,
+                )
+            }
+        }
+
+        // 第二·五行：速度 + 剩余时间
+        if (isActive && task.processedBytes > 0 && task.startTimeMillis > 0) {
+            val elapsedMs = System.currentTimeMillis() - task.startTimeMillis
+            val speedBps = if (elapsedMs > 0) task.processedBytes * 1000.0 / elapsedMs else 0.0
+            val speedLabel = formatSpeed(speedBps)
+            val remainingLabel = if (speedBps > 0 && task.totalBytes > task.processedBytes) {
+                val remainingBytes = task.totalBytes - task.processedBytes
+                val remainingSec = (remainingBytes / speedBps).toLong()
+                formatDuration(remainingSec)
+            } else null
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = buildString {
+                        append(speedLabel)
+                        if (remainingLabel != null) {
+                            append("  ·  ")
+                            append(remainingLabel)
+                        }
+                    },
                     fontSize = 10.sp,
                     color = palette.mutedForeground,
                 )
@@ -509,8 +540,38 @@ internal fun TaskProgressBar(
 private fun taskKindIcon(kind: BackgroundTaskKind) = when (kind) {
     BackgroundTaskKind.COPY -> AllIconsKeys.Actions.Copy
     BackgroundTaskKind.MOVE -> AllIconsKeys.Actions.MenuCut
-    BackgroundTaskKind.DELETE -> AllIconsKeys.Actions.GC
-    BackgroundTaskKind.EXTRACT -> AllIconsKeys.Actions.Uninstall
+    BackgroundTaskKind.DELETE -> AllIconsKeys.General.Delete
+    BackgroundTaskKind.EXTRACT -> AllIconsKeys.Nodes.ExtractedFolder
     BackgroundTaskKind.RENAME -> AllIconsKeys.Actions.Edit
     BackgroundTaskKind.EXTERNAL_IMPORT -> AllIconsKeys.Actions.Download
+}
+
+private fun buildProgressLabel(task: BackgroundTask): String = buildString {
+    if (task.totalBytes > 0) {
+        append(formatFileSize(task.processedBytes))
+        append(" / ")
+        append(formatFileSize(task.totalBytes))
+        if (task.totalCount > 1) {
+            append("  (${task.processedCount}/${task.totalCount})")
+        }
+    } else if (task.totalCount > 0) {
+        append("${task.processedCount} / ${task.totalCount}")
+    }
+}
+
+private fun formatSpeed(bytesPerSecond: Double): String {
+    return when {
+        bytesPerSecond >= 1_073_741_824 -> "%.1f GB/s".format(bytesPerSecond / 1_073_741_824)
+        bytesPerSecond >= 1_048_576 -> "%.1f MB/s".format(bytesPerSecond / 1_048_576)
+        bytesPerSecond >= 1_024 -> "%.0f KB/s".format(bytesPerSecond / 1_024)
+        else -> "%.0f B/s".format(bytesPerSecond)
+    }
+}
+
+private fun formatDuration(seconds: Long): String {
+    return when {
+        seconds < 60 -> "${seconds}s"
+        seconds < 3600 -> "${seconds / 60}m ${seconds % 60}s"
+        else -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
+    }
 }

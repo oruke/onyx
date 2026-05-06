@@ -370,6 +370,7 @@ private fun AppContent(
                                 favoriteLocations = state.settings.favoriteLocations,
                                 recentLocations = state.settings.recentLocations,
                                 treeState = state.sidebarTreeState,
+                                showTree = state.settings.sidebarTreeVisible,
                                 onActivate = {
                                     when (state.activePane) {
                                         PaneId.PRIMARY -> rootComponent.activatePane(PaneId.PRIMARY)
@@ -399,6 +400,8 @@ private fun AppContent(
                                     onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
                                     onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
                                     onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.PRIMARY) },
+                                    onExtractToDirectory = { rootComponent.extractToDirectoryInPane(PaneId.PRIMARY) },
+                                    onExtractSmart = { rootComponent.extractSmartInPane(PaneId.PRIMARY) },
                                     onBatchRename = { rootComponent.batchRenameInPane(PaneId.PRIMARY) },
                                     onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                                     onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
@@ -424,6 +427,7 @@ private fun AppContent(
                                     onFileDragEnd = onFileDragEnd,
                                     onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                     fileDropTarget = fileDropTarget,
+                                    onOpenSettings = rootComponent::openSettings,
                                 )
                             }
 
@@ -448,6 +452,8 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.PRIMARY) },
+                                        onExtractToDirectory = { rootComponent.extractToDirectoryInPane(PaneId.PRIMARY) },
+                                        onExtractSmart = { rootComponent.extractSmartInPane(PaneId.PRIMARY) },
                                         onBatchRename = { rootComponent.batchRenameInPane(PaneId.PRIMARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
@@ -473,6 +479,7 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
+                                    onOpenSettings = rootComponent::openSettings,
                                     )
                                     ResizablePaneDivider(
                                         orientation = Orientation.Vertical,
@@ -494,6 +501,8 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.secondaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.SECONDARY) },
+                                        onExtractToDirectory = { rootComponent.extractToDirectoryInPane(PaneId.SECONDARY) },
+                                        onExtractSmart = { rootComponent.extractSmartInPane(PaneId.SECONDARY) },
                                         onBatchRename = { rootComponent.batchRenameInPane(PaneId.SECONDARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
@@ -519,6 +528,7 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
+                                    onOpenSettings = rootComponent::openSettings,
                                     )
                                 }
                             }
@@ -544,6 +554,8 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.primaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.PRIMARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.PRIMARY) },
+                                        onExtractToDirectory = { rootComponent.extractToDirectoryInPane(PaneId.PRIMARY) },
+                                        onExtractSmart = { rootComponent.extractSmartInPane(PaneId.PRIMARY) },
                                         onBatchRename = { rootComponent.batchRenameInPane(PaneId.PRIMARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.PRIMARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.PRIMARY) },
@@ -569,6 +581,7 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
+                                    onOpenSettings = rootComponent::openSettings,
                                     )
                                     ResizablePaneDivider(
                                         orientation = Orientation.Horizontal,
@@ -590,6 +603,8 @@ private fun AppContent(
                                         onFilterQueryChange = rootComponent.secondaryPane::setFilterQuery,
                                         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(PaneId.SECONDARY) },
                                         onExtractSelection = { rootComponent.extractSelectedInPane(PaneId.SECONDARY) },
+                                        onExtractToDirectory = { rootComponent.extractToDirectoryInPane(PaneId.SECONDARY) },
+                                        onExtractSmart = { rootComponent.extractSmartInPane(PaneId.SECONDARY) },
                                         onBatchRename = { rootComponent.batchRenameInPane(PaneId.SECONDARY) },
                                         onCopySelection = { rootComponent.stageCopySelectedInPane(PaneId.SECONDARY) },
                                         onCutSelection = { rootComponent.stageCutSelectedInPane(PaneId.SECONDARY) },
@@ -615,6 +630,7 @@ private fun AppContent(
                                         onFileDragEnd = onFileDragEnd,
                                         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
                                         fileDropTarget = fileDropTarget,
+                                    onOpenSettings = rootComponent::openSettings,
                                     )
                                 }
                             }

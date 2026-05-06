@@ -99,6 +99,8 @@ internal fun PaneSurface(
     onFilterQueryChange: (String) -> Unit,
     onDeleteSelection: () -> Unit,
     onExtractSelection: () -> Unit,
+    onExtractToDirectory: () -> Unit,
+    onExtractSmart: () -> Unit,
     onBatchRename: () -> Unit,
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
@@ -124,6 +126,7 @@ internal fun PaneSurface(
     onFileDragEnd: (IntOffset?) -> Unit,
     onFileDropZoneChange: (FileDropZone) -> Unit,
     fileDropTarget: FileDropTarget?,
+    onOpenSettings: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
     val filterFocusRequester = remember { FocusRequester() }
@@ -276,6 +279,11 @@ internal fun PaneSurface(
 
                     event.key == Key.Backspace -> {
                         component.goUp()
+                        true
+                    }
+
+                    event.key == Key.Comma && (event.isCtrlPressed || event.isMetaPressed) -> {
+                        onOpenSettings()
                         true
                     }
 
@@ -468,7 +476,7 @@ internal fun PaneSurface(
                 selected = state.showHiddenItems,
             ) {
                 Icon(
-                    key = if (state.showHiddenItems) AllIconsKeys.Actions.ToggleVisibility else AllIconsKeys.General.Show,
+                    key = if (state.showHiddenItems) AllIconsKeys.General.Show else AllIconsKeys.Actions.ToggleVisibility,
                     contentDescription = stringResource(Res.string.action_toggle_hidden_files),
                 )
             }
@@ -559,6 +567,10 @@ internal fun PaneSurface(
                     },
                     pendingScrollToEntryId = state.pendingScrollToEntryId,
                     onConsumeScroll = component::consumePendingScroll,
+                    onBlankAreaContextMenu = { pointerPosition ->
+                        contextMenuOffset = pointerPosition
+                        showContextMenu = true
+                    },
                 )
 
                 if (showContextMenu) {
@@ -605,6 +617,14 @@ internal fun PaneSurface(
                         },
                         onExtractSelection = {
                             onExtractSelection()
+                            showContextMenu = false
+                        },
+                        onExtractToDirectory = {
+                            onExtractToDirectory()
+                            showContextMenu = false
+                        },
+                        onExtractSmart = {
+                            onExtractSmart()
                             showContextMenu = false
                         },
                         onCopyPath = {

@@ -155,9 +155,10 @@ class ArchiveService {
         archivePath: String,
         targetDirectory: String,
         innerPath: String = "",
+        password: String? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            openArchive(archivePath).use { archive ->
+            openArchive(archivePath, password).use { archive ->
                 val numItems = archive.numberOfItems
                 val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
                 val targetDir = File(targetDirectory)
@@ -177,6 +178,65 @@ class ArchiveService {
                     ArchiveExtractCallback(archive, targetDir, prefix),
                 )
             }
+        }
+    }
+
+    /**
+     * 解压到独立目录：在 targetDirectory 下创建与压缩包同名（去扩展名）的子目录，解压到其中。
+     */
+    suspend fun extractToDirectory(
+        archivePath: String,
+        targetDirectory: String,
+        password: String? = null,
+    ): Result<Unit> {
+        val archiveName = File(archivePath).nameWithoutExtension
+        val subDir = File(targetDirectory, archiveName).absolutePath
+        return extract(archivePath, subDir, password = password)
+    }
+
+    /**
+     * 智能解压到独立目录：
+     * - 如果压缩包根目录恰好只有一个子目录，则直接解压到 targetDirectory（避免多余嵌套）
+     * - 否则，行为等同于 extractToDirectory（在 targetDirectory 下创建同名子目录）
+     */
+    suspend fun extractSmart(
+        archivePath: String,
+        targetDirectory: String,
+        password: String? = null,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            // 先检查根目录结构
+            val rootEntries = list(archivePath).getOrThrow()
+            val hasSingleRootDir = rootEntries.size == 1 && rootEntries[0].kind == VFileKind.DIRECTORY
+            if (hasSingleRootDir) {
+                // 单一根目录 → 直接解压到 targetDirectory，保持原有目录名
+                extract(archivePath, targetDirectory, password = password).getOrThrow()
+            } else {
+                // 多个根条目 → 创建同名子目录
+                extractToDirectory(archivePath, targetDirectory, password = password).getOrThrow()
+            }
+        }
+    }
+
+    /**
+     * 检查压缩包是否需要密码（是否加密）。
+     */
+    suspend fun isEncrypted(archivePath: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val raf = RandomAccessFile(archivePath, "r")
+            val inStream = RandomAccessFileInStream(raf)
+            val archive = SevenZip.openInArchive(null, inStream)
+            val encrypted = try {
+                val numItems = archive.numberOfItems
+                (0 until numItems).any { i ->
+                    archive.getProperty(i, PropID.ENCRYPTED) as? Boolean ?: false
+                }
+            } finally {
+                archive.close()
+            }
+            encrypted
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -233,10 +293,14 @@ class ArchiveService {
         }
     }
 
-    private fun openArchive(path: String): IInArchive {
+    private fun openArchive(path: String, password: String? = null): IInArchive {
         val raf = RandomAccessFile(path, "r")
         val inStream = RandomAccessFileInStream(raf)
-        return SevenZip.openInArchive(null, inStream)
+        return if (password != null) {
+            SevenZip.openInArchive(null, inStream, password)
+        } else {
+            SevenZip.openInArchive(null, inStream)
+        }
     }
 }
 

@@ -23,6 +23,7 @@
     <string name="action_clear_all_tasks">すべて消去</string>
     <string name="action_apply">適用</string>
     <string name="action_toggle_sidebar">サイドバーを表示/非表示</string>
+    <string name="action_toggle_preview_pane">プレビューパネルを表示/非表示</string>
     <string name="action_toggle_status_bar">ステータスバーを表示/非表示</string>
     <string name="action_toggle_fullscreen">全画面を切り替え</string>
     <string name="action_zoom_reset">100%</string>
@@ -43,6 +44,10 @@
     <string name="action_paste">貼り付け</string>
     <string name="action_delete_selected">選択項目を削除</string>
     <string name="action_extract_here">ここに解凍</string>
+    <string name="action_extract_to_directory">フォルダに解凍</string>
+    <string name="action_extract_smart">スマート解凍</string>
+    <string name="label_archive_password">アーカイブパスワード</string>
+    <string name="label_archive_password_hint">暗号化アーカイブのパスワードを入力</string>
 
     <string name="action_layout_single">単一</string>
     <string name="action_layout_dual_vertical">左右分割</string>
@@ -86,6 +91,7 @@
     <string name="label_default_view_mode">デフォルトの表示モード</string>
     <string name="label_delete_mode">削除モード</string>
     <string name="label_sidebar_visibility">サイドバー</string>
+    <string name="label_sidebar_tree_visibility">ディレクトリツリー</string>
     <string name="label_status_bar_visibility">ステータスバー</string>
     <string name="label_setting_show">表示</string>
     <string name="label_setting_hide">非表示</string>

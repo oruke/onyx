@@ -10,6 +10,7 @@ data class OnyxSettings(
     val defaultViewMode: ViewMode = ViewMode.DETAILS,
     val deleteMode: DeleteMode = DeleteMode.MOVE_TO_TRASH_PREFERRED,
     val sidebarVisible: Boolean = true,
+    val sidebarTreeVisible: Boolean = true,
     val statusBarVisible: Boolean = true,
     val favoriteLocations: List<String> = emptyList(),
     val recentLocations: List<String> = emptyList(),

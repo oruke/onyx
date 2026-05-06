@@ -23,6 +23,7 @@
     <string name="action_clear_all_tasks">全部清除</string>
     <string name="action_apply">应用</string>
     <string name="action_toggle_sidebar">显示/隐藏侧栏</string>
+    <string name="action_toggle_preview_pane">显示/隐藏预览面板</string>
     <string name="action_toggle_status_bar">显示/隐藏状态栏</string>
     <string name="action_toggle_fullscreen">切换全屏</string>
     <string name="action_zoom_reset">100%</string>
@@ -43,6 +44,10 @@
     <string name="action_paste">粘贴</string>
     <string name="action_delete_selected">删除所选</string>
     <string name="action_extract_here">解压到此处</string>
+    <string name="action_extract_to_directory">解压到独立目录</string>
+    <string name="action_extract_smart">智能解压</string>
+    <string name="label_archive_password">压缩包密码</string>
+    <string name="label_archive_password_hint">请输入加密压缩包的密码</string>
 
     <string name="action_layout_single">单栏</string>
     <string name="action_layout_dual_vertical">左右双栏</string>
@@ -84,6 +89,7 @@
     <string name="label_default_view_mode">默认视图模式</string>
     <string name="label_delete_mode">删除模式</string>
     <string name="label_sidebar_visibility">侧边栏</string>
+    <string name="label_sidebar_tree_visibility">目录树</string>
     <string name="label_status_bar_visibility">状态栏</string>
     <string name="label_setting_show">显示</string>
     <string name="label_setting_hide">隐藏</string>

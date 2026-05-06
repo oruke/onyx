@@ -60,7 +60,7 @@ compose.desktop {
         mainClass = "com.oruke.onyx.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "com.oruke.onyx"
             packageVersion = appVersion
         }

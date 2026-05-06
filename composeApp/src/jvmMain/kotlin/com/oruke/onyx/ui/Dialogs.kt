@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
@@ -113,6 +114,7 @@ import onyx.composeapp.generated.resources.label_setting_hide
 import onyx.composeapp.generated.resources.label_setting_show
 import onyx.composeapp.generated.resources.label_settings_title
 import onyx.composeapp.generated.resources.label_sidebar_visibility
+import onyx.composeapp.generated.resources.label_sidebar_tree_visibility
 import onyx.composeapp.generated.resources.label_status_bar_visibility
 import onyx.composeapp.generated.resources.label_ui_scale
 import onyx.composeapp.generated.resources.label_settings_general
@@ -258,6 +260,12 @@ internal fun SettingsDialog(
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         SettingsOption(draft.sidebarVisible, stringResource(Res.string.label_setting_show), labelFs) { onDraftChange(draft.copy(sidebarVisible = true)) }
                                         SettingsOption(!draft.sidebarVisible, stringResource(Res.string.label_setting_hide), labelFs) { onDraftChange(draft.copy(sidebarVisible = false)) }
+                                    }
+                                }
+                                SettingsSection(stringResource(Res.string.label_sidebar_tree_visibility), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        SettingsOption(draft.sidebarTreeVisible, stringResource(Res.string.label_setting_show), labelFs) { onDraftChange(draft.copy(sidebarTreeVisible = true)) }
+                                        SettingsOption(!draft.sidebarTreeVisible, stringResource(Res.string.label_setting_hide), labelFs) { onDraftChange(draft.copy(sidebarTreeVisible = false)) }
                                     }
                                 }
                                 SettingsSection(stringResource(Res.string.label_status_bar_visibility), labelFs) {
@@ -422,6 +430,9 @@ internal fun ConfirmationDialog(
     } else {
         stringResource(Res.string.action_delete_selected)
     }
+    // 0 = 取消（默认安全焦点），1 = 确认
+    var focusedButton by remember { mutableStateOf(0) }
+    val focusRequester = remember { FocusRequester() }
     DialogWindow(
         onCloseRequest = onDismiss,
         title = title,
@@ -429,28 +440,67 @@ internal fun ConfirmationDialog(
         resizable = false,
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
-            DialogFrame(
-                title = title,
-                body = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(LocalOnyxPalette.current.appBackground)
+                    .padding(14.dp)
+                    .focusRequester(focusRequester)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (event.key) {
+                            Key.Escape -> { onDismiss(); true }
+                            Key.Enter -> {
+                                if (focusedButton == 1) onConfirm() else onDismiss()
+                                true
+                            }
+                            Key.DirectionLeft, Key.Tab -> {
+                                focusedButton = (focusedButton - 1).coerceAtLeast(0)
+                                true
+                            }
+                            Key.DirectionRight -> {
+                                focusedButton = (focusedButton + 1).coerceAtMost(1)
+                                true
+                            }
+                            else -> false
+                        }
+                    },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalOnyxPalette.current.foreground,
+                )
+                Box(modifier = Modifier.weight(1f, fill = true)) {
                     Text(
                         text = message,
                         fontSize = 12.sp,
                         color = LocalOnyxPalette.current.foreground,
                     )
-                },
-                actions = {
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     DialogTextButton(
                         text = stringResource(Res.string.action_close_menu),
                         onClick = onDismiss,
+                        focused = focusedButton == 0,
                     )
                     DialogTextButton(
                         text = confirmLabel,
                         emphasized = true,
                         destructive = true,
                         onClick = onConfirm,
+                        focused = focusedButton == 1,
                     )
-                },
-            )
+                }
+            }
+            LaunchedEffect(Unit) { focusRequester.requestFocus() }
         }
     }
 }
@@ -462,6 +512,9 @@ internal fun ConflictResolutionDialog(
     onDismiss: () -> Unit,
 ) {
     var applyToAll by remember(state.sourceName, state.currentIndex, state.total) { mutableStateOf(false) }
+    // 0=取消, 1=跳过, 2=保留两者, 3=覆盖
+    var focusedButton by remember { mutableStateOf(0) }
+    val focusRequester = remember { FocusRequester() }
     val operationLabel = stringResource(
         if (state.operation == FileTransferOperation.COPY) {
             Res.string.label_operation_copy
@@ -469,16 +522,54 @@ internal fun ConflictResolutionDialog(
             Res.string.label_operation_move
         }
     )
+    val dialogTitle = stringResource(Res.string.label_conflict_resolution_title, state.currentIndex, state.total)
     DialogWindow(
         onCloseRequest = onDismiss,
-        title = stringResource(Res.string.label_conflict_resolution_title, state.currentIndex, state.total),
+        title = dialogTitle,
         state = rememberDialogState(width = 460.dp, height = 260.dp),
         resizable = false,
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
-            DialogFrame(
-                title = stringResource(Res.string.label_conflict_resolution_title, state.currentIndex, state.total),
-                body = {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(LocalOnyxPalette.current.appBackground)
+                    .padding(14.dp)
+                    .focusRequester(focusRequester)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (event.key) {
+                            Key.Escape -> { onDismiss(); true }
+                            Key.Enter -> {
+                                when (focusedButton) {
+                                    0 -> onDismiss()
+                                    1 -> onResolve(TransferConflictStrategy.SKIP, applyToAll)
+                                    2 -> onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll)
+                                    3 -> onResolve(TransferConflictStrategy.OVERWRITE, applyToAll)
+                                }
+                                true
+                            }
+                            Key.DirectionLeft -> {
+                                focusedButton = (focusedButton - 1).coerceAtLeast(0)
+                                true
+                            }
+                            Key.DirectionRight, Key.Tab -> {
+                                focusedButton = (focusedButton + 1).coerceAtMost(3)
+                                true
+                            }
+                            else -> false
+                        }
+                    },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = dialogTitle,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = LocalOnyxPalette.current.foreground,
+                )
+                Box(modifier = Modifier.weight(1f, fill = true)) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             text = operationLabel,
@@ -500,27 +591,36 @@ internal fun ConflictResolutionDialog(
                             onToggle = { applyToAll = !applyToAll },
                         )
                     }
-                },
-                actions = {
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     DialogTextButton(
                         text = stringResource(Res.string.action_close_menu),
                         onClick = onDismiss,
+                        focused = focusedButton == 0,
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_skip),
                         onClick = { onResolve(TransferConflictStrategy.SKIP, applyToAll) },
+                        focused = focusedButton == 1,
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_keep_both),
                         onClick = { onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll) },
+                        focused = focusedButton == 2,
                     )
                     DialogTextButton(
                         text = stringResource(Res.string.action_overwrite),
                         emphasized = true,
                         onClick = { onResolve(TransferConflictStrategy.OVERWRITE, applyToAll) },
+                        focused = focusedButton == 3,
                     )
-                },
-            )
+                }
+            }
+            LaunchedEffect(Unit) { focusRequester.requestFocus() }
         }
     }
 }
@@ -715,6 +815,7 @@ internal fun DialogTextButton(
     text: String,
     emphasized: Boolean = false,
     destructive: Boolean = false,
+    focused: Boolean = false,
     fontSize: TextUnit = 12.sp,
     onClick: () -> Unit,
 ) {
@@ -727,14 +828,16 @@ internal fun DialogTextButton(
         else -> palette.surfaceVariant
     }
     val bg by animateColorAsState(
-        if (hovered) baseBg.copy(alpha = baseBg.alpha * 0.85f) else baseBg, tween(120),
+        if (hovered || focused) baseBg.copy(alpha = baseBg.alpha * 0.85f) else baseBg, tween(120),
     )
     val contentColor = if (emphasized) Color.White else palette.foreground
+    val focusBorder = if (focused) Modifier.border(1.5.dp, palette.accent, RoundedCornerShape(6.dp)) else Modifier
     Box(
         modifier = Modifier
             .padding(start = 8.dp)
             .hoverable(src)
             .background(bg, RoundedCornerShape(6.dp))
+            .then(focusBorder)
             .clickable(src, null, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,

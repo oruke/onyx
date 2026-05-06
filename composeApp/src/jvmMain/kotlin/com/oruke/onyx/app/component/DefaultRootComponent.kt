@@ -40,6 +40,8 @@ import kotlinx.coroutines.sync.withLock
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_extract_here
+import onyx.composeapp.generated.resources.action_extract_to_directory
+import onyx.composeapp.generated.resources.action_extract_smart
 import onyx.composeapp.generated.resources.msg_cancelled
 import onyx.composeapp.generated.resources.msg_copied_items
 import onyx.composeapp.generated.resources.msg_copy_failed
@@ -549,6 +551,8 @@ class DefaultRootComponent(
         val pauseFlag = MutableStateFlow(false)
         taskPauseFlags[taskId] = pauseFlag
         val startTime = System.currentTimeMillis()
+        // 预计算总字节（目录递归统计由 sizeBytes 提供，若为 0 则回退到文件计数进度）
+        val totalBytes = entries.sumOf { it.sizeBytes ?: 0L }
 
         appendTask(
             BackgroundTask(
@@ -562,6 +566,7 @@ class DefaultRootComponent(
                 detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
                 progress = 0f,
                 totalCount = entries.size,
+                totalBytes = totalBytes,
                 startTimeMillis = startTime,
             )
         )
@@ -581,6 +586,7 @@ class DefaultRootComponent(
                     progress = 0f,
                 )
 
+                var accumulatedBytes = 0L
                 entries.forEachIndexed { index, entry ->
                     ensureActive()
                     // 文件级暂停检测
@@ -610,6 +616,12 @@ class DefaultRootComponent(
                         }
                     }
                     result.getOrThrow()
+                    accumulatedBytes += entry.sizeBytes ?: 0L
+                    val byteProgress = if (totalBytes > 0L) {
+                        accumulatedBytes.toFloat() / totalBytes
+                    } else {
+                        (index + 1).toFloat() / entries.size
+                    }
                     updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
@@ -617,8 +629,9 @@ class DefaultRootComponent(
                             Res.string.msg_string_literal,
                             "${entry.name} → $targetDirectoryLocation"
                         ),
-                        progress = (index + 1).toFloat() / entries.size,
+                        progress = byteProgress,
                         processedCount = index + 1,
+                        processedBytes = accumulatedBytes,
                     )
                 }
 
@@ -636,6 +649,7 @@ class DefaultRootComponent(
                     },
                     progress = 1f,
                     processedCount = entries.size,
+                    processedBytes = totalBytes,
                 )
                 if (clearClipboardOnSuccess) {
                     clipboard.value = null
@@ -736,6 +750,103 @@ class DefaultRootComponent(
                         archivePath = entry.location,
                         targetDirectory = currentLocation,
                     ).getOrThrow()
+                }
+
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.SUCCEEDED,
+                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                    progress = 1f,
+                    processedCount = archiveEntries.size,
+                )
+                refreshAllPanes()
+                scheduleTaskAutoCleanup(taskId)
+            } catch (_: CancellationException) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.CANCELLED,
+                    detail = I18nMessage(Res.string.msg_cancelled),
+                )
+            } catch (e: Throwable) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.FAILED,
+                    detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
+                )
+            }
+        }
+        taskJobs[taskId] = job
+    }
+
+    override fun extractToDirectoryInPane(paneId: PaneId) {
+        launchArchiveExtraction(paneId, I18nMessage(Res.string.action_extract_to_directory)) { entry, location ->
+            archiveService.extractToDirectory(
+                archivePath = entry.location,
+                targetDirectory = location,
+            )
+        }
+    }
+
+    override fun extractSmartInPane(paneId: PaneId) {
+        launchArchiveExtraction(paneId, I18nMessage(Res.string.action_extract_smart)) { entry, location ->
+            archiveService.extractSmart(
+                archivePath = entry.location,
+                targetDirectory = location,
+            )
+        }
+    }
+
+    /**
+     * 通用压缩包解压任务启动器。
+     */
+    private fun launchArchiveExtraction(
+        paneId: PaneId,
+        taskTitle: I18nMessage,
+        extractAction: suspend (VFile, String) -> Result<Unit>,
+    ) {
+        val selectedEntries = selectedEntriesInPane(paneId)
+        if (selectedEntries.isEmpty()) return
+        val currentLocation = paneState(paneId).location
+
+        val archiveEntries = selectedEntries.filter { entry ->
+            entry.kind == VFileKind.FILE && ArchiveService.isArchive(entry.name)
+        }
+        if (archiveEntries.isEmpty()) return
+
+        val taskId = UUID.randomUUID().toString()
+        appendTask(
+            BackgroundTask(
+                id = taskId,
+                kind = BackgroundTaskKind.EXTRACT,
+                title = taskTitle,
+                status = BackgroundTaskStatus.QUEUED,
+                detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                progress = 0f,
+                totalCount = archiveEntries.size,
+                startTimeMillis = System.currentTimeMillis(),
+            )
+        )
+
+        val job = scope.launch {
+            try {
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.RUNNING,
+                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                    progress = 0f,
+                )
+                archiveEntries.forEachIndexed { index, entry ->
+                    ensureActive()
+                    updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = I18nMessage(Res.string.msg_string_literal, entry.name),
+                        progress = index.toFloat() / archiveEntries.size,
+                    )
+                    extractAction(entry, currentLocation).getOrThrow()
                 }
 
                 taskJobs.remove(taskId)
@@ -1362,6 +1473,8 @@ class DefaultRootComponent(
         detail: I18nMessage,
         progress: Float? = null,
         processedCount: Int? = null,
+        processedBytes: Long? = null,
+        totalBytes: Long? = null,
     ) {
         tasks.value = tasks.value.map { task ->
             if (task.id == taskId) {
@@ -1370,6 +1483,8 @@ class DefaultRootComponent(
                     detail = detail,
                     progress = progress,
                     processedCount = processedCount ?: task.processedCount,
+                    processedBytes = processedBytes ?: task.processedBytes,
+                    totalBytes = totalBytes ?: task.totalBytes,
                 )
             } else {
                 task

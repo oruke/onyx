@@ -169,6 +169,10 @@ interface RootComponent {
 
     fun extractSelectedInPane(paneId: PaneId)
 
+    fun extractToDirectoryInPane(paneId: PaneId)
+
+    fun extractSmartInPane(paneId: PaneId)
+
     fun batchRenameInPane(paneId: PaneId)
 
     fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>)
