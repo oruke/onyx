@@ -1,5 +1,7 @@
 package com.oruke.onyx.app.component
 
+import com.arkivanov.decompose.ComponentContext
+import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
@@ -23,7 +25,10 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,16 +47,22 @@ import kotlin.io.path.pathString
 import com.oruke.onyx.app.OnyxLogger
 
 class DefaultPaneComponent(
+    componentContext: ComponentContext,
     private val paneId: PaneId,
     initialLocation: String,
     private val fileRepository: FileRepository,
     private val fileCommandService: FileCommandService,
     private val textClipboardService: TextClipboardService,
     private val externalOpenService: ExternalOpenService,
-    private val scope: CoroutineScope,
     private val initialViewMode: ViewMode = ViewMode.DETAILS,
     private val onOpenImageViewer: ((file: VFile, allImages: List<VFile>) -> Unit)? = null,
-) : PaneComponent {
+) : PaneComponent, ComponentContext by componentContext {
+
+    // 生命周期绑定的 CoroutineScope — lifecycle.onDestroy 时自动取消
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { s ->
+        lifecycle.doOnDestroy { s.cancel() }
+    }
+
     private val mutableState = MutableStateFlow(
         createInitialState(
             initialLocation = initialLocation,

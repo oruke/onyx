@@ -15,6 +15,7 @@ import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
+import java.io.Closeable
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
@@ -101,14 +102,15 @@ class ArchiveService {
     suspend fun list(archivePath: String, innerPath: String = ""): Result<List<VFile>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                openArchive(archivePath).use { archive ->
+                openArchive(archivePath).use { handle ->
+                    val archive = handle.archive
                     val numItems = archive.numberOfItems
                     val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
                     val parentLoc = archiveLocation(archivePath, innerPath)
                     val directChildren = mutableMapOf<String, VFile>()
 
                     for (i in 0 until numItems) {
-                        val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                        val itemPath = archive.itemPath(i) ?: continue
                         val isDir = archive.getProperty(i, PropID.IS_FOLDER) as? Boolean ?: false
 
                         if (!itemPath.startsWith(prefix)) continue
@@ -160,7 +162,8 @@ class ArchiveService {
         password: String? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            openArchive(archivePath, password).use { archive ->
+            openArchive(archivePath, password).use { handle ->
+                val archive = handle.archive
                 val numItems = archive.numberOfItems
                 val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
                 val targetDir = File(targetDirectory)
@@ -168,13 +171,13 @@ class ArchiveService {
 
                 val indicesToExtract = mutableListOf<Int>()
                 for (i in 0 until numItems) {
-                    val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                    val itemPath = archive.itemPath(i) ?: continue
                     if (prefix.isEmpty() || itemPath.startsWith(prefix)) {
                         indicesToExtract.add(i)
                     }
                 }
 
-                val callback = ArchiveExtractCallback(archive, targetDir, prefix, password)
+                val callback = FileExtractCallback(archive, targetDir, prefix, password)
                 archive.extract(
                     indicesToExtract.toIntArray(),
                     false,
@@ -229,18 +232,13 @@ class ArchiveService {
      */
     suspend fun isEncrypted(archivePath: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val raf = RandomAccessFile(archivePath, "r")
-            val inStream = RandomAccessFileInStream(raf)
-            val archive = SevenZip.openInArchive(null, inStream)
-            val encrypted = try {
+            openArchive(archivePath).use { handle ->
+                val archive = handle.archive
                 val numItems = archive.numberOfItems
                 (0 until numItems).any { i ->
                     archive.getProperty(i, PropID.ENCRYPTED) as? Boolean ?: false
                 }
-            } finally {
-                archive.close()
             }
-            encrypted
         } catch (e: Exception) {
             OnyxLogger.warn("ArchiveService", "检测压缩包加密状态异常: $archivePath", e)
             false
@@ -259,7 +257,8 @@ class ArchiveService {
      */
     suspend fun verifyPassword(archivePath: String, password: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            openArchive(archivePath, password).use { archive ->
+            openArchive(archivePath, password).use { handle ->
+                val archive = handle.archive
                 val numItems = archive.numberOfItems
                 // 找到第一个加密的非空文件条目
                 val testIndex = (0 until numItems).firstOrNull { i ->
@@ -273,52 +272,16 @@ class ArchiveService {
                 val storedCrc = archive.getProperty(testIndex, PropID.CRC) as? Int
 
                 // ── 步骤 1：test 模式解压，检测 ExtractOperationResult ──
-                var testModeError = false
-                archive.extract(
-                    intArrayOf(testIndex),
-                    true, // test 模式：不输出数据，只验证
-                    object : IArchiveExtractCallback, ICryptoGetTextPassword {
-                        override fun getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream? = null
-                        override fun prepareOperation(extractAskMode: ExtractAskMode) {}
-                        override fun setOperationResult(result: ExtractOperationResult) {
-                            if (result != ExtractOperationResult.OK) {
-                                testModeError = true
-                            }
-                        }
-                        override fun setTotal(total: Long) {}
-                        override fun setCompleted(complete: Long) {}
-                        override fun cryptoGetTextPassword(): String = password
-                    },
-                )
-                if (testModeError) return@withContext false
+                val testCallback = TestExtractCallback(password)
+                archive.extract(intArrayOf(testIndex), true, testCallback)
+                if (testCallback.errors.isNotEmpty()) return@withContext false
 
                 // ── 步骤 2：解压到内存，CRC32 比对 ──
                 if (storedCrc != null) {
                     val buffer = java.io.ByteArrayOutputStream()
-                    var extractError = false
-                    archive.extract(
-                        intArrayOf(testIndex),
-                        false,
-                        object : IArchiveExtractCallback, ICryptoGetTextPassword {
-                            override fun getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream? {
-                                if (extractAskMode != ExtractAskMode.EXTRACT) return null
-                                return ISequentialOutStream { data ->
-                                    buffer.write(data)
-                                    data.size
-                                }
-                            }
-                            override fun prepareOperation(extractAskMode: ExtractAskMode) {}
-                            override fun setOperationResult(result: ExtractOperationResult) {
-                                if (result != ExtractOperationResult.OK) {
-                                    extractError = true
-                                }
-                            }
-                            override fun setTotal(total: Long) {}
-                            override fun setCompleted(complete: Long) {}
-                            override fun cryptoGetTextPassword(): String = password
-                        },
-                    )
-                    if (extractError) return@withContext false
+                    val memCallback = MemoryExtractCallback(buffer, password)
+                    archive.extract(intArrayOf(testIndex), false, memCallback)
+                    if (memCallback.errors.isNotEmpty()) return@withContext false
 
                     val data = buffer.toByteArray()
                     if (data.isEmpty()) return@withContext false
@@ -351,11 +314,12 @@ class ArchiveService {
         innerPath: String,
     ): Result<ByteArray?> = withContext(Dispatchers.IO) {
         runCatching {
-            openArchive(archivePath).use { archive ->
+            openArchive(archivePath).use { handle ->
+                val archive = handle.archive
                 val numItems = archive.numberOfItems
                 var targetIndex = -1
                 for (i in 0 until numItems) {
-                    val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                    val itemPath = archive.itemPath(i) ?: continue
                     if (itemPath == innerPath) {
                         targetIndex = i
                         break
@@ -365,28 +329,8 @@ class ArchiveService {
 
                 val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
                 val buffer = java.io.ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
-                val idx = targetIndex
-                archive.extract(
-                    intArrayOf(idx),
-                    false,
-                    object : IArchiveExtractCallback {
-                        override fun getStream(
-                            index: Int,
-                            extractAskMode: ExtractAskMode,
-                        ): ISequentialOutStream? {
-                            if (extractAskMode != ExtractAskMode.EXTRACT) return null
-                            if (index != idx) return null
-                            return ISequentialOutStream { data ->
-                                buffer.write(data)
-                                data.size
-                            }
-                        }
-                        override fun prepareOperation(extractAskMode: ExtractAskMode) {}
-                        override fun setOperationResult(result: ExtractOperationResult) {}
-                        override fun setTotal(total: Long) {}
-                        override fun setCompleted(complete: Long) {}
-                    },
-                )
+                val callback = MemoryExtractCallback(buffer)
+                archive.extract(intArrayOf(targetIndex), false, callback)
                 buffer.toByteArray()
             }
         }
@@ -422,13 +366,14 @@ class ArchiveService {
                 if (parents.all { it.startsWith(common) }) common else ""
             }
 
-            openArchive(archivePath, password).use { archive ->
+            openArchive(archivePath, password).use { handle ->
+                val archive = handle.archive
                 val numItems = archive.numberOfItems
                 // 收集需要解压的 index
                 val targetIndices = mutableListOf<Int>()
                 val entryPathSet = entryPaths.toSet()
                 for (i in 0 until numItems) {
-                    val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                    val itemPath = archive.itemPath(i) ?: continue
                     // 精确匹配，或者是目标条目的子路径
                     if (itemPath in entryPathSet || entryPathSet.any { prefix ->
                             itemPath.startsWith(prefix.trimEnd('/') + "/")
@@ -440,89 +385,83 @@ class ArchiveService {
                     error("未找到匹配的条目: $entryPaths")
                 }
 
-                val errors = mutableListOf<String>()
-                archive.extract(
-                    targetIndices.toIntArray(),
-                    false,
-                    object : IArchiveExtractCallback, ICryptoGetTextPassword {
-                        private var currentOutputStream: java.io.FileOutputStream? = null
-                        private var currentOutFile: File? = null
-
-                        override fun getStream(
-                            index: Int,
-                            extractAskMode: ExtractAskMode,
-                        ): ISequentialOutStream? {
-                            if (extractAskMode != ExtractAskMode.EXTRACT) return null
-                            val itemPath = archive.getProperty(index, PropID.PATH) as? String ?: return null
-                            val isDir = archive.getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
-
-                            // 去掉公共父路径前缀，只保留当前层级及下层结构
-                            val relativePath = if (parentPrefix.isNotEmpty() && itemPath.startsWith(parentPrefix)) {
-                                itemPath.removePrefix(parentPrefix)
-                            } else {
-                                itemPath
-                            }
-                            val outFile = File(targetDirectory, relativePath)
-                            if (isDir) {
-                                outFile.mkdirs()
-                                return null
-                            }
-                            outFile.parentFile?.mkdirs()
-                            val fos = java.io.FileOutputStream(outFile)
-                            currentOutputStream = fos
-                            currentOutFile = outFile
-                            return ISequentialOutStream { data ->
-                                fos.write(data)
-                                data.size
-                            }
-                        }
-
-                        override fun prepareOperation(extractAskMode: ExtractAskMode) {}
-                        override fun setOperationResult(result: ExtractOperationResult) {
-                            currentOutputStream?.close()
-                            currentOutputStream = null
-                            if (result != ExtractOperationResult.OK) {
-                                // 删除失败产出的文件
-                                currentOutFile?.let { file ->
-                                    if (file.exists()) file.delete()
-                                }
-                                val msg = when (result) {
-                                    ExtractOperationResult.WRONG_PASSWORD -> "密码错误"
-                                    ExtractOperationResult.DATAERROR -> "数据错误（密码可能不正确）"
-                                    ExtractOperationResult.CRCERROR -> "CRC 校验失败（密码可能不正确）"
-                                    else -> result.name
-                                }
-                                errors.add(msg)
-                            }
-                            currentOutFile = null
-                        }
-                        override fun setTotal(total: Long) {}
-                        override fun setCompleted(complete: Long) {}
-                        override fun cryptoGetTextPassword(): String = password ?: ""
-                    },
+                val callback = FileExtractCallback(
+                    archive = archive,
+                    targetDir = targetDirectory,
+                    prefix = parentPrefix,
+                    password = password,
                 )
-                if (errors.isNotEmpty()) {
-                    error("解压失败: ${errors.joinToString(", ")}")
+                archive.extract(targetIndices.toIntArray(), false, callback)
+                if (callback.errors.isNotEmpty()) {
+                    error("解压失败: ${callback.errors.joinToString(", ")}")
                 }
             }
         }
     }
 
-    private fun openArchive(path: String, password: String? = null): IInArchive {
+    // ── 内部工具 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 打开压缩包，返回 [ArchiveHandle]。
+     * 调用方**必须**通过 `.use { }` 使用，以确保 `IInArchive` 和底层 `RandomAccessFile` 都被正确关闭。
+     */
+    private fun openArchive(path: String, password: String? = null): ArchiveHandle {
         val raf = RandomAccessFile(path, "r")
-        val inStream = RandomAccessFileInStream(raf)
-        return if (password != null) {
-            SevenZip.openInArchive(null, inStream, password)
-        } else {
-            SevenZip.openInArchive(null, inStream)
+        return try {
+            val inStream = RandomAccessFileInStream(raf)
+            val archive = if (password != null) {
+                SevenZip.openInArchive(null, inStream, password)
+            } else {
+                SevenZip.openInArchive(null, inStream)
+            }
+            ArchiveHandle(raf, archive)
+        } catch (e: Exception) {
+            raf.close()
+            throw e
+        }
+    }
+}
+
+// ── 内部辅助类型 ─────────────────────────────────────────────────────────────
+
+/**
+ * 封装 [IInArchive] 和底层 [RandomAccessFile]，确保两者统一关闭。
+ */
+private class ArchiveHandle(
+    private val raf: RandomAccessFile,
+    val archive: IInArchive,
+) : Closeable {
+    override fun close() {
+        try {
+            archive.close()
+        } finally {
+            raf.close()
         }
     }
 }
 
 /**
- * 7-Zip 解压回调 — 支持密码和错误检测。
+ * 从 [IInArchive] 中读取条目路径，并统一将 `\` 替换为 `/`。
+ *
+ * 7-Zip-JBinding 在 Windows 上返回反斜杠路径，此扩展确保所有路径一致使用正斜杠。
  */
-private class ArchiveExtractCallback(
+private fun IInArchive.itemPath(index: Int): String? =
+    (getProperty(index, PropID.PATH) as? String)?.replace('\\', '/')
+
+/**
+ * 解压错误结果的统一格式化。
+ */
+private fun formatExtractError(result: ExtractOperationResult): String = when (result) {
+    ExtractOperationResult.WRONG_PASSWORD -> "密码错误"
+    ExtractOperationResult.DATAERROR -> "数据错误（密码可能不正确）"
+    ExtractOperationResult.CRCERROR -> "CRC 校验失败（密码可能不正确）"
+    else -> result.name
+}
+
+/**
+ * 解压到文件的回调 — 将条目写入目标目录。
+ */
+private class FileExtractCallback(
     private val archive: IInArchive,
     private val targetDir: File,
     private val prefix: String,
@@ -539,7 +478,7 @@ private class ArchiveExtractCallback(
     ): ISequentialOutStream? {
         if (extractAskMode != ExtractAskMode.EXTRACT) return null
 
-        val itemPath = archive.getProperty(index, PropID.PATH) as? String ?: return null
+        val itemPath = archive.itemPath(index) ?: return null
         val isDir = archive.getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
         val relativePath = if (prefix.isNotEmpty()) itemPath.removePrefix(prefix) else itemPath
 
@@ -560,9 +499,7 @@ private class ArchiveExtractCallback(
 
     override fun prepareOperation(extractAskMode: ExtractAskMode) {}
 
-    override fun setOperationResult(
-        extractOperationResult: ExtractOperationResult,
-    ) {
+    override fun setOperationResult(extractOperationResult: ExtractOperationResult) {
         currentOutputStream?.close()
         currentOutputStream = null
         if (extractOperationResult != ExtractOperationResult.OK) {
@@ -570,20 +507,69 @@ private class ArchiveExtractCallback(
             currentOutFile?.let { file ->
                 if (file.exists()) file.delete()
             }
-            val msg = when (extractOperationResult) {
-                ExtractOperationResult.WRONG_PASSWORD -> "密码错误"
-                ExtractOperationResult.DATAERROR -> "数据错误（密码可能不正确）"
-                ExtractOperationResult.CRCERROR -> "CRC 校验失败（密码可能不正确）"
-                else -> extractOperationResult.name
-            }
-            errors.add(msg)
+            errors.add(formatExtractError(extractOperationResult))
         }
         currentOutFile = null
     }
 
     override fun setTotal(total: Long) {}
-
     override fun setCompleted(complete: Long) {}
+    override fun cryptoGetTextPassword(): String = password ?: ""
+}
 
+/**
+ * 解压到内存的回调 — 将条目写入 [ByteArrayOutputStream]。
+ */
+private class MemoryExtractCallback(
+    private val buffer: java.io.ByteArrayOutputStream,
+    private val password: String? = null,
+) : IArchiveExtractCallback, ICryptoGetTextPassword {
+
+    val errors = mutableListOf<String>()
+
+    override fun getStream(
+        index: Int,
+        extractAskMode: ExtractAskMode,
+    ): ISequentialOutStream? {
+        if (extractAskMode != ExtractAskMode.EXTRACT) return null
+        return ISequentialOutStream { data ->
+            buffer.write(data)
+            data.size
+        }
+    }
+
+    override fun prepareOperation(extractAskMode: ExtractAskMode) {}
+
+    override fun setOperationResult(extractOperationResult: ExtractOperationResult) {
+        if (extractOperationResult != ExtractOperationResult.OK) {
+            errors.add(formatExtractError(extractOperationResult))
+        }
+    }
+
+    override fun setTotal(total: Long) {}
+    override fun setCompleted(complete: Long) {}
+    override fun cryptoGetTextPassword(): String = password ?: ""
+}
+
+/**
+ * 纯验证回调 — test 模式，不写入任何数据，只记录错误。
+ */
+private class TestExtractCallback(
+    private val password: String? = null,
+) : IArchiveExtractCallback, ICryptoGetTextPassword {
+
+    val errors = mutableListOf<String>()
+
+    override fun getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream? = null
+    override fun prepareOperation(extractAskMode: ExtractAskMode) {}
+
+    override fun setOperationResult(extractOperationResult: ExtractOperationResult) {
+        if (extractOperationResult != ExtractOperationResult.OK) {
+            errors.add(formatExtractError(extractOperationResult))
+        }
+    }
+
+    override fun setTotal(total: Long) {}
+    override fun setCompleted(complete: Long) {}
     override fun cryptoGetTextPassword(): String = password ?: ""
 }

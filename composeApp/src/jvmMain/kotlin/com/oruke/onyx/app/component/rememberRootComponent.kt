@@ -3,50 +3,74 @@ package com.oruke.onyx.app.component
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
-import com.oruke.onyx.app.filesystem.JsonSessionRepository
-import com.oruke.onyx.app.filesystem.JsonSettingsRepository
+import com.arkivanov.decompose.DefaultComponentContext
+import com.arkivanov.essenty.lifecycle.LifecycleRegistry
+import com.arkivanov.essenty.lifecycle.create
+import com.arkivanov.essenty.lifecycle.destroy
+import com.arkivanov.essenty.lifecycle.resume
+import com.oruke.onyx.app.component.delegate.ClipboardManager
+import com.oruke.onyx.app.component.delegate.ImageViewerController
+import com.oruke.onyx.app.component.delegate.SessionManager
+import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 import com.oruke.onyx.app.filesystem.ArchiveService
-import com.oruke.onyx.app.filesystem.CompositeFileRepository
-import com.oruke.onyx.app.filesystem.JvmDesktopExternalOpenService
-import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
-import com.oruke.onyx.app.filesystem.JvmLinuxOpenWithService
-import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
-import com.oruke.onyx.app.filesystem.JvmTextClipboardService
+import com.oruke.onyx.app.filesystem.ExternalOpenService
+import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.OpenWithService
+import com.oruke.onyx.app.filesystem.SessionRepository
+import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.TextClipboardService
+import com.oruke.onyx.app.filesystem.TrashService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import org.koin.compose.getKoin
 
+/**
+ * Composable factory — 通过 Koin 获取所有服务依赖，通过 Decompose ComponentContext 管理生命周期。
+ *
+ * 生命周期由 [LifecycleRegistry] 驱动：
+ * - Composable 进入组合 → create + resume
+ * - Composable 退出组合 → destroy（自动取消组件内部 CoroutineScope）
+ */
 @Composable
 fun rememberRootComponent(): RootComponent {
-    val scope = remember {
-        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    }
+    val koin = getKoin()
+    val lifecycle = remember { LifecycleRegistry() }
     val component = remember {
-        val localFileProvider = JvmLocalFileProvider()
-        val archiveService = ArchiveService()
-        val fileRepository = CompositeFileRepository(localFileProvider, archiveService)
-        val externalOpenService = JvmDesktopExternalOpenService()
-        val trashService = JvmDesktopTrashService()
-        val textClipboardService = JvmTextClipboardService()
-        val openWithService = JvmLinuxOpenWithService()
+        val componentContext = DefaultComponentContext(lifecycle = lifecycle)
+        // 创建 delegate 实例
+        val delegateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val taskOrchestrator = TaskOrchestrator(scope = delegateScope)
+        val clipboardManager = ClipboardManager()
+        val imageViewerController = ImageViewerController()
+        val sessionManager = SessionManager(
+            settingsRepository = koin.get<SettingsRepository>(),
+            sessionRepository = koin.get<SessionRepository>(),
+        )
         DefaultRootComponent(
-            scope = scope,
-            fileRepository = fileRepository,
-            fileCommandService = localFileProvider,
-            textClipboardService = textClipboardService,
-            externalOpenService = externalOpenService,
-            trashService = trashService,
-            settingsRepository = JsonSettingsRepository(),
-            sessionRepository = JsonSessionRepository(),
-            archiveService = archiveService,
-            openWithService = openWithService,
+            componentContext = componentContext,
+            fileRepository = koin.get<FileRepository>(),
+            fileCommandService = koin.get<FileCommandService>(),
+            textClipboardService = koin.get<TextClipboardService>(),
+            trashService = koin.get<TrashService>(),
+            externalOpenService = koin.get<ExternalOpenService>(),
+            settingsRepository = koin.get<SettingsRepository>(),
+            sessionRepository = koin.get<SessionRepository>(),
+            archiveService = koin.get<ArchiveService>(),
+            openWithService = koin.get<OpenWithService>(),
+            taskOrchestrator = taskOrchestrator,
+            clipboardManager = clipboardManager,
+            imageViewerController = imageViewerController,
+            sessionManager = sessionManager,
         )
     }
 
     DisposableEffect(component) {
+        lifecycle.create()
+        lifecycle.resume()
         onDispose {
-            scope.cancel()
+            lifecycle.destroy()
         }
     }
 

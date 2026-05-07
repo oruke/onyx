@@ -72,20 +72,38 @@ private fun ensureParentDirectory(filePath: Path) {
     filePath.parent?.createDirectories()
 }
 
+private val IS_WINDOWS = System.getProperty("os.name").lowercase().contains("win")
+private val IS_MAC = System.getProperty("os.name").lowercase().contains("mac")
+
 private fun onyxConfigDirectory(): Path {
+    // 优先检查 XDG 环境变量（所有平台通用覆盖）
     val xdgConfigHome = System.getenv("XDG_CONFIG_HOME")?.takeIf { it.isNotBlank() }
-    return if (xdgConfigHome != null) {
-        Path.of(xdgConfigHome).resolve("onyx")
-    } else {
-        Path.of(System.getProperty("user.home"), ".config", "onyx")
+    if (xdgConfigHome != null) return Path.of(xdgConfigHome).resolve("onyx")
+
+    val userHome = System.getProperty("user.home")
+    return when {
+        IS_WINDOWS -> {
+            val appData = System.getenv("APPDATA")?.takeIf { it.isNotBlank() }
+                ?: Path.of(userHome, "AppData", "Roaming").toString()
+            Path.of(appData).resolve("Onyx")
+        }
+        IS_MAC -> Path.of(userHome, "Library", "Application Support", "Onyx")
+        else -> Path.of(userHome, ".config", "onyx")
     }
 }
 
 private fun onyxStateDirectory(): Path {
     val xdgStateHome = System.getenv("XDG_STATE_HOME")?.takeIf { it.isNotBlank() }
-    return if (xdgStateHome != null) {
-        Path.of(xdgStateHome).resolve("onyx")
-    } else {
-        Path.of(System.getProperty("user.home"), ".local", "state", "onyx")
+    if (xdgStateHome != null) return Path.of(xdgStateHome).resolve("onyx")
+
+    val userHome = System.getProperty("user.home")
+    return when {
+        IS_WINDOWS -> {
+            val localAppData = System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() }
+                ?: Path.of(userHome, "AppData", "Local").toString()
+            Path.of(localAppData).resolve("Onyx")
+        }
+        IS_MAC -> Path.of(userHome, "Library", "Caches", "Onyx")
+        else -> Path.of(userHome, ".local", "state", "onyx")
     }
 }

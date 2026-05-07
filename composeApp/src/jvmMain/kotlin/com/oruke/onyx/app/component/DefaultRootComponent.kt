@@ -1,5 +1,8 @@
 package com.oruke.onyx.app.component
 
+import com.arkivanov.decompose.ComponentContext
+import com.arkivanov.decompose.childContext
+import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
@@ -28,7 +31,10 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,8 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_extract_here
@@ -65,9 +70,14 @@ import java.nio.file.FileSystems
 import java.nio.file.Path
 import java.util.*
 import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.app.component.delegate.ClipboardManager
+import com.oruke.onyx.app.component.delegate.ImageViewerController
+import com.oruke.onyx.app.component.delegate.SessionManager
+import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 
+@OptIn(kotlinx.coroutines.FlowPreview::class)
 class DefaultRootComponent(
-    private val scope: CoroutineScope,
+    componentContext: ComponentContext,
     private val fileRepository: FileRepository,
     private val fileCommandService: FileCommandService,
     private val textClipboardService: TextClipboardService,
@@ -77,25 +87,36 @@ class DefaultRootComponent(
     private val sessionRepository: SessionRepository,
     private val archiveService: ArchiveService,
     private val openWithService: OpenWithService,
-) : RootComponent {
+    // ── Delegate ──────────────────────────────────────────────────────────
+    private val taskOrchestrator: TaskOrchestrator,
+    private val clipboardManager: ClipboardManager,
+    private val imageViewerController: ImageViewerController,
+    private val sessionManager: SessionManager,
+) : RootComponent, ComponentContext by componentContext {
+
+    // 生命周期绑定的 CoroutineScope — lifecycle.onDestroy 时自动取消
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { s ->
+        lifecycle.doOnDestroy { s.cancel() }
+    }
+
     override val primaryPane: PaneComponent = DefaultPaneComponent(
+        componentContext = childContext("primaryPane"),
         paneId = PaneId.PRIMARY,
         initialLocation = fileRepository.defaultLocation(),
         fileRepository = fileRepository,
         fileCommandService = fileCommandService,
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
-        scope = scope,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
     )
     override val secondaryPane: PaneComponent = DefaultPaneComponent(
+        componentContext = childContext("secondaryPane"),
         paneId = PaneId.SECONDARY,
         initialLocation = fileRepository.defaultLocation(),
         fileRepository = fileRepository,
         fileCommandService = fileCommandService,
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
-        scope = scope,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
     )
 
@@ -110,16 +131,11 @@ class DefaultRootComponent(
     private val settings = MutableStateFlow(OnyxSettings())
     private val sessionRestoreState = MutableStateFlow<SessionRestoreState>(SessionRestoreState.Loading)
     private val dialogState = MutableStateFlow<RootDialogState?>(null)
-    private val clipboard = MutableStateFlow<ClipboardPayload?>(null)
-    private val tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     private val showPreviewPane = MutableStateFlow(false)
-    override val imageViewerState = MutableStateFlow(ImageViewerState())
-    private val taskJobs = mutableMapOf<String, Job>()
-    private val taskPauseFlags = mutableMapOf<String, MutableStateFlow<Boolean>>()
+    override val imageViewerState: StateFlow<ImageViewerState> = imageViewerController.state
     private var pendingDeleteRequest: PendingDeleteRequest? = null
     private var pendingTransferRequest: PendingTransferRequest? = null
     private var pendingArchiveExtraction: PendingArchiveExtraction? = null
-    private val persistenceMutex = Mutex()
     private var persistenceReady = false
     private val mutableState = MutableStateFlow(
         RootState(
@@ -132,8 +148,8 @@ class DefaultRootComponent(
             settings = settings.value,
             sessionRestoreState = sessionRestoreState.value,
             dialogState = dialogState.value,
-            canPaste = clipboard.value != null,
-            tasks = tasks.value,
+            canPaste = clipboardManager.canPaste,
+            tasks = taskOrchestrator.tasks.value,
             showPreviewPane = showPreviewPane.value,
         )
     )
@@ -141,48 +157,48 @@ class DefaultRootComponent(
     override val state: StateFlow<RootState> = mutableState.asStateFlow()
 
     init {
+        // 使用嵌套 combine 保持类型安全（每个 combine ≤ 5 参数）
         scope.launch {
-            combine(
-                layoutMode,
-                paneSplitFraction,
-                activePane,
-                primaryPane.state,
-                secondaryPane.state,
-                sidebarTreeState,
-                settings,
-                sessionRestoreState,
-                dialogState,
-                clipboard,
-                tasks,
-                showPreviewPane,
-            ) { values ->
-                val currentLayoutMode = values[0] as PaneLayoutMode
-                val currentPaneSplitFraction = values[1] as Float
-                val currentActivePane = values[2] as PaneId
-                val primaryState = values[3] as PaneState
-                val secondaryState = values[4] as PaneState
-                val currentSidebarTreeState = values[5] as SidebarTreeState
-                val currentSettings = values[6] as OnyxSettings
-                val currentSessionRestoreState = values[7] as SessionRestoreState
-                val currentDialogState = values[8] as RootDialogState?
-                val currentClipboard = values[9] as ClipboardPayload?
+            val layoutFlow = combine(
+                layoutMode, paneSplitFraction, activePane, showPreviewPane,
+            ) { mode, fraction, pane, preview ->
+                LayoutSlice(mode, fraction, pane, preview)
+            }
+            val paneFlow = combine(
+                primaryPane.state, secondaryPane.state,
+            ) { primary, secondary -> primary to secondary }
+            val contextFlow = combine(
+                combine(
+                    sidebarTreeState, settings, sessionRestoreState,
+                ) { sidebar, stgs, restore -> Triple(sidebar, stgs, restore) },
+                combine(
+                    dialogState, clipboardManager.clipboard, taskOrchestrator.tasks,
+                ) { dialog, clipboard, taskList -> Triple(dialog, clipboard, taskList) },
+            ) { (sidebar, stgs, restore), (dialog, clipboard, taskList) ->
+                ContextSlice(
+                    sidebarTreeState = sidebar,
+                    settings = stgs,
+                    sessionRestoreState = restore,
+                    dialogState = dialog,
+                    canPaste = clipboard != null,
+                    tasks = taskList,
+                )
+            }
 
-                @Suppress("UNCHECKED_CAST")
-                val currentTasks = values[10] as List<BackgroundTask>
-                val currentShowPreviewPane = values[11] as Boolean
+            combine(layoutFlow, paneFlow, contextFlow) { layout, panes, context ->
                 RootState(
-                    layoutMode = currentLayoutMode,
-                    paneSplitFraction = currentPaneSplitFraction,
-                    activePane = currentActivePane,
-                    primaryPane = primaryState,
-                    secondaryPane = secondaryState,
-                    sidebarTreeState = currentSidebarTreeState,
-                    settings = currentSettings,
-                    sessionRestoreState = currentSessionRestoreState,
-                    dialogState = currentDialogState,
-                    canPaste = currentClipboard != null,
-                    tasks = currentTasks,
-                    showPreviewPane = currentShowPreviewPane,
+                    layoutMode = layout.mode,
+                    paneSplitFraction = layout.fraction,
+                    activePane = layout.activePane,
+                    primaryPane = panes.first,
+                    secondaryPane = panes.second,
+                    sidebarTreeState = context.sidebarTreeState,
+                    settings = context.settings,
+                    sessionRestoreState = context.sessionRestoreState,
+                    dialogState = context.dialogState,
+                    canPaste = context.canPaste,
+                    tasks = context.tasks,
+                    showPreviewPane = layout.showPreviewPane,
                 )
             }.collect { combinedState ->
                 mutableState.value = combinedState
@@ -448,42 +464,24 @@ class DefaultRootComponent(
     }
 
     override fun stageCopySelectedInPane(paneId: PaneId) {
-        val entries = selectedEntriesInPane(paneId)
-        if (entries.isEmpty()) {
-            return
-        }
-        clipboard.value = ClipboardPayload(
-            operation = ClipboardOperation.COPY,
-            entries = entries,
-        )
-        // 同步写入系统剪切板，以便在外部应用中粘贴
-        writeToSystemClipboard(entries, isCut = false)
+        clipboardManager.stageCopy(selectedEntriesInPane(paneId))
     }
 
     override fun stageCutSelectedInPane(paneId: PaneId) {
-        val entries = selectedEntriesInPane(paneId)
-        if (entries.isEmpty()) {
-            return
-        }
-        clipboard.value = ClipboardPayload(
-            operation = ClipboardOperation.CUT,
-            entries = entries,
-        )
-        // 同步写入系统剪切板，以便在外部应用中粘贴
-        writeToSystemClipboard(entries, isCut = true)
+        clipboardManager.stageCut(selectedEntriesInPane(paneId))
     }
 
     override fun requestPasteIntoPane(paneId: PaneId) {
-        val clipboardPayload = clipboard.value ?: return
+        val payload = clipboardManager.consume() ?: return
         val targetLocation = paneState(paneId).location
         requestTransferEntriesToDirectory(
-            entries = clipboardPayload.entries,
+            entries = payload.entries,
             targetDirectoryLocation = targetLocation,
-            operation = when (clipboardPayload.operation) {
-                ClipboardOperation.COPY -> FileTransferOperation.COPY
-                ClipboardOperation.CUT -> FileTransferOperation.MOVE
+            operation = when (payload.operation) {
+                ClipboardManager.ClipboardOperation.COPY -> FileTransferOperation.COPY
+                ClipboardManager.ClipboardOperation.CUT -> FileTransferOperation.MOVE
             },
-            clearClipboardOnSuccess = clipboardPayload.operation == ClipboardOperation.CUT,
+            clearClipboardOnSuccess = payload.operation == ClipboardManager.ClipboardOperation.CUT,
         )
     }
 
@@ -521,7 +519,7 @@ class DefaultRootComponent(
         targetDirectoryLocation: String,
     ) {
         val taskId = UUID.randomUUID().toString()
-        appendTask(
+        taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.EXTRACT,
@@ -536,7 +534,7 @@ class DefaultRootComponent(
 
         val job = scope.launch {
             try {
-                updateTask(
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
@@ -555,7 +553,7 @@ class DefaultRootComponent(
                     val innerPaths = group.map { it.second }.filter { it.isNotBlank() }
                     if (innerPaths.isEmpty()) continue
 
-                    updateTask(
+                    taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
                         detail = I18nMessage(Res.string.msg_string_literal, group.first().third.name),
@@ -605,8 +603,8 @@ class DefaultRootComponent(
                     processedCount += group.size
                 }
 
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = I18nMessage(Res.string.msg_extracted_items, entries.size, targetDirectoryLocation),
@@ -615,8 +613,8 @@ class DefaultRootComponent(
                 // 刷新目标目录所在面板
                 refreshAllPanes()
             } catch (e: CancellationException) {
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(Res.string.msg_extract_failed),
@@ -624,8 +622,8 @@ class DefaultRootComponent(
                 )
             } catch (e: Exception) {
                 OnyxLogger.error("RootComponent", "解压失败", e)
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
                     detail = if (e.message != null) {
@@ -637,7 +635,7 @@ class DefaultRootComponent(
                 )
             }
         }
-        taskJobs[taskId] = job
+        taskOrchestrator.registerJob(taskId, job)
     }
 
     private fun requestTransferEntriesToDirectory(
@@ -700,13 +698,12 @@ class DefaultRootComponent(
             FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
             FileTransferOperation.EXTRACT -> BackgroundTaskKind.EXTRACT
         }
-        val pauseFlag = MutableStateFlow(false)
-        taskPauseFlags[taskId] = pauseFlag
+        val pauseFlag = taskOrchestrator.getOrCreatePauseFlag(taskId)
         val startTime = System.currentTimeMillis()
         // 预计算总字节（目录递归统计由 sizeBytes 提供，若为 0 则回退到文件计数进度）
         val totalBytes = entries.sumOf { it.sizeBytes ?: 0L }
 
-        appendTask(
+        taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
                 kind = taskKind,
@@ -726,7 +723,7 @@ class DefaultRootComponent(
 
         val job = scope.launch {
             try {
-                updateTask(
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(
@@ -747,7 +744,7 @@ class DefaultRootComponent(
                         ensureActive()
                         delay(200)
                     }
-                    updateTaskFields(taskId) { task ->
+                    taskOrchestrator.updateTaskFields(taskId) { task ->
                         task.copy(currentFileName = entry.name)
                     }
                     val conflictStrategy = conflictStrategies[entry.id] ?: TransferConflictStrategy.KEEP_BOTH
@@ -775,7 +772,7 @@ class DefaultRootComponent(
                     } else {
                         (index + 1).toFloat() / entries.size
                     }
-                    updateTask(
+                    taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
                         detail = I18nMessage(
@@ -788,9 +785,8 @@ class DefaultRootComponent(
                     )
                 }
 
-                taskJobs.remove(taskId)
-                taskPauseFlags.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = when (operation) {
@@ -808,14 +804,13 @@ class DefaultRootComponent(
                     processedBytes = totalBytes,
                 )
                 if (clearClipboardOnSuccess) {
-                    clipboard.value = null
+                    clipboardManager.clear()
                 }
                 refreshAllPanes()
-                scheduleTaskAutoCleanup(taskId)
+                taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
-                taskJobs.remove(taskId)
-                taskPauseFlags.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(Res.string.msg_cancelled),
@@ -824,9 +819,8 @@ class DefaultRootComponent(
                 refreshAllPanes()
             } catch (failure: Throwable) {
                 OnyxLogger.error("RootComponent", "文件传输失败 (${operation.name})", failure)
-                taskJobs.remove(taskId)
-                taskPauseFlags.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
                     detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
@@ -840,7 +834,7 @@ class DefaultRootComponent(
                 refreshAllPanes()
             }
         }
-        taskJobs[taskId] = job
+        taskOrchestrator.registerJob(taskId, job)
     }
 
     override fun requestDeleteSelectedInPane(paneId: PaneId) {
@@ -925,7 +919,7 @@ class DefaultRootComponent(
         if (archiveEntries.isEmpty()) return
 
         val taskId = UUID.randomUUID().toString()
-        appendTask(
+        taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.EXTRACT,
@@ -940,7 +934,7 @@ class DefaultRootComponent(
 
         val job = scope.launch {
             try {
-                updateTask(
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
@@ -948,7 +942,7 @@ class DefaultRootComponent(
                 )
                 archiveEntries.forEachIndexed { index, entry ->
                     ensureActive()
-                    updateTask(
+                    taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
                         detail = I18nMessage(Res.string.msg_string_literal, entry.name),
@@ -992,8 +986,8 @@ class DefaultRootComponent(
                     extractAction(entry, currentLocation, password).getOrThrow()
                 }
 
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
@@ -1001,11 +995,11 @@ class DefaultRootComponent(
                     processedCount = archiveEntries.size,
                 )
                 refreshAllPanes()
-                scheduleTaskAutoCleanup(taskId)
+                taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
                 pendingArchiveExtraction = null
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(Res.string.msg_cancelled),
@@ -1013,15 +1007,15 @@ class DefaultRootComponent(
             } catch (e: Throwable) {
                 OnyxLogger.error("RootComponent", "拖拽解压失败", e)
                 pendingArchiveExtraction = null
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
                     detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
                 )
             }
         }
-        taskJobs[taskId] = job
+        taskOrchestrator.registerJob(taskId, job)
     }
 
     override fun batchRenameInPane(paneId: PaneId) {
@@ -1041,7 +1035,7 @@ class DefaultRootComponent(
         dialogState.value = currentDialog.copy(executing = true, progress = 0f, processedCount = 0, currentDetail = "")
 
         val taskId = UUID.randomUUID().toString()
-        appendTask(
+        taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.RENAME,
@@ -1056,7 +1050,7 @@ class DefaultRootComponent(
 
         val job = scope.launch {
             try {
-                updateTask(
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(Res.string.msg_string_literal, "Starting..."),
@@ -1066,7 +1060,7 @@ class DefaultRootComponent(
                     ensureActive()
                     val detailText = "${entry.name} → $newName"
                     val prog = (index + 1).toFloat() / renameMap.size
-                    updateTask(
+                    taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
                         detail = I18nMessage(Res.string.msg_string_literal, detailText),
@@ -1083,8 +1077,8 @@ class DefaultRootComponent(
                     fileCommandService.rename(entry, newName).getOrThrow()
                 }
 
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = I18nMessage(Res.string.msg_string_literal, "${renameMap.size} files renamed"),
@@ -1101,13 +1095,13 @@ class DefaultRootComponent(
                     )
                 }
                 refreshAllPanes()
-                scheduleTaskAutoCleanup(taskId)
+                taskOrchestrator.scheduleAutoCleanup(taskId)
                 // 短暂展示完成状态后自动重置为编辑模式
                 delay(600)
                 resetBatchRenameForContinue(paneId)
             } catch (_: CancellationException) {
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(Res.string.msg_cancelled),
@@ -1117,8 +1111,8 @@ class DefaultRootComponent(
                 }
             } catch (e: Throwable) {
                 OnyxLogger.error("RootComponent", "批量重命名失败", e)
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
                     detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
@@ -1129,7 +1123,7 @@ class DefaultRootComponent(
                 refreshAllPanes()
             }
         }
-        taskJobs[taskId] = job
+        taskOrchestrator.registerJob(taskId, job)
     }
 
     override fun resetBatchRenameForContinue(paneId: PaneId) {
@@ -1153,7 +1147,7 @@ class DefaultRootComponent(
         }
 
         val taskId = UUID.randomUUID().toString()
-        appendTask(
+        taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.DELETE,
@@ -1168,7 +1162,7 @@ class DefaultRootComponent(
 
         val job = scope.launch {
             try {
-                updateTask(
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(selectedEntries)),
@@ -1182,7 +1176,7 @@ class DefaultRootComponent(
                     } else {
                         fileCommandService.delete(listOf(entry)).getOrThrow()
                     }
-                    updateTask(
+                    taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
                         detail = I18nMessage(Res.string.msg_string_literal, entry.name),
@@ -1190,8 +1184,8 @@ class DefaultRootComponent(
                     )
                 }
 
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = I18nMessage(Res.string.msg_deleted_items, selectedEntries.size),
@@ -1199,10 +1193,10 @@ class DefaultRootComponent(
                     processedCount = selectedEntries.size,
                 )
                 refreshAllPanes()
-                scheduleTaskAutoCleanup(taskId)
+                taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(Res.string.msg_cancelled),
@@ -1211,8 +1205,8 @@ class DefaultRootComponent(
                 refreshAllPanes()
             } catch (failure: Throwable) {
                 OnyxLogger.error("RootComponent", "删除失败", failure)
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
                     detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
@@ -1222,112 +1216,34 @@ class DefaultRootComponent(
                 refreshAllPanes()
             }
         }
-        taskJobs[taskId] = job
+        taskOrchestrator.registerJob(taskId, job)
     }
 
-    override fun dismissTask(taskId: String) {
-        taskJobs.remove(taskId)?.cancel()
-        taskPauseFlags.remove(taskId)
-        tasks.value = tasks.value.filterNot { task -> task.id == taskId }
-    }
+    override fun dismissTask(taskId: String) = taskOrchestrator.dismissTask(taskId)
 
-    override fun cancelTask(taskId: String) {
-        taskJobs[taskId]?.cancel()
-    }
+    override fun cancelTask(taskId: String) = taskOrchestrator.cancelTask(taskId)
 
-    override fun pauseTask(taskId: String) {
-        taskPauseFlags[taskId]?.value = true
-        updateTaskFields(taskId) { task ->
-            task.copy(status = BackgroundTaskStatus.PAUSED)
-        }
-    }
+    override fun pauseTask(taskId: String) = taskOrchestrator.pauseTask(taskId)
 
-    override fun resumeTask(taskId: String) {
-        taskPauseFlags[taskId]?.value = false
-        updateTaskFields(taskId) { task ->
-            task.copy(status = BackgroundTaskStatus.RUNNING)
-        }
-    }
+    override fun resumeTask(taskId: String) = taskOrchestrator.resumeTask(taskId)
 
-    override fun clearAllTasks() {
-        taskJobs.values.forEach { job -> job.cancel() }
-        taskJobs.clear()
-        taskPauseFlags.clear()
-        tasks.value = emptyList()
-    }
+    override fun clearAllTasks() = taskOrchestrator.clearAllTasks()
 
     // ── 图片查看器 ────────────────────────────────────────────────────────────
 
-    override fun openImageViewer(file: VFile, allImages: List<VFile>) {
-        val index = allImages.indexOfFirst { it.id == file.id }.coerceAtLeast(0)
-        imageViewerState.value = ImageViewerState(
-            visible = true,
-            currentFile = file,
-            allImages = allImages,
-            currentIndex = index,
-            zoomFactor = 1f,
-            fitMode = ImageFitMode.FIT_WINDOW,
-            rotation = 0,
-        )
-    }
+    override fun openImageViewer(file: VFile, allImages: List<VFile>) = imageViewerController.open(file, allImages)
 
-    override fun closeImageViewer() {
-        imageViewerState.value = ImageViewerState()
-    }
+    override fun closeImageViewer() = imageViewerController.close()
 
-    override fun imageViewerNext() {
-        val current = imageViewerState.value
-        if (!current.visible || current.allImages.isEmpty()) return
-        val nextIndex = (current.currentIndex + 1) % current.allImages.size
-        val nextFile = current.allImages[nextIndex]
-        imageViewerState.value = current.copy(
-            currentIndex = nextIndex,
-            currentFile = nextFile,
-            zoomFactor = 1f,
-            fitMode = ImageFitMode.FIT_WINDOW,
-            rotation = 0,
-        )
-    }
+    override fun imageViewerNext() = imageViewerController.next()
 
-    override fun imageViewerPrevious() {
-        val current = imageViewerState.value
-        if (!current.visible || current.allImages.isEmpty()) return
-        val prevIndex = if (current.currentIndex <= 0) current.allImages.lastIndex else current.currentIndex - 1
-        val prevFile = current.allImages[prevIndex]
-        imageViewerState.value = current.copy(
-            currentIndex = prevIndex,
-            currentFile = prevFile,
-            zoomFactor = 1f,
-            fitMode = ImageFitMode.FIT_WINDOW,
-            rotation = 0,
-        )
-    }
+    override fun imageViewerPrevious() = imageViewerController.previous()
 
-    override fun imageViewerSetZoom(factor: Float) {
-        val current = imageViewerState.value
-        if (!current.visible) return
-        imageViewerState.value = current.copy(
-            zoomFactor = factor.coerceIn(0.1f, 10f),
-        )
-    }
+    override fun imageViewerSetZoom(factor: Float) = imageViewerController.setZoom(factor)
 
-    override fun imageViewerSetFitMode(mode: ImageFitMode) {
-        val current = imageViewerState.value
-        if (!current.visible) return
-        imageViewerState.value = current.copy(
-            fitMode = mode,
-            zoomFactor = 1f,
-        )
-    }
+    override fun imageViewerSetFitMode(mode: ImageFitMode) = imageViewerController.setFitMode(mode)
 
-    override fun imageViewerRotate(clockwise: Boolean) {
-        val current = imageViewerState.value
-        if (!current.visible) return
-        val delta = if (clockwise) 90 else -90
-        imageViewerState.value = current.copy(
-            rotation = (current.rotation + delta + 360) % 360,
-        )
-    }
+    override fun imageViewerRotate(clockwise: Boolean) = imageViewerController.rotate(clockwise)
 
     // ── 打开方式 ──────────────────────────────────────────────────────────
 
@@ -1344,13 +1260,6 @@ class DefaultRootComponent(
     override fun openWithChooser(entry: VFile) {
         scope.launch {
             openWithService.openWithChooser(entry)
-        }
-    }
-
-    private fun scheduleTaskAutoCleanup(taskId: String) {
-        scope.launch {
-            delay(5000)
-            tasks.value = tasks.value.filterNot { task -> task.id == taskId }
         }
     }
 
@@ -1392,7 +1301,7 @@ class DefaultRootComponent(
         sessionRestoreState.value = if (restoreError == null) {
             SessionRestoreState.Ready
         } else {
-            SessionRestoreState.Failed(restoreError!!)
+            SessionRestoreState.Failed(restoreError)
         }
         persistenceReady = true
         recordRecentLocations(
@@ -1417,10 +1326,7 @@ class DefaultRootComponent(
     }
 
     private suspend fun persistCurrentState() {
-        persistenceMutex.withLock {
-            settingsRepository.saveSettings(settings.value)
-            sessionRepository.saveSession(buildSessionSnapshot())
-        }
+        sessionManager.persist(settings.value, buildSessionSnapshot())
     }
 
     private fun buildSessionSnapshot(): AppSessionSnapshot {
@@ -1449,7 +1355,7 @@ class DefaultRootComponent(
         paths: List<String>,
     ) {
         val taskId = UUID.randomUUID().toString()
-        appendTask(
+        taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.COPY,
@@ -1464,7 +1370,7 @@ class DefaultRootComponent(
 
         val job = scope.launch {
             try {
-                updateTask(
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(
@@ -1479,15 +1385,15 @@ class DefaultRootComponent(
                         parentLocation = parentLocation,
                         name = path,
                     ).getOrThrow()
-                    updateTask(
+                    taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
                         detail = I18nMessage(Res.string.msg_string_literal, path),
                         progress = (index + 1).toFloat() / paths.size,
                     )
                 }
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = I18nMessage(Res.string.msg_created_folders, paths.size),
@@ -1495,10 +1401,10 @@ class DefaultRootComponent(
                     processedCount = paths.size,
                 )
                 paneComponent(paneId).refresh()
-                scheduleTaskAutoCleanup(taskId)
+                taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(Res.string.msg_cancelled),
@@ -1507,8 +1413,8 @@ class DefaultRootComponent(
                 paneComponent(paneId).refresh()
             } catch (failure: Throwable) {
                 OnyxLogger.error("RootComponent", "创建目录失败", failure)
-                taskJobs.remove(taskId)
-                updateTask(
+                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
                     detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
@@ -1518,7 +1424,7 @@ class DefaultRootComponent(
                 paneComponent(paneId).refresh()
             }
         }
-        taskJobs[taskId] = job
+        taskOrchestrator.registerJob(taskId, job)
     }
 
     private fun parseDirectoryDraft(draft: String): List<String> {
@@ -1630,40 +1536,6 @@ class DefaultRootComponent(
         }
     }
 
-    private fun appendTask(task: BackgroundTask) {
-        tasks.value = listOf(task) + tasks.value
-    }
-
-    private fun updateTask(
-        taskId: String,
-        status: BackgroundTaskStatus,
-        detail: I18nMessage,
-        progress: Float? = null,
-        processedCount: Int? = null,
-        processedBytes: Long? = null,
-        totalBytes: Long? = null,
-    ) {
-        tasks.value = tasks.value.map { task ->
-            if (task.id == taskId) {
-                task.copy(
-                    status = status,
-                    detail = detail,
-                    progress = progress,
-                    processedCount = processedCount ?: task.processedCount,
-                    processedBytes = processedBytes ?: task.processedBytes,
-                    totalBytes = totalBytes ?: task.totalBytes,
-                )
-            } else {
-                task
-            }
-        }
-    }
-
-    private fun updateTaskFields(taskId: String, transform: (BackgroundTask) -> BackgroundTask) {
-        tasks.value = tasks.value.map { task ->
-            if (task.id == taskId) transform(task) else task
-        }
-    }
 
     private fun paneState(paneId: PaneId): PaneState {
         return when (paneId) {
@@ -1746,36 +1618,6 @@ class DefaultRootComponent(
         secondaryPane.refresh()
     }
 
-    /**
-     * 将文件列表写入系统剪切板。
-     * 使用多格式 Transferable，支持所有主流 Linux 桌面应用。
-     */
-    private fun writeToSystemClipboard(entries: List<VFile>, isCut: Boolean) {
-        try {
-            val files = entries.mapNotNull { entry ->
-                // 只处理本地文件（archive:// 等协议无法粘贴到外部）
-                val file = java.io.File(entry.location)
-                if (file.exists()) file else null
-            }
-            if (files.isNotEmpty()) {
-                val transferable = com.oruke.onyx.ui.ExternalDragHelper.FileTransferable(
-                    files = files,
-                    isCut = isCut,
-                )
-                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
-                    transferable, null,
-                )
-            }
-        } catch (e: Exception) {
-            // 剪切板写入失败不应阻断内部操作
-            OnyxLogger.warn("RootComponent", "系统剪切板写入失败", e)
-        }
-    }
-
-    private data class ClipboardPayload(
-        val operation: ClipboardOperation,
-        val entries: List<VFile>,
-    )
 
     private data class PendingDeleteRequest(
         val paneId: PaneId,
@@ -1793,10 +1635,6 @@ class DefaultRootComponent(
         val nextConflictIndex: Int,
     )
 
-    private enum class ClipboardOperation {
-        COPY,
-        CUT,
-    }
 
     private class PendingArchiveExtraction(
         val entries: List<VFile>,
@@ -1899,3 +1737,21 @@ private fun SidebarTreeState.updateNode(
 
 private const val MaxFavoriteLocations = 12
 private const val MaxRecentLocations = 10
+
+/** combine 中间类型 — 布局相关状态切片 */
+private data class LayoutSlice(
+    val mode: PaneLayoutMode,
+    val fraction: Float,
+    val activePane: PaneId,
+    val showPreviewPane: Boolean,
+)
+
+/** combine 中间类型 — 上下文状态切片 */
+private data class ContextSlice(
+    val sidebarTreeState: SidebarTreeState,
+    val settings: OnyxSettings,
+    val sessionRestoreState: SessionRestoreState,
+    val dialogState: RootDialogState?,
+    val canPaste: Boolean,
+    val tasks: List<BackgroundTask>,
+)
