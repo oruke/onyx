@@ -63,6 +63,9 @@ class DefaultPaneComponent(
     private val fileWatcher = FileWatcher()
     private var fileWatcherJob: Job? = null
 
+    /** 每个 tab 正在执行的加载 Job — 导航 / 刷新时先取消旧 Job，避免状态卡死。 */
+    private val tabLoadJobs = mutableMapOf<String, Job>()
+
     /**
      * key = tabId, value = entry name to auto-select+scroll after load.
      * Consumed in [loadTab] on success.
@@ -934,39 +937,57 @@ class DefaultPaneComponent(
         tabId: String,
         location: String,
     ) {
-        scope.launch {
-            val result = fileRepository.list(location)
-            result.fold(
-                onSuccess = { entries ->
-                    val focusName = pendingFocusEntryName.remove(tabId)
-                    val focusEntry = if (focusName != null) {
-                        entries.firstOrNull { it.name == focusName }
-                    } else null
-                    updateTab(tabId) { currentTab ->
-                        if (focusEntry != null) {
-                            currentTab.copy(
-                                allEntries = entries,
-                                entriesState = PaneEntriesState.Ready(entries),
-                                selectedEntryIds = setOf(focusEntry.id),
-                                selectionAnchorId = focusEntry.id,
-                                selectionFocusId = focusEntry.id,
-                                pendingScrollToEntryId = focusEntry.id,
-                            )
-                        } else {
-                            currentTab.copy(
-                                allEntries = entries,
-                                entriesState = PaneEntriesState.Ready(entries),
-                            )
+        // 取消该 tab 之前的加载（防止超时挂起导致后续操作全部卡死）
+        tabLoadJobs[tabId]?.cancel()
+        tabLoadJobs[tabId] = scope.launch {
+            try {
+                val result = fileRepository.list(location)
+                // Stale guard：如果 tab 已经导航到别处，丢弃本次结果
+                val currentTab = mutableState.value.tabs.firstOrNull { it.id == tabId }
+                if (currentTab == null || currentTab.location != location) return@launch
+
+                result.fold(
+                    onSuccess = { entries ->
+                        val focusName = pendingFocusEntryName.remove(tabId)
+                        val focusEntry = if (focusName != null) {
+                            entries.firstOrNull { it.name == focusName }
+                        } else null
+                        updateTab(tabId) { tab ->
+                            if (focusEntry != null) {
+                                tab.copy(
+                                    allEntries = entries,
+                                    entriesState = PaneEntriesState.Ready(entries),
+                                    selectedEntryIds = setOf(focusEntry.id),
+                                    selectionAnchorId = focusEntry.id,
+                                    selectionFocusId = focusEntry.id,
+                                    pendingScrollToEntryId = focusEntry.id,
+                                )
+                            } else {
+                                tab.copy(
+                                    allEntries = entries,
+                                    entriesState = PaneEntriesState.Ready(entries),
+                                )
+                            }
                         }
-                    }
-                },
-                onFailure = { failure ->
-                    pendingFocusEntryName.remove(tabId)
-                    updateTab(tabId) { currentTab ->
-                        currentTab.copy(entriesState = PaneEntriesState.Failure(failure.message))
-                    }
-                },
-            )
+                    },
+                    onFailure = { failure ->
+                        pendingFocusEntryName.remove(tabId)
+                        updateTab(tabId) { tab ->
+                            tab.copy(entriesState = PaneEntriesState.Failure(failure.message))
+                        }
+                    },
+                )
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                throw kotlinx.coroutines.CancellationException()
+            } catch (e: Exception) {
+                // 非预期异常 → 也要转为 Failure，不能让状态卡在 Loading
+                pendingFocusEntryName.remove(tabId)
+                updateTab(tabId) { tab ->
+                    tab.copy(entriesState = PaneEntriesState.Failure(e.message))
+                }
+            } finally {
+                tabLoadJobs.remove(tabId)
+            }
         }
     }
 

@@ -579,6 +579,7 @@ internal fun PaneSurface(
                         contextMenuOffset = pointerPosition
                         showContextMenu = true
                     },
+                    onRetry = component::refresh,
                 )
 
                 if (showContextMenu) {
