@@ -143,7 +143,7 @@ class JvmLocalFileProvider : FileRepository, FileCommandService {
             kind = if (isDirectory) VFileKind.DIRECTORY else VFileKind.FILE,
             sizeBytes = if (isDirectory) null else Files.size(this),
             modifiedAtEpochMillis = getLastModifiedTime().toMillis(),
-            hidden = runCatching { Files.isHidden(this) }.getOrDefault(name.startsWith(".")),
+            hidden = runCatching { Files.isHidden(this) }.getOrDefault(false) || name.startsWith("."),
             capabilities = buildSet {
                 add(VFileCapability.READ_METADATA)
                 add(VFileCapability.RENAME)

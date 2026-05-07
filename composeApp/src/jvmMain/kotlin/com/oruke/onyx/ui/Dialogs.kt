@@ -82,6 +82,7 @@ import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
 import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_confirm
 import onyx.composeapp.generated.resources.action_delete_selected
 import onyx.composeapp.generated.resources.action_keep_both
 import onyx.composeapp.generated.resources.action_layout_dual_horizontal
@@ -98,6 +99,8 @@ import onyx.composeapp.generated.resources.label_create_directories_error_empty
 import onyx.composeapp.generated.resources.label_create_directories_placeholder
 import onyx.composeapp.generated.resources.label_create_directories_shortcuts
 import onyx.composeapp.generated.resources.label_create_directories_title
+import onyx.composeapp.generated.resources.label_archive_password
+import onyx.composeapp.generated.resources.label_archive_password_hint
 import onyx.composeapp.generated.resources.label_default_layout_mode
 import onyx.composeapp.generated.resources.label_default_view_mode
 import onyx.composeapp.generated.resources.label_delete_confirmation_move_to_trash
@@ -881,3 +884,131 @@ internal fun ApplyToAllToggle(
     }
 }
 
+/**
+ * 压缩包密码输入对话框。
+ */
+@Composable
+internal fun ArchivePasswordDialog(
+    archiveName: String,
+    error: String?,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val focusRequester = remember { FocusRequester() }
+    var password by remember { mutableStateOf("") }
+    var showPassword by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    DialogWindow(
+        onCloseRequest = onDismiss,
+        title = stringResource(Res.string.label_archive_password),
+        state = rememberDialogState(width = 420.dp, height = 220.dp),
+    ) {
+        IntUiTheme(isDark = isSystemInDarkTheme()) {
+            DialogFrame(
+                title = stringResource(Res.string.label_archive_password),
+                body = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = archiveName,
+                            fontSize = 11.sp,
+                            color = LocalOnyxPalette.current.mutedForeground,
+                        )
+                        Text(
+                            text = stringResource(Res.string.label_archive_password_hint),
+                            fontSize = 12.sp,
+                            color = LocalOnyxPalette.current.foreground,
+                        )
+                        BasicTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type != KeyEventType.KeyDown) {
+                                        return@onPreviewKeyEvent false
+                                    }
+                                    when (event.key) {
+                                        Key.Enter -> {
+                                            if (password.isNotEmpty()) {
+                                                onConfirm(password)
+                                            }
+                                            true
+                                        }
+                                        Key.Escape -> {
+                                            onDismiss()
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                },
+                            textStyle = TextStyle(
+                                fontSize = 13.sp,
+                                color = LocalOnyxPalette.current.foreground,
+                            ),
+                            cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
+                            visualTransformation = if (showPassword) {
+                                androidx.compose.ui.text.input.VisualTransformation.None
+                            } else {
+                                androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            },
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(34.dp)
+                                        .background(
+                                            LocalOnyxPalette.current.inputBackground,
+                                            RoundedCornerShape(6.dp),
+                                        )
+                                        .border(
+                                            1.dp,
+                                            LocalOnyxPalette.current.outlineVariant,
+                                            RoundedCornerShape(6.dp),
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                ) {
+                                    if (password.isEmpty()) {
+                                        Text(
+                                            text = "••••••••",
+                                            fontSize = 13.sp,
+                                            color = LocalOnyxPalette.current.disabledForeground,
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            },
+                        )
+                        error?.let { errMsg ->
+                            Text(
+                                text = errMsg,
+                                fontSize = 11.sp,
+                                color = Color(0xFFD74E4E),
+                            )
+                        }
+                    }
+                },
+                actions = {
+                    DialogTextButton(
+                        text = stringResource(Res.string.action_close_menu),
+                        onClick = onDismiss,
+                    )
+                    DialogTextButton(
+                        text = stringResource(Res.string.action_confirm),
+                        emphasized = true,
+                        onClick = {
+                            if (password.isNotEmpty()) {
+                                onConfirm(password)
+                            }
+                        },
+                    )
+                },
+            )
+        }
+    }
+}

@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -32,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
@@ -48,6 +51,8 @@ import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
 import onyx.composeapp.generated.resources.action_open_in_new_tab
 import onyx.composeapp.generated.resources.action_open_terminal
+import onyx.composeapp.generated.resources.action_open_with
+import onyx.composeapp.generated.resources.action_open_with_other
 import onyx.composeapp.generated.resources.action_paste
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_rename
@@ -85,6 +90,9 @@ internal fun BoxScope.PaneContextMenu(
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
     onPaste: () -> Unit,
+    openWithApps: List<OpenWithApp>,
+    onOpenWith: (OpenWithApp) -> Unit,
+    onOpenWithChooser: () -> Unit,
     onRefresh: () -> Unit,
     onOpenTerminal: () -> Unit,
     onClose: () -> Unit,
@@ -130,6 +138,40 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.OpenNewTab,
                 onClick = onOpenSelectionInNewTab,
             )
+            // "打开方式" 子菜单
+            if (canOpenSelection && openWithApps.isNotEmpty()) {
+                var openWithExpanded by remember { mutableStateOf(false) }
+                ContextMenuItem(
+                    text = stringResource(Res.string.action_open_with) + if (openWithExpanded) " ▾" else " ▸",
+                    enabled = true,
+                    iconKey = AllIconsKeys.Actions.MenuOpen,
+                    onClick = { openWithExpanded = !openWithExpanded },
+                )
+                if (openWithExpanded) {
+                    openWithApps.forEach { app ->
+                        ContextMenuItem(
+                            text = "  ${app.displayName}",
+                            enabled = true,
+                            iconKey = AllIconsKeys.Actions.Execute,
+                            onClick = { onOpenWith(app) },
+                        )
+                    }
+                    ContextMenuItem(
+                        text = "  ${stringResource(Res.string.action_open_with_other)}",
+                        enabled = true,
+                        iconKey = AllIconsKeys.General.OpenDisk,
+                        onClick = onOpenWithChooser,
+                    )
+                }
+            } else if (canOpenSelection) {
+                // 无关联应用时只显示「其他应用…」
+                ContextMenuItem(
+                    text = stringResource(Res.string.action_open_with),
+                    enabled = true,
+                    iconKey = AllIconsKeys.Actions.MenuOpen,
+                    onClick = onOpenWithChooser,
+                )
+            }
             ContextMenuItem(
                 text = stringResource(Res.string.action_rename),
                 enabled = canRenameSelection,

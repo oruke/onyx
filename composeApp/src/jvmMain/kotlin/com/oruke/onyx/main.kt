@@ -74,12 +74,19 @@ fun main() = application {
         }
 
         DecoratedWindow(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = {
+                com.oruke.onyx.ui.ExternalDragHelper.uninstall()
+                exitApplication()
+            },
             title = "Onyx ${BuildConfig.VERSION}",
             icon = painterResource(Res.drawable.onyx_logo),
             state = mainWindowState,
         ) {
             window.minimumSize = java.awt.Dimension(800, 600)
+            // 安装外部拖放支持
+            LaunchedEffect(window) {
+                com.oruke.onyx.ui.ExternalDragHelper.install(window)
+            }
             WindowApp(rootComponent)
         }
 

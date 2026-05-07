@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.I18nMessage
@@ -92,6 +93,12 @@ sealed interface RootDialogState {
         val completed: Boolean = false,
         val errorMessage: String? = null,
     ) : RootDialogState
+
+    /** 压缩包密码输入对话框 */
+    data class ArchivePassword(
+        val archiveName: String,
+        val error: String? = null,
+    ) : RootDialogState
 }
 
 enum class CreateDirectoriesDialogError {
@@ -101,6 +108,7 @@ enum class CreateDirectoriesDialogError {
 enum class FileTransferOperation {
     COPY,
     MOVE,
+    EXTRACT,
 }
 
 interface RootComponent {
@@ -173,6 +181,8 @@ interface RootComponent {
 
     fun extractSmartInPane(paneId: PaneId)
 
+    fun submitArchivePassword(password: String)
+
     fun batchRenameInPane(paneId: PaneId)
 
     fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>)
@@ -204,4 +214,12 @@ interface RootComponent {
     fun imageViewerSetFitMode(mode: ImageFitMode)
 
     fun imageViewerRotate(clockwise: Boolean)
+
+    // ── 打开方式 ──────────────────────────────────────────────────────────
+
+    suspend fun listOpenWithApps(entry: VFile): List<OpenWithApp>
+
+    fun openWithApp(entry: VFile, app: OpenWithApp)
+
+    fun openWithChooser(entry: VFile)
 }

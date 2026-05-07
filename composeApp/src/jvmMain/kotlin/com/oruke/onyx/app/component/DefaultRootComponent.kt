@@ -4,6 +4,8 @@ import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.OpenWithApp
+import com.oruke.onyx.app.filesystem.OpenWithService
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
 import com.oruke.onyx.app.filesystem.TextClipboardService
@@ -50,6 +52,9 @@ import onyx.composeapp.generated.resources.msg_create_folder_failed
 import onyx.composeapp.generated.resources.msg_create_folders
 import onyx.composeapp.generated.resources.msg_created_folders
 import onyx.composeapp.generated.resources.msg_delete_failed
+import onyx.composeapp.generated.resources.msg_extract_failed
+import onyx.composeapp.generated.resources.msg_extract_items
+import onyx.composeapp.generated.resources.msg_extracted_items
 import onyx.composeapp.generated.resources.msg_delete_items
 import onyx.composeapp.generated.resources.msg_deleted_items
 import onyx.composeapp.generated.resources.msg_move_failed
@@ -70,6 +75,7 @@ class DefaultRootComponent(
     private val settingsRepository: SettingsRepository,
     private val sessionRepository: SessionRepository,
     private val archiveService: ArchiveService,
+    private val openWithService: OpenWithService,
 ) : RootComponent {
     override val primaryPane: PaneComponent = DefaultPaneComponent(
         paneId = PaneId.PRIMARY,
@@ -111,6 +117,7 @@ class DefaultRootComponent(
     private val taskPauseFlags = mutableMapOf<String, MutableStateFlow<Boolean>>()
     private var pendingDeleteRequest: PendingDeleteRequest? = null
     private var pendingTransferRequest: PendingTransferRequest? = null
+    private var pendingArchiveExtraction: PendingArchiveExtraction? = null
     private val persistenceMutex = Mutex()
     private var persistenceReady = false
     private val mutableState = MutableStateFlow(
@@ -340,6 +347,9 @@ class DefaultRootComponent(
     override fun dismissDialog() {
         pendingDeleteRequest = null
         pendingTransferRequest = null
+        // 取消密码等待 → 让 deferred.await() 抛出 CancellationException
+        pendingArchiveExtraction?.passwordDeferred?.cancel()
+        pendingArchiveExtraction = null
         dialogState.value = null
     }
 
@@ -445,6 +455,8 @@ class DefaultRootComponent(
             operation = ClipboardOperation.COPY,
             entries = entries,
         )
+        // 同步写入系统剪切板，以便在外部应用中粘贴
+        writeToSystemClipboard(entries, isCut = false)
     }
 
     override fun stageCutSelectedInPane(paneId: PaneId) {
@@ -456,6 +468,8 @@ class DefaultRootComponent(
             operation = ClipboardOperation.CUT,
             entries = entries,
         )
+        // 同步写入系统剪切板，以便在外部应用中粘贴
+        writeToSystemClipboard(entries, isCut = true)
     }
 
     override fun requestPasteIntoPane(paneId: PaneId) {
@@ -481,12 +495,135 @@ class DefaultRootComponent(
         if (entries.isEmpty()) {
             return
         }
-        requestTransferEntriesToDirectory(
-            entries = entries,
-            targetDirectoryLocation = targetDirectoryLocation,
-            operation = operation,
-            clearClipboardOnSuccess = false,
+        // 压缩包内条目 → 解压到目标目录（不能移动，只能解压）
+        val archiveEntries = entries.filter { ArchiveService.parseArchiveLocation(it.location) != null }
+        val localEntries = entries.filter { ArchiveService.parseArchiveLocation(it.location) == null }
+        if (archiveEntries.isNotEmpty()) {
+            launchArchiveExtractToDirectory(archiveEntries, targetDirectoryLocation)
+        }
+        if (localEntries.isNotEmpty()) {
+            requestTransferEntriesToDirectory(
+                entries = localEntries,
+                targetDirectoryLocation = targetDirectoryLocation,
+                operation = operation,
+                clearClipboardOnSuccess = false,
+            )
+        }
+    }
+
+    /**
+     * 将压缩包内的选中条目解压到目标本地目录。
+     * 用于从已打开的压缩包面板拖拽文件到本地目录面板。
+     */
+    private fun launchArchiveExtractToDirectory(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+    ) {
+        val taskId = UUID.randomUUID().toString()
+        appendTask(
+            BackgroundTask(
+                id = taskId,
+                kind = BackgroundTaskKind.EXTRACT,
+                title = I18nMessage(Res.string.msg_extract_items, entries.size),
+                status = BackgroundTaskStatus.QUEUED,
+                detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
+                progress = 0f,
+                totalCount = entries.size,
+                startTimeMillis = System.currentTimeMillis(),
+            )
         )
+
+        val job = scope.launch {
+            try {
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.RUNNING,
+                    detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
+                    progress = 0f,
+                )
+                // 按 archivePath 分组，减少压缩包打开次数
+                val grouped = entries.mapNotNull { entry ->
+                    ArchiveService.parseArchiveLocation(entry.location)?.let { (archivePath, innerPath) ->
+                        Triple(archivePath, innerPath, entry)
+                    }
+                }.groupBy { it.first }
+
+                var processedCount = 0
+                for ((archivePath, group) in grouped) {
+                    ensureActive()
+                    val innerPaths = group.map { it.second }.filter { it.isNotBlank() }
+                    if (innerPaths.isEmpty()) continue
+
+                    updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = I18nMessage(Res.string.msg_string_literal, group.first().third.name),
+                        progress = processedCount.toFloat() / entries.size,
+                    )
+
+                    // 检测是否加密，如需密码则弹出对话框
+                    var password: String? = null
+                    val encrypted = archiveService.isEncrypted(archivePath)
+                    if (encrypted) {
+                        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+                        pendingArchiveExtraction = PendingArchiveExtraction(
+                            entries = entries,
+                            currentLocation = targetDirectoryLocation,
+                            taskId = taskId,
+                            taskTitle = I18nMessage(Res.string.msg_extract_items, entries.size),
+                            extractAction = { _, _, _ -> Result.success(Unit) }, // 不使用
+                            passwordDeferred = deferred,
+                        )
+                        dialogState.value = RootDialogState.ArchivePassword(
+                            archiveName = java.io.File(archivePath).name,
+                        )
+                        password = deferred.await()
+                        dialogState.value = null
+                        pendingArchiveExtraction = null
+                    }
+
+                    archiveService.extractEntriesToTemp(
+                        archivePath = archivePath,
+                        entryPaths = innerPaths,
+                        targetDir = targetDirectoryLocation,
+                        password = password,
+                    ).getOrThrow()
+
+                    processedCount += group.size
+                }
+
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.SUCCEEDED,
+                    detail = I18nMessage(Res.string.msg_extracted_items, entries.size, targetDirectoryLocation),
+                    progress = 1f,
+                )
+                // 刷新目标目录所在面板
+                refreshAllPanes()
+            } catch (e: CancellationException) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.CANCELLED,
+                    detail = I18nMessage(Res.string.msg_extract_failed),
+                    progress = 0f,
+                )
+            } catch (e: Exception) {
+                taskJobs.remove(taskId)
+                updateTask(
+                    taskId = taskId,
+                    status = BackgroundTaskStatus.FAILED,
+                    detail = if (e.message != null) {
+                        I18nMessage(Res.string.msg_string_literal, e.message!!)
+                    } else {
+                        I18nMessage(Res.string.msg_extract_failed)
+                    },
+                    progress = 0f,
+                )
+            }
+        }
+        taskJobs[taskId] = job
     }
 
     private fun requestTransferEntriesToDirectory(
@@ -547,6 +684,7 @@ class DefaultRootComponent(
         val taskKind = when (operation) {
             FileTransferOperation.COPY -> BackgroundTaskKind.COPY
             FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
+            FileTransferOperation.EXTRACT -> BackgroundTaskKind.EXTRACT
         }
         val pauseFlag = MutableStateFlow(false)
         taskPauseFlags[taskId] = pauseFlag
@@ -561,6 +699,7 @@ class DefaultRootComponent(
                 title = when (operation) {
                     FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_items, entries.size)
                     FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_items, entries.size)
+                    FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_items, entries.size)
                 },
                 status = BackgroundTaskStatus.QUEUED,
                 detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
@@ -599,7 +738,7 @@ class DefaultRootComponent(
                     }
                     val conflictStrategy = conflictStrategies[entry.id] ?: TransferConflictStrategy.KEEP_BOTH
                     val result = when (operation) {
-                        FileTransferOperation.COPY -> {
+                        FileTransferOperation.COPY, FileTransferOperation.EXTRACT -> {
                             fileCommandService.copy(
                                 entries = listOf(entry),
                                 targetDirectoryLocation = targetDirectoryLocation,
@@ -646,6 +785,9 @@ class DefaultRootComponent(
 
                         FileTransferOperation.MOVE ->
                             I18nMessage(Res.string.msg_moved_items, entries.size, targetDirectoryLocation)
+
+                        FileTransferOperation.EXTRACT ->
+                            I18nMessage(Res.string.msg_extracted_items, entries.size, targetDirectoryLocation)
                     },
                     progress = 1f,
                     processedCount = entries.size,
@@ -676,6 +818,7 @@ class DefaultRootComponent(
                         ?: when (operation) {
                             FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_failed)
                             FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_failed)
+                            FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_failed)
                     },
                     progress = null,
                 )
@@ -706,106 +849,56 @@ class DefaultRootComponent(
     }
 
     override fun extractSelectedInPane(paneId: PaneId) {
-        val selectedEntries = selectedEntriesInPane(paneId)
-        if (selectedEntries.isEmpty()) return
-        val currentLocation = paneState(paneId).location
-
-        // 筛选出压缩文件
-        val archiveEntries = selectedEntries.filter { entry ->
-            entry.kind == VFileKind.FILE && ArchiveService.isArchive(entry.name)
-        }
-        if (archiveEntries.isEmpty()) return
-
-        val taskId = UUID.randomUUID().toString()
-        appendTask(
-            BackgroundTask(
-                id = taskId,
-                kind = BackgroundTaskKind.EXTRACT,
-                title = I18nMessage(Res.string.action_extract_here),
-                status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
-                progress = 0f,
-                totalCount = archiveEntries.size,
-                startTimeMillis = System.currentTimeMillis(),
+        launchArchiveExtraction(
+            paneId,
+            I18nMessage(Res.string.action_extract_here),
+        ) { entry, location, password ->
+            archiveService.extract(
+                archivePath = entry.location,
+                targetDirectory = location,
+                password = password,
             )
-        )
-
-        val job = scope.launch {
-            try {
-                updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
-                    progress = 0f,
-                )
-                archiveEntries.forEachIndexed { index, entry ->
-                    ensureActive()
-                    updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(Res.string.msg_string_literal, entry.name),
-                        progress = index.toFloat() / archiveEntries.size,
-                    )
-                    archiveService.extract(
-                        archivePath = entry.location,
-                        targetDirectory = currentLocation,
-                    ).getOrThrow()
-                }
-
-                taskJobs.remove(taskId)
-                updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
-                    progress = 1f,
-                    processedCount = archiveEntries.size,
-                )
-                refreshAllPanes()
-                scheduleTaskAutoCleanup(taskId)
-            } catch (_: CancellationException) {
-                taskJobs.remove(taskId)
-                updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(Res.string.msg_cancelled),
-                )
-            } catch (e: Throwable) {
-                taskJobs.remove(taskId)
-                updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.FAILED,
-                    detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
-                )
-            }
         }
-        taskJobs[taskId] = job
     }
 
     override fun extractToDirectoryInPane(paneId: PaneId) {
-        launchArchiveExtraction(paneId, I18nMessage(Res.string.action_extract_to_directory)) { entry, location ->
+        launchArchiveExtraction(
+            paneId,
+            I18nMessage(Res.string.action_extract_to_directory),
+        ) { entry, location, password ->
             archiveService.extractToDirectory(
                 archivePath = entry.location,
                 targetDirectory = location,
+                password = password,
             )
         }
     }
 
     override fun extractSmartInPane(paneId: PaneId) {
-        launchArchiveExtraction(paneId, I18nMessage(Res.string.action_extract_smart)) { entry, location ->
+        launchArchiveExtraction(
+            paneId,
+            I18nMessage(Res.string.action_extract_smart),
+        ) { entry, location, password ->
             archiveService.extractSmart(
                 archivePath = entry.location,
                 targetDirectory = location,
+                password = password,
             )
         }
     }
 
+    override fun submitArchivePassword(password: String) {
+        val pending = pendingArchiveExtraction ?: return
+        pending.passwordDeferred.complete(password)
+    }
+
     /**
-     * 通用压缩包解压任务启动器。
+     * 通用压缩包解压任务启动器 — 支持加密压缩包密码输入。
      */
     private fun launchArchiveExtraction(
         paneId: PaneId,
         taskTitle: I18nMessage,
-        extractAction: suspend (VFile, String) -> Result<Unit>,
+        extractAction: suspend (VFile, String, String?) -> Result<Unit>,
     ) {
         val selectedEntries = selectedEntriesInPane(paneId)
         if (selectedEntries.isEmpty()) return
@@ -846,7 +939,29 @@ class DefaultRootComponent(
                         detail = I18nMessage(Res.string.msg_string_literal, entry.name),
                         progress = index.toFloat() / archiveEntries.size,
                     )
-                    extractAction(entry, currentLocation).getOrThrow()
+
+                    // 检测是否加密，如需密码则弹出对话框
+                    var password: String? = null
+                    val encrypted = archiveService.isEncrypted(entry.location)
+                    if (encrypted) {
+                        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+                        pendingArchiveExtraction = PendingArchiveExtraction(
+                            entries = archiveEntries,
+                            currentLocation = currentLocation,
+                            taskId = taskId,
+                            taskTitle = taskTitle,
+                            extractAction = extractAction,
+                            passwordDeferred = deferred,
+                        )
+                        dialogState.value = RootDialogState.ArchivePassword(
+                            archiveName = entry.name,
+                        )
+                        password = deferred.await()
+                        dialogState.value = null
+                        pendingArchiveExtraction = null
+                    }
+
+                    extractAction(entry, currentLocation, password).getOrThrow()
                 }
 
                 taskJobs.remove(taskId)
@@ -860,6 +975,7 @@ class DefaultRootComponent(
                 refreshAllPanes()
                 scheduleTaskAutoCleanup(taskId)
             } catch (_: CancellationException) {
+                pendingArchiveExtraction = null
                 taskJobs.remove(taskId)
                 updateTask(
                     taskId = taskId,
@@ -867,6 +983,7 @@ class DefaultRootComponent(
                     detail = I18nMessage(Res.string.msg_cancelled),
                 )
             } catch (e: Throwable) {
+                pendingArchiveExtraction = null
                 taskJobs.remove(taskId)
                 updateTask(
                     taskId = taskId,
@@ -1179,6 +1296,24 @@ class DefaultRootComponent(
         imageViewerState.value = current.copy(
             rotation = (current.rotation + delta + 360) % 360,
         )
+    }
+
+    // ── 打开方式 ──────────────────────────────────────────────────────────
+
+    override suspend fun listOpenWithApps(entry: VFile): List<OpenWithApp> {
+        return openWithService.listApps(entry)
+    }
+
+    override fun openWithApp(entry: VFile, app: OpenWithApp) {
+        scope.launch {
+            openWithService.openWith(entry, app)
+        }
+    }
+
+    override fun openWithChooser(entry: VFile) {
+        scope.launch {
+            openWithService.openWithChooser(entry)
+        }
     }
 
     private fun scheduleTaskAutoCleanup(taskId: String) {
@@ -1579,6 +1714,32 @@ class DefaultRootComponent(
         secondaryPane.refresh()
     }
 
+    /**
+     * 将文件列表写入系统剪切板。
+     * 使用多格式 Transferable，支持所有主流 Linux 桌面应用。
+     */
+    private fun writeToSystemClipboard(entries: List<VFile>, isCut: Boolean) {
+        try {
+            val files = entries.mapNotNull { entry ->
+                // 只处理本地文件（archive:// 等协议无法粘贴到外部）
+                val file = java.io.File(entry.location)
+                if (file.exists()) file else null
+            }
+            if (files.isNotEmpty()) {
+                val transferable = com.oruke.onyx.ui.ExternalDragHelper.FileTransferable(
+                    files = files,
+                    isCut = isCut,
+                )
+                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(
+                    transferable, null,
+                )
+            }
+        } catch (e: Exception) {
+            // 剪切板写入失败不应阻断内部操作
+            println("[DefaultRootComponent] 系统剪切板写入失败: ${e.message}")
+        }
+    }
+
     private data class ClipboardPayload(
         val operation: ClipboardOperation,
         val entries: List<VFile>,
@@ -1604,6 +1765,15 @@ class DefaultRootComponent(
         COPY,
         CUT,
     }
+
+    private class PendingArchiveExtraction(
+        val entries: List<VFile>,
+        val currentLocation: String,
+        val taskId: String,
+        val taskTitle: I18nMessage,
+        val extractAction: suspend (VFile, String, String?) -> Result<Unit>,
+        val passwordDeferred: kotlinx.coroutines.CompletableDeferred<String>,
+    )
 }
 
 private fun PaneState.toSessionSnapshot(): PaneSessionSnapshot {

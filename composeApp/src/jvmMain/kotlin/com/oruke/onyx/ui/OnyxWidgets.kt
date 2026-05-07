@@ -59,8 +59,10 @@ import com.oruke.onyx.ui.theme.verticalResizePointerIcon
 import com.oruke.onyx.ui.theme.windowBounds
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_copy
+import onyx.composeapp.generated.resources.action_extract
 import onyx.composeapp.generated.resources.action_move
 import onyx.composeapp.generated.resources.label_copy_to_destination
+import onyx.composeapp.generated.resources.label_extract_to_destination
 import onyx.composeapp.generated.resources.label_move_to_destination
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.Orientation
@@ -163,11 +165,13 @@ internal fun FileDragOverlay(
         when (operation) {
             FileTransferOperation.COPY -> stringResource(Res.string.label_copy_to_destination, targetDirectoryLocation)
             FileTransferOperation.MOVE -> stringResource(Res.string.label_move_to_destination, targetDirectoryLocation)
+            FileTransferOperation.EXTRACT -> stringResource(Res.string.label_extract_to_destination, targetDirectoryLocation)
         }
     } else {
         when (operation) {
             FileTransferOperation.COPY -> stringResource(Res.string.action_copy)
             FileTransferOperation.MOVE -> stringResource(Res.string.action_move)
+            FileTransferOperation.EXTRACT -> stringResource(Res.string.action_extract)
         }
     }
     val pointerPosition = pointerWindowPosition ?: return
@@ -188,7 +192,11 @@ internal fun FileDragOverlay(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
-            key = if (operation == FileTransferOperation.COPY) AllIconsKeys.Actions.Copy else AllIconsKeys.Actions.MenuCut,
+            key = when (operation) {
+                FileTransferOperation.COPY -> AllIconsKeys.Actions.Copy
+                FileTransferOperation.MOVE -> AllIconsKeys.Actions.MenuCut
+                FileTransferOperation.EXTRACT -> AllIconsKeys.Nodes.ExtractedFolder
+            },
             contentDescription = null,
             modifier = Modifier.size(13.dp),
         )

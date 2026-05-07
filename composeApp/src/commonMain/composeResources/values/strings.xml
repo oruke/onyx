@@ -10,6 +10,8 @@
     <string name="action_open_settings">Settings</string>
     <string name="action_open">Open</string>
     <string name="action_open_in_new_tab">Open in New Tab</string>
+    <string name="action_open_with">Open With</string>
+    <string name="action_open_with_other">Other Application…</string>
     <string name="action_toggle_favorite">Toggle Favorite</string>
     <string name="action_rename">Rename</string>
     <string name="action_new_file">New File</string>
@@ -22,6 +24,7 @@
     <string name="action_cancel_task">Cancel</string>
     <string name="action_clear_all_tasks">Clear All</string>
     <string name="action_apply">Apply</string>
+    <string name="action_confirm">Confirm</string>
     <string name="action_toggle_sidebar">Toggle Sidebar</string>
     <string name="action_toggle_preview_pane">Toggle Preview Pane</string>
     <string name="action_toggle_status_bar">Toggle Status Bar</string>
@@ -40,6 +43,8 @@
     <string name="action_skip">Skip</string>
     <string name="label_copy_to_destination">Copy to %1$s</string>
     <string name="label_move_to_destination">Move to %1$s</string>
+    <string name="label_extract_to_destination">Extract to %1$s</string>
+    <string name="action_extract">Extract</string>
     <string name="action_cut">Cut</string>
     <string name="action_paste">Paste</string>
     <string name="action_delete_selected">Delete Selected</string>
@@ -171,6 +176,9 @@
     <string name="msg_moved_items">Moved %1$d item(s) to %2$s</string>
     <string name="msg_copy_failed">Copy failed</string>
     <string name="msg_move_failed">Move failed</string>
+    <string name="msg_extract_items">Extract %1$d item(s)</string>
+    <string name="msg_extracted_items">Extracted %1$d item(s) to %2$s</string>
+    <string name="msg_extract_failed">Extract failed</string>
     <string name="msg_delete_items">Delete %1$d item(s)</string>
     <string name="msg_deleted_items">Deleted %1$d item(s)</string>
     <string name="msg_delete_failed">Delete failed</string>

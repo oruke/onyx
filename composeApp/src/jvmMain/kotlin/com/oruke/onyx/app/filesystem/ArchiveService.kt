@@ -8,6 +8,7 @@ import kotlinx.coroutines.withContext
 import net.sf.sevenzipjbinding.ExtractAskMode
 import net.sf.sevenzipjbinding.ExtractOperationResult
 import net.sf.sevenzipjbinding.IArchiveExtractCallback
+import net.sf.sevenzipjbinding.ICryptoGetTextPassword
 import net.sf.sevenzipjbinding.IInArchive
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
@@ -172,11 +173,15 @@ class ArchiveService {
                     }
                 }
 
+                val callback = ArchiveExtractCallback(archive, targetDir, prefix, password)
                 archive.extract(
                     indicesToExtract.toIntArray(),
                     false,
-                    ArchiveExtractCallback(archive, targetDir, prefix),
+                    callback,
                 )
+                if (callback.errors.isNotEmpty()) {
+                    error("解压失败: ${callback.errors.joinToString(", ")}")
+                }
             }
         }
     }
@@ -293,6 +298,92 @@ class ArchiveService {
         }
     }
 
+    /**
+     * 将压缩包内指定条目解压到临时目录（用于拖放到外部应用）。
+     *
+     * @param archivePath 压缩包物理路径
+     * @param entryPaths  要解压的条目路径列表
+     * @param targetDir   解压目标目录
+     * @param password    解压密码（可选）
+     */
+    suspend fun extractEntriesToTemp(
+        archivePath: String,
+        entryPaths: List<String>,
+        targetDir: String,
+        password: String? = null,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val targetDirectory = File(targetDir)
+            targetDirectory.mkdirs()
+            openArchive(archivePath, password).use { archive ->
+                val numItems = archive.numberOfItems
+                // 收集需要解压的 index
+                val targetIndices = mutableListOf<Int>()
+                val entryPathSet = entryPaths.toSet()
+                for (i in 0 until numItems) {
+                    val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
+                    // 精确匹配，或者是目标条目的子路径
+                    if (itemPath in entryPathSet || entryPathSet.any { prefix ->
+                            itemPath.startsWith(prefix.trimEnd('/') + "/")
+                        }) {
+                        targetIndices.add(i)
+                    }
+                }
+                if (targetIndices.isEmpty()) {
+                    error("未找到匹配的条目: $entryPaths")
+                }
+
+                val errors = mutableListOf<String>()
+                archive.extract(
+                    targetIndices.toIntArray(),
+                    false,
+                    object : IArchiveExtractCallback, ICryptoGetTextPassword {
+                        private var currentOutputStream: java.io.FileOutputStream? = null
+
+                        override fun getStream(
+                            index: Int,
+                            extractAskMode: ExtractAskMode,
+                        ): ISequentialOutStream? {
+                            if (extractAskMode != ExtractAskMode.EXTRACT) return null
+                            val itemPath = archive.getProperty(index, PropID.PATH) as? String ?: return null
+                            val isDir = archive.getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
+
+                            // 只保留最后一级文件名（扁平化解压）
+                            val fileName = itemPath.substringAfterLast('/')
+                            val outFile = File(targetDirectory, fileName)
+                            if (isDir) {
+                                outFile.mkdirs()
+                                return null
+                            }
+                            outFile.parentFile?.mkdirs()
+                            val fos = java.io.FileOutputStream(outFile)
+                            currentOutputStream = fos
+                            return ISequentialOutStream { data ->
+                                fos.write(data)
+                                data.size
+                            }
+                        }
+
+                        override fun prepareOperation(extractAskMode: ExtractAskMode) {}
+                        override fun setOperationResult(result: ExtractOperationResult) {
+                            currentOutputStream?.close()
+                            currentOutputStream = null
+                            if (result != ExtractOperationResult.OK) {
+                                errors.add(result.name)
+                            }
+                        }
+                        override fun setTotal(total: Long) {}
+                        override fun setCompleted(complete: Long) {}
+                        override fun cryptoGetTextPassword(): String = password ?: ""
+                    },
+                )
+                if (errors.isNotEmpty()) {
+                    error("解压失败: ${errors.joinToString(", ")}")
+                }
+            }
+        }
+    }
+
     private fun openArchive(path: String, password: String? = null): IInArchive {
         val raf = RandomAccessFile(path, "r")
         val inStream = RandomAccessFileInStream(raf)
@@ -305,15 +396,17 @@ class ArchiveService {
 }
 
 /**
- * 7-Zip 解压回调。
+ * 7-Zip 解压回调 — 支持密码和错误检测。
  */
 private class ArchiveExtractCallback(
     private val archive: IInArchive,
     private val targetDir: File,
     private val prefix: String,
-) : IArchiveExtractCallback {
+    private val password: String? = null,
+) : IArchiveExtractCallback, ICryptoGetTextPassword {
 
     private var currentOutputStream: FileOutputStream? = null
+    val errors = mutableListOf<String>()
 
     override fun getStream(
         index: Int,
@@ -346,9 +439,14 @@ private class ArchiveExtractCallback(
     ) {
         currentOutputStream?.close()
         currentOutputStream = null
+        if (extractOperationResult != ExtractOperationResult.OK) {
+            errors.add(extractOperationResult.name)
+        }
     }
 
     override fun setTotal(total: Long) {}
 
     override fun setCompleted(complete: Long) {}
+
+    override fun cryptoGetTextPassword(): String = password ?: ""
 }

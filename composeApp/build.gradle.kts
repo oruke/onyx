@@ -44,6 +44,7 @@ kotlin {
             implementation(libs.intellij.platform.icons)
             implementation(libs.jna)
             implementation(libs.zoomimage.compose)
+            implementation(libs.slf4j.simple)
         }
         jvmTest.dependencies {
             implementation(libs.kotlin.test)

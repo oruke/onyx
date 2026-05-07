@@ -45,6 +45,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import org.jetbrains.jewel.window.TitleBarScope
 
 @Composable
 internal fun OperationFeedbackBar(
@@ -101,7 +102,7 @@ internal fun OperationFeedbackBar(
 // ── Title bar ───────────────────────────────────────────────────────────────
 
 @Composable
-internal fun TitleBarContent(
+internal fun TitleBarScope.TitleBarContent(
     rootComponent: RootComponent,
     layoutMode: PaneLayoutMode,
     uiScale: Int,
@@ -111,13 +112,10 @@ internal fun TitleBarContent(
     showPreviewPane: Boolean,
     onTogglePreviewPane: () -> Unit,
 ) {
-    // Jewel DecoratedWindow 的标题栏内容区域
-    // 注意：DecoratedWindow 会自动处理窗口拖拽和系统按钮区域
+    // 左侧：应用名称 — 使用 TitleBarScope.align(Start) 自动避让系统控件
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(28.dp)
-            .padding(horizontal = 10.dp),
+        modifier = Modifier.align(Alignment.Start)
+            .padding(start = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -126,101 +124,97 @@ internal fun TitleBarContent(
             fontSize = 13.sp,
             color = LocalOnyxPalette.current.foreground,
         )
+    }
 
-        Spacer(modifier = Modifier.width(14.dp))
+    // 中间：缩放滑块 — 使用 TitleBarScope.align(Center)
+    Row(
+        modifier = Modifier.align(Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "$uiScale%",
+            fontSize = 11.sp,
+            color = LocalOnyxPalette.current.mutedForeground,
+        )
+        ZoomSlider(
+            value = uiScale,
+            onValueChange = onUiScaleChange,
+            minValue = 50,
+            maxValue = 200,
+        )
+    }
 
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
+    // 右侧：布局/侧栏/预览/设置按钮 — 使用 TitleBarScope.align(End)
+    // Jewel 的 TitleBarMeasurePolicy 会在 Windows 上自动在右侧预留系统按钮空间
+    Row(
+        modifier = Modifier.align(Alignment.End)
+            .padding(end = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LayoutIconButton(
+            selected = layoutMode == PaneLayoutMode.SINGLE,
+            onClick = { rootComponent.setLayoutMode(PaneLayoutMode.SINGLE) },
+            tooltip = stringResource(Res.string.action_layout_single),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = "$uiScale%",
-                    fontSize = 11.sp,
-                    color = LocalOnyxPalette.current.mutedForeground,
-                )
-                ZoomSlider(
-                    value = uiScale,
-                    onValueChange = onUiScaleChange,
-                    minValue = 50,
-                    maxValue = 200,
-                )
-            }
+            Icon(
+                key = AllIconsKeys.Windows.Maximize,
+                contentDescription = stringResource(Res.string.action_layout_single),
+            )
+        }
+        LayoutIconButton(
+            selected = layoutMode == PaneLayoutMode.DUAL_VERTICAL,
+            onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_VERTICAL) },
+            tooltip = stringResource(Res.string.action_layout_dual_vertical),
+        ) {
+            Icon(
+                key = AllIconsKeys.Actions.SplitVertically,
+                contentDescription = stringResource(Res.string.action_layout_dual_vertical),
+            )
+        }
+        LayoutIconButton(
+            selected = layoutMode == PaneLayoutMode.DUAL_HORIZONTAL,
+            onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_HORIZONTAL) },
+            tooltip = stringResource(Res.string.action_layout_dual_horizontal),
+        ) {
+            Icon(
+                key = AllIconsKeys.Actions.SplitHorizontally,
+                contentDescription = stringResource(Res.string.action_layout_dual_horizontal),
+            )
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(1.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Spacer(modifier = Modifier.width(3.dp))
+
+        TitleBarIconButton(
+            onClick = onToggleSidebar,
+            tooltip = stringResource(Res.string.action_toggle_sidebar),
         ) {
-            LayoutIconButton(
-                selected = layoutMode == PaneLayoutMode.SINGLE,
-                onClick = { rootComponent.setLayoutMode(PaneLayoutMode.SINGLE) },
-                tooltip = stringResource(Res.string.action_layout_single),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Windows.Maximize,
-                    contentDescription = stringResource(Res.string.action_layout_single),
-                )
-            }
-            LayoutIconButton(
-                selected = layoutMode == PaneLayoutMode.DUAL_VERTICAL,
-                onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_VERTICAL) },
-                tooltip = stringResource(Res.string.action_layout_dual_vertical),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.SplitVertically,
-                    contentDescription = stringResource(Res.string.action_layout_dual_vertical),
-                )
-            }
-            LayoutIconButton(
-                selected = layoutMode == PaneLayoutMode.DUAL_HORIZONTAL,
-                onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_HORIZONTAL) },
-                tooltip = stringResource(Res.string.action_layout_dual_horizontal),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.SplitHorizontally,
-                    contentDescription = stringResource(Res.string.action_layout_dual_horizontal),
-                )
-            }
+            Icon(
+                key = AllIconsKeys.Actions.PreviewDetails,
+                contentDescription = stringResource(Res.string.action_toggle_sidebar),
+                modifier = Modifier.graphicsLayer(scaleX = -1f),
+            )
+        }
 
-            Spacer(modifier = Modifier.width(3.dp))
+        TitleBarIconButton(
+            onClick = onTogglePreviewPane,
+            tooltip = stringResource(Res.string.action_toggle_preview_pane),
+        ) {
+            Icon(
+                key = if (showPreviewPane) AllIconsKeys.Actions.Preview else AllIconsKeys.Actions.PreviewDetails,
+                contentDescription = stringResource(Res.string.action_toggle_preview_pane),
+            )
+        }
 
-            TitleBarIconButton(
-                onClick = onToggleSidebar,
-                tooltip = stringResource(Res.string.action_toggle_sidebar),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.PreviewDetails,
-                    contentDescription = stringResource(Res.string.action_toggle_sidebar),
-                    modifier = Modifier.graphicsLayer(scaleX = -1f),
-                )
-            }
-
-            TitleBarIconButton(
-                onClick = onTogglePreviewPane,
-                tooltip = stringResource(Res.string.action_toggle_preview_pane),
-            ) {
-                Icon(
-                    key = if (showPreviewPane) AllIconsKeys.Actions.Preview else AllIconsKeys.Actions.PreviewDetails,
-                    contentDescription = stringResource(Res.string.action_toggle_preview_pane),
-                )
-            }
-
-            TitleBarIconButton(
-                onClick = rootComponent::openSettings,
-                tooltip = stringResource(Res.string.action_open_settings),
-            ) {
-                Icon(
-                    key = AllIconsKeys.General.GearPlain,
-                    contentDescription = stringResource(Res.string.action_open_settings)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
+        TitleBarIconButton(
+            onClick = rootComponent::openSettings,
+            tooltip = stringResource(Res.string.action_open_settings),
+        ) {
+            Icon(
+                key = AllIconsKeys.General.GearPlain,
+                contentDescription = stringResource(Res.string.action_open_settings)
+            )
         }
     }
 }

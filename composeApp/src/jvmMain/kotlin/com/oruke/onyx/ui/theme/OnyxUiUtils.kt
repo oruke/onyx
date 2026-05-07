@@ -59,6 +59,8 @@ internal data class TabDropTarget(
 internal data class FileDragState(
     val sourcePaneId: PaneId,
     val operation: FileTransferOperation,
+    /** true = 用户通过 Ctrl 键强制指定操作，跳过自动卷检测 */
+    val userForced: Boolean = false,
 )
 
 internal data class FileDropZone(

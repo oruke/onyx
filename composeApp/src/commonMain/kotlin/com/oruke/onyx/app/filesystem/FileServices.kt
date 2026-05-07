@@ -61,6 +61,40 @@ interface TrashService {
     suspend fun moveToTrash(entries: List<VFile>): Result<Unit>
 }
 
+/**
+ * "打开方式"可选应用 — 从系统注册的应用中查询。
+ */
+data class OpenWithApp(
+    /** 应用唯一标识（Linux 为 .desktop 文件名，Windows 为 ProgId） */
+    val id: String,
+    /** 显示名称 */
+    val displayName: String,
+    /** 启动命令 */
+    val command: String,
+    /** 应用图标路径（可选） */
+    val iconPath: String? = null,
+)
+
+/**
+ * "打开方式"服务 — 查询和启动关联应用。
+ */
+interface OpenWithService {
+    /**
+     * 查询指定文件的可用打开方式应用列表。
+     */
+    suspend fun listApps(entry: VFile): List<OpenWithApp>
+
+    /**
+     * 使用指定应用打开文件。
+     */
+    suspend fun openWith(entry: VFile, app: OpenWithApp): Result<Unit>
+
+    /**
+     * 打开系统"选择应用"对话框。
+     */
+    suspend fun openWithChooser(entry: VFile): Result<Unit>
+}
+
 interface SettingsRepository {
     suspend fun loadSettings(): Result<OnyxSettings?>
 

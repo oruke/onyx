@@ -10,6 +10,8 @@
     <string name="action_open_settings">設定</string>
     <string name="action_open">開く</string>
     <string name="action_open_in_new_tab">新しいタブで開く</string>
+    <string name="action_open_with">プログラムから開く</string>
+    <string name="action_open_with_other">他のアプリ…</string>
     <string name="action_toggle_favorite">お気に入り切替</string>
     <string name="action_rename">名前を変更</string>
     <string name="action_new_file">新規ファイル</string>
@@ -22,6 +24,7 @@
     <string name="action_cancel_task">キャンセル</string>
     <string name="action_clear_all_tasks">すべて消去</string>
     <string name="action_apply">適用</string>
+    <string name="action_confirm">確認</string>
     <string name="action_toggle_sidebar">サイドバーを表示/非表示</string>
     <string name="action_toggle_preview_pane">プレビューパネルを表示/非表示</string>
     <string name="action_toggle_status_bar">ステータスバーを表示/非表示</string>
@@ -40,6 +43,8 @@
     <string name="action_skip">スキップ</string>
     <string name="label_copy_to_destination">%1$s にコピー</string>
     <string name="label_move_to_destination">%1$s に移動</string>
+    <string name="label_extract_to_destination">%1$s に解凍</string>
+    <string name="action_extract">解凍</string>
     <string name="action_cut">切り取り</string>
     <string name="action_paste">貼り付け</string>
     <string name="action_delete_selected">選択項目を削除</string>
@@ -171,6 +176,9 @@
     <string name="msg_moved_items">%1$d 個のアイテムを %2$s に移動しました</string>
     <string name="msg_copy_failed">コピーに失敗しました</string>
     <string name="msg_move_failed">移動に失敗しました</string>
+    <string name="msg_extract_items">%1$d 個の項目を解凍</string>
+    <string name="msg_extracted_items">%1$d 個の項目を %2$s に解凍しました</string>
+    <string name="msg_extract_failed">解凍に失敗しました</string>
     <string name="msg_delete_items">%1$d 個のアイテムを削除</string>
     <string name="msg_deleted_items">%1$d 個のアイテムを削除しました</string>
     <string name="msg_delete_failed">削除に失敗しました</string>

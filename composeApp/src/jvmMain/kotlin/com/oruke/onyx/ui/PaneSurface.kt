@@ -55,7 +55,9 @@ import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneInlineEditState
+import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
@@ -65,6 +67,7 @@ import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_filter
 import onyx.composeapp.generated.resources.action_go_back
@@ -126,6 +129,10 @@ internal fun PaneSurface(
     onFileDragEnd: (IntOffset?) -> Unit,
     onFileDropZoneChange: (FileDropZone) -> Unit,
     fileDropTarget: FileDropTarget?,
+    openWithApps: List<OpenWithApp>,
+    onOpenWith: (VFile, OpenWithApp) -> Unit,
+    onOpenWithChooser: (VFile) -> Unit,
+    onQueryOpenWithApps: (suspend (VFile) -> List<OpenWithApp>)? = null,
     onOpenSettings: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -133,6 +140,7 @@ internal fun PaneSurface(
     var showFilterBar by remember { mutableStateOf(false) }
     var showContextMenu by remember { mutableStateOf(false) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
+    var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
     val paneDropBackground by animateColorAsState(
@@ -575,6 +583,17 @@ internal fun PaneSurface(
 
                 if (showContextMenu) {
                     val selectedCount = state.selectedEntryIds.size
+                    // 异步查询"打开方式"应用列表
+                    val singleEntry = singleSelectedEntry
+                    LaunchedEffect(showContextMenu, singleEntry?.id) {
+                        if (singleEntry != null && singleEntry.kind == VFileKind.FILE && onQueryOpenWithApps != null) {
+                            contextMenuOpenWithApps = withContext(Dispatchers.IO) {
+                                onQueryOpenWithApps.invoke(singleEntry)
+                            }
+                        } else {
+                            contextMenuOpenWithApps = emptyList()
+                        }
+                    }
                     PaneContextMenu(
                         anchorOffset = contextMenuOffset,
                         canOperateOnSelection = selectedCount > 0,
@@ -641,6 +660,15 @@ internal fun PaneSurface(
                         },
                         onPaste = {
                             onPaste()
+                            showContextMenu = false
+                        },
+                        openWithApps = if (contextMenuOpenWithApps.isNotEmpty()) contextMenuOpenWithApps else openWithApps,
+                        onOpenWith = { app ->
+                            singleSelectedEntry?.let { onOpenWith(it, app) }
+                            showContextMenu = false
+                        },
+                        onOpenWithChooser = {
+                            singleSelectedEntry?.let { onOpenWithChooser(it) }
                             showContextMenu = false
                         },
                         onRefresh = {

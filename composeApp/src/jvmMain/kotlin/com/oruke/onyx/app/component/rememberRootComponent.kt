@@ -9,6 +9,7 @@ import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.CompositeFileRepository
 import com.oruke.onyx.app.filesystem.JvmDesktopExternalOpenService
 import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
+import com.oruke.onyx.app.filesystem.JvmLinuxOpenWithService
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
 import com.oruke.onyx.app.filesystem.JvmTextClipboardService
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,7 @@ fun rememberRootComponent(): RootComponent {
         val externalOpenService = JvmDesktopExternalOpenService()
         val trashService = JvmDesktopTrashService()
         val textClipboardService = JvmTextClipboardService()
+        val openWithService = JvmLinuxOpenWithService()
         DefaultRootComponent(
             scope = scope,
             fileRepository = fileRepository,
@@ -38,6 +40,7 @@ fun rememberRootComponent(): RootComponent {
             settingsRepository = JsonSettingsRepository(),
             sessionRepository = JsonSessionRepository(),
             archiveService = archiveService,
+            openWithService = openWithService,
         )
     }
 
