@@ -1617,7 +1617,7 @@ class DefaultRootComponent(
     private fun recordRecentLocations(vararg locations: String) {
         val normalizedLocations = locations
             .map { location -> location.trim() }
-            .filter { location -> location.isNotEmpty() }
+            .filter { location -> location.isNotEmpty() && !ArchiveService.isArchiveLocation(location) }
         if (normalizedLocations.isEmpty()) {
             return
         }

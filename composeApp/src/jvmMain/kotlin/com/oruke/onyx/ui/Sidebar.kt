@@ -101,7 +101,7 @@ internal fun PaneSidebar(
             } else {
                 favoriteLocations.forEach { favoriteLocation ->
                     SidebarLocationItem(
-                        label = Path.of(favoriteLocation).fileName?.toString().orEmpty().ifBlank { favoriteLocation },
+                        label = safeLocationLabel(favoriteLocation),
                         location = favoriteLocation,
                         selected = location == favoriteLocation,
                         favorite = true,
@@ -128,7 +128,7 @@ internal fun PaneSidebar(
             } else {
                 displayRecentLocations.forEach { recentLocation ->
                     SidebarLocationItem(
-                        label = Path.of(recentLocation).fileName?.toString().orEmpty().ifBlank { recentLocation },
+                        label = safeLocationLabel(recentLocation),
                         location = recentLocation,
                         selected = false,
                         favorite = favoriteLocations.contains(recentLocation),
@@ -363,3 +363,14 @@ internal fun flattenSidebarNodes(
     }
 }
 
+/**
+ * 从 location 字符串安全提取显示标签。
+ * 兼容 archive:// URI 和普通文件路径，不会因非法字符崩溃。
+ */
+private fun safeLocationLabel(location: String): String {
+    return runCatching { Path.of(location).fileName?.toString() }
+        .getOrNull()
+        ?.ifBlank { null }
+        ?: location.trimEnd('/').substringAfterLast('/')
+            .ifBlank { location }
+}
