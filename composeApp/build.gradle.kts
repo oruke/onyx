@@ -62,8 +62,21 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
-            packageName = "com.oruke.onyx"
+            packageName = "Onyx"
             packageVersion = appVersion
+            description = "Professional dual-pane file manager"
+            vendor = "oruke"
+
+            windows {
+                menuGroup = "Onyx"
+                shortcut = true
+                dirChooser = true
+                perUserInstall = true
+            }
+
+            linux {
+                shortcut = true
+            }
         }
         buildTypes.release.proguard {
             configurationFiles.from(project.file("compose-desktop.pro"))
