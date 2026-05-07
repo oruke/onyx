@@ -238,4 +238,8 @@
     <string name="label_case_uppercase">UPPERCASE</string>
     <string name="label_case_lowercase">lowercase</string>
     <string name="label_case_titlecase">Title Case</string>
+    <string name="label_verbose_logging">Verbose Logging</string>
+    <string name="label_verbose_logging_hint">Auto-disabled on next launch</string>
+    <string name="label_setting_enabled">Enabled</string>
+    <string name="label_setting_disabled">Disabled</string>
 </resources>

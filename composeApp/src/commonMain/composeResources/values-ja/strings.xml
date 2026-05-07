@@ -238,4 +238,8 @@
     <string name="label_case_uppercase">大文字</string>
     <string name="label_case_lowercase">小文字</string>
     <string name="label_case_titlecase">先頭大文字</string>
+    <string name="label_verbose_logging">詳細ログ記録</string>
+    <string name="label_verbose_logging_hint">次回起動時に自動オフ</string>
+    <string name="label_setting_enabled">有効</string>
+    <string name="label_setting_disabled">無効</string>
 </resources>

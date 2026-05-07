@@ -1,6 +1,7 @@
 package com.oruke.onyx.ui
 
 import com.oruke.onyx.app.filesystem.ArchiveService
+import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -102,15 +103,15 @@ object ExternalDragHelper {
         val skiaLayer = findSkiaLayer(window)
         if (skiaLayer != null) {
             installOnComponent(skiaLayer)
-            println("[ExternalDragHelper] 已安装到 SkiaLayer: ${skiaLayer.javaClass.name}")
+            OnyxLogger.info("ExternalDragHelper", "已安装到 SkiaLayer: ${skiaLayer.javaClass.name}")
         } else {
             // 回退：尝试 contentPane
             val contentPane = (window as? javax.swing.JFrame)?.contentPane as? JComponent
             if (contentPane != null) {
                 installOnComponent(contentPane)
-                println("[ExternalDragHelper] 已安装到 contentPane: ${contentPane.javaClass.name}")
+                OnyxLogger.info("ExternalDragHelper", "已安装到 contentPane: ${contentPane.javaClass.name}")
             } else {
-                println("[ExternalDragHelper] 警告：找不到可用的 JComponent，外部拖放不可用")
+                OnyxLogger.warn("ExternalDragHelper", "找不到可用的 JComponent，外部拖放不可用")
                 return
             }
         }
@@ -163,7 +164,7 @@ object ExternalDragHelper {
                                 }
                             }
                         } catch (e: Exception) {
-                            println("[ExternalDragHelper] 延迟解压失败: ${e.message}")
+                            OnyxLogger.error("ExternalDragHelper", "延迟解压失败", e)
                         }
                     }
                 }
@@ -236,7 +237,7 @@ object ExternalDragHelper {
                                     TransferHandler.COPY,
                                 )
                             } catch (e: Exception) {
-                                println("[ExternalDragHelper] exportAsDrag 失败: ${e.message}")
+                                OnyxLogger.error("ExternalDragHelper", "exportAsDrag 失败", e)
                                 e.printStackTrace()
                                 isSystemDragActive = false
                                 exportTriggered = false

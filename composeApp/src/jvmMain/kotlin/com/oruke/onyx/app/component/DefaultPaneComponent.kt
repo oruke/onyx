@@ -39,6 +39,7 @@ import java.nio.file.FileSystems
 import java.nio.file.Path
 import java.util.*
 import kotlin.io.path.pathString
+import com.oruke.onyx.app.OnyxLogger
 
 class DefaultPaneComponent(
     private val paneId: PaneId,
@@ -971,6 +972,7 @@ class DefaultPaneComponent(
                         }
                     },
                     onFailure = { failure ->
+                        OnyxLogger.error("PaneComponent", "目录加载失败: $location", failure)
                         pendingFocusEntryName.remove(tabId)
                         updateTab(tabId) { tab ->
                             tab.copy(entriesState = PaneEntriesState.Failure(failure.message))
@@ -981,6 +983,7 @@ class DefaultPaneComponent(
                 throw kotlinx.coroutines.CancellationException()
             } catch (e: Exception) {
                 // 非预期异常 → 也要转为 Failure，不能让状态卡在 Loading
+                OnyxLogger.error("PaneComponent", "目录加载异常: $location", e)
                 pendingFocusEntryName.remove(tabId)
                 updateTab(tabId) { tab ->
                     tab.copy(entriesState = PaneEntriesState.Failure(e.message))

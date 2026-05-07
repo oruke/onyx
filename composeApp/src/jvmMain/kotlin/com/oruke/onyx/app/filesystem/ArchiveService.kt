@@ -3,6 +3,7 @@ package com.oruke.onyx.app.filesystem
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.app.OnyxLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.sf.sevenzipjbinding.ExtractAskMode
@@ -240,7 +241,8 @@ class ArchiveService {
                 archive.close()
             }
             encrypted
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            OnyxLogger.warn("ArchiveService", "检测压缩包加密状态异常: $archivePath", e)
             false
         }
     }
@@ -332,7 +334,7 @@ class ArchiveService {
                 true
             }
         } catch (e: Exception) {
-            println("[ArchiveService] verifyPassword 异常: ${e.message}")
+            OnyxLogger.error("ArchiveService", "verifyPassword 异常", e)
             false
         }
     }

@@ -236,4 +236,8 @@
     <string name="label_case_uppercase">全大写</string>
     <string name="label_case_lowercase">全小写</string>
     <string name="label_case_titlecase">首字母大写</string>
+    <string name="label_verbose_logging">详细日志记录</string>
+    <string name="label_verbose_logging_hint">下次启动自动关闭</string>
+    <string name="label_setting_enabled">开启</string>
+    <string name="label_setting_disabled">关闭</string>
 </resources>

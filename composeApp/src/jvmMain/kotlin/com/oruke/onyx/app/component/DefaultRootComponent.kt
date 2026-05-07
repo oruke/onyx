@@ -64,6 +64,7 @@ import onyx.composeapp.generated.resources.msg_string_literal
 import java.nio.file.FileSystems
 import java.nio.file.Path
 import java.util.*
+import com.oruke.onyx.app.OnyxLogger
 
 class DefaultRootComponent(
     private val scope: CoroutineScope,
@@ -622,6 +623,7 @@ class DefaultRootComponent(
                     progress = 0f,
                 )
             } catch (e: Exception) {
+                OnyxLogger.error("RootComponent", "解压失败", e)
                 taskJobs.remove(taskId)
                 updateTask(
                     taskId = taskId,
@@ -821,6 +823,7 @@ class DefaultRootComponent(
                 )
                 refreshAllPanes()
             } catch (failure: Throwable) {
+                OnyxLogger.error("RootComponent", "文件传输失败 (${operation.name})", failure)
                 taskJobs.remove(taskId)
                 taskPauseFlags.remove(taskId)
                 updateTask(
@@ -1008,6 +1011,7 @@ class DefaultRootComponent(
                     detail = I18nMessage(Res.string.msg_cancelled),
                 )
             } catch (e: Throwable) {
+                OnyxLogger.error("RootComponent", "拖拽解压失败", e)
                 pendingArchiveExtraction = null
                 taskJobs.remove(taskId)
                 updateTask(
@@ -1112,6 +1116,7 @@ class DefaultRootComponent(
                     dialogState.value = ds.copy(executing = false, errorMessage = "Cancelled")
                 }
             } catch (e: Throwable) {
+                OnyxLogger.error("RootComponent", "批量重命名失败", e)
                 taskJobs.remove(taskId)
                 updateTask(
                     taskId = taskId,
@@ -1205,6 +1210,7 @@ class DefaultRootComponent(
                 )
                 refreshAllPanes()
             } catch (failure: Throwable) {
+                OnyxLogger.error("RootComponent", "删除失败", failure)
                 taskJobs.remove(taskId)
                 updateTask(
                     taskId = taskId,
@@ -1500,6 +1506,7 @@ class DefaultRootComponent(
                 )
                 paneComponent(paneId).refresh()
             } catch (failure: Throwable) {
+                OnyxLogger.error("RootComponent", "创建目录失败", failure)
                 taskJobs.remove(taskId)
                 updateTask(
                     taskId = taskId,
@@ -1761,7 +1768,7 @@ class DefaultRootComponent(
             }
         } catch (e: Exception) {
             // 剪切板写入失败不应阻断内部操作
-            println("[DefaultRootComponent] 系统剪切板写入失败: ${e.message}")
+            OnyxLogger.warn("RootComponent", "系统剪切板写入失败", e)
         }
     }
 

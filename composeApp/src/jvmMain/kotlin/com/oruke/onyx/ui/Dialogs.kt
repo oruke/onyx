@@ -136,7 +136,12 @@ import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_column_size
 import onyx.composeapp.generated.resources.label_column_modified
+import onyx.composeapp.generated.resources.label_verbose_logging
+import onyx.composeapp.generated.resources.label_verbose_logging_hint
+import onyx.composeapp.generated.resources.label_setting_enabled
+import onyx.composeapp.generated.resources.label_setting_disabled
 import onyx.composeapp.generated.resources.message_apply_to_remaining_conflicts
+import com.oruke.onyx.app.OnyxLogger
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Divider
@@ -241,6 +246,28 @@ internal fun SettingsDialog(
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         SettingsOption(draft.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED, stringResource(Res.string.label_delete_mode_move_to_trash), labelFs) { onDraftChange(draft.copy(deleteMode = DeleteMode.MOVE_TO_TRASH_PREFERRED)) }
                                         SettingsOption(draft.deleteMode == DeleteMode.PERMANENT, stringResource(Res.string.label_delete_mode_permanent), labelFs) { onDraftChange(draft.copy(deleteMode = DeleteMode.PERMANENT)) }
+                                    }
+                                }
+
+                                // ── 详细日志（运行时开关，不持久化） ──
+                                SettingsSection(stringResource(Res.string.label_verbose_logging), labelFs) {
+                                    var verboseOn by remember { mutableStateOf(OnyxLogger.verboseEnabled) }
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            SettingsOption(verboseOn, stringResource(Res.string.label_setting_enabled), labelFs) {
+                                                OnyxLogger.verboseEnabled = true
+                                                verboseOn = true
+                                            }
+                                            SettingsOption(!verboseOn, stringResource(Res.string.label_setting_disabled), labelFs) {
+                                                OnyxLogger.verboseEnabled = false
+                                                verboseOn = false
+                                            }
+                                        }
+                                        Text(
+                                            text = stringResource(Res.string.label_verbose_logging_hint),
+                                            fontSize = 10.sp,
+                                            color = palette.mutedForeground,
+                                        )
                                     }
                                 }
                             }
