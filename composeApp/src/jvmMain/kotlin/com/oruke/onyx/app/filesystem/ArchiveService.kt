@@ -409,6 +409,19 @@ class ArchiveService {
         runCatching {
             val targetDirectory = File(targetDir)
             targetDirectory.mkdirs()
+
+            // 计算选中条目的公共父目录，用于相对化输出路径
+            // 例如 entryPaths=["dir1/dir2"] → parentPrefix="dir1/"
+            // 这样 "dir1/dir2/file.txt" → 输出为 "dir2/file.txt"
+            val parentPrefix = run {
+                val parents = entryPaths.map { path ->
+                    val lastSlash = path.trimEnd('/').lastIndexOf('/')
+                    if (lastSlash >= 0) path.substring(0, lastSlash + 1) else ""
+                }
+                val common = parents.minByOrNull { it.length } ?: ""
+                if (parents.all { it.startsWith(common) }) common else ""
+            }
+
             openArchive(archivePath, password).use { archive ->
                 val numItems = archive.numberOfItems
                 // 收集需要解压的 index
@@ -443,9 +456,13 @@ class ArchiveService {
                             val itemPath = archive.getProperty(index, PropID.PATH) as? String ?: return null
                             val isDir = archive.getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
 
-                            // 只保留最后一级文件名（扁平化解压）
-                            val fileName = itemPath.substringAfterLast('/')
-                            val outFile = File(targetDirectory, fileName)
+                            // 去掉公共父路径前缀，只保留当前层级及下层结构
+                            val relativePath = if (parentPrefix.isNotEmpty() && itemPath.startsWith(parentPrefix)) {
+                                itemPath.removePrefix(parentPrefix)
+                            } else {
+                                itemPath
+                            }
+                            val outFile = File(targetDirectory, relativePath)
                             if (isDir) {
                                 outFile.mkdirs()
                                 return null
