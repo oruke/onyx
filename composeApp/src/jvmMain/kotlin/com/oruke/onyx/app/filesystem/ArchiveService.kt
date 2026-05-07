@@ -246,7 +246,12 @@ class ArchiveService {
     }
 
     /**
-     * 验证密码是否正确 — 尝试解压第一个加密文件条目到内存，检测操作结果。
+     * 验证密码是否正确。
+     *
+     * 策略：
+     * 1. 先用 test 模式解压（不写数据），检测 ExtractOperationResult
+     * 2. 如果 test 模式返回 OK，再解压到内存并比对 CRC32
+     * 3. 对 ZipCrypto 等不返回 WRONG_PASSWORD 的格式，CRC 比对是唯一可靠手段
      *
      * @return true = 密码正确，false = 密码错误或验证失败
      */
@@ -254,33 +259,28 @@ class ArchiveService {
         try {
             openArchive(archivePath, password).use { archive ->
                 val numItems = archive.numberOfItems
-                // 找到第一个加密的文件条目（非目录）
+                // 找到第一个加密的非空文件条目
                 val testIndex = (0 until numItems).firstOrNull { i ->
                     val encrypted = archive.getProperty(i, PropID.ENCRYPTED) as? Boolean ?: false
                     val isDir = archive.getProperty(i, PropID.IS_FOLDER) as? Boolean ?: false
-                    encrypted && !isDir
-                } ?: return@withContext true // 没有加密文件 → 视为密码正确
+                    val size = archive.getProperty(i, PropID.SIZE) as? Long ?: 0L
+                    encrypted && !isDir && size > 0
+                } ?: return@withContext true // 没有加密文件条目 → 密码正确
 
-                var passwordWrong = false
-                var dataReceived = false
+                // 获取压缩包存储的 CRC（可能为 null）
+                val storedCrc = archive.getProperty(testIndex, PropID.CRC) as? Int
+
+                // ── 步骤 1：test 模式解压，检测 ExtractOperationResult ──
+                var testModeError = false
                 archive.extract(
                     intArrayOf(testIndex),
-                    false, // 不测试模式，需要实际解压以触发密码验证
+                    true, // test 模式：不输出数据，只验证
                     object : IArchiveExtractCallback, ICryptoGetTextPassword {
-                        override fun getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream? {
-                            if (extractAskMode != ExtractAskMode.EXTRACT) return null
-                            return ISequentialOutStream { data ->
-                                if (data.isNotEmpty()) dataReceived = true
-                                data.size
-                            }
-                        }
+                        override fun getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream? = null
                         override fun prepareOperation(extractAskMode: ExtractAskMode) {}
                         override fun setOperationResult(result: ExtractOperationResult) {
-                            if (result == ExtractOperationResult.WRONG_PASSWORD ||
-                                result == ExtractOperationResult.DATAERROR ||
-                                result == ExtractOperationResult.CRCERROR
-                            ) {
-                                passwordWrong = true
+                            if (result != ExtractOperationResult.OK) {
+                                testModeError = true
                             }
                         }
                         override fun setTotal(total: Long) {}
@@ -288,9 +288,51 @@ class ArchiveService {
                         override fun cryptoGetTextPassword(): String = password
                     },
                 )
-                !passwordWrong && dataReceived
+                if (testModeError) return@withContext false
+
+                // ── 步骤 2：解压到内存，CRC32 比对 ──
+                if (storedCrc != null) {
+                    val buffer = java.io.ByteArrayOutputStream()
+                    var extractError = false
+                    archive.extract(
+                        intArrayOf(testIndex),
+                        false,
+                        object : IArchiveExtractCallback, ICryptoGetTextPassword {
+                            override fun getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream? {
+                                if (extractAskMode != ExtractAskMode.EXTRACT) return null
+                                return ISequentialOutStream { data ->
+                                    buffer.write(data)
+                                    data.size
+                                }
+                            }
+                            override fun prepareOperation(extractAskMode: ExtractAskMode) {}
+                            override fun setOperationResult(result: ExtractOperationResult) {
+                                if (result != ExtractOperationResult.OK) {
+                                    extractError = true
+                                }
+                            }
+                            override fun setTotal(total: Long) {}
+                            override fun setCompleted(complete: Long) {}
+                            override fun cryptoGetTextPassword(): String = password
+                        },
+                    )
+                    if (extractError) return@withContext false
+
+                    val data = buffer.toByteArray()
+                    if (data.isEmpty()) return@withContext false
+
+                    // 计算解压数据的 CRC32 并与存储值比较
+                    val crc32 = java.util.zip.CRC32()
+                    crc32.update(data)
+                    val computedCrc = crc32.value.toInt()
+                    return@withContext computedCrc == storedCrc
+                }
+
+                // 没有存储 CRC 信息且 test 模式通过 → 视为正确
+                true
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            println("[ArchiveService] verifyPassword 异常: ${e.message}")
             false
         }
     }
@@ -389,6 +431,7 @@ class ArchiveService {
                     false,
                     object : IArchiveExtractCallback, ICryptoGetTextPassword {
                         private var currentOutputStream: java.io.FileOutputStream? = null
+                        private var currentOutFile: File? = null
 
                         override fun getStream(
                             index: Int,
@@ -408,6 +451,7 @@ class ArchiveService {
                             outFile.parentFile?.mkdirs()
                             val fos = java.io.FileOutputStream(outFile)
                             currentOutputStream = fos
+                            currentOutFile = outFile
                             return ISequentialOutStream { data ->
                                 fos.write(data)
                                 data.size
@@ -419,6 +463,10 @@ class ArchiveService {
                             currentOutputStream?.close()
                             currentOutputStream = null
                             if (result != ExtractOperationResult.OK) {
+                                // 删除失败产出的文件
+                                currentOutFile?.let { file ->
+                                    if (file.exists()) file.delete()
+                                }
                                 val msg = when (result) {
                                     ExtractOperationResult.WRONG_PASSWORD -> "密码错误"
                                     ExtractOperationResult.DATAERROR -> "数据错误（密码可能不正确）"
@@ -427,6 +475,7 @@ class ArchiveService {
                                 }
                                 errors.add(msg)
                             }
+                            currentOutFile = null
                         }
                         override fun setTotal(total: Long) {}
                         override fun setCompleted(complete: Long) {}
@@ -462,6 +511,7 @@ private class ArchiveExtractCallback(
 ) : IArchiveExtractCallback, ICryptoGetTextPassword {
 
     private var currentOutputStream: FileOutputStream? = null
+    private var currentOutFile: File? = null
     val errors = mutableListOf<String>()
 
     override fun getStream(
@@ -482,6 +532,7 @@ private class ArchiveExtractCallback(
         outFile.parentFile?.mkdirs()
         val fos = FileOutputStream(outFile)
         currentOutputStream = fos
+        currentOutFile = outFile
         return ISequentialOutStream { data ->
             fos.write(data)
             data.size
@@ -496,6 +547,10 @@ private class ArchiveExtractCallback(
         currentOutputStream?.close()
         currentOutputStream = null
         if (extractOperationResult != ExtractOperationResult.OK) {
+            // 删除失败产出的文件（避免 0B 空文件残留）
+            currentOutFile?.let { file ->
+                if (file.exists()) file.delete()
+            }
             val msg = when (extractOperationResult) {
                 ExtractOperationResult.WRONG_PASSWORD -> "密码错误"
                 ExtractOperationResult.DATAERROR -> "数据错误（密码可能不正确）"
@@ -504,6 +559,7 @@ private class ArchiveExtractCallback(
             }
             errors.add(msg)
         }
+        currentOutFile = null
     }
 
     override fun setTotal(total: Long) {}
