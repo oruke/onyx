@@ -561,25 +561,37 @@ class DefaultRootComponent(
                         progress = processedCount.toFloat() / entries.size,
                     )
 
-                    // 检测是否加密，如需密码则弹出对话框
+                    // 检测是否加密，如需密码则弹出对话框并验证
                     var password: String? = null
                     val encrypted = archiveService.isEncrypted(archivePath)
                     if (encrypted) {
-                        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
-                        pendingArchiveExtraction = PendingArchiveExtraction(
-                            entries = entries,
-                            currentLocation = targetDirectoryLocation,
-                            taskId = taskId,
-                            taskTitle = I18nMessage(Res.string.msg_extract_items, entries.size),
-                            extractAction = { _, _, _ -> Result.success(Unit) }, // 不使用
-                            passwordDeferred = deferred,
-                        )
-                        dialogState.value = RootDialogState.ArchivePassword(
-                            archiveName = java.io.File(archivePath).name,
-                        )
-                        password = deferred.await()
-                        dialogState.value = null
-                        pendingArchiveExtraction = null
+                        var errorMsg: String? = null
+                        while (true) {
+                            ensureActive()
+                            val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+                            pendingArchiveExtraction = PendingArchiveExtraction(
+                                entries = entries,
+                                currentLocation = targetDirectoryLocation,
+                                taskId = taskId,
+                                taskTitle = I18nMessage(Res.string.msg_extract_items, entries.size),
+                                extractAction = { _, _, _ -> Result.success(Unit) },
+                                passwordDeferred = deferred,
+                            )
+                            dialogState.value = RootDialogState.ArchivePassword(
+                                archiveName = java.io.File(archivePath).name,
+                                error = errorMsg,
+                            )
+                            val candidatePassword = deferred.await()
+                            val valid = archiveService.verifyPassword(archivePath, candidatePassword)
+                            if (valid) {
+                                password = candidatePassword
+                                dialogState.value = null
+                                pendingArchiveExtraction = null
+                                break
+                            } else {
+                                errorMsg = "密码错误，请重新输入"
+                            }
+                        }
                     }
 
                     archiveService.extractEntriesToTemp(
@@ -940,25 +952,38 @@ class DefaultRootComponent(
                         progress = index.toFloat() / archiveEntries.size,
                     )
 
-                    // 检测是否加密，如需密码则弹出对话框
+                    // 检测是否加密，如需密码则弹出对话框并验证
                     var password: String? = null
                     val encrypted = archiveService.isEncrypted(entry.location)
                     if (encrypted) {
-                        val deferred = kotlinx.coroutines.CompletableDeferred<String>()
-                        pendingArchiveExtraction = PendingArchiveExtraction(
-                            entries = archiveEntries,
-                            currentLocation = currentLocation,
-                            taskId = taskId,
-                            taskTitle = taskTitle,
-                            extractAction = extractAction,
-                            passwordDeferred = deferred,
-                        )
-                        dialogState.value = RootDialogState.ArchivePassword(
-                            archiveName = entry.name,
-                        )
-                        password = deferred.await()
-                        dialogState.value = null
-                        pendingArchiveExtraction = null
+                        var errorMsg: String? = null
+                        while (true) {
+                            ensureActive()
+                            val deferred = kotlinx.coroutines.CompletableDeferred<String>()
+                            pendingArchiveExtraction = PendingArchiveExtraction(
+                                entries = archiveEntries,
+                                currentLocation = currentLocation,
+                                taskId = taskId,
+                                taskTitle = taskTitle,
+                                extractAction = extractAction,
+                                passwordDeferred = deferred,
+                            )
+                            dialogState.value = RootDialogState.ArchivePassword(
+                                archiveName = entry.name,
+                                error = errorMsg,
+                            )
+                            val candidatePassword = deferred.await()
+                            // 验证密码
+                            val valid = archiveService.verifyPassword(entry.location, candidatePassword)
+                            if (valid) {
+                                password = candidatePassword
+                                dialogState.value = null
+                                pendingArchiveExtraction = null
+                                break
+                            } else {
+                                errorMsg = "密码错误，请重新输入"
+                            }
+                        }
                     }
 
                     extractAction(entry, currentLocation, password).getOrThrow()

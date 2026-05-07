@@ -905,7 +905,7 @@ internal fun ArchivePasswordDialog(
     DialogWindow(
         onCloseRequest = onDismiss,
         title = stringResource(Res.string.label_archive_password),
-        state = rememberDialogState(width = 420.dp, height = 220.dp),
+        state = rememberDialogState(width = 420.dp, height = 250.dp),
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             DialogFrame(

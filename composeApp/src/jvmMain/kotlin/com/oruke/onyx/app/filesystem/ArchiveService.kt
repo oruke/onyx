@@ -246,6 +246,56 @@ class ArchiveService {
     }
 
     /**
+     * 验证密码是否正确 — 尝试解压第一个加密文件条目到内存，检测操作结果。
+     *
+     * @return true = 密码正确，false = 密码错误或验证失败
+     */
+    suspend fun verifyPassword(archivePath: String, password: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            openArchive(archivePath, password).use { archive ->
+                val numItems = archive.numberOfItems
+                // 找到第一个加密的文件条目（非目录）
+                val testIndex = (0 until numItems).firstOrNull { i ->
+                    val encrypted = archive.getProperty(i, PropID.ENCRYPTED) as? Boolean ?: false
+                    val isDir = archive.getProperty(i, PropID.IS_FOLDER) as? Boolean ?: false
+                    encrypted && !isDir
+                } ?: return@withContext true // 没有加密文件 → 视为密码正确
+
+                var passwordWrong = false
+                var dataReceived = false
+                archive.extract(
+                    intArrayOf(testIndex),
+                    false, // 不测试模式，需要实际解压以触发密码验证
+                    object : IArchiveExtractCallback, ICryptoGetTextPassword {
+                        override fun getStream(index: Int, extractAskMode: ExtractAskMode): ISequentialOutStream? {
+                            if (extractAskMode != ExtractAskMode.EXTRACT) return null
+                            return ISequentialOutStream { data ->
+                                if (data.isNotEmpty()) dataReceived = true
+                                data.size
+                            }
+                        }
+                        override fun prepareOperation(extractAskMode: ExtractAskMode) {}
+                        override fun setOperationResult(result: ExtractOperationResult) {
+                            if (result == ExtractOperationResult.WRONG_PASSWORD ||
+                                result == ExtractOperationResult.DATAERROR ||
+                                result == ExtractOperationResult.CRCERROR
+                            ) {
+                                passwordWrong = true
+                            }
+                        }
+                        override fun setTotal(total: Long) {}
+                        override fun setCompleted(complete: Long) {}
+                        override fun cryptoGetTextPassword(): String = password
+                    },
+                )
+                !passwordWrong && dataReceived
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
      * 从压缩包中提取单个文件到内存字节数组。
      *
      * @param archivePath 压缩包物理路径
@@ -369,7 +419,13 @@ class ArchiveService {
                             currentOutputStream?.close()
                             currentOutputStream = null
                             if (result != ExtractOperationResult.OK) {
-                                errors.add(result.name)
+                                val msg = when (result) {
+                                    ExtractOperationResult.WRONG_PASSWORD -> "密码错误"
+                                    ExtractOperationResult.DATAERROR -> "数据错误（密码可能不正确）"
+                                    ExtractOperationResult.CRCERROR -> "CRC 校验失败（密码可能不正确）"
+                                    else -> result.name
+                                }
+                                errors.add(msg)
                             }
                         }
                         override fun setTotal(total: Long) {}
@@ -440,7 +496,13 @@ private class ArchiveExtractCallback(
         currentOutputStream?.close()
         currentOutputStream = null
         if (extractOperationResult != ExtractOperationResult.OK) {
-            errors.add(extractOperationResult.name)
+            val msg = when (extractOperationResult) {
+                ExtractOperationResult.WRONG_PASSWORD -> "密码错误"
+                ExtractOperationResult.DATAERROR -> "数据错误（密码可能不正确）"
+                ExtractOperationResult.CRCERROR -> "CRC 校验失败（密码可能不正确）"
+                else -> extractOperationResult.name
+            }
+            errors.add(msg)
         }
     }
 
