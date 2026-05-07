@@ -10,8 +10,6 @@ import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.TabDropTarget
@@ -41,7 +39,6 @@ internal fun BoundPaneSurface(
     onFileDragStart: (PaneId, FileTransferOperation) -> Unit,
     onFileDragPositionChange: (IntOffset) -> Unit,
     onFileDragEnd: (IntOffset?) -> Unit,
-    onToggleFavoriteLocation: (String) -> Unit,
 ) {
     val paneState: PaneState = when (paneId) {
         PaneId.PRIMARY -> state.primaryPane
@@ -52,17 +49,7 @@ internal fun BoundPaneSurface(
         PaneId.SECONDARY -> rootComponent.secondaryPane
     }
 
-    PaneSurface(
-        state = paneState,
-        active = state.activePane == paneId,
-        component = paneComponent,
-        modifier = modifier,
-        onActivate = { rootComponent.activatePane(paneId) },
-        canPaste = state.canPaste,
-        favoriteLocations = state.settings.favoriteLocations,
-        onToggleFavoriteLocation = onToggleFavoriteLocation,
-        filterQuery = paneState.filterQuery,
-        onFilterQueryChange = paneComponent::setFilterQuery,
+    val actions = PaneActions(
         onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(paneId) },
         onExtractSelection = { rootComponent.extractSelectedInPane(paneId) },
         onExtractToDirectory = { rootComponent.extractToDirectoryInPane(paneId) },
@@ -71,17 +58,23 @@ internal fun BoundPaneSurface(
         onCopySelection = { rootComponent.stageCopySelectedInPane(paneId) },
         onCutSelection = { rootComponent.stageCutSelectedInPane(paneId) },
         onPaste = { rootComponent.requestPasteIntoPane(paneId) },
-        onOpenSelected = { paneComponent.openSelectedEntry() },
-        onOpenSelectedInNewTab = { paneComponent.openSelectedInNewTab() },
-        onBeginRename = { paneComponent.beginRename() },
-        onBeginCreateFile = { paneComponent.beginCreateFile() },
         onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(paneId) },
-        onCopySelectedPaths = { paneComponent.copySelectedPaths() },
-        inlineEditState = paneState.inlineEditState,
-        onUpdateInlineEditDraft = paneComponent::updateInlineEditDraft,
-        onConfirmInlineEdit = { paneComponent.confirmInlineEdit() },
-        onCancelInlineEdit = { paneComponent.cancelInlineEdit() },
-        onDismissOperationFeedback = { paneComponent.dismissOperationFeedback() },
+        onToggleFavoriteLocation = rootComponent::toggleFavoriteLocation,
+        onOpenSettings = rootComponent::openSettings,
+        onOpenWith = { entry, app -> rootComponent.openWithApp(entry, app) },
+        onOpenWithChooser = { entry -> rootComponent.openWithChooser(entry) },
+        onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
+    )
+
+    PaneSurface(
+        state = paneState,
+        active = state.activePane == paneId,
+        component = paneComponent,
+        actions = actions,
+        modifier = modifier,
+        onActivate = { rootComponent.activatePane(paneId) },
+        canPaste = state.canPaste,
+        favoriteLocations = state.settings.favoriteLocations,
         onDropTab = onTabDrop,
         onTabDragPositionChange = onTabDragPositionChange,
         onTabDragEnd = onTabDragEnd,
@@ -92,10 +85,5 @@ internal fun BoundPaneSurface(
         onFileDragEnd = onFileDragEnd,
         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
         fileDropTarget = fileDropTarget,
-        openWithApps = emptyList(),
-        onOpenWith = { entry, app -> rootComponent.openWithApp(entry, app) },
-        onOpenWithChooser = { entry -> rootComponent.openWithChooser(entry) },
-        onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
-        onOpenSettings = rootComponent::openSettings,
     )
 }

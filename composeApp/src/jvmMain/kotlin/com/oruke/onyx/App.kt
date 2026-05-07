@@ -467,7 +467,7 @@ private fun AppContent(
                                     onFileDragStart = onFileDragStart,
                                     onFileDragPositionChange = onFileDragPositionChange,
                                     onFileDragEnd = onFileDragEnd,
-                                    onToggleFavoriteLocation = toggleFavoriteLocation,
+    
                                 )
                             }
 
@@ -494,7 +494,7 @@ private fun AppContent(
                                         onFileDragStart = onFileDragStart,
                                         onFileDragPositionChange = onFileDragPositionChange,
                                         onFileDragEnd = onFileDragEnd,
-                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+        
                                     )
                                     ResizablePaneDivider(
                                         orientation = Orientation.Vertical,
@@ -518,7 +518,7 @@ private fun AppContent(
                                         onFileDragStart = onFileDragStart,
                                         onFileDragPositionChange = onFileDragPositionChange,
                                         onFileDragEnd = onFileDragEnd,
-                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+        
                                     )
                                 }
                             }
@@ -546,7 +546,7 @@ private fun AppContent(
                                         onFileDragStart = onFileDragStart,
                                         onFileDragPositionChange = onFileDragPositionChange,
                                         onFileDragEnd = onFileDragEnd,
-                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+        
                                     )
                                     ResizablePaneDivider(
                                         orientation = Orientation.Horizontal,
@@ -570,7 +570,7 @@ private fun AppContent(
                                         onFileDragStart = onFileDragStart,
                                         onFileDragPositionChange = onFileDragPositionChange,
                                         onFileDragEnd = onFileDragEnd,
-                                        onToggleFavoriteLocation = toggleFavoriteLocation,
+        
                                     )
                                 }
                             }

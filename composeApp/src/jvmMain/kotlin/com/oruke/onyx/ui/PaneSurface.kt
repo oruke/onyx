@@ -54,7 +54,6 @@ import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.core.model.PaneInlineEditState
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.app.filesystem.OpenWithApp
@@ -93,32 +92,12 @@ internal fun PaneSurface(
     state: PaneState,
     active: Boolean,
     component: PaneComponent,
+    actions: PaneActions,
     modifier: Modifier = Modifier,
     onActivate: () -> Unit,
     canPaste: Boolean,
     favoriteLocations: List<String>,
-    onToggleFavoriteLocation: (String) -> Unit,
-    filterQuery: String,
-    onFilterQueryChange: (String) -> Unit,
-    onDeleteSelection: () -> Unit,
-    onExtractSelection: () -> Unit,
-    onExtractToDirectory: () -> Unit,
-    onExtractSmart: () -> Unit,
-    onBatchRename: () -> Unit,
-    onCopySelection: () -> Unit,
-    onCutSelection: () -> Unit,
-    onPaste: () -> Unit,
-    onOpenSelected: () -> Unit,
-    onOpenSelectedInNewTab: () -> Unit,
-    onBeginRename: () -> Unit,
-    onBeginCreateFile: () -> Unit,
-    onBeginCreateDirectory: () -> Unit,
-    onCopySelectedPaths: () -> Unit,
-    inlineEditState: PaneInlineEditState?,
-    onUpdateInlineEditDraft: (String) -> Unit,
-    onConfirmInlineEdit: () -> Unit,
-    onCancelInlineEdit: () -> Unit,
-    onDismissOperationFeedback: () -> Unit,
+    // ── 拖放相关 ──
     onDropTab: (PaneId, String, IntOffset) -> Unit,
     onTabDragPositionChange: (IntOffset) -> Unit,
     onTabDragEnd: () -> Unit,
@@ -129,12 +108,10 @@ internal fun PaneSurface(
     onFileDragEnd: (IntOffset?) -> Unit,
     onFileDropZoneChange: (FileDropZone) -> Unit,
     fileDropTarget: FileDropTarget?,
-    openWithApps: List<OpenWithApp>,
-    onOpenWith: (VFile, OpenWithApp) -> Unit,
-    onOpenWithChooser: (VFile) -> Unit,
-    onQueryOpenWithApps: (suspend (VFile) -> List<OpenWithApp>)? = null,
-    onOpenSettings: () -> Unit,
 ) {
+    // ── 从 state / component / actions 派生，消除冗余参数 ──
+    val filterQuery = state.filterQuery
+    val inlineEditState = state.inlineEditState
     val focusRequester = remember { FocusRequester() }
     val filterFocusRequester = remember { FocusRequester() }
     var showFilterBar by remember { mutableStateOf(false) }
@@ -185,12 +162,12 @@ internal fun PaneSurface(
                 if (inlineEditState != null) {
                     return@onPreviewKeyEvent when (event.key) {
                         Key.Enter -> {
-                            onConfirmInlineEdit()
+                            component.confirmInlineEdit()
                             true
                         }
 
                         Key.Escape -> {
-                            onCancelInlineEdit()
+                            component.cancelInlineEdit()
                             true
                         }
 
@@ -201,36 +178,36 @@ internal fun PaneSurface(
 
                 when {
                     event.key == Key.Enter -> {
-                        onOpenSelected()
+                        component.openSelectedEntry()
                         true
                     }
 
                     event.key == Key.F2 -> {
-                        onBeginRename()
+                        component.beginRename()
                         true
                     }
 
                     event.key == Key.N && (event.isCtrlPressed || event.isMetaPressed) -> {
                         if (event.isShiftPressed) {
-                            onBeginCreateDirectory()
+                            actions.onBeginCreateDirectory()
                         } else {
-                            onBeginCreateFile()
+                            component.beginCreateFile()
                         }
                         true
                     }
 
                     event.key == Key.C && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        onCopySelection()
+                        actions.onCopySelection()
                         true
                     }
 
                     event.key == Key.X && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        onCutSelection()
+                        actions.onCutSelection()
                         true
                     }
 
                     event.key == Key.V && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        onPaste()
+                        actions.onPaste()
                         true
                     }
 
@@ -246,7 +223,7 @@ internal fun PaneSurface(
 
                     event.key == Key.Delete -> {
                         if (state.selectedEntryIds.isNotEmpty()) {
-                            onDeleteSelection()
+                            actions.onDeleteSelection()
                             true
                         } else {
                             false
@@ -263,7 +240,7 @@ internal fun PaneSurface(
                             showContextMenu = false
                         } else if (showFilterBar) {
                             showFilterBar = false
-                            onFilterQueryChange("")
+                            component.setFilterQuery("")
                         } else {
                             component.clearSelection()
                         }
@@ -276,7 +253,7 @@ internal fun PaneSurface(
                     }
 
                     event.key == Key.D && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        onToggleFavoriteLocation(state.location)
+                        actions.onToggleFavoriteLocation(state.location)
                         true
                     }
 
@@ -291,7 +268,7 @@ internal fun PaneSurface(
                     }
 
                     event.key == Key.Comma && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        onOpenSettings()
+                        actions.onOpenSettings()
                         true
                     }
 
@@ -373,7 +350,7 @@ internal fun PaneSurface(
 
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); onToggleFavoriteLocation(state.location) },
+                onClick = { onActivate(); actions.onToggleFavoriteLocation(state.location) },
                 tooltip = stringResource(Res.string.action_toggle_favorite),
                 selected = currentLocationFavorite,
             ) {
@@ -402,7 +379,7 @@ internal fun PaneSurface(
                 onClick = {
                     onActivate()
                     showFilterBar = !showFilterBar
-                    if (!showFilterBar) onFilterQueryChange("")
+                    if (!showFilterBar) component.setFilterQuery("")
                 },
                 tooltip = stringResource(Res.string.action_filter) + " (Ctrl+F)",
                 selected = showFilterBar || filterQuery.isNotEmpty(),
@@ -422,7 +399,7 @@ internal fun PaneSurface(
                 ) {
                     BasicTextField(
                         value = filterQuery,
-                        onValueChange = onFilterQueryChange,
+                        onValueChange = { component.setFilterQuery(it) },
                         modifier = Modifier
                             .fillMaxSize()
                             .focusRequester(filterFocusRequester)
@@ -437,7 +414,7 @@ internal fun PaneSurface(
                             .onPreviewKeyEvent { event ->
                                 if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
                                     showFilterBar = false
-                                    onFilterQueryChange("")
+                                    component.setFilterQuery("")
                                     focusRequester.requestFocus()
                                     true
                                 } else false
@@ -496,11 +473,11 @@ internal fun PaneSurface(
             // 3 秒后自动消失
             LaunchedEffect(feedback) {
                 kotlinx.coroutines.delay(3000)
-                onDismissOperationFeedback()
+                component.dismissOperationFeedback()
             }
             OperationFeedbackBar(
                 feedback = feedback,
-                onDismiss = onDismissOperationFeedback,
+                onDismiss = { component.dismissOperationFeedback() },
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
         }
@@ -554,9 +531,9 @@ internal fun PaneSurface(
                     onFileDragEnd = onFileDragEnd,
                     onFileDropZoneChange = onFileDropZoneChange,
                     inlineEditState = inlineEditState,
-                    onUpdateInlineEditDraft = onUpdateInlineEditDraft,
-                    onConfirmInlineEdit = onConfirmInlineEdit,
-                    onCancelInlineEdit = onCancelInlineEdit,
+                    onUpdateInlineEditDraft = component::updateInlineEditDraft,
+                    onConfirmInlineEdit = component::confirmInlineEdit,
+                    onCancelInlineEdit = component::cancelInlineEdit,
                     onShowContextMenu = { entryId, entrySelected, pointerPosition ->
                         onActivate()
                         contextMenuOffset = pointerPosition
@@ -564,7 +541,7 @@ internal fun PaneSurface(
                         showContextMenu = true
                     },
                     onDismissContextMenu = { showContextMenu = false },
-                    onBeginRename = onBeginRename,
+                    onBeginRename = component::beginRename,
                     galleryItemSizeDp = state.galleryItemSizeDp,
                     onSelectEntries = component::selectEntries,
                     inlineExpandedLocations = state.inlineExpandedLocations,
@@ -587,9 +564,10 @@ internal fun PaneSurface(
                     // 异步查询"打开方式"应用列表
                     val singleEntry = singleSelectedEntry
                     LaunchedEffect(showContextMenu, singleEntry?.id) {
-                        if (singleEntry != null && singleEntry.kind == VFileKind.FILE && onQueryOpenWithApps != null) {
+                        val queryFn = actions.onQueryOpenWithApps
+                        if (singleEntry != null && singleEntry.kind == VFileKind.FILE && queryFn != null) {
                             contextMenuOpenWithApps = withContext(Dispatchers.IO) {
-                                onQueryOpenWithApps.invoke(singleEntry)
+                                queryFn.invoke(singleEntry)
                             }
                         } else {
                             contextMenuOpenWithApps = emptyList()
@@ -608,68 +586,68 @@ internal fun PaneSurface(
                         },
                         canBatchRename = selectedCount >= 2,
                         onOpenSelection = {
-                            onOpenSelected()
+                            component.openSelectedEntry()
                             showContextMenu = false
                         },
                         onOpenSelectionInNewTab = {
-                            onOpenSelectedInNewTab()
+                            component.openSelectedInNewTab()
                             showContextMenu = false
                         },
                         onRenameSelection = {
-                            onBeginRename()
+                            component.beginRename()
                             showContextMenu = false
                         },
                         onBatchRename = {
-                            onBatchRename()
+                            actions.onBatchRename()
                             showContextMenu = false
                         },
                         onCreateFile = {
-                            onBeginCreateFile()
+                            component.beginCreateFile()
                             showContextMenu = false
                         },
                         onCreateDirectory = {
-                            onBeginCreateDirectory()
+                            actions.onBeginCreateDirectory()
                             showContextMenu = false
                         },
                         onDeleteSelection = {
-                            onDeleteSelection()
+                            actions.onDeleteSelection()
                             showContextMenu = false
                         },
                         onExtractSelection = {
-                            onExtractSelection()
+                            actions.onExtractSelection()
                             showContextMenu = false
                         },
                         onExtractToDirectory = {
-                            onExtractToDirectory()
+                            actions.onExtractToDirectory()
                             showContextMenu = false
                         },
                         onExtractSmart = {
-                            onExtractSmart()
+                            actions.onExtractSmart()
                             showContextMenu = false
                         },
                         onCopyPath = {
-                            onCopySelectedPaths()
+                            component.copySelectedPaths()
                             showContextMenu = false
                         },
                         onCopySelection = {
-                            onCopySelection()
+                            actions.onCopySelection()
                             showContextMenu = false
                         },
                         onCutSelection = {
-                            onCutSelection()
+                            actions.onCutSelection()
                             showContextMenu = false
                         },
                         onPaste = {
-                            onPaste()
+                            actions.onPaste()
                             showContextMenu = false
                         },
-                        openWithApps = if (contextMenuOpenWithApps.isNotEmpty()) contextMenuOpenWithApps else openWithApps,
+                        openWithApps = contextMenuOpenWithApps,
                         onOpenWith = { app ->
-                            singleSelectedEntry?.let { onOpenWith(it, app) }
+                            singleSelectedEntry?.let { actions.onOpenWith(it, app) }
                             showContextMenu = false
                         },
                         onOpenWithChooser = {
-                            singleSelectedEntry?.let { onOpenWithChooser(it) }
+                            singleSelectedEntry?.let { actions.onOpenWithChooser(it) }
                             showContextMenu = false
                         },
                         onRefresh = {
