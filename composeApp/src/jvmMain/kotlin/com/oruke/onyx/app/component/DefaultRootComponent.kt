@@ -34,7 +34,6 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneSessionSnapshot
-import com.oruke.onyx.core.model.TabSessionSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import androidx.compose.ui.graphics.ImageBitmap
@@ -810,21 +809,6 @@ private fun PaneState.toSessionSnapshot(): PaneSessionSnapshot {
     return PaneSessionSnapshot(
         activeTabId = activeTabId,
         tabs = tabs.map { tab -> tab.toSessionSnapshot() },
-    )
-}
-
-private fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
-    return TabSessionSnapshot(
-        id = id,
-        location = location,
-        detailsColumns = detailsColumns,
-        detailsColumnWeights = detailsColumnWeights,
-        detailsSort = detailsSort,
-        showHiddenItems = showHiddenItems,
-        viewMode = viewMode,
-        filterQuery = filterQuery,
-        backStack = backStack,
-        forwardStack = forwardStack,
     )
 }
 

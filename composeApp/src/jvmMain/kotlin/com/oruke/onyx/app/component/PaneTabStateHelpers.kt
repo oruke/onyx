@@ -1,0 +1,206 @@
+package com.oruke.onyx.app.component
+
+import com.oruke.onyx.app.component.delegate.EntrySorter
+import com.oruke.onyx.app.component.delegate.SelectionHelper
+import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.core.model.DetailsColumn
+import com.oruke.onyx.core.model.DetailsSort
+import com.oruke.onyx.core.model.PaneInspectorState
+import com.oruke.onyx.core.model.PaneSessionSnapshot
+import com.oruke.onyx.core.model.PaneStatusInfo
+import com.oruke.onyx.core.model.SortDirection
+import com.oruke.onyx.core.model.TabSessionSnapshot
+import com.oruke.onyx.core.model.ViewMode
+
+internal const val MIN_DETAILS_COLUMN_WIDTH = 40f
+
+internal fun defaultDetailsColumns(): List<DetailsColumn> {
+    return listOf(
+        DetailsColumn.NAME,
+        DetailsColumn.TYPE,
+        DetailsColumn.SIZE,
+        DetailsColumn.MODIFIED,
+    )
+}
+
+internal fun defaultDetailsColumnWeights(): Map<DetailsColumn, Float> {
+    return mapOf(
+        DetailsColumn.NAME to 300f,
+        DetailsColumn.TYPE to 80f,
+        DetailsColumn.SIZE to 100f,
+        DetailsColumn.MODIFIED to 180f,
+    )
+}
+
+internal fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
+    return defaultDetailsColumnWeights()[column] ?: MIN_DETAILS_COLUMN_WIDTH
+}
+
+internal fun PaneTabState.toPaneState(
+    paneId: com.oruke.onyx.core.model.PaneId,
+    activeTabId: String,
+    tabs: List<PaneTabState>,
+    inlineExpandedLocations: Set<String> = emptySet(),
+    inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
+): PaneState {
+    return PaneState(
+        paneId = paneId,
+        activeTabId = activeTabId,
+        tabs = tabs,
+        location = location,
+        canGoBack = canGoBack,
+        canGoForward = canGoForward,
+        detailsColumns = detailsColumns,
+        detailsColumnWeights = detailsColumnWeights,
+        detailsSort = detailsSort,
+        viewMode = viewMode,
+        filterQuery = filterQuery,
+        selectedEntryIds = selectedEntryIds,
+        selectionAnchorId = selectionAnchorId,
+        selectionFocusId = selectionFocusId,
+        statusInfo = statusInfo,
+        inlineEditState = inlineEditState,
+        inspectorState = inspectorState,
+        operationFeedback = operationFeedback,
+        showHiddenItems = showHiddenItems,
+        hiddenColumns = hiddenColumns,
+        galleryItemSizeDp = galleryItemSizeDp,
+        entriesState = entriesState,
+        inlineExpandedLocations = inlineExpandedLocations,
+        inlineExpandedEntries = inlineExpandedEntries,
+        pendingScrollToEntryId = pendingScrollToEntryId,
+    )
+}
+
+internal fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
+    return TabSessionSnapshot(
+        id = id,
+        location = location,
+        detailsColumns = detailsColumns,
+        detailsColumnWeights = detailsColumnWeights,
+        detailsSort = detailsSort,
+        showHiddenItems = showHiddenItems,
+        viewMode = viewMode,
+        filterQuery = filterQuery,
+        backStack = backStack,
+        forwardStack = forwardStack,
+    )
+}
+
+internal fun TabSessionSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabState {
+    return PaneTabState(
+        id = id,
+        title = pathService.title(location),
+        location = location,
+        canGoBack = backStack.isNotEmpty(),
+        canGoForward = forwardStack.isNotEmpty(),
+        detailsColumns = detailsColumns,
+        detailsColumnWeights = if (detailsColumnWeights.values.all { it < 2f }) {
+            defaultDetailsColumnWeights()
+        } else {
+            detailsColumnWeights
+        },
+        detailsSort = detailsSort,
+        viewMode = viewMode,
+        filterQuery = filterQuery,
+        selectedEntryIds = emptySet(),
+        selectionAnchorId = null,
+        selectionFocusId = null,
+        statusInfo = PaneStatusInfo(),
+        inlineEditState = null,
+        inspectorState = PaneInspectorState(),
+        operationFeedback = null,
+        showHiddenItems = showHiddenItems,
+        hiddenColumns = emptySet(),
+        galleryItemSizeDp = 160,
+        entriesState = PaneEntriesState.Idle,
+        allEntries = emptyList(),
+        backStack = backStack,
+        forwardStack = forwardStack,
+    )
+}
+
+internal fun PaneTabState.withDerivedState(
+    inlineExpandedLocations: Set<String>,
+    inlineExpandedEntries: Map<String, InlineExpandedEntry>,
+): PaneTabState {
+    val visibleEntries = EntrySorter.visibleSortedEntries(
+        allEntries = allEntries,
+        showHiddenItems = showHiddenItems,
+        sort = detailsSort,
+        filterQuery = filterQuery,
+    )
+    val allVisibleForSelection = if (inlineExpandedLocations.isEmpty()) {
+        visibleEntries
+    } else {
+        SelectionHelper.collectVisibleEntries(
+            entries = visibleEntries,
+            expandedLocations = inlineExpandedLocations,
+            expandedEntries = inlineExpandedEntries,
+        )
+    }
+    val selection = SelectionHelper.reconcileSelection(
+        entries = allVisibleForSelection,
+        selectedEntryIds = selectedEntryIds,
+        anchorId = selectionAnchorId,
+        focusId = selectionFocusId,
+    )
+    val nextEntriesState = when (val currentEntriesState = entriesState) {
+        is PaneEntriesState.Ready -> PaneEntriesState.Ready(visibleEntries)
+        is PaneEntriesState.Failure -> currentEntriesState
+        PaneEntriesState.Loading -> PaneEntriesState.Loading
+        PaneEntriesState.Idle -> if (allEntries.isNotEmpty()) {
+            PaneEntriesState.Ready(visibleEntries)
+        } else {
+            PaneEntriesState.Idle
+        }
+    }
+    return copy(
+        selectedEntryIds = selection.selectedEntryIds,
+        selectionAnchorId = selection.anchorId,
+        selectionFocusId = selection.focusId,
+        statusInfo = SelectionHelper.buildStatusInfo(
+            allEntries = allEntries,
+            visibleEntries = visibleEntries,
+            selectedEntryIds = selection.selectedEntryIds,
+        ),
+        entriesState = nextEntriesState,
+    )
+}
+
+internal fun createDefaultPaneTabState(
+    id: String,
+    title: String,
+    location: String,
+    defaultViewMode: ViewMode,
+): PaneTabState {
+    return PaneTabState(
+        id = id,
+        title = title,
+        location = location,
+        canGoBack = false,
+        canGoForward = false,
+        detailsColumns = defaultDetailsColumns(),
+        detailsColumnWeights = defaultDetailsColumnWeights(),
+        detailsSort = DetailsSort(
+            column = DetailsColumn.NAME,
+            direction = SortDirection.ASCENDING,
+        ),
+        viewMode = defaultViewMode,
+        filterQuery = "",
+        selectedEntryIds = emptySet(),
+        selectionAnchorId = null,
+        selectionFocusId = null,
+        statusInfo = PaneStatusInfo(),
+        inlineEditState = null,
+        inspectorState = PaneInspectorState(),
+        operationFeedback = null,
+        showHiddenItems = false,
+        hiddenColumns = emptySet(),
+        galleryItemSizeDp = 160,
+        entriesState = PaneEntriesState.Idle,
+        allEntries = emptyList(),
+        backStack = emptyList(),
+        forwardStack = emptyList(),
+    )
+}

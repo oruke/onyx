@@ -3,7 +3,6 @@ package com.oruke.onyx.app.component
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.component.delegate.EntrySorter
 import com.oruke.onyx.app.component.delegate.SelectionHelper
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
@@ -20,13 +19,10 @@ import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneInlineEditMode
 import com.oruke.onyx.core.model.PaneInlineEditState
-import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
-import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.SortDirection
-import com.oruke.onyx.core.model.TabSessionSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.ViewMode
@@ -1047,34 +1043,11 @@ class DefaultPaneComponent(
         location: String,
         defaultViewMode: ViewMode = initialViewMode,
     ): PaneTabState {
-        return PaneTabState(
+        return createDefaultPaneTabState(
             id = UUID.randomUUID().toString(),
             title = pathService.title(location),
             location = location,
-            canGoBack = false,
-            canGoForward = false,
-            detailsColumns = defaultDetailsColumns(),
-            detailsColumnWeights = defaultDetailsColumnWeights(),
-            detailsSort = DetailsSort(
-                column = DetailsColumn.NAME,
-                direction = SortDirection.ASCENDING,
-            ),
-            viewMode = defaultViewMode,
-            filterQuery = "",
-            selectedEntryIds = emptySet(),
-            selectionAnchorId = null,
-            selectionFocusId = null,
-            statusInfo = PaneStatusInfo(),
-            inlineEditState = null,
-            inspectorState = PaneInspectorState(),
-            operationFeedback = null,
-            showHiddenItems = false,
-            hiddenColumns = emptySet(),
-            galleryItemSizeDp = 160,
-            entriesState = PaneEntriesState.Idle,
-            allEntries = emptyList(),
-            backStack = emptyList(),
-            forwardStack = emptyList(),
+            defaultViewMode = defaultViewMode,
         )
     }
 
@@ -1131,7 +1104,10 @@ class DefaultPaneComponent(
         var updatedActiveTab: PaneTabState? = null
         val nextTabs = state.tabs.map { tab ->
             if (tab.id == tabId) {
-                transform(tab).withDerivedState().also { updated ->
+                transform(tab).withDerivedState(
+                    inlineExpandedLocations = state.inlineExpandedLocations,
+                    inlineExpandedEntries = state.inlineExpandedEntries,
+                ).also { updated ->
                     if (state.activeTabId == tabId) {
                         updatedActiveTab = updated
                     }
@@ -1175,165 +1151,7 @@ class DefaultPaneComponent(
 
 
 
-
-    private fun PaneTabState.withDerivedState(): PaneTabState {
-        val visibleEntries = EntrySorter.visibleSortedEntries(
-            allEntries = allEntries,
-            showHiddenItems = showHiddenItems,
-            sort = detailsSort,
-            filterQuery = filterQuery,
-        )
-        // reconcileSelection 需要知道所有可见 ID（包括内联展开子项），
-        // 否则展开子项的选中状态会被 intersect 过滤掉。
-        val state = mutableState.value
-        val allVisibleForSelection = if (state.inlineExpandedLocations.isEmpty()) {
-            visibleEntries
-        } else {
-            SelectionHelper.collectVisibleEntries(
-                entries = visibleEntries,
-                expandedLocations = state.inlineExpandedLocations,
-                expandedEntries = state.inlineExpandedEntries,
-            )
-        }
-        val selection = SelectionHelper.reconcileSelection(
-            entries = allVisibleForSelection,
-            selectedEntryIds = selectedEntryIds,
-            anchorId = selectionAnchorId,
-            focusId = selectionFocusId,
-        )
-        val nextEntriesState = when (val currentEntriesState = entriesState) {
-            is PaneEntriesState.Ready -> PaneEntriesState.Ready(visibleEntries)
-            is PaneEntriesState.Failure -> currentEntriesState
-            PaneEntriesState.Loading -> PaneEntriesState.Loading
-            PaneEntriesState.Idle -> if (allEntries.isNotEmpty()) {
-                PaneEntriesState.Ready(visibleEntries)
-            } else {
-                PaneEntriesState.Idle
-            }
-        }
-        return copy(
-            selectedEntryIds = selection.selectedEntryIds,
-            selectionAnchorId = selection.anchorId,
-            selectionFocusId = selection.focusId,
-            statusInfo = SelectionHelper.buildStatusInfo(
-                allEntries = allEntries,
-                visibleEntries = visibleEntries,
-                selectedEntryIds = selection.selectedEntryIds,
-            ),
-            entriesState = nextEntriesState,
-        )
-    }
-
     private fun locationBaseName(location: String): String? = pathService.baseName(location)
-}
-
-private const val MIN_DETAILS_COLUMN_WIDTH = 40f
-
-private fun PaneTabState.toPaneState(
-    paneId: PaneId,
-    activeTabId: String,
-    tabs: List<PaneTabState>,
-    inlineExpandedLocations: Set<String> = emptySet(),
-    inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
-): PaneState {
-    return PaneState(
-        paneId = paneId,
-        activeTabId = activeTabId,
-        tabs = tabs,
-        location = location,
-        canGoBack = canGoBack,
-        canGoForward = canGoForward,
-        detailsColumns = detailsColumns,
-        detailsColumnWeights = detailsColumnWeights,
-        detailsSort = detailsSort,
-        viewMode = viewMode,
-        filterQuery = filterQuery,
-        selectedEntryIds = selectedEntryIds,
-        selectionAnchorId = selectionAnchorId,
-        selectionFocusId = selectionFocusId,
-        statusInfo = statusInfo,
-        inlineEditState = inlineEditState,
-        inspectorState = inspectorState,
-        operationFeedback = operationFeedback,
-        showHiddenItems = showHiddenItems,
-        hiddenColumns = hiddenColumns,
-        galleryItemSizeDp = galleryItemSizeDp,
-        entriesState = entriesState,
-        inlineExpandedLocations = inlineExpandedLocations,
-        inlineExpandedEntries = inlineExpandedEntries,
-        pendingScrollToEntryId = pendingScrollToEntryId,
-    )
-}
-
-private fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
-    return TabSessionSnapshot(
-        id = id,
-        location = location,
-        detailsColumns = detailsColumns,
-        detailsColumnWeights = detailsColumnWeights,
-        detailsSort = detailsSort,
-        showHiddenItems = showHiddenItems,
-        viewMode = viewMode,
-        filterQuery = filterQuery,
-        backStack = backStack,
-        forwardStack = forwardStack,
-    )
-}
-
-private fun TabSessionSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabState {
-    return PaneTabState(
-        id = id,
-        title = pathService.title(location),
-        location = location,
-        canGoBack = backStack.isNotEmpty(),
-        canGoForward = forwardStack.isNotEmpty(),
-        detailsColumns = detailsColumns,
-        // 迁移旧的比例权重（所有值 < 2.0）为新的绝对 dp 宽度
-        detailsColumnWeights = if (detailsColumnWeights.values.all { it < 2f }) {
-            defaultDetailsColumnWeights()
-        } else {
-            detailsColumnWeights
-        },
-        detailsSort = detailsSort,
-        viewMode = viewMode,
-        filterQuery = filterQuery,
-        selectedEntryIds = emptySet(),
-        selectionAnchorId = null,
-        selectionFocusId = null,
-        statusInfo = PaneStatusInfo(),
-        inlineEditState = null,
-        inspectorState = PaneInspectorState(),
-        operationFeedback = null,
-        showHiddenItems = showHiddenItems,
-        hiddenColumns = emptySet(),
-        galleryItemSizeDp = 160,
-        entriesState = PaneEntriesState.Idle,
-        allEntries = emptyList(),
-        backStack = backStack,
-        forwardStack = forwardStack,
-    )
-}
-
-private fun defaultDetailsColumns(): List<DetailsColumn> {
-    return listOf(
-        DetailsColumn.NAME,
-        DetailsColumn.TYPE,
-        DetailsColumn.SIZE,
-        DetailsColumn.MODIFIED,
-    )
-}
-
-private fun defaultDetailsColumnWeights(): Map<DetailsColumn, Float> {
-    return mapOf(
-        DetailsColumn.NAME to 300f,
-        DetailsColumn.TYPE to 80f,
-        DetailsColumn.SIZE to 100f,
-        DetailsColumn.MODIFIED to 180f,
-    )
-}
-
-private fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
-    return defaultDetailsColumnWeights()[column] ?: MIN_DETAILS_COLUMN_WIDTH
 }
 
 private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "tiff", "tif")
