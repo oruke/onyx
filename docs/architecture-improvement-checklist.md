@@ -61,7 +61,10 @@ ui
 - [x] 把选择、排序、过滤的派生状态先拆成纯 helper。
 - [x] 把树状展开拆成纯 reducer/helper。
 - [x] 把内联编辑拆成纯 reducer/helper。
-- [ ] 控制 `DefaultPaneComponent` 体积，导航、选择、Tab、内联编辑分别独立。
+- [x] 将导航与加载状态变更拆成纯 helper。
+- [ ] 将选择操作拆成独立 helper/delegate。
+- [ ] 将 Tab 操作拆成独立 helper/delegate。
+- [ ] 继续控制 `DefaultPaneComponent` 体积，保留组件调度职责。
 
 ## P1：Tab 改为 Decompose ChildStack
 

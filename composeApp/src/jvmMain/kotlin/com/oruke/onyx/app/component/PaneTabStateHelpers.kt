@@ -10,6 +10,7 @@ import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.TabSessionSnapshot
+import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ViewMode
 
 internal const val MIN_DETAILS_COLUMN_WIDTH = 40f
@@ -165,6 +166,99 @@ internal fun PaneTabState.withDerivedState(
             selectedEntryIds = selection.selectedEntryIds,
         ),
         entriesState = nextEntriesState,
+    )
+}
+
+internal fun PaneTabState.prepareForRefresh(): PaneTabState {
+    return copy(
+        inlineEditState = null,
+        entriesState = PaneEntriesState.Loading,
+    )
+}
+
+internal fun PaneTabState.navigateBackState(previousTitle: String): PaneTabState {
+    val previousLocation = backStack.last()
+    val nextBackStack = backStack.dropLast(1)
+    val nextForwardStack = forwardStack + location
+    return navigateToLoadingLocation(
+        location = previousLocation,
+        title = previousTitle,
+        backStack = nextBackStack,
+        forwardStack = nextForwardStack,
+    )
+}
+
+internal fun PaneTabState.navigateForwardState(nextTitle: String): PaneTabState {
+    val nextLocation = forwardStack.last()
+    val nextBackStack = backStack + location
+    val nextForwardStack = forwardStack.dropLast(1)
+    return navigateToLoadingLocation(
+        location = nextLocation,
+        title = nextTitle,
+        backStack = nextBackStack,
+        forwardStack = nextForwardStack,
+    )
+}
+
+internal fun PaneTabState.navigateToState(
+    location: String,
+    title: String,
+    recordHistory: Boolean,
+): PaneTabState {
+    val nextBackStack = if (recordHistory) backStack + this.location else backStack
+    val nextForwardStack = if (recordHistory) emptyList() else forwardStack
+    return navigateToLoadingLocation(
+        location = location,
+        title = title,
+        backStack = nextBackStack,
+        forwardStack = nextForwardStack,
+    )
+}
+
+internal fun PaneTabState.withLoadedEntries(
+    entries: List<VFile>,
+    focusEntry: VFile?,
+): PaneTabState {
+    return if (focusEntry != null) {
+        copy(
+            allEntries = entries,
+            entriesState = PaneEntriesState.Ready(entries),
+            selectedEntryIds = setOf(focusEntry.id),
+            selectionAnchorId = focusEntry.id,
+            selectionFocusId = focusEntry.id,
+            pendingScrollToEntryId = focusEntry.id,
+        )
+    } else {
+        copy(
+            allEntries = entries,
+            entriesState = PaneEntriesState.Ready(entries),
+        )
+    }
+}
+
+internal fun PaneTabState.withLoadFailure(reason: String?): PaneTabState {
+    return copy(entriesState = PaneEntriesState.Failure(reason))
+}
+
+private fun PaneTabState.navigateToLoadingLocation(
+    location: String,
+    title: String,
+    backStack: List<String>,
+    forwardStack: List<String>,
+): PaneTabState {
+    return copy(
+        location = location,
+        title = title,
+        canGoBack = backStack.isNotEmpty(),
+        canGoForward = forwardStack.isNotEmpty(),
+        selectedEntryIds = emptySet(),
+        selectionAnchorId = null,
+        selectionFocusId = null,
+        entriesState = PaneEntriesState.Loading,
+        allEntries = emptyList(),
+        inlineEditState = null,
+        backStack = backStack,
+        forwardStack = forwardStack,
     )
 }
 

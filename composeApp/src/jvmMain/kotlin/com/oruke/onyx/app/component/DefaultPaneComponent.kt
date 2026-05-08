@@ -92,10 +92,7 @@ class DefaultPaneComponent(
     override fun refresh() {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                inlineEditState = null,
-                entriesState = PaneEntriesState.Loading,
-            )
+            currentTab.prepareForRefresh()
         }
         loadTab(tabId = tab.id, location = tab.location)
     }
@@ -108,23 +105,8 @@ class DefaultPaneComponent(
         if (currentDirName != null && pathService.isDirectParent(previousLocation, tab.location)) {
             pendingFocusEntryName[tab.id] = currentDirName
         }
-        val nextBackStack = tab.backStack.dropLast(1)
-        val nextForwardStack = tab.forwardStack + tab.location
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                location = previousLocation,
-                title = pathService.title(previousLocation),
-                canGoBack = nextBackStack.isNotEmpty(),
-                canGoForward = nextForwardStack.isNotEmpty(),
-                selectedEntryIds = emptySet(),
-                selectionAnchorId = null,
-                selectionFocusId = null,
-                entriesState = PaneEntriesState.Loading,
-                allEntries = emptyList(),
-                inlineEditState = null,
-                backStack = nextBackStack,
-                forwardStack = nextForwardStack,
-            )
+            currentTab.navigateBackState(previousTitle = pathService.title(previousLocation))
         }
         loadTab(tabId = tab.id, location = previousLocation)
     }
@@ -132,23 +114,8 @@ class DefaultPaneComponent(
     override fun goForward() {
         val tab = activeTab() ?: return
         val nextLocation = tab.forwardStack.lastOrNull() ?: return
-        val nextBackStack = tab.backStack + tab.location
-        val nextForwardStack = tab.forwardStack.dropLast(1)
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                location = nextLocation,
-                title = pathService.title(nextLocation),
-                canGoBack = nextBackStack.isNotEmpty(),
-                canGoForward = nextForwardStack.isNotEmpty(),
-                selectedEntryIds = emptySet(),
-                selectionAnchorId = null,
-                selectionFocusId = null,
-                entriesState = PaneEntriesState.Loading,
-                allEntries = emptyList(),
-                inlineEditState = null,
-                backStack = nextBackStack,
-                forwardStack = nextForwardStack,
-            )
+            currentTab.navigateForwardState(nextTitle = pathService.title(nextLocation))
         }
         loadTab(tabId = tab.id, location = nextLocation)
     }
@@ -820,22 +787,11 @@ class DefaultPaneComponent(
             return
         }
 
-        val nextBackStack = if (recordHistory) tab.backStack + tab.location else tab.backStack
-        val nextForwardStack = if (recordHistory) emptyList() else tab.forwardStack
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
+            currentTab.navigateToState(
                 location = normalizedLocation,
                 title = pathService.title(normalizedLocation),
-                canGoBack = nextBackStack.isNotEmpty(),
-                canGoForward = nextForwardStack.isNotEmpty(),
-                selectedEntryIds = emptySet(),
-                selectionAnchorId = null,
-                selectionFocusId = null,
-                entriesState = PaneEntriesState.Loading,
-                allEntries = emptyList(),
-                inlineEditState = null,
-                backStack = nextBackStack,
-                forwardStack = nextForwardStack,
+                recordHistory = recordHistory,
             )
         }
         // 导航时清空内联展开状态
@@ -864,28 +820,17 @@ class DefaultPaneComponent(
                             entries.firstOrNull { it.name == focusName }
                         } else null
                         updateTab(tabId) { tab ->
-                            if (focusEntry != null) {
-                                tab.copy(
-                                    allEntries = entries,
-                                    entriesState = PaneEntriesState.Ready(entries),
-                                    selectedEntryIds = setOf(focusEntry.id),
-                                    selectionAnchorId = focusEntry.id,
-                                    selectionFocusId = focusEntry.id,
-                                    pendingScrollToEntryId = focusEntry.id,
-                                )
-                            } else {
-                                tab.copy(
-                                    allEntries = entries,
-                                    entriesState = PaneEntriesState.Ready(entries),
-                                )
-                            }
+                            tab.withLoadedEntries(
+                                entries = entries,
+                                focusEntry = focusEntry,
+                            )
                         }
                     },
                     onFailure = { failure ->
                         OnyxLogger.error("PaneComponent", "目录加载失败: $location", failure)
                         pendingFocusEntryName.remove(tabId)
                         updateTab(tabId) { tab ->
-                            tab.copy(entriesState = PaneEntriesState.Failure(failure.message))
+                            tab.withLoadFailure(failure.message)
                         }
                     },
                 )
@@ -896,7 +841,7 @@ class DefaultPaneComponent(
                 OnyxLogger.error("PaneComponent", "目录加载异常: $location", e)
                 pendingFocusEntryName.remove(tabId)
                 updateTab(tabId) { tab ->
-                    tab.copy(entriesState = PaneEntriesState.Failure(e.message))
+                    tab.withLoadFailure(e.message)
                 }
             } finally {
                 tabLoadJobs.remove(tabId)
@@ -906,13 +851,10 @@ class DefaultPaneComponent(
 
     private fun refreshActiveTab(tabId: String) {
         updateTab(tabId) { currentTab ->
-            currentTab.copy(
-                entriesState = PaneEntriesState.Loading,
-                allEntries = emptyList(),
-                selectedEntryIds = emptySet(),
-                selectionAnchorId = null,
-                selectionFocusId = null,
-                inlineEditState = null,
+            currentTab.navigateToState(
+                location = currentTab.location,
+                title = currentTab.title,
+                recordHistory = false,
             )
         }
         val tab = mutableState.value.tabs.firstOrNull { it.id == tabId }
