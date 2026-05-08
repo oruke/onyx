@@ -22,3 +22,4 @@ packaging/arch/*.pkg.tar.*
 packaging/arch/src/
 composeApp/hs_err_pid*.log
 org/
+jvmTest/

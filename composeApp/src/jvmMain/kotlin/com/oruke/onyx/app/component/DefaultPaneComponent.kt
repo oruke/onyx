@@ -2,6 +2,9 @@ package com.oruke.onyx.app.component
 
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.essenty.lifecycle.doOnDestroy
+import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.app.component.delegate.EntrySorter
+import com.oruke.onyx.app.component.delegate.SelectionHelper
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
@@ -40,11 +43,9 @@ import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.msg_string_literal
-import java.nio.file.FileSystems
 import java.nio.file.Path
 import java.util.*
 import kotlin.io.path.pathString
-import com.oruke.onyx.app.OnyxLogger
 
 class DefaultPaneComponent(
     componentContext: ComponentContext,
@@ -273,7 +274,7 @@ class DefaultPaneComponent(
             return
         }
         val entries = currentVisibleEntries()
-        val targetEntryId = currentSelectionFocusId(entries) ?: return
+        val targetEntryId = SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
         val targetEntry = entries.firstOrNull { it.id == targetEntryId } ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
@@ -327,7 +328,7 @@ class DefaultPaneComponent(
     override fun openSelectedInNewTab() {
         val tab = activeTab() ?: return
         val entries = currentVisibleEntries()
-        val targetEntryId = currentSelectionFocusId(entries) ?: return
+        val targetEntryId = SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
         val targetEntry = entries.firstOrNull { it.id == targetEntryId } ?: return
         if (targetEntry.kind != VFileKind.DIRECTORY) {
             return
@@ -551,12 +552,12 @@ class DefaultPaneComponent(
             return
         }
 
-        val currentAnchor = validEntryId(tab.selectionAnchorId, entries)
-        val currentFocus = validEntryId(tab.selectionFocusId, entries)
+        val currentAnchor = SelectionHelper.validEntryId(tab.selectionAnchorId, entries)
+        val currentFocus = SelectionHelper.validEntryId(tab.selectionFocusId, entries)
         val nextSelection = when {
             range -> {
                 val anchorId = currentAnchor ?: currentFocus ?: tab.selectedEntryIds.firstOrNull() ?: entryId
-                buildRangeSelection(
+                SelectionHelper.buildRangeSelection(
                     entries = entries,
                     anchorId = anchorId,
                     targetId = entryId,
@@ -608,19 +609,19 @@ class DefaultPaneComponent(
             return
         }
 
-        val currentIndex = entries.indexOfFirst { it.id == currentSelectionFocusId(entries) }
+        val currentIndex = entries.indexOfFirst { it.id == SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) }
         val fallbackIndex = if (offset >= 0) 0 else entries.lastIndex
         val baseIndex = if (currentIndex == -1) fallbackIndex else currentIndex
         val nextIndex = (baseIndex + offset).coerceIn(0, entries.lastIndex)
         val nextEntryId = entries[nextIndex].id
 
         if (extendSelection) {
-            val anchorId = validEntryId(tab.selectionAnchorId, entries)
-                ?: currentSelectionFocusId(entries)
+            val anchorId = SelectionHelper.validEntryId(tab.selectionAnchorId, entries)
+                ?: SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds)
                 ?: nextEntryId
             updateTab(tab.id) { currentTab ->
                 currentTab.copy(
-                    selectedEntryIds = buildRangeSelection(
+                    selectedEntryIds = SelectionHelper.buildRangeSelection(
                         entries = entries,
                         anchorId = anchorId,
                         targetId = nextEntryId,
@@ -644,7 +645,7 @@ class DefaultPaneComponent(
 
     override fun openSelectedEntry() {
         val selectedEntry =
-            currentVisibleEntries().firstOrNull { it.id == currentSelectionFocusId(currentVisibleEntries()) } ?: return
+            currentVisibleEntries().let { vis -> vis.firstOrNull { it.id == SelectionHelper.resolveSelectionFocusId(vis, activeTab()?.selectionFocusId, activeTab()?.selectionAnchorId, activeTab()?.selectedEntryIds.orEmpty()) } } ?: return
         clearInlineEdit(activeTab()?.id ?: return)
         openEntry(selectedEntry)
     }
@@ -1181,7 +1182,7 @@ class DefaultPaneComponent(
                 if (state.inlineExpandedLocations.isEmpty()) {
                     entriesState.entries
                 } else {
-                    collectVisibleEntries(
+                    SelectionHelper.collectVisibleEntries(
                         entries = entriesState.entries,
                         expandedLocations = state.inlineExpandedLocations,
                         expandedEntries = state.inlineExpandedEntries,
@@ -1192,62 +1193,11 @@ class DefaultPaneComponent(
         }
     }
 
-    /**
-     * 递归收集所有可见条目（包括内联展开的子项）。
-     */
-    private fun collectVisibleEntries(
-        entries: List<VFile>,
-        expandedLocations: Set<String>,
-        expandedEntries: Map<String, InlineExpandedEntry>,
-    ): List<VFile> {
-        return buildList {
-            entries.forEach { entry ->
-                add(entry)
-                if (entry.location in expandedLocations) {
-                    val expanded = expandedEntries[entry.location]
-                    if (expanded?.entries != null) {
-                        addAll(
-                            collectVisibleEntries(
-                                entries = expanded.entries,
-                                expandedLocations = expandedLocations,
-                                expandedEntries = expandedEntries,
-                            )
-                        )
-                    }
-                }
-            }
-        }
-    }
 
-    private fun currentSelectionFocusId(entries: List<VFile>): String? {
-        val tab = activeTab() ?: return null
-        return tab.selectionFocusId
-            ?.takeIf { focusId -> entries.any { it.id == focusId } }
-            ?: tab.selectionAnchorId
-                ?.takeIf { anchorId -> entries.any { it.id == anchorId } }
-            ?: tab.selectedEntryIds.firstOrNull()
-    }
 
-    private fun visibleSortedEntries(
-        allEntries: List<VFile>,
-        showHiddenItems: Boolean,
-        sort: DetailsSort,
-        filterQuery: String,
-    ): List<VFile> {
-        val visibleEntries = if (showHiddenItems) allEntries else allEntries.filterNot { it.hidden }
-        val filteredEntries = if (filterQuery.isBlank()) {
-            visibleEntries
-        } else {
-            val normalizedQuery = filterQuery.lowercase()
-            visibleEntries.filter { entry ->
-                entry.name.lowercase().contains(normalizedQuery)
-            }
-        }
-        return sortEntries(filteredEntries, sort)
-    }
 
     private fun PaneTabState.withDerivedState(): PaneTabState {
-        val visibleEntries = visibleSortedEntries(
+        val visibleEntries = EntrySorter.visibleSortedEntries(
             allEntries = allEntries,
             showHiddenItems = showHiddenItems,
             sort = detailsSort,
@@ -1259,13 +1209,13 @@ class DefaultPaneComponent(
         val allVisibleForSelection = if (state.inlineExpandedLocations.isEmpty()) {
             visibleEntries
         } else {
-            collectVisibleEntries(
+            SelectionHelper.collectVisibleEntries(
                 entries = visibleEntries,
                 expandedLocations = state.inlineExpandedLocations,
                 expandedEntries = state.inlineExpandedEntries,
             )
         }
-        val selection = reconcileSelection(
+        val selection = SelectionHelper.reconcileSelection(
             entries = allVisibleForSelection,
             selectedEntryIds = selectedEntryIds,
             anchorId = selectionAnchorId,
@@ -1285,7 +1235,7 @@ class DefaultPaneComponent(
             selectedEntryIds = selection.selectedEntryIds,
             selectionAnchorId = selection.anchorId,
             selectionFocusId = selection.focusId,
-            statusInfo = buildStatusInfo(
+            statusInfo = SelectionHelper.buildStatusInfo(
                 allEntries = allEntries,
                 visibleEntries = visibleEntries,
                 selectedEntryIds = selection.selectedEntryIds,
@@ -1294,100 +1244,10 @@ class DefaultPaneComponent(
         )
     }
 
-    private fun buildStatusInfo(
-        allEntries: List<VFile>,
-        visibleEntries: List<VFile>,
-        selectedEntryIds: Set<String>,
-    ): PaneStatusInfo {
-        val selectedEntries = visibleEntries.filter { entry -> selectedEntryIds.contains(entry.id) }
-        return PaneStatusInfo(
-            totalItemCount = allEntries.size,
-            visibleItemCount = visibleEntries.size,
-            directoryCount = visibleEntries.count { entry -> entry.kind == VFileKind.DIRECTORY },
-            fileCount = visibleEntries.count { entry -> entry.kind == VFileKind.FILE },
-            selectedCount = selectedEntries.size,
-            selectedSizeBytes = selectedEntries.sumOf { entry -> entry.sizeBytes ?: 0L },
-        )
-    }
-
-    private fun reconcileSelection(
-        entries: List<VFile>,
-        selectedEntryIds: Set<String>,
-        anchorId: String?,
-        focusId: String?,
-    ): SelectionState {
-        val visibleIds = entries.mapTo(mutableSetOf()) { it.id }
-        // 允许空选择——用户清空选择后不应自动选中首项
-        val nextSelectedEntryIds = selectedEntryIds.intersect(visibleIds)
-        val nextAnchorId = anchorId?.takeIf { visibleIds.contains(it) }
-        val nextFocusId = focusId?.takeIf { visibleIds.contains(it) } ?: nextAnchorId
-        return SelectionState(
-            selectedEntryIds = nextSelectedEntryIds,
-            anchorId = nextAnchorId,
-            focusId = nextFocusId,
-        )
-    }
-
-    private fun validEntryId(
-        entryId: String?,
-        entries: List<VFile>,
-    ): String? {
-        return entryId?.takeIf { candidate -> entries.any { it.id == candidate } }
-    }
-
-    private fun buildRangeSelection(
-        entries: List<VFile>,
-        anchorId: String,
-        targetId: String,
-        additive: Boolean,
-        existingSelection: Set<String>,
-    ): Set<String> {
-        val anchorIndex = entries.indexOfFirst { it.id == anchorId }.takeIf { it >= 0 } ?: return setOf(targetId)
-        val targetIndex = entries.indexOfFirst { it.id == targetId }.takeIf { it >= 0 } ?: return setOf(anchorId)
-        val range = entries
-            .subList(minOf(anchorIndex, targetIndex), maxOf(anchorIndex, targetIndex) + 1)
-            .mapTo(linkedSetOf()) { it.id }
-        return if (additive) existingSelection + range else range
-    }
-
-    private fun sortEntries(
-        entries: List<VFile>,
-        sort: DetailsSort,
-    ): List<VFile> {
-        val comparator = when (sort.column) {
-            DetailsColumn.NAME -> compareBy<VFile> { it.name.lowercase() }
-            DetailsColumn.TYPE -> compareBy<VFile> {
-                if (it.kind == VFileKind.DIRECTORY) "" else it.name.substringAfterLast('.', "").lowercase()
-            }
-            DetailsColumn.SIZE -> compareBy<VFile> { it.sizeBytes ?: -1L }
-            DetailsColumn.MODIFIED -> compareBy<VFile> { it.modifiedAtEpochMillis ?: Long.MIN_VALUE }
-        }
-
-        val sorted = entries.sortedWith(
-            compareByDescending<VFile> { it.kind == VFileKind.DIRECTORY }
-                .then(comparator)
-        )
-
-        return when (sort.direction) {
-            SortDirection.ASCENDING -> sorted
-            SortDirection.DESCENDING -> {
-                val directories = sorted.filter { it.kind == VFileKind.DIRECTORY }.reversed()
-                val files = sorted.filter { it.kind == VFileKind.FILE }.reversed()
-                directories + files
-            }
-        }
-    }
-
     private fun normalizeLocation(location: String): String {
         if (ArchiveService.isArchiveLocation(location)) return location
         return Path.of(location).normalize().toAbsolutePath().pathString
     }
-
-    private data class SelectionState(
-        val selectedEntryIds: Set<String>,
-        val anchorId: String?,
-        val focusId: String?,
-    )
 }
 
 private const val MIN_DETAILS_COLUMN_WIDTH = 40f
