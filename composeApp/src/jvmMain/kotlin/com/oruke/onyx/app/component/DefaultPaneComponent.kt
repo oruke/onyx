@@ -806,33 +806,10 @@ class DefaultPaneComponent(
     // ── 内联展开（文件列表树状展开） ──────────────────────────────────────
 
     override fun toggleInlineExpand(directoryLocation: String) {
-        val state = mutableState.value
-        if (directoryLocation in state.inlineExpandedLocations) {
-            // 折叠：移除该 location 及其所有后代展开
-            val toRemove = state.inlineExpandedLocations.filter { loc ->
-                loc == directoryLocation || loc.startsWith("$directoryLocation/")
-            }.toSet()
-            mutableState.value = state.copy(
-                inlineExpandedLocations = state.inlineExpandedLocations - toRemove,
-                inlineExpandedEntries = state.inlineExpandedEntries - toRemove,
-            )
-        } else {
-            // 展开：计算深度
-            val depth = state.inlineExpandedEntries.values
-                .firstOrNull { expanded ->
-                    expanded.entries?.any { it.location == directoryLocation } == true
-                }?.depth?.plus(1) ?: 1
-
-            val loading = InlineExpandedEntry(
-                parentLocation = directoryLocation,
-                depth = depth,
-                entries = null,
-            )
-            mutableState.value = state.copy(
-                inlineExpandedLocations = state.inlineExpandedLocations + directoryLocation,
-                inlineExpandedEntries = state.inlineExpandedEntries + (directoryLocation to loading),
-            )
-            loadInlineExpandChildren(directoryLocation, depth)
+        val result = mutableState.value.toggleInlineExpandState(directoryLocation)
+        mutableState.value = result.state
+        result.loadRequest?.let { request ->
+            loadInlineExpandChildren(request.location, request.depth)
         }
     }
 
@@ -849,34 +826,16 @@ class DefaultPaneComponent(
         scope.launch {
             fileRepository.list(location).fold(
                 onSuccess = { entries ->
-                    val state = mutableState.value
-                    if (location !in state.inlineExpandedLocations) return@launch
-                    val sorted = entries.sortedWith(
-                        compareBy<VFile> { it.kind != VFileKind.DIRECTORY }
-                            .thenBy { it.name.lowercase() }
-                    )
-                    mutableState.value = state.copy(
-                        inlineExpandedEntries = state.inlineExpandedEntries + (
-                            location to InlineExpandedEntry(
-                                parentLocation = location,
-                                depth = depth,
-                                entries = sorted,
-                            )
-                        ),
+                    mutableState.value = mutableState.value.withInlineExpandChildren(
+                        location = location,
+                        depth = depth,
+                        entries = entries,
                     )
                 },
                 onFailure = {
-                    val state = mutableState.value
-                    if (location !in state.inlineExpandedLocations) return@launch
-                    mutableState.value = state.copy(
-                        inlineExpandedEntries = state.inlineExpandedEntries + (
-                            location to InlineExpandedEntry(
-                                parentLocation = location,
-                                depth = depth,
-                                entries = emptyList(),
-                                error = true,
-                            )
-                        ),
+                    mutableState.value = mutableState.value.withInlineExpandFailure(
+                        location = location,
+                        depth = depth,
                     )
                 },
             )
@@ -914,10 +873,7 @@ class DefaultPaneComponent(
             )
         }
         // 导航时清空内联展开状态
-        mutableState.value = mutableState.value.copy(
-            inlineExpandedLocations = emptySet(),
-            inlineExpandedEntries = emptyMap(),
-        )
+        mutableState.value = mutableState.value.clearInlineExpandState()
         loadTab(tabId = tab.id, location = normalizedLocation)
         startWatching(normalizedLocation)
     }
