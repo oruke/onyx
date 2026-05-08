@@ -457,45 +457,12 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         clearInlineEdit(tab.id)
         val entries = currentVisibleEntries()
-        if (entries.none { it.id == entryId }) {
-            return
-        }
-
-        val currentAnchor = SelectionHelper.validEntryId(tab.selectionAnchorId, entries)
-        val currentFocus = SelectionHelper.validEntryId(tab.selectionFocusId, entries)
-        val nextSelection = when {
-            range -> {
-                val anchorId = currentAnchor ?: currentFocus ?: tab.selectedEntryIds.firstOrNull() ?: entryId
-                SelectionHelper.buildRangeSelection(
-                    entries = entries,
-                    anchorId = anchorId,
-                    targetId = entryId,
-                    additive = additive,
-                    existingSelection = tab.selectedEntryIds,
-                )
-            }
-
-            additive -> {
-                if (tab.selectedEntryIds.contains(entryId)) {
-                    tab.selectedEntryIds - entryId
-                } else {
-                    tab.selectedEntryIds + entryId
-                }
-            }
-
-            else -> setOf(entryId)
-        }
-
-        val finalSelection = nextSelection.ifEmpty { setOf(entryId) }
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                selectedEntryIds = finalSelection,
-                selectionAnchorId = if (range) {
-                    currentAnchor ?: currentFocus ?: entryId
-                } else {
-                    entryId
-                },
-                selectionFocusId = entryId,
+            currentTab.selectEntryState(
+                entries = entries,
+                entryId = entryId,
+                additive = additive,
+                range = range,
             )
         }
     }
@@ -503,7 +470,7 @@ class DefaultPaneComponent(
     override fun selectEntries(entryIds: Set<String>) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(selectedEntryIds = entryIds)
+            currentTab.withSelectedEntryIds(entryIds)
         }
     }
 
@@ -514,48 +481,19 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         clearInlineEdit(tab.id)
         val entries = currentVisibleEntries()
-        if (entries.isEmpty()) {
-            return
-        }
-
-        val currentIndex = entries.indexOfFirst { it.id == SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) }
-        val fallbackIndex = if (offset >= 0) 0 else entries.lastIndex
-        val baseIndex = if (currentIndex == -1) fallbackIndex else currentIndex
-        val nextIndex = (baseIndex + offset).coerceIn(0, entries.lastIndex)
-        val nextEntryId = entries[nextIndex].id
-
-        if (extendSelection) {
-            val anchorId = SelectionHelper.validEntryId(tab.selectionAnchorId, entries)
-                ?: SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds)
-                ?: nextEntryId
-            updateTab(tab.id) { currentTab ->
-                currentTab.copy(
-                    selectedEntryIds = SelectionHelper.buildRangeSelection(
-                        entries = entries,
-                        anchorId = anchorId,
-                        targetId = nextEntryId,
-                        additive = false,
-                        existingSelection = emptySet(),
-                    ),
-                    selectionAnchorId = anchorId,
-                    selectionFocusId = nextEntryId,
-                )
-            }
-        } else {
-            updateTab(tab.id) { currentTab ->
-                currentTab.copy(
-                    selectedEntryIds = setOf(nextEntryId),
-                    selectionAnchorId = nextEntryId,
-                    selectionFocusId = nextEntryId,
-                )
-            }
+        updateTab(tab.id) { currentTab ->
+            currentTab.moveSelectionState(
+                entries = entries,
+                offset = offset,
+                extendSelection = extendSelection,
+            )
         }
     }
 
     override fun openSelectedEntry() {
-        val selectedEntry =
-            currentVisibleEntries().let { vis -> vis.firstOrNull { it.id == SelectionHelper.resolveSelectionFocusId(vis, activeTab()?.selectionFocusId, activeTab()?.selectionAnchorId, activeTab()?.selectedEntryIds.orEmpty()) } } ?: return
-        clearInlineEdit(activeTab()?.id ?: return)
+        val tab = activeTab() ?: return
+        val selectedEntry = tab.resolveSelectionFocusEntry(currentVisibleEntries()) ?: return
+        clearInlineEdit(tab.id)
         openEntry(selectedEntry)
     }
 
@@ -563,15 +501,8 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         clearInlineEdit(tab.id)
         val entries = currentVisibleEntries()
-        if (entries.isEmpty()) {
-            return
-        }
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                selectedEntryIds = entries.mapTo(linkedSetOf()) { it.id },
-                selectionAnchorId = entries.first().id,
-                selectionFocusId = entries.first().id,
-            )
+            currentTab.selectAllEntriesState(entries)
         }
     }
 
@@ -579,11 +510,7 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         clearInlineEdit(tab.id)
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                selectedEntryIds = emptySet(),
-                selectionAnchorId = null,
-                selectionFocusId = null,
-            )
+            currentTab.clearSelectionState()
         }
     }
 
