@@ -60,7 +60,7 @@ ui
 - [ ] 引入 `RootIntent` / `PaneIntent`，UI 只发送事件。
 - [x] 把选择、排序、过滤的派生状态先拆成纯 helper。
 - [x] 把树状展开拆成纯 reducer/helper。
-- [ ] 把内联编辑拆成纯 reducer/helper。
+- [x] 把内联编辑拆成纯 reducer/helper。
 - [ ] 控制 `DefaultPaneComponent` 体积，导航、选择、Tab、内联编辑分别独立。
 
 ## P1：Tab 改为 Decompose ChildStack

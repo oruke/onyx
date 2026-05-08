@@ -17,8 +17,6 @@ import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.core.model.PaneInlineEditMode
-import com.oruke.onyx.core.model.PaneInlineEditState
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
@@ -253,13 +251,7 @@ class DefaultPaneComponent(
         val targetEntryId = SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
         val targetEntry = entries.firstOrNull { it.id == targetEntryId } ?: return
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                inlineEditState = PaneInlineEditState(
-                    mode = PaneInlineEditMode.RENAME,
-                    targetEntryId = targetEntry.id,
-                    draftName = targetEntry.name,
-                ),
-            )
+            currentTab.beginRenameInlineEdit(targetEntry)
         }
     }
 
@@ -270,14 +262,9 @@ class DefaultPaneComponent(
         }
         scope.launch {
             val baseName = org.jetbrains.compose.resources.getString(Res.string.action_new_file)
-            val nextName = generateCreateName(tab, baseName)
+            val nextName = tab.nextCreateName(baseName)
             updateTab(tab.id) { currentTab ->
-                currentTab.copy(
-                    inlineEditState = PaneInlineEditState(
-                        mode = PaneInlineEditMode.CREATE_FILE,
-                        draftName = nextName,
-                    ),
-                )
+                currentTab.beginCreateFileInlineEdit(nextName)
             }
         }
     }
@@ -289,14 +276,9 @@ class DefaultPaneComponent(
         }
         scope.launch {
             val baseName = org.jetbrains.compose.resources.getString(Res.string.action_new_directory)
-            val nextName = generateCreateName(tab, baseName)
+            val nextName = tab.nextCreateName(baseName)
             updateTab(tab.id) { currentTab ->
-                currentTab.copy(
-                    inlineEditState = PaneInlineEditState(
-                        mode = PaneInlineEditMode.CREATE_DIRECTORY,
-                        draftName = nextName,
-                    ),
-                )
+                currentTab.beginCreateDirectoryInlineEdit(nextName)
             }
         }
     }
@@ -341,41 +323,23 @@ class DefaultPaneComponent(
             return
         }
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                inlineEditState = currentTab.inlineEditState?.copy(draftName = draft),
-            )
+            currentTab.withInlineEditDraft(draft)
         }
     }
 
     override fun confirmInlineEdit() {
         val tab = activeTab() ?: return
-        val inlineEdit = tab.inlineEditState ?: return
-        if (tab.entriesState is PaneEntriesState.Failure) {
-            clearInlineEdit(tab.id)
-            return
-        }
-        val normalizedDraft = inlineEdit.draftName.trim()
-        if (normalizedDraft.isBlank()) {
-            clearInlineEdit(tab.id)
-            return
+        val result = tab.confirmInlineEditState(currentTabEntries(tab))
+        if (result.tab != tab) {
+            updateTab(tab.id) { result.tab }
         }
 
-        when (inlineEdit.mode) {
-            PaneInlineEditMode.RENAME -> {
-                val targetEntry = currentTabEntries(tab)
-                    .firstOrNull { it.id == inlineEdit.targetEntryId }
-                    ?: run {
-                        clearInlineEdit(tab.id)
-                        return
-                    }
-                if (targetEntry.name == normalizedDraft) {
-                    clearInlineEdit(tab.id)
-                    return
-                }
+        when (val operation = result.operation) {
+            is InlineEditOperation.Rename -> {
                 scope.launch {
                     fileCommandService.rename(
-                        entry = targetEntry,
-                        targetName = normalizedDraft,
+                        entry = operation.entry,
+                        targetName = operation.targetName,
                     ).onSuccess {
                         clearOperationFeedback(tab.id)
                         refreshActiveTab(tab.id)
@@ -389,11 +353,11 @@ class DefaultPaneComponent(
                 }
             }
 
-            PaneInlineEditMode.CREATE_FILE -> {
+            is InlineEditOperation.CreateFile -> {
                 scope.launch {
                     fileCommandService.createFile(
-                        parentLocation = tab.location,
-                        name = normalizedDraft,
+                        parentLocation = operation.parentLocation,
+                        name = operation.name,
                     ).onSuccess {
                         clearOperationFeedback(tab.id)
                         refreshActiveTab(tab.id)
@@ -407,11 +371,11 @@ class DefaultPaneComponent(
                 }
             }
 
-            PaneInlineEditMode.CREATE_DIRECTORY -> {
+            is InlineEditOperation.CreateDirectory -> {
                 scope.launch {
                     fileCommandService.createDirectory(
-                        parentLocation = tab.location,
-                        name = normalizedDraft,
+                        parentLocation = operation.parentLocation,
+                        name = operation.name,
                     ).onSuccess {
                         clearOperationFeedback(tab.id)
                         refreshActiveTab(tab.id)
@@ -424,6 +388,8 @@ class DefaultPaneComponent(
                     }
                 }
             }
+
+            null -> return
         }
     }
 
@@ -1009,7 +975,7 @@ class DefaultPaneComponent(
 
     private fun clearInlineEdit(tabId: String) {
         updateTab(tabId) { currentTab ->
-            currentTab.copy(inlineEditState = null)
+            currentTab.clearInlineEditState()
         }
     }
 
@@ -1039,17 +1005,6 @@ class DefaultPaneComponent(
             is PaneEntriesState.Ready -> entriesState.entries
             else -> emptyList()
         }
-    }
-
-    private fun generateCreateName(tab: PaneTabState, baseName: String): String {
-        val existingNames = tab.allEntries.mapTo(mutableSetOf()) { it.name }
-        var candidate = baseName
-        var suffixIndex = 1
-        while (candidate in existingNames) {
-            candidate = "$baseName ($suffixIndex)"
-            suffixIndex += 1
-        }
-        return candidate
     }
 
     private fun updateTab(
