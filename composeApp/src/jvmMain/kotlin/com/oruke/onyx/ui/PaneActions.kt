@@ -26,5 +26,7 @@ data class PaneActions(
     val onOpenSettings: () -> Unit,
     val onOpenWith: (VFile, OpenWithApp) -> Unit,
     val onOpenWithChooser: (VFile) -> Unit,
+    val onOpenTerminal: (String) -> Unit,
+    val isArchiveFileName: (String) -> Boolean,
     val onQueryOpenWithApps: (suspend (VFile) -> List<OpenWithApp>)? = null,
 )

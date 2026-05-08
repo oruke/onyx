@@ -35,8 +35,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.buildBreadcrumbs
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -48,6 +48,7 @@ internal fun HybridAddressBar(
     location: String,
     onActivate: () -> Unit,
     onOpenLocation: (String) -> Unit,
+    buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
 ) {
     var editing by remember { mutableStateOf(false) }
     var draftValue by remember(location) {
@@ -119,6 +120,7 @@ internal fun HybridAddressBar(
                 editing = true
             },
             onOpenLocation = onOpenLocation,
+            buildBreadcrumbs = buildBreadcrumbs,
         )
     }
 }
@@ -129,6 +131,7 @@ internal fun BreadcrumbAddressBar(
     onActivate: () -> Unit,
     onEdit: () -> Unit,
     onOpenLocation: (String) -> Unit,
+    buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
 ) {
     val scrollState = rememberScrollState()
     val breadcrumbs = remember(location) { buildBreadcrumbs(location) }

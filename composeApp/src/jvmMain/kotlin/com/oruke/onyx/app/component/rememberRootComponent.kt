@@ -13,14 +13,21 @@ import com.oruke.onyx.app.component.delegate.ImageViewerController
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 import com.oruke.onyx.app.filesystem.ArchiveService
+import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
+import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.ImageMetadataService
 import com.oruke.onyx.app.filesystem.OpenWithService
+import com.oruke.onyx.app.filesystem.PreviewService
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
+import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TrashService
+import com.oruke.onyx.app.filesystem.VfsPathService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,6 +66,13 @@ fun rememberRootComponent(): RootComponent {
             sessionRepository = koin.get<SessionRepository>(),
             archiveService = koin.get<ArchiveService>(),
             openWithService = koin.get<OpenWithService>(),
+            pathService = koin.get<VfsPathService>(),
+            archiveFileTypeService = koin.get<ArchiveFileTypeService>(),
+            archiveEntryOpenService = koin.get<ArchiveEntryOpenService>(),
+            terminalLauncherService = koin.get<TerminalLauncherService>(),
+            previewService = koin.get<PreviewService>(),
+            thumbnailService = koin.get<ThumbnailService>(),
+            imageMetadataService = koin.get<ImageMetadataService>(),
             taskOrchestrator = taskOrchestrator,
             clipboardManager = clipboardManager,
             imageViewerController = imageViewerController,

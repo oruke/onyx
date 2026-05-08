@@ -63,6 +63,8 @@ internal fun BoundPaneSurface(
         onOpenSettings = rootComponent::openSettings,
         onOpenWith = { entry, app -> rootComponent.openWithApp(entry, app) },
         onOpenWithChooser = { entry -> rootComponent.openWithChooser(entry) },
+        onOpenTerminal = rootComponent::openTerminalAt,
+        isArchiveFileName = rootComponent::isArchiveFileName,
         onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
     )
 
@@ -85,5 +87,8 @@ internal fun BoundPaneSurface(
         onFileDragEnd = onFileDragEnd,
         onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
         fileDropTarget = fileDropTarget,
+        loadThumbnail = rootComponent::loadThumbnail,
+        loadArchiveThumbnail = rootComponent::loadArchiveThumbnail,
+        buildBreadcrumbs = rootComponent::buildBreadcrumbs,
     )
 }

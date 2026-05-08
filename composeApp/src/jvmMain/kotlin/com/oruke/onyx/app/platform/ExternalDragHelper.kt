@@ -1,4 +1,4 @@
-package com.oruke.onyx.ui
+package com.oruke.onyx.app.platform
 
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.OnyxLogger
@@ -268,6 +268,39 @@ object ExternalDragHelper {
             archiveServiceRef = null
             exportTriggered = false
         }
+    }
+
+    /**
+     * 将 UI 选中的 VFile 预处理为系统拖放所需的待处理项。
+     *
+     * UI 层只传递虚拟文件对象；本地 File 解析和 archive:// 条目拆解集中在平台层。
+     *
+     * @return 是否包含压缩包内部条目。包含时内部拖放语义应视为解压。
+     */
+    fun preparePendingFiles(
+        entries: List<VFile>,
+        archiveService: ArchiveService,
+    ): Boolean {
+        val localFiles = mutableListOf<File>()
+        val archiveEntries = mutableListOf<Pair<String, String>>()
+        entries.forEach { entry ->
+            val parsed = ArchiveService.parseArchiveLocation(entry.location)
+            if (parsed != null) {
+                val (archivePath, innerPath) = parsed
+                if (innerPath.isNotBlank()) {
+                    archiveEntries += archivePath to innerPath
+                }
+            } else {
+                val file = File(entry.location)
+                if (file.exists()) {
+                    localFiles += file
+                }
+            }
+        }
+        pendingDragFiles = localFiles
+        pendingArchiveEntries = archiveEntries
+        archiveServiceRef = archiveService
+        return archiveEntries.isNotEmpty()
     }
 
     /**

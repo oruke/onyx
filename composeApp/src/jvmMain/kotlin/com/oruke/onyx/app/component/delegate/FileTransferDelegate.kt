@@ -6,6 +6,7 @@ import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -44,6 +45,7 @@ class FileTransferDelegate(
     private val taskOrchestrator: TaskOrchestrator,
     private val clipboardManager: ClipboardManager,
     private val dialogState: MutableStateFlow<RootDialogState?>,
+    private val pathService: VfsPathService,
     private val onRefreshAllPanes: () -> Unit,
 ) {
     var pendingTransferRequest: PendingTransferRequest? = null
@@ -61,7 +63,7 @@ class FileTransferDelegate(
         if (operation == FileTransferOperation.MOVE && entries.all { it.parentLocation == targetDirectoryLocation }) {
             return
         }
-        if (entries.any { entry -> targetDirectoryLocation.isSameOrChildOf(entry.location) }) {
+        if (entries.any { entry -> pathService.isSameOrChildOf(targetDirectoryLocation, entry.location) }) {
             return
         }
         scope.launch {
@@ -357,10 +359,4 @@ internal fun buildTransferTaskDetail(
 internal fun buildTaskDetail(entries: List<VFile>): String {
     val preview = entries.take(3).joinToString { it.name }
     return if (entries.size <= 3) preview else "$preview ..."
-}
-
-private fun String.isSameOrChildOf(parentLocation: String): Boolean {
-    val target = java.nio.file.Path.of(this).normalize().toAbsolutePath()
-    val parent = java.nio.file.Path.of(parentLocation).normalize().toAbsolutePath()
-    return target == parent || target.startsWith(parent)
 }

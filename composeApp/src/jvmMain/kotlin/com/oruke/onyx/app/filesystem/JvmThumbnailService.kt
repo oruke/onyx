@@ -1,11 +1,5 @@
-package com.oruke.onyx.ui.theme
+package com.oruke.onyx.app.filesystem
 
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +10,6 @@ import org.jetbrains.skia.MipmapMode
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
-import com.oruke.onyx.app.filesystem.ArchiveService
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
 import net.sf.sevenzipjbinding.SevenZip
@@ -38,9 +31,13 @@ import org.jetbrains.skia.Image as SkiaImage
  *    - 最后一步使用 Mitchell-Netravali 三次重采样，确保锐度与平滑的最佳平衡
  * 3. 输出：直接转为 Compose ImageBitmap，无跨引擎转码损失
  */
-object ThumbnailLoader {
+class JvmThumbnailService : ThumbnailService {
 
-    private const val MAX_CACHE_SIZE = 500
+    private companion object {
+        const val MAX_CACHE_SIZE = 500
+        const val MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024
+        const val MAX_ARCHIVE_IMAGE_BYTES = 20L * 1024 * 1024
+    }
 
     private val cache = object : LinkedHashMap<String, ImageBitmap>(
         MAX_CACHE_SIZE + 1, 0.75f, true
@@ -59,7 +56,7 @@ object ThumbnailLoader {
     }
 
     @Synchronized
-    fun clearCache() {
+    override fun clearCache() {
         cache.clear()
     }
 
@@ -130,37 +127,34 @@ object ThumbnailLoader {
         return current
     }
 
-    /** 缩略图加载的文件大小上限（50MB），超过此大小跳过缩略图生成以避免 OOM */
-    private const val MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024
-
-    /** 压缩包内单张图片的提取大小上限（20MB） */
-    private const val MAX_ARCHIVE_IMAGE_BYTES = 20L * 1024 * 1024
-
     /** 图片扩展名集合（用于压缩包内条目筛选） */
     private val IMAGE_EXTENSIONS = setOf(
         "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "tif",
     )
 
-    fun loadThumbnail(filePath: String, maxDimension: Int = 400): ImageBitmap? {
-        val cacheKey = "$filePath@$maxDimension"
-        getCached(cacheKey)?.let { return it }
+    override suspend fun loadThumbnail(
+        location: String,
+        maxDimension: Int,
+    ): ImageBitmap? = withContext(Dispatchers.IO) {
+        val cacheKey = "$location@$maxDimension"
+        getCached(cacheKey)?.let { return@withContext it }
 
-        return try {
+        return@withContext try {
             val bytes: ByteArray
-            if (ArchiveService.isArchiveLocation(filePath)) {
+            if (ArchiveService.isArchiveLocation(location)) {
                 // archive:// 协议 → 从压缩包中提取字节
-                val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(filePath)
-                    ?: return null
-                if (innerPath.isBlank()) return null
-                bytes = extractArchiveEntryBytes(archivePath, innerPath) ?: return null
+                val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(location)
+                    ?: return@withContext null
+                if (innerPath.isBlank()) return@withContext null
+                bytes = extractArchiveEntryBytes(archivePath, innerPath) ?: return@withContext null
             } else {
-                val file = File(filePath)
-                if (!file.exists() || !file.isFile) return null
-                if (file.length() > MAX_FILE_SIZE_BYTES) return null
+                val file = File(location)
+                if (!file.exists() || !file.isFile) return@withContext null
+                if (file.length() > MAX_FILE_SIZE_BYTES) return@withContext null
                 bytes = file.readBytes()
             }
 
-            val skImage = SkiaImage.makeFromEncoded(bytes) ?: return null
+            val skImage = SkiaImage.makeFromEncoded(bytes)
 
             val w = skImage.width
             val h = skImage.height
@@ -175,7 +169,7 @@ object ThumbnailLoader {
 
             putCache(cacheKey, composeBitmap)
             composeBitmap
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -239,15 +233,18 @@ object ThumbnailLoader {
      * 扫描压缩包内所有条目，按路径排序后取第一张图片类型的文件，
      * 解压到内存中并复用 Skia 管线生成缩略图。
      */
-    fun loadArchiveThumbnail(archivePath: String, maxDimension: Int = 400): ImageBitmap? {
-        val cacheKey = "archive:$archivePath@$maxDimension"
-        getCached(cacheKey)?.let { return it }
+    override suspend fun loadArchiveThumbnail(
+        location: String,
+        maxDimension: Int,
+    ): ImageBitmap? = withContext(Dispatchers.IO) {
+        val cacheKey = "archive:$location@$maxDimension"
+        getCached(cacheKey)?.let { return@withContext it }
 
-        return try {
-            val file = File(archivePath)
-            if (!file.exists() || !file.isFile) return null
+        return@withContext try {
+            val file = File(location)
+            if (!file.exists() || !file.isFile) return@withContext null
 
-            val raf = RandomAccessFile(archivePath, "r")
+            val raf = RandomAccessFile(location, "r")
             val inStream = RandomAccessFileInStream(raf)
             val archive = SevenZip.openInArchive(null, inStream)
 
@@ -269,7 +266,7 @@ object ThumbnailLoader {
                     imageEntries += ImageEntry(i, itemPath, size)
                 }
 
-                if (imageEntries.isEmpty()) return null
+                if (imageEntries.isEmpty()) return@withContext null
 
                 // 按路径排序取第一张（确保稳定）
                 val target = imageEntries.sortedBy { it.path }.first()
@@ -299,9 +296,9 @@ object ThumbnailLoader {
                 )
 
                 val imageBytes = buffer.toByteArray()
-                if (imageBytes.isEmpty()) return null
+                if (imageBytes.isEmpty()) return@withContext null
 
-                val skImage = SkiaImage.makeFromEncoded(imageBytes) ?: return null
+                val skImage = SkiaImage.makeFromEncoded(imageBytes)
 
                 val w = skImage.width
                 val h = skImage.height
@@ -324,50 +321,4 @@ object ThumbnailLoader {
             null
         }
     }
-}
-
-/**
- * Composable：异步加载高质量缩略图
- *
- * @param filePath 文件路径
- * @param maxDimension 最大边长（像素），推荐 300~600
- * @return (ImageBitmap?, isLoading)
- */
-@Composable
-fun rememberThumbnail(filePath: String, maxDimension: Int = 400): Pair<ImageBitmap?, Boolean> {
-    var bitmap by remember(filePath, maxDimension) { mutableStateOf<ImageBitmap?>(null) }
-    var loading by remember(filePath, maxDimension) { mutableStateOf(true) }
-
-    LaunchedEffect(filePath, maxDimension) {
-        loading = true
-        bitmap = withContext(Dispatchers.IO) {
-            ThumbnailLoader.loadThumbnail(filePath, maxDimension)
-        }
-        loading = false
-    }
-
-    return bitmap to loading
-}
-
-/**
- * Composable：异步加载压缩包缩略图（提取压缩包内第一张图片）
- *
- * @param archivePath 压缩包文件路径
- * @param maxDimension 最大边长（像素），推荐 300~600
- * @return (ImageBitmap?, isLoading)
- */
-@Composable
-fun rememberArchiveThumbnail(archivePath: String, maxDimension: Int = 400): Pair<ImageBitmap?, Boolean> {
-    var bitmap by remember(archivePath, maxDimension) { mutableStateOf<ImageBitmap?>(null) }
-    var loading by remember(archivePath, maxDimension) { mutableStateOf(true) }
-
-    LaunchedEffect(archivePath, maxDimension) {
-        loading = true
-        bitmap = withContext(Dispatchers.IO) {
-            ThumbnailLoader.loadArchiveThumbnail(archivePath, maxDimension)
-        }
-        loading = false
-    }
-
-    return bitmap to loading
 }

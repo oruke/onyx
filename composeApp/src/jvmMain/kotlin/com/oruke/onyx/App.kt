@@ -39,10 +39,8 @@ import com.oruke.onyx.ui.ConfirmationDialog
 import com.oruke.onyx.ui.ArchivePasswordDialog
 import com.oruke.onyx.ui.ConflictResolutionDialog
 import com.oruke.onyx.ui.CreateDirectoriesDialog
-import com.oruke.onyx.ui.ExternalDragHelper
+import com.oruke.onyx.app.platform.ExternalDragHelper
 import com.oruke.onyx.ui.FileDragOverlay
-import com.oruke.onyx.app.filesystem.ArchiveService
-
 import com.oruke.onyx.ui.BoundPaneSurface
 import com.oruke.onyx.ui.OnyxTooltipOverlay
 import com.oruke.onyx.ui.PaneSidebar
@@ -170,9 +168,6 @@ private fun AppContent(
     var fileDragState by remember { mutableStateOf<FileDragState?>(null) }
     var fileDropTarget by remember { mutableStateOf<FileDropTarget?>(null) }
     var fileDragPosition by remember { mutableStateOf<IntOffset?>(null) }
-    // 用于拖拽时的压缩包临时解压（无状态，可复用）
-    val archiveService = remember { ArchiveService() }
-
     var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     var appContentSize by remember { mutableStateOf(IntSize.Zero) }
     var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
@@ -253,23 +248,7 @@ private fun AppContent(
         val selectedIds = sourcePaneState.selectedEntryIds
         val entries = (sourcePaneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
         val selectedEntries = entries.filter { it.id in selectedIds }
-        // 分离本地文件与压缩包内条目
-        val localFiles = mutableListOf<java.io.File>()
-        val archiveEntries = mutableListOf<Pair<String, String>>()
-        var isArchiveSource = false
-        for (entry in selectedEntries) {
-            val parsed = ArchiveService.parseArchiveLocation(entry.location)
-            if (parsed != null) {
-                val (archivePath, innerPath) = parsed
-                if (innerPath.isNotBlank()) {
-                    archiveEntries.add(archivePath to innerPath)
-                    isArchiveSource = true
-                }
-            } else {
-                val file = java.io.File(entry.location)
-                if (file.exists()) localFiles.add(file)
-            }
-        }
+        val isArchiveSource = rootComponent.prepareExternalDrag(selectedEntries)
         // 确定拖拽操作类型
         val effectiveOperation = when {
             // 压缩包条目始终为解压
@@ -285,10 +264,6 @@ private fun AppContent(
             operation = effectiveOperation,
             userForced = isUserForced,
         )
-        // 本地文件立即可用；压缩包条目延迟到 createTransferable 中解压（不阻塞 EDT）
-        ExternalDragHelper.pendingDragFiles = localFiles
-        ExternalDragHelper.pendingArchiveEntries = archiveEntries
-        ExternalDragHelper.archiveServiceRef = archiveService
     }
     val onFileDragPositionChange: (IntOffset) -> Unit = { windowPosition ->
         fileDragPosition = windowPosition
@@ -300,7 +275,7 @@ private fun AppContent(
             val target = fileDropTarget
             if (target != null) {
                 val sourceLoc = rootComponent.state.value.paneState(ds.sourcePaneId).location
-                val newOp = resolveVolumeOperation(sourceLoc, target.targetDirectoryLocation)
+                val newOp = rootComponent.resolveTransferOperation(sourceLoc, target.targetDirectoryLocation)
                 if (newOp != ds.operation) {
                     fileDragState = ds.copy(operation = newOp)
                 }
@@ -434,6 +409,7 @@ private fun AppContent(
                                 location = activePaneState.location,
                                 favoriteLocations = state.settings.favoriteLocations,
                                 recentLocations = state.settings.recentLocations,
+                                locationLabel = rootComponent::locationLabel,
                                 treeState = state.sidebarTreeState,
                                 showTree = state.settings.sidebarTreeVisible,
                                 onActivate = {
@@ -586,7 +562,9 @@ private fun AppContent(
                             
                             PreviewPane(
                                 selectedEntry = selectedEntry,
-                                modifier = Modifier.width(300.dp).fillMaxHeight()
+                                modifier = Modifier.width(300.dp).fillMaxHeight(),
+                                loadThumbnail = rootComponent::loadThumbnail,
+                                loadTextPreview = rootComponent::loadTextPreview,
                             )
                         }
                     }
@@ -649,23 +627,5 @@ private fun AppContent(
 
             }
         }
-    }
-}
-
-/**
- * 根据源路径和目标路径判断操作类型（Directory Opus 行为）：
- * - 同一卷（FileStore）→ 移动
- * - 不同卷 → 复制
- */
-private fun resolveVolumeOperation(sourceLocation: String, targetLocation: String): FileTransferOperation {
-    return try {
-        val sourcePath = java.nio.file.Paths.get(sourceLocation)
-        val targetPath = java.nio.file.Paths.get(targetLocation)
-        val sourceStore = java.nio.file.Files.getFileStore(sourcePath)
-        val targetStore = java.nio.file.Files.getFileStore(targetPath)
-        if (sourceStore == targetStore) FileTransferOperation.MOVE else FileTransferOperation.COPY
-    } catch (_: Exception) {
-        // 无法判断（archive:// 或无效路径）回退到移动
-        FileTransferOperation.MOVE
     }
 }

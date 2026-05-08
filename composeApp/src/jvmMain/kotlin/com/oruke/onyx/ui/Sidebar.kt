@@ -49,13 +49,13 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import java.nio.file.Path
 
 @Composable
 internal fun PaneSidebar(
     location: String,
     favoriteLocations: List<String>,
     recentLocations: List<String>,
+    locationLabel: (String) -> String,
     treeState: SidebarTreeState,
     showTree: Boolean,
     onActivate: () -> Unit,
@@ -101,7 +101,7 @@ internal fun PaneSidebar(
             } else {
                 favoriteLocations.forEach { favoriteLocation ->
                     SidebarLocationItem(
-                        label = safeLocationLabel(favoriteLocation),
+                        label = locationLabel(favoriteLocation),
                         location = favoriteLocation,
                         selected = location == favoriteLocation,
                         favorite = true,
@@ -128,7 +128,7 @@ internal fun PaneSidebar(
             } else {
                 displayRecentLocations.forEach { recentLocation ->
                     SidebarLocationItem(
-                        label = safeLocationLabel(recentLocation),
+                        label = locationLabel(recentLocation),
                         location = recentLocation,
                         selected = false,
                         favorite = favoriteLocations.contains(recentLocation),
@@ -361,16 +361,4 @@ internal fun flattenSidebarNodes(
             }
         }
     }
-}
-
-/**
- * 从 location 字符串安全提取显示标签。
- * 兼容 archive:// URI 和普通文件路径，不会因非法字符崩溃。
- */
-private fun safeLocationLabel(location: String): String {
-    return runCatching { Path.of(location).fileName?.toString() }
-        .getOrNull()
-        ?.ifBlank { null }
-        ?: location.trimEnd('/').substringAfterLast('/')
-            .ifBlank { location }
 }

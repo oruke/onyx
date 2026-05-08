@@ -25,7 +25,6 @@ import onyx.composeapp.generated.resources.label_task_status_paused
 import onyx.composeapp.generated.resources.label_task_status_succeeded
 import org.jetbrains.compose.resources.stringResource
 import java.awt.Cursor
-import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -96,73 +95,6 @@ internal val LocalTooltipController = staticCompositionLocalOf {
         hide = {},
     )
 }
-
-// ── Breadcrumb ──────────────────────────────────────────────────────────────
-
-internal data class Breadcrumb(
-    val label: String,
-    val location: String,
-)
-
-internal fun buildBreadcrumbs(location: String): List<Breadcrumb> {
-    // archive:// 协议：分两段构建面包屑
-    val parsed = com.oruke.onyx.app.filesystem.ArchiveService.parseArchiveLocation(location)
-    if (parsed != null) {
-        val (archivePath, innerPath) = parsed
-        // 1. 物理路径段（到压缩包文件本身）
-        val archiveFilePath = Path.of(archivePath).normalize().toAbsolutePath()
-        val breadcrumbs = mutableListOf<Breadcrumb>()
-        var current = archiveFilePath.root ?: archiveFilePath
-        breadcrumbs += Breadcrumb(
-            label = current.toString().ifBlank { "/" },
-            location = current.toString().ifBlank { "/" },
-        )
-        archiveFilePath.iterator().forEach { segment ->
-            current = current.resolve(segment)
-            // 压缩包文件本身 → 点击导航到 archive:// 根
-            val loc = if (current == archiveFilePath) {
-                com.oruke.onyx.app.filesystem.ArchiveService.archiveLocation(archivePath)
-            } else {
-                current.toString()
-            }
-            breadcrumbs += Breadcrumb(
-                label = segment.toString(),
-                location = loc,
-            )
-        }
-        // 2. 压缩包内部路径段
-        if (innerPath.isNotBlank()) {
-            val segments = innerPath.trimEnd('/').split("/").filter { it.isNotEmpty() }
-            var innerCurrent = ""
-            segments.forEach { segment ->
-                innerCurrent = if (innerCurrent.isEmpty()) segment else "$innerCurrent/$segment"
-                breadcrumbs += Breadcrumb(
-                    label = segment,
-                    location = com.oruke.onyx.app.filesystem.ArchiveService.archiveLocation(archivePath, innerCurrent),
-                )
-            }
-        }
-        return breadcrumbs.distinctBy { it.location }
-    }
-
-    // 普通路径
-    val path = Path.of(location).normalize().toAbsolutePath()
-    val breadcrumbs = mutableListOf<Breadcrumb>()
-    var current = path.root ?: path
-    breadcrumbs += Breadcrumb(
-        label = current.toString().ifBlank { "/" },
-        location = current.toString().ifBlank { "/" },
-    )
-    path.iterator().forEach { segment ->
-        current = current.resolve(segment)
-        breadcrumbs += Breadcrumb(
-            label = segment.toString(),
-            location = current.toString(),
-        )
-    }
-    return breadcrumbs.distinctBy { it.location }
-}
-
 
 // ── Formatting helpers ──────────────────────────────────────────────────────
 

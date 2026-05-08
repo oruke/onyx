@@ -14,6 +14,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import com.oruke.onyx.app.component.rememberRootComponent
+import com.oruke.onyx.app.platform.ExternalDragHelper
 import com.oruke.onyx.di.fileModule
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.theme.OnyxTheme
@@ -78,7 +79,7 @@ fun main() = application {
 
             DecoratedWindow(
                 onCloseRequest = {
-                    com.oruke.onyx.ui.ExternalDragHelper.uninstall()
+                    ExternalDragHelper.uninstall()
                     exitApplication()
                 },
                 title = "Onyx ${BuildConfig.VERSION}",
@@ -88,7 +89,7 @@ fun main() = application {
                 window.minimumSize = java.awt.Dimension(800, 600)
                 // 安装外部拖放支持
                 LaunchedEffect(window) {
-                    com.oruke.onyx.ui.ExternalDragHelper.install(window)
+                    ExternalDragHelper.install(window)
                 }
                 WindowApp(rootComponent)
             }
@@ -127,6 +128,8 @@ fun main() = application {
                             onSetZoom = rootComponent::imageViewerSetZoom,
                             onSetFitMode = rootComponent::imageViewerSetFitMode,
                             onRotate = rootComponent::imageViewerRotate,
+                            loadThumbnail = rootComponent::loadThumbnail,
+                            readImageSize = rootComponent::readImageSize,
                         )
                     }
                 }

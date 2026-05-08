@@ -21,8 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import com.oruke.onyx.ui.theme.rememberThumbnail
 import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
@@ -53,6 +53,7 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 internal fun InspectorPanel(
     entry: VFile?,
     state: PaneInspectorState,
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
 ) {
     Column(
         modifier = Modifier
@@ -86,7 +87,7 @@ internal fun InspectorPanel(
                 contentAlignment = Alignment.Center
             ) {
                 if (isImage) {
-                    val (thumbnail, _) = rememberThumbnail(entry.location, 480)
+                    val (thumbnail, _) = rememberAsyncBitmap(entry.location, 480, loadThumbnail)
                     if (thumbnail != null) {
                         Image(
                             bitmap = thumbnail,

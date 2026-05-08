@@ -55,6 +55,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -171,6 +172,8 @@ internal fun PaneEntriesContent(
     onConsumeScroll: () -> Unit = {},
     onBlankAreaContextMenu: (IntOffset) -> Unit = {},
     onRetry: () -> Unit = {},
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -507,6 +510,8 @@ internal fun PaneEntriesContent(
                                             onCancelInlineEdit = onCancelInlineEdit,
                                             galleryItemSizeDp = galleryItemSizeDp,
                                             onStartRubberBand = wrappedOnStartRubberBand,
+                                            loadThumbnail = loadThumbnail,
+                                            loadArchiveThumbnail = loadArchiveThumbnail,
                                         )
                                     }
                                 }
@@ -542,6 +547,8 @@ internal fun PaneEntriesContent(
                                             galleryItemSizeDp = galleryItemSizeDp,
                                             onStartRubberBand = wrappedOnStartRubberBand,
                                             onBeginRename = onBeginRename,
+                                            loadThumbnail = loadThumbnail,
+                                            loadArchiveThumbnail = loadArchiveThumbnail,
                                         )
                                     }
                                 }
@@ -1465,4 +1472,3 @@ internal fun flattenEntries(
         }
     }
 }
-

@@ -4,16 +4,26 @@ import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.childContext
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.filesystem.ArchiveService
+import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
+import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.ImageMetadataService
 import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.app.filesystem.OpenWithService
+import com.oruke.onyx.app.filesystem.PreviewService
+import com.oruke.onyx.app.filesystem.PreviewTextRequest
+import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
+import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.TrashService
+import com.oruke.onyx.app.filesystem.VfsBreadcrumb
+import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.DeleteMode
@@ -27,6 +37,8 @@ import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.TabSessionSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,7 +54,6 @@ import onyx.composeapp.generated.resources.action_extract_here
 import onyx.composeapp.generated.resources.action_extract_to_directory
 import onyx.composeapp.generated.resources.action_extract_smart
 import onyx.composeapp.generated.resources.msg_string_literal
-import java.nio.file.Path
 import com.oruke.onyx.app.component.delegate.ArchiveActionDelegate
 import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
@@ -51,6 +62,7 @@ import com.oruke.onyx.app.component.delegate.ImageViewerController
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.SidebarDelegate
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
+import com.oruke.onyx.app.platform.ExternalDragHelper
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 class DefaultRootComponent(
@@ -64,6 +76,13 @@ class DefaultRootComponent(
     private val sessionRepository: SessionRepository,
     private val archiveService: ArchiveService,
     private val openWithService: OpenWithService,
+    private val pathService: VfsPathService,
+    private val archiveFileTypeService: ArchiveFileTypeService,
+    private val archiveEntryOpenService: ArchiveEntryOpenService,
+    private val terminalLauncherService: TerminalLauncherService,
+    private val previewService: PreviewService,
+    private val thumbnailService: ThumbnailService,
+    private val imageMetadataService: ImageMetadataService,
     // ── Delegate ──────────────────────────────────────────────────────────
     private val taskOrchestrator: TaskOrchestrator,
     private val clipboardManager: ClipboardManager,
@@ -84,6 +103,9 @@ class DefaultRootComponent(
         fileCommandService = fileCommandService,
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
+        pathService = pathService,
+        archiveFileTypeService = archiveFileTypeService,
+        archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
     )
     override val secondaryPane: PaneComponent = DefaultPaneComponent(
@@ -94,6 +116,9 @@ class DefaultRootComponent(
         fileCommandService = fileCommandService,
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
+        pathService = pathService,
+        archiveFileTypeService = archiveFileTypeService,
+        archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
     )
 
@@ -116,6 +141,7 @@ class DefaultRootComponent(
         taskOrchestrator = taskOrchestrator,
         clipboardManager = clipboardManager,
         dialogState = dialogState,
+        pathService = pathService,
         onRefreshAllPanes = ::refreshAllPanes,
     )
     private val archiveActionDelegate = ArchiveActionDelegate(
@@ -560,6 +586,48 @@ class DefaultRootComponent(
         scope.launch {
             openWithService.openWithChooser(entry)
         }
+    }
+
+    override fun prepareExternalDrag(entries: List<VFile>): Boolean {
+        return ExternalDragHelper.preparePendingFiles(entries, archiveService)
+    }
+
+    override fun isArchiveFileName(fileName: String): Boolean {
+        return archiveFileTypeService.isArchiveFileName(fileName)
+    }
+
+    override fun locationLabel(location: String): String {
+        return pathService.label(location)
+    }
+
+    override fun buildBreadcrumbs(location: String): List<VfsBreadcrumb> {
+        return pathService.buildBreadcrumbs(location)
+    }
+
+    override fun openTerminalAt(location: String) {
+        scope.launch {
+            terminalLauncherService.openTerminal(location)
+        }
+    }
+
+    override fun resolveTransferOperation(sourceLocation: String, targetLocation: String): FileTransferOperation {
+        return pathService.resolveTransferOperation(sourceLocation, targetLocation)
+    }
+
+    override suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult {
+        return previewService.loadTextPreview(request)
+    }
+
+    override suspend fun loadThumbnail(location: String, maxDimension: Int): ImageBitmap? {
+        return thumbnailService.loadThumbnail(location, maxDimension)
+    }
+
+    override suspend fun loadArchiveThumbnail(location: String, maxDimension: Int): ImageBitmap? {
+        return thumbnailService.loadArchiveThumbnail(location, maxDimension)
+    }
+
+    override suspend fun readImageSize(entry: VFile): IntSize? {
+        return imageMetadataService.readImageSize(entry)
     }
 
     private suspend fun restorePersistedState() {

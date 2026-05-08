@@ -6,11 +6,14 @@ import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.delegate.EntrySorter
 import com.oruke.onyx.app.component.delegate.SelectionHelper
 import com.oruke.onyx.app.filesystem.ArchiveService
+import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
+import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileWatcher
 import com.oruke.onyx.app.filesystem.TextClipboardService
+import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.I18nMessage
@@ -45,7 +48,6 @@ import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.msg_string_literal
 import java.nio.file.Path
 import java.util.*
-import kotlin.io.path.pathString
 
 class DefaultPaneComponent(
     componentContext: ComponentContext,
@@ -55,6 +57,9 @@ class DefaultPaneComponent(
     private val fileCommandService: FileCommandService,
     private val textClipboardService: TextClipboardService,
     private val externalOpenService: ExternalOpenService,
+    private val pathService: VfsPathService,
+    private val archiveFileTypeService: ArchiveFileTypeService,
+    private val archiveEntryOpenService: ArchiveEntryOpenService,
     private val initialViewMode: ViewMode = ViewMode.DETAILS,
     private val onOpenImageViewer: ((file: VFile, allImages: List<VFile>) -> Unit)? = null,
 ) : PaneComponent, ComponentContext by componentContext {
@@ -106,7 +111,7 @@ class DefaultPaneComponent(
         val previousLocation = tab.backStack.lastOrNull() ?: return
         // If going back to a parent, pre-set focus to current dir name
         val currentDirName = locationBaseName(tab.location)
-        if (currentDirName != null && isParentOf(previousLocation, tab.location)) {
+        if (currentDirName != null && pathService.isDirectParent(previousLocation, tab.location)) {
             pendingFocusEntryName[tab.id] = currentDirName
         }
         val nextBackStack = tab.backStack.dropLast(1)
@@ -114,7 +119,7 @@ class DefaultPaneComponent(
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
                 location = previousLocation,
-                title = locationTitle(previousLocation),
+                title = pathService.title(previousLocation),
                 canGoBack = nextBackStack.isNotEmpty(),
                 canGoForward = nextForwardStack.isNotEmpty(),
                 selectedEntryIds = emptySet(),
@@ -138,7 +143,7 @@ class DefaultPaneComponent(
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
                 location = nextLocation,
-                title = locationTitle(nextLocation),
+                title = pathService.title(nextLocation),
                 canGoBack = nextBackStack.isNotEmpty(),
                 canGoForward = nextForwardStack.isNotEmpty(),
                 selectedEntryIds = emptySet(),
@@ -157,11 +162,7 @@ class DefaultPaneComponent(
     override fun goUp() {
         val tab = activeTab() ?: return
         val currentLocation = tab.location
-        val parentLocation = if (ArchiveService.isArchiveLocation(currentLocation)) {
-            ArchiveService.archiveParentLocation(currentLocation) ?: return
-        } else {
-            Path.of(currentLocation).parent?.pathString ?: return
-        }
+        val parentLocation = pathService.parentLocation(currentLocation) ?: return
         val currentDirName = locationBaseName(currentLocation)
         if (currentDirName != null) {
             pendingFocusEntryName[tab.id] = currentDirName
@@ -175,7 +176,7 @@ class DefaultPaneComponent(
     override fun openDirectory(location: String) {
         val tab = activeTab()
         if (tab != null) {
-            val childName = childSegmentOnPath(ancestor = location, descendant = tab.location)
+            val childName = pathService.directChildName(ancestor = location, descendant = tab.location)
             if (childName != null) {
                 pendingFocusEntryName[tab.id] = childName
             }
@@ -197,7 +198,7 @@ class DefaultPaneComponent(
             VFileKind.FILE -> {
                 val isInsideArchive = ArchiveService.isArchiveLocation(entry.location)
                 // 压缩包 → 以文件夹方式浏览
-                if (ArchiveService.isArchive(entry.name)) {
+                if (archiveFileTypeService.isArchiveFileName(entry.name)) {
                     if (isInsideArchive) {
                         // 嵌套压缩包：暂不支持，忽略
                     } else {
@@ -211,28 +212,7 @@ class DefaultPaneComponent(
                     // archive:// 内的普通文件 → 先提取到临时目录再外部打开
                     scope.launch {
                         try {
-                            val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(entry.location)
-                                ?: return@launch
-                            val archiveService = ArchiveService()
-                            val bytesResult = archiveService.extractToBytes(archivePath, innerPath)
-                            val bytes = bytesResult.getOrNull()
-                            if (bytes == null || bytes.isEmpty()) {
-                                updateFailure(
-                                    tabId = tab.id,
-                                    kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                    detail = I18nMessage(Res.string.msg_string_literal, "Extract failed"),
-                                )
-                                return@launch
-                            }
-                            // 写入临时文件
-                            val tempDir = java.nio.file.Files.createTempDirectory("onyx-archive-")
-                            val tempFile = tempDir.resolve(entry.name)
-                            java.nio.file.Files.write(tempFile, bytes)
-                            tempFile.toFile().deleteOnExit()
-                            tempDir.toFile().deleteOnExit()
-
-                            val tempVFile = entry.copy(location = tempFile.toString())
-                            externalOpenService.open(tempVFile)
+                            archiveEntryOpenService.openArchiveEntry(entry)
                                 .onSuccess { clearOperationFeedback(tab.id) }
                                 .onFailure { failure ->
                                     updateFailure(
@@ -679,7 +659,7 @@ class DefaultPaneComponent(
     }
 
     override fun createTab(location: String) {
-        val tab = createTabState(normalizeLocation(location))
+        val tab = createTabState(pathService.normalizeLocation(location))
         val nextTabs = mutableState.value.tabs + tab
         mutableState.value = tab.toPaneState(
             paneId = paneId,
@@ -813,7 +793,7 @@ class DefaultPaneComponent(
     override fun restoreSession(snapshot: PaneSessionSnapshot) {
         val restoredTabs = snapshot.tabs
             .ifEmpty { listOf(createTabState(fileRepository.defaultLocation()).toSessionSnapshot()) }
-            .map { tabSnapshot -> tabSnapshot.toPaneTabState() }
+            .map { tabSnapshot -> tabSnapshot.toPaneTabState(pathService) }
 
         val activeTabId = snapshot.activeTabId.takeIf { candidate ->
             restoredTabs.any { tab -> tab.id == candidate }
@@ -913,7 +893,7 @@ class DefaultPaneComponent(
         recordHistory: Boolean,
     ) {
         val tab = activeTab() ?: return
-        val normalizedLocation = normalizeLocation(location)
+        val normalizedLocation = pathService.normalizeLocation(location)
         if (normalizedLocation == tab.location) {
             refresh()
             return
@@ -924,7 +904,7 @@ class DefaultPaneComponent(
         updateTab(tab.id) { currentTab ->
             currentTab.copy(
                 location = normalizedLocation,
-                title = locationTitle(normalizedLocation),
+                title = pathService.title(normalizedLocation),
                 canGoBack = nextBackStack.isNotEmpty(),
                 canGoForward = nextForwardStack.isNotEmpty(),
                 selectedEntryIds = emptySet(),
@@ -1053,7 +1033,7 @@ class DefaultPaneComponent(
         defaultViewMode: ViewMode,
     ): PaneState {
         val tab = createTabState(
-            location = normalizeLocation(initialLocation),
+            location = pathService.normalizeLocation(initialLocation),
             defaultViewMode = defaultViewMode,
         )
         return tab.toPaneState(
@@ -1069,7 +1049,7 @@ class DefaultPaneComponent(
     ): PaneTabState {
         return PaneTabState(
             id = UUID.randomUUID().toString(),
-            title = locationTitle(location),
+            title = pathService.title(location),
             location = location,
             canGoBack = false,
             canGoForward = false,
@@ -1244,10 +1224,7 @@ class DefaultPaneComponent(
         )
     }
 
-    private fun normalizeLocation(location: String): String {
-        if (ArchiveService.isArchiveLocation(location)) return location
-        return Path.of(location).normalize().toAbsolutePath().pathString
-    }
+    private fun locationBaseName(location: String): String? = pathService.baseName(location)
 }
 
 private const val MIN_DETAILS_COLUMN_WIDTH = 40f
@@ -1303,10 +1280,10 @@ private fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
     )
 }
 
-private fun TabSessionSnapshot.toPaneTabState(): PaneTabState {
+private fun TabSessionSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabState {
     return PaneTabState(
         id = id,
-        title = locationTitle(location),
+        title = pathService.title(location),
         location = location,
         canGoBack = backStack.isNotEmpty(),
         canGoForward = forwardStack.isNotEmpty(),
@@ -1359,58 +1336,9 @@ private fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
     return defaultDetailsColumnWeights()[column] ?: MIN_DETAILS_COLUMN_WIDTH
 }
 
-private fun locationTitle(location: String): String {
-    if (ArchiveService.isArchiveLocation(location)) {
-        return ArchiveService.archiveLocationTitle(location)
-    }
-    val path = Path.of(location)
-    return path.fileName?.pathString?.ifBlank { location } ?: path.pathString
-}
-
 private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "tiff", "tif")
 
 private fun isImageFileName(fileName: String): Boolean {
     val ext = fileName.substringAfterLast('.', "").lowercase()
     return ext in imageExtensions
-}
-
-/** Extract the last path segment (directory or file name) from a location. */
-private fun locationBaseName(location: String): String? {
-    if (ArchiveService.isArchiveLocation(location)) {
-        return ArchiveService.archiveLocationTitle(location).takeIf { it.isNotBlank() }
-    }
-    return try {
-        Path.of(location).fileName?.pathString?.takeIf { it.isNotBlank() }
-    } catch (_: Exception) {
-        null
-    }
-}
-
-/** Check if [parent] is the direct parent of [child]. */
-private fun isParentOf(parent: String, child: String): Boolean {
-    return try {
-        val parentPath = Path.of(parent).toAbsolutePath().normalize()
-        val childPath = Path.of(child).toAbsolutePath().normalize()
-        childPath.parent == parentPath
-    } catch (_: Exception) {
-        false
-    }
-}
-
-/**
- * If [ancestor] is a proper ancestor of [descendant], return the name of the
- * immediate child segment on the path from [ancestor] to [descendant].
- * e.g. ancestor="/a/b", descendant="/a/b/c/d" → "c"
- * Returns null if [ancestor] is not a proper ancestor of [descendant].
- */
-private fun childSegmentOnPath(ancestor: String, descendant: String): String? {
-    return try {
-        val ancestorPath = Path.of(ancestor).toAbsolutePath().normalize()
-        val descendantPath = Path.of(descendant).toAbsolutePath().normalize()
-        if (!descendantPath.startsWith(ancestorPath) || descendantPath == ancestorPath) return null
-        val relative = ancestorPath.relativize(descendantPath)
-        relative.getName(0)?.pathString
-    } catch (_: Exception) {
-        null
-    }
 }

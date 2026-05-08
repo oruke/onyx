@@ -1,7 +1,10 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.filesystem.OpenWithApp
+import com.oruke.onyx.app.filesystem.PreviewTextRequest
+import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.ImageFitMode
@@ -10,6 +13,8 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.VFile
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.StateFlow
 
 data class RootState(
@@ -222,4 +227,24 @@ interface RootComponent {
     fun openWithApp(entry: VFile, app: OpenWithApp)
 
     fun openWithChooser(entry: VFile)
+
+    fun prepareExternalDrag(entries: List<VFile>): Boolean
+
+    fun isArchiveFileName(fileName: String): Boolean
+
+    fun locationLabel(location: String): String
+
+    fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>
+
+    fun openTerminalAt(location: String)
+
+    fun resolveTransferOperation(sourceLocation: String, targetLocation: String): FileTransferOperation
+
+    suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult
+
+    suspend fun loadThumbnail(location: String, maxDimension: Int): ImageBitmap?
+
+    suspend fun loadArchiveThumbnail(location: String, maxDimension: Int): ImageBitmap?
+
+    suspend fun readImageSize(entry: VFile): IntSize?
 }

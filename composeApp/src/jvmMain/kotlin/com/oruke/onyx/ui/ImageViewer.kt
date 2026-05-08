@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -46,13 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.panpf.zoomimage.ZoomImage
 import com.github.panpf.zoomimage.compose.rememberZoomState
-import com.oruke.onyx.app.filesystem.ArchiveService
+import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.ui.theme.formatFileSize
-import com.oruke.onyx.ui.theme.rememberThumbnail
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_image_actual_size
 import onyx.composeapp.generated.resources.action_image_fit_window
@@ -62,9 +60,6 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import java.nio.file.Files
-import java.nio.file.Path
-import javax.imageio.ImageIO
 
 /**
  * 图片查看器内容。
@@ -86,46 +81,18 @@ internal fun ImageViewerContent(
     onSetZoom: (Float) -> Unit,
     onSetFitMode: (com.oruke.onyx.core.model.ImageFitMode) -> Unit,
     onRotate: (Boolean) -> Unit,
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    readImageSize: suspend (VFile) -> IntSize?,
 ) {
     val currentFile = state.currentFile ?: return
 
     // ── 图片加载 ──────────────────────────────────────────────────
-    val (bitmap, isLoading) = rememberThumbnail(currentFile.location, 4096)
+    val (bitmap, isLoading) = rememberAsyncBitmap(currentFile.location, 4096, loadThumbnail)
 
     // 原图分辨率（用于信息栏显示）
     var nativeResolution by remember(currentFile.location) { mutableStateOf<IntSize?>(null) }
     LaunchedEffect(currentFile.location) {
-        nativeResolution = withContext(Dispatchers.IO) {
-            try {
-                if (ArchiveService.isArchiveLocation(currentFile.location)) {
-                    // archive:// → 从压缩包提取字节后解码
-                    val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(currentFile.location)
-                        ?: return@withContext null
-                    if (innerPath.isBlank()) return@withContext null
-                    val archiveService = ArchiveService()
-                    val bytesResult = archiveService.extractToBytes(archivePath, innerPath)
-                    val bytes = bytesResult.getOrNull() ?: return@withContext null
-                    val skImg = org.jetbrains.skia.Image.makeFromEncoded(bytes)
-                    IntSize(skImg.width, skImg.height)
-                } else {
-                    val path = Path.of(currentFile.location)
-                    if (Files.exists(path)) {
-                        val reader = ImageIO.getImageReadersBySuffix(
-                            currentFile.name.substringAfterLast('.', "")
-                        )
-                        if (reader.hasNext()) {
-                            val r = reader.next()
-                            ImageIO.createImageInputStream(path.toFile()).use { stream ->
-                                r.input = stream
-                                IntSize(r.getWidth(0), r.getHeight(0))
-                            }
-                        } else null
-                    } else null
-                }
-            } catch (_: Exception) {
-                null
-            }
-        }
+        nativeResolution = readImageSize(currentFile)
     }
 
     // ── ZoomImage 状态 ────────────────────────────────────────────

@@ -63,8 +63,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
-import com.oruke.onyx.ui.theme.rememberThumbnail
-import com.oruke.onyx.ui.theme.rememberArchiveThumbnail
+import androidx.compose.ui.graphics.ImageBitmap
 import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
@@ -119,6 +118,8 @@ internal fun GalleryItem(
     galleryItemSizeDp: Int = 160,
     onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit = { _, _, _ -> },
     onBeginRename: () -> Unit = {},
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     val currentSelected by androidx.compose.runtime.rememberUpdatedState(selected)
@@ -296,7 +297,7 @@ internal fun GalleryItem(
             contentAlignment = Alignment.Center
         ) {
             if (isImage && entry != null) {
-                val (thumbnail, _) = rememberThumbnail(entry.location, 512)
+                val (thumbnail, _) = rememberAsyncBitmap(entry.location, 512, loadThumbnail)
                 if (thumbnail != null) {
                     Image(
                         bitmap = thumbnail,
@@ -321,7 +322,7 @@ internal fun GalleryItem(
                     }
                 }
             } else if (isArchive && entry != null) {
-                val (archiveThumbnail, _) = rememberArchiveThumbnail(entry.location, 512)
+                val (archiveThumbnail, _) = rememberAsyncBitmap(entry.location, 512, loadArchiveThumbnail)
                 if (archiveThumbnail != null) {
                     // 缩略图 + 格式标签叠加
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -442,4 +443,3 @@ internal fun GalleryItem(
         }
     }
 }
-

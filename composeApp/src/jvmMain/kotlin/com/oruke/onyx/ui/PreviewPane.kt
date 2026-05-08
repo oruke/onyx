@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -27,10 +28,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.nio.file.Files
-import java.nio.file.Path
 import androidx.compose.foundation.Image
-import com.oruke.onyx.ui.theme.rememberThumbnail
+import com.oruke.onyx.app.filesystem.PreviewTextRequest
+import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
@@ -38,8 +38,6 @@ import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.isImageFile
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_inspector_directory
 import onyx.composeapp.generated.resources.label_inspector_file
@@ -70,7 +68,9 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 @Composable
 internal fun PreviewPane(
     selectedEntry: VFile?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    loadTextPreview: suspend (PreviewTextRequest) -> PreviewTextResult,
 ) {
     Box(
         modifier = modifier
@@ -99,7 +99,7 @@ internal fun PreviewPane(
                 ) {
                     val isImage = isImageFile(selectedEntry.name)
                     if (isImage) {
-                        val (thumbnail, _) = rememberThumbnail(selectedEntry.location, 800)
+                        val (thumbnail, _) = rememberAsyncBitmap(selectedEntry.location, 800, loadThumbnail)
                         if (thumbnail != null) {
                             Image(
                                 bitmap = thumbnail,
@@ -179,27 +179,18 @@ internal fun PreviewPane(
                     var previewText by remember(selectedEntry.location) { mutableStateOf<String?>(loadingText) }
 
                     LaunchedEffect(selectedEntry.location) {
-                        previewText = withContext(Dispatchers.IO) {
-                            try {
-                                // archive:// 路径暂不支持文本预览
-                                if (selectedEntry.location.startsWith("archive://")) {
-                                    return@withContext unavailableText
-                                }
-                                val path = Path.of(selectedEntry.location)
-                                // 限制仅读取 1MB 以下的文件，防止 OOM (Out Of Memory)
-                                if (Files.exists(path) && Files.size(path) < 1024 * 1024) {
-                                    Files.newBufferedReader(path).useLines { lines ->
-                                        // 截取前 100 行，避免长文本在 Compose 中渲染卡顿
-                                        lines.take(100).joinToString("\n")
-                                    }
-                                } else if (Files.exists(path) && Files.size(path) >= 1024 * 1024) {
-                                    tooLargeText
-                                } else {
-                                    unavailableText
-                                }
-                            } catch (e: Exception) {
-                                unavailableText
-                            }
+                        previewText = when (
+                            val result = loadTextPreview(
+                                PreviewTextRequest(
+                                    entry = selectedEntry,
+                                    maxBytes = 1024 * 1024,
+                                    maxLines = 100,
+                                ),
+                            )
+                        ) {
+                            is PreviewTextResult.Text -> result.value
+                            PreviewTextResult.TooLarge -> tooLargeText
+                            PreviewTextResult.Unavailable -> unavailableText
                         }
                     }
 

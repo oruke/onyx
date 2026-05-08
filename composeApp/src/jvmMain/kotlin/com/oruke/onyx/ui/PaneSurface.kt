@@ -34,6 +34,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -53,6 +54,7 @@ import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
+import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
@@ -62,10 +64,7 @@ import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.windowBounds
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_filter
@@ -86,7 +85,7 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 // ── Pane surface ───────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class, DelicateCoroutinesApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 internal fun PaneSurface(
     state: PaneState,
@@ -108,6 +107,9 @@ internal fun PaneSurface(
     onFileDragEnd: (IntOffset?) -> Unit,
     onFileDropZoneChange: (FileDropZone) -> Unit,
     fileDropTarget: FileDropTarget?,
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
+    buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
 ) {
     // ── 从 state / component / actions 派生，消除冗余参数 ──
     val filterQuery = state.filterQuery
@@ -369,6 +371,7 @@ internal fun PaneSurface(
                     location = state.location,
                     onActivate = onActivate,
                     onOpenLocation = component::openDirectory,
+                    buildBreadcrumbs = buildBreadcrumbs,
                 )
             }
 
@@ -557,6 +560,8 @@ internal fun PaneSurface(
                         showContextMenu = true
                     },
                     onRetry = component::refresh,
+                    loadThumbnail = loadThumbnail,
+                    loadArchiveThumbnail = loadArchiveThumbnail,
                 )
 
                 if (showContextMenu) {
@@ -582,7 +587,7 @@ internal fun PaneSurface(
                         canCopyPath = selectedCount > 0,
                         canPaste = canPaste,
                         canExtractSelection = selectedCount > 0 && selectedEntries.any { entry ->
-                            entry.kind == VFileKind.FILE && com.oruke.onyx.app.filesystem.ArchiveService.isArchive(entry.name)
+                            entry.kind == VFileKind.FILE && actions.isArchiveFileName(entry.name)
                         },
                         canBatchRename = selectedCount >= 2,
                         onOpenSelection = {
@@ -656,29 +661,7 @@ internal fun PaneSurface(
                         },
                         onOpenTerminal = {
                             showContextMenu = false
-                            val location = state.location
-                            GlobalScope.launch(Dispatchers.IO) {
-                                val dir = java.io.File(location)
-                                if (!dir.isDirectory) return@launch
-                                val terminal = System.getenv("TERMINAL")
-                                val candidates = listOfNotNull(
-                                    terminal,
-                                    "x-terminal-emulator",
-                                    "gnome-terminal",
-                                    "konsole",
-                                    "kitty",
-                                    "alacritty",
-                                    "xterm",
-                                )
-                                for (cmd in candidates) {
-                                    try {
-                                        ProcessBuilder(cmd).directory(dir).start()
-                                        return@launch
-                                    } catch (_: Exception) {
-                                        // 尝试下一个候选
-                                    }
-                                }
-                            }
+                            actions.onOpenTerminal(state.location)
                         },
                         onClose = { showContextMenu = false },
                     )
@@ -690,9 +673,9 @@ internal fun PaneSurface(
                 InspectorPanel(
                     entry = singleSelectedEntry,
                     state = state.inspectorState,
+                    loadThumbnail = loadThumbnail,
                 )
             }
         }
     }
 }
-
