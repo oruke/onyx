@@ -516,51 +516,33 @@ class DefaultPaneComponent(
 
     override fun createTab(location: String) {
         val tab = createTabState(pathService.normalizeLocation(location))
-        val nextTabs = mutableState.value.tabs + tab
-        mutableState.value = tab.toPaneState(
+        val update = mutableState.value.withCreatedTab(
             paneId = paneId,
-            activeTabId = tab.id,
-            tabs = nextTabs,
+            tab = tab,
         )
-        loadTab(tabId = tab.id, location = tab.location)
+        mutableState.value = update.state
+        loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
     }
 
     override fun selectTab(tabId: String) {
-        val tab = mutableState.value.tabs.firstOrNull { it.id == tabId } ?: return
-        mutableState.value = tab.toPaneState(
+        val update = mutableState.value.withSelectedTab(
             paneId = paneId,
-            activeTabId = tab.id,
-            tabs = mutableState.value.tabs,
-        )
-        if (tab.entriesState == PaneEntriesState.Idle) {
-            loadTab(tabId = tab.id, location = tab.location)
+            tabId = tabId,
+        ) ?: return
+        mutableState.value = update.state
+        if (update.activeTab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
     }
 
     override fun closeTab(tabId: String) {
-        val state = mutableState.value
-        if (state.tabs.size <= 1) {
-            return
-        }
-
-        val tabIndex = state.tabs.indexOfFirst { it.id == tabId }
-        if (tabIndex == -1) {
-            return
-        }
-
-        val nextTabs = state.tabs.filterNot { it.id == tabId }
-        val nextActiveTab = if (state.activeTabId == tabId) {
-            nextTabs.getOrNull(tabIndex.coerceAtMost(nextTabs.lastIndex)) ?: nextTabs.first()
-        } else {
-            nextTabs.first { it.id == state.activeTabId }
-        }
-        mutableState.value = nextActiveTab.toPaneState(
+        val update = mutableState.value.withClosedTab(
             paneId = paneId,
-            activeTabId = nextActiveTab.id,
-            tabs = nextTabs,
-        )
-        if (nextActiveTab.entriesState == PaneEntriesState.Idle) {
-            loadTab(tabId = nextActiveTab.id, location = nextActiveTab.location)
+            tabId = tabId,
+        ) ?: return
+        mutableState.value = update.state
+        if (update.activeTab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
     }
 
@@ -568,59 +550,30 @@ class DefaultPaneComponent(
         tabId: String,
         targetIndex: Int,
     ) {
-        val state = mutableState.value
-        val currentIndex = state.tabs.indexOfFirst { it.id == tabId }
-        if (currentIndex == -1) {
-            return
-        }
-
-        val tab = state.tabs[currentIndex]
-        val withoutTab = state.tabs.filterNot { it.id == tabId }
-        val adjustedTargetIndex = if (currentIndex < targetIndex) targetIndex - 1 else targetIndex
-        val insertIndex = adjustedTargetIndex.coerceIn(0, withoutTab.size)
-        val nextTabs = withoutTab.toMutableList().apply { add(insertIndex, tab) }
-        val activeTab = nextTabs.first { it.id == state.activeTabId }
-        mutableState.value = activeTab.toPaneState(
+        val update = mutableState.value.withMovedTab(
             paneId = paneId,
-            activeTabId = state.activeTabId,
-            tabs = nextTabs,
-        )
+            tabId = tabId,
+            targetIndex = targetIndex,
+        ) ?: return
+        mutableState.value = update.state
     }
 
     override fun detachTab(tabId: String): PaneTabState? {
         val state = mutableState.value
-        val tabIndex = state.tabs.indexOfFirst { it.id == tabId }
-        if (tabIndex == -1) {
-            return null
-        }
-
-        val tab = state.tabs[tabIndex]
-        if (state.tabs.size == 1) {
-            val replacement = createTabState(fileRepository.defaultLocation())
-            mutableState.value = replacement.toPaneState(
-                paneId = paneId,
-                activeTabId = replacement.id,
-                tabs = listOf(replacement),
-            )
-            loadTab(tabId = replacement.id, location = replacement.location)
-            return tab
-        }
-
-        val nextTabs = state.tabs.filterNot { it.id == tabId }
-        val nextActiveTab = if (state.activeTabId == tabId) {
-            nextTabs.getOrNull(tabIndex.coerceAtMost(nextTabs.lastIndex)) ?: nextTabs.first()
-        } else {
-            nextTabs.first { it.id == state.activeTabId }
-        }
-        mutableState.value = nextActiveTab.toPaneState(
+        val update = state.withDetachedTab(
             paneId = paneId,
-            activeTabId = nextActiveTab.id,
-            tabs = nextTabs,
-        )
-        if (nextActiveTab.entriesState == PaneEntriesState.Idle) {
-            loadTab(tabId = nextActiveTab.id, location = nextActiveTab.location)
+            tabId = tabId,
+            replacementTab = if (state.tabs.size == 1) {
+                createTabState(fileRepository.defaultLocation())
+            } else {
+                null
+            },
+        ) ?: return null
+        mutableState.value = update.state
+        if (update.activeTab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
-        return tab
+        return update.detachedTab
     }
 
     override fun attachTab(
@@ -632,17 +585,14 @@ class DefaultPaneComponent(
         } else {
             tab
         }
-        val insertIndex = targetIndex.coerceIn(0, mutableState.value.tabs.size)
-        val nextTabs = mutableState.value.tabs.toMutableList().apply {
-            add(insertIndex, uniqueTab)
-        }
-        mutableState.value = uniqueTab.toPaneState(
+        val update = mutableState.value.withAttachedTab(
             paneId = paneId,
-            activeTabId = uniqueTab.id,
-            tabs = nextTabs,
+            tab = uniqueTab,
+            targetIndex = targetIndex,
         )
-        if (uniqueTab.entriesState == PaneEntriesState.Idle) {
-            loadTab(tabId = uniqueTab.id, location = uniqueTab.location)
+        mutableState.value = update.state
+        if (update.activeTab.entriesState == PaneEntriesState.Idle) {
+            loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
     }
 
