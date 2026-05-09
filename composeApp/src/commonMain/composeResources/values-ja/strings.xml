@@ -9,6 +9,8 @@
     <string name="action_refresh_active">更新</string>
     <string name="action_open_settings">設定</string>
     <string name="action_open">開く</string>
+    <string name="action_command_palette">コマンドパレット</string>
+    <string name="action_select_all">すべて選択</string>
     <string name="action_open_in_new_tab">新しいタブで開く</string>
     <string name="action_open_with">プログラムから開く</string>
     <string name="action_open_with_other">他のアプリ…</string>
@@ -64,10 +66,15 @@
     <string name="shortcut_key_enter">Enter</string>
     <string name="shortcut_key_escape">Esc</string>
     <string name="shortcut_key_delete">Del</string>
+    <string name="shortcut_key_backspace">Backspace</string>
+    <string name="shortcut_key_comma">,</string>
     <string name="shortcut_key_f2">F2</string>
     <string name="shortcut_key_f5">F5</string>
+    <string name="shortcut_key_a">A</string>
     <string name="shortcut_key_n">N</string>
     <string name="shortcut_key_c">C</string>
+    <string name="shortcut_key_d">D</string>
+    <string name="shortcut_key_p">P</string>
     <string name="shortcut_key_x">X</string>
     <string name="shortcut_key_v">V</string>
     <string name="shortcut_key_f">F</string>
@@ -281,6 +288,8 @@
     <string name="label_search_title">検索</string>
     <string name="label_search_scope">範囲: %1$s</string>
     <string name="label_search_placeholder">名前または .拡張子</string>
+    <string name="label_command_palette_placeholder">コマンドを絞り込む</string>
+    <string name="label_command_palette_empty">一致するコマンドはありません</string>
     <string name="label_search_idle">名前または拡張子を入力して再帰検索します。</string>
     <string name="label_search_running_summary">%1$d 件をスキャン、%2$d 件一致</string>
     <string name="label_search_completed_summary">%1$d 件見つかりました、%2$d 件をスキャン</string>

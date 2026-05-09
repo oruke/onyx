@@ -9,6 +9,8 @@
     <string name="action_refresh_active">刷新</string>
     <string name="action_open_settings">设置</string>
     <string name="action_open">打开</string>
+    <string name="action_command_palette">命令面板</string>
+    <string name="action_select_all">全选</string>
     <string name="action_open_in_new_tab">在新标签页打开</string>
     <string name="action_open_with">打开方式</string>
     <string name="action_open_with_other">其他应用…</string>
@@ -64,10 +66,15 @@
     <string name="shortcut_key_enter">Enter</string>
     <string name="shortcut_key_escape">Esc</string>
     <string name="shortcut_key_delete">Del</string>
+    <string name="shortcut_key_backspace">Backspace</string>
+    <string name="shortcut_key_comma">,</string>
     <string name="shortcut_key_f2">F2</string>
     <string name="shortcut_key_f5">F5</string>
+    <string name="shortcut_key_a">A</string>
     <string name="shortcut_key_n">N</string>
     <string name="shortcut_key_c">C</string>
+    <string name="shortcut_key_d">D</string>
+    <string name="shortcut_key_p">P</string>
     <string name="shortcut_key_x">X</string>
     <string name="shortcut_key_v">V</string>
     <string name="shortcut_key_f">F</string>
@@ -279,6 +286,8 @@
     <string name="label_search_title">搜索</string>
     <string name="label_search_scope">范围：%1$s</string>
     <string name="label_search_placeholder">名称或 .扩展名</string>
+    <string name="label_command_palette_placeholder">筛选命令</string>
+    <string name="label_command_palette_empty">没有匹配的命令</string>
     <string name="label_search_idle">输入名称或扩展名后递归搜索。</string>
     <string name="label_search_running_summary">已扫描 %1$d 项，匹配 %2$d 项</string>
     <string name="label_search_completed_summary">找到 %1$d 项，已扫描 %2$d 项</string>

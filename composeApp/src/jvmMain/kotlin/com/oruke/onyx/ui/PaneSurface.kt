@@ -38,8 +38,6 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -119,6 +117,7 @@ internal fun PaneSurface(
     val focusRequester = remember { FocusRequester() }
     val filterFocusRequester = remember { FocusRequester() }
     var showFilterBar by remember { mutableStateOf(false) }
+    var showCommandPalette by remember { mutableStateOf(false) }
     var showContextMenu by remember { mutableStateOf(false) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
     var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
@@ -136,6 +135,128 @@ internal fun PaneSurface(
     )
     fun dispatch(intent: PaneIntent) {
         component.dispatch(intent)
+    }
+    fun isPaneCommandEnabled(command: OnyxCommand): Boolean {
+        val selectedCount = state.selectedEntryIds.size
+        return when (command) {
+            OnyxCommand.OpenSelection,
+            OnyxCommand.RenameSelection -> selectedCount == 1
+
+            OnyxCommand.DeleteSelection,
+            OnyxCommand.CopySelection,
+            OnyxCommand.CutSelection -> selectedCount > 0
+
+            OnyxCommand.Paste -> canPaste
+            OnyxCommand.CloseMenu,
+            OnyxCommand.CreateDirectories -> false
+
+            else -> true
+        }
+    }
+    fun executePaneCommand(command: OnyxCommand): Boolean {
+        return when (command) {
+            OnyxCommand.OpenSelection -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    dispatch(PaneIntent.OpenSelectedEntry)
+                    true
+                }
+            }
+
+            OnyxCommand.RenameSelection -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    dispatch(PaneIntent.BeginRename)
+                    true
+                }
+            }
+
+            OnyxCommand.NewDirectory -> {
+                actions.onBeginCreateDirectory()
+                true
+            }
+
+            OnyxCommand.NewFile -> {
+                dispatch(PaneIntent.BeginCreateFile)
+                true
+            }
+
+            OnyxCommand.CopySelection -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    actions.onCopySelection()
+                    true
+                }
+            }
+
+            OnyxCommand.CutSelection -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    actions.onCutSelection()
+                    true
+                }
+            }
+
+            OnyxCommand.Paste -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    actions.onPaste()
+                    true
+                }
+            }
+
+            OnyxCommand.DeleteSelection -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    actions.onDeleteSelection()
+                    true
+                }
+            }
+
+            OnyxCommand.Filter -> {
+                showFilterBar = true
+                true
+            }
+
+            OnyxCommand.Refresh -> {
+                dispatch(PaneIntent.Refresh)
+                true
+            }
+
+            OnyxCommand.SelectAll -> {
+                dispatch(PaneIntent.SelectAll)
+                true
+            }
+
+            OnyxCommand.GoUp -> {
+                dispatch(PaneIntent.GoUp)
+                true
+            }
+
+            OnyxCommand.ToggleFavorite -> {
+                actions.onToggleFavoriteLocation(state.location)
+                true
+            }
+
+            OnyxCommand.OpenSettings -> {
+                actions.onOpenSettings()
+                true
+            }
+
+            OnyxCommand.CommandPalette -> {
+                showCommandPalette = true
+                true
+            }
+
+            OnyxCommand.CloseMenu,
+            OnyxCommand.CreateDirectories -> false
+        }
     }
     val paneDropBackground by animateColorAsState(
         targetValue = if (fileDropTarget?.paneId == state.paneId &&
@@ -194,39 +315,34 @@ internal fun PaneSurface(
                 }
 
                 when {
+                    event.matchesCommand(OnyxCommand.CommandPalette) -> executePaneCommand(OnyxCommand.CommandPalette)
+
                     event.matchesCommand(OnyxCommand.OpenSelection) -> {
-                        dispatch(PaneIntent.OpenSelectedEntry)
-                        true
+                        executePaneCommand(OnyxCommand.OpenSelection)
                     }
 
                     event.matchesCommand(OnyxCommand.RenameSelection) -> {
-                        dispatch(PaneIntent.BeginRename)
-                        true
+                        executePaneCommand(OnyxCommand.RenameSelection)
                     }
 
                     event.matchesCommand(OnyxCommand.NewDirectory) -> {
-                        actions.onBeginCreateDirectory()
-                        true
+                        executePaneCommand(OnyxCommand.NewDirectory)
                     }
 
                     event.matchesCommand(OnyxCommand.NewFile) -> {
-                        dispatch(PaneIntent.BeginCreateFile)
-                        true
+                        executePaneCommand(OnyxCommand.NewFile)
                     }
 
                     event.matchesCommand(OnyxCommand.CopySelection) -> {
-                        actions.onCopySelection()
-                        true
+                        executePaneCommand(OnyxCommand.CopySelection)
                     }
 
                     event.matchesCommand(OnyxCommand.CutSelection) -> {
-                        actions.onCutSelection()
-                        true
+                        executePaneCommand(OnyxCommand.CutSelection)
                     }
 
                     event.matchesCommand(OnyxCommand.Paste) -> {
-                        actions.onPaste()
-                        true
+                        executePaneCommand(OnyxCommand.Paste)
                     }
 
                     event.key == Key.DirectionDown -> {
@@ -240,17 +356,11 @@ internal fun PaneSurface(
                     }
 
                     event.matchesCommand(OnyxCommand.DeleteSelection) -> {
-                        if (state.selectedEntryIds.isNotEmpty()) {
-                            actions.onDeleteSelection()
-                            true
-                        } else {
-                            false
-                        }
+                        executePaneCommand(OnyxCommand.DeleteSelection)
                     }
 
-                    event.key == Key.A && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        dispatch(PaneIntent.SelectAll)
-                        true
+                    event.matchesCommand(OnyxCommand.SelectAll) -> {
+                        executePaneCommand(OnyxCommand.SelectAll)
                     }
 
                     event.key == Key.Escape -> {
@@ -266,28 +376,23 @@ internal fun PaneSurface(
                     }
 
                     event.matchesCommand(OnyxCommand.Filter) -> {
-                        showFilterBar = true
-                        true
+                        executePaneCommand(OnyxCommand.Filter)
                     }
 
-                    event.key == Key.D && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        actions.onToggleFavoriteLocation(state.location)
-                        true
+                    event.matchesCommand(OnyxCommand.ToggleFavorite) -> {
+                        executePaneCommand(OnyxCommand.ToggleFavorite)
                     }
 
                     event.matchesCommand(OnyxCommand.Refresh) -> {
-                        dispatch(PaneIntent.Refresh)
-                        true
+                        executePaneCommand(OnyxCommand.Refresh)
                     }
 
-                    event.key == Key.Backspace -> {
-                        dispatch(PaneIntent.GoUp)
-                        true
+                    event.matchesCommand(OnyxCommand.GoUp) -> {
+                        executePaneCommand(OnyxCommand.GoUp)
                     }
 
-                    event.key == Key.Comma && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        actions.onOpenSettings()
-                        true
+                    event.matchesCommand(OnyxCommand.OpenSettings) -> {
+                        executePaneCommand(OnyxCommand.OpenSettings)
                     }
 
                     else -> false
@@ -305,6 +410,28 @@ internal fun PaneSurface(
             .orEmpty()
         val singleSelectedEntry = selectedEntries.singleOrNull()
         val currentLocationFavorite = favoriteLocations.contains(state.location)
+        if (showCommandPalette) {
+            val commandItems = OnyxCommandRegistry.paneCommands
+                .filterNot { spec -> spec.command == OnyxCommand.CommandPalette }
+                .map { spec ->
+                    CommandPaletteItem(
+                        command = spec.command,
+                        label = stringResource(spec.label),
+                        shortcut = onyxCommandShortcutHint(spec.command),
+                        iconKey = spec.iconKey,
+                        enabled = isPaneCommandEnabled(spec.command),
+                    )
+                }
+            CommandPalettePopup(
+                items = commandItems,
+                onExecute = { command ->
+                    if (executePaneCommand(command)) {
+                        showCommandPalette = false
+                    }
+                },
+                onClose = { showCommandPalette = false },
+            )
+        }
         PaneTabBar(
             state = tabBarState,
             active = active,
