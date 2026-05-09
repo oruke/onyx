@@ -40,7 +40,6 @@ data class TabState(
 
 data class PaneChromeState(
     val activeTabId: String,
-    val tabs: List<PaneTabState>,
     val inlineExpandedLocations: Set<String> = emptySet(),
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
 )
@@ -51,7 +50,6 @@ data class PaneState(
     val activeTabState: TabState,
 ) {
     val activeTabId: String get() = chromeState.activeTabId
-    val tabs: List<PaneTabState> get() = chromeState.tabs
     val inlineExpandedLocations: Set<String> get() = chromeState.inlineExpandedLocations
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> get() = chromeState.inlineExpandedEntries
     val location: String get() = activeTabState.location

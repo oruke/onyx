@@ -40,7 +40,6 @@ internal fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
 internal fun PaneTabState.toPaneState(
     paneId: com.oruke.onyx.core.model.PaneId,
     activeTabId: String,
-    tabs: List<PaneTabState>,
     inlineExpandedLocations: Set<String> = emptySet(),
     inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
 ): PaneState {
@@ -48,7 +47,6 @@ internal fun PaneTabState.toPaneState(
         paneId = paneId,
         chromeState = PaneChromeState(
             activeTabId = activeTabId,
-            tabs = tabs,
             inlineExpandedLocations = inlineExpandedLocations,
             inlineExpandedEntries = inlineExpandedEntries,
         ),

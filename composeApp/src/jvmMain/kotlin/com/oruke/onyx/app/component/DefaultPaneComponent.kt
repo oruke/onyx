@@ -68,10 +68,15 @@ class DefaultPaneComponent(
         lifecycle.doOnDestroy { s.cancel() }
     }
 
+    private val initialTab = createTabState(
+        location = pathService.normalizeLocation(initialLocation),
+        defaultViewMode = initialViewMode,
+    )
+
     private val mutableState = MutableStateFlow(
-        createInitialState(
-            initialLocation = initialLocation,
-            defaultViewMode = initialViewMode,
+        initialTab.toPaneState(
+            paneId = paneId,
+            activeTabId = initialTab.id,
         )
     )
 
@@ -80,7 +85,7 @@ class DefaultPaneComponent(
     override val tabStack: Value<ChildStack<TabConfig, TabComponent>> = childStack(
         source = tabNavigation,
         serializer = null,
-        initialStack = { mutableState.value.tabs.map { tab -> tab.toTabSnapshot().toTabConfig() } },
+        initialStack = { listOf(initialTab.toTabSnapshot().toTabConfig()) },
         key = "PaneTabStack-$paneId",
         childFactory = { config, childContext ->
             DefaultTabComponent(
@@ -564,34 +569,25 @@ class DefaultPaneComponent(
 
     override fun createTab(location: String) {
         val tab = createTabState(pathService.normalizeLocation(location))
-        val update = mutableState.value.withCreatedTab(
-            paneId = paneId,
-            tab = tab,
-        )
-        mutableState.value = update.state
-        syncTabStack()
+        val update = tabs().withCreatedTab(tab = tab)
+        applyTabStackUpdate(update)
         loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
     }
 
     override fun selectTab(tabId: String) {
-        val update = mutableState.value.withSelectedTab(
-            paneId = paneId,
-            tabId = tabId,
-        ) ?: return
-        mutableState.value = update.state
-        syncTabStack()
+        val update = tabs().withSelectedTab(tabId = tabId) ?: return
+        applyTabStackUpdate(update)
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
     }
 
     override fun closeTab(tabId: String) {
-        val update = mutableState.value.withClosedTab(
-            paneId = paneId,
+        val update = tabs().withClosedTab(
+            activeTabId = mutableState.value.activeTabId,
             tabId = tabId,
         ) ?: return
-        mutableState.value = update.state
-        syncTabStack()
+        applyTabStackUpdate(update)
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
@@ -601,28 +597,26 @@ class DefaultPaneComponent(
         tabId: String,
         targetIndex: Int,
     ) {
-        val update = mutableState.value.withMovedTab(
-            paneId = paneId,
+        val update = tabs().withMovedTab(
+            activeTabId = mutableState.value.activeTabId,
             tabId = tabId,
             targetIndex = targetIndex,
         ) ?: return
-        mutableState.value = update.state
-        syncTabStack()
+        applyTabStackUpdate(update)
     }
 
     override fun detachTab(tabId: String): TabSnapshot? {
-        val state = mutableState.value
-        val update = state.withDetachedTab(
-            paneId = paneId,
+        val currentTabs = tabs()
+        val update = currentTabs.withDetachedTab(
+            activeTabId = mutableState.value.activeTabId,
             tabId = tabId,
-            replacementTab = if (state.tabs.size == 1) {
+            replacementTab = if (currentTabs.size == 1) {
                 createTabState(fileRepository.defaultLocation())
             } else {
                 null
             },
         ) ?: return null
-        mutableState.value = update.state
-        syncTabStack()
+        applyTabStackUpdate(update)
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
@@ -634,18 +628,17 @@ class DefaultPaneComponent(
         targetIndex: Int,
     ) {
         val restoredTab = tabSnapshot.toPaneTabState(pathService)
-        val uniqueTab = if (mutableState.value.tabs.any { it.id == restoredTab.id }) {
+        val currentTabs = tabs()
+        val uniqueTab = if (currentTabs.any { it.id == restoredTab.id }) {
             restoredTab.copy(id = UUID.randomUUID().toString())
         } else {
             restoredTab
         }
-        val update = mutableState.value.withAttachedTab(
-            paneId = paneId,
+        val update = currentTabs.withAttachedTab(
             tab = uniqueTab,
             targetIndex = targetIndex,
         )
-        mutableState.value = update.state
-        syncTabStack()
+        applyTabStackUpdate(update)
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
@@ -660,12 +653,14 @@ class DefaultPaneComponent(
             restoredTabs.any { tab -> tab.id == candidate }
         } ?: restoredTabs.first().id
         val activeTab = restoredTabs.first { tab -> tab.id == activeTabId }
-        mutableState.value = activeTab.toPaneState(
-            paneId = paneId,
-            activeTabId = activeTabId,
+        navigateTabStack(
             tabs = restoredTabs,
+            activeTabId = activeTabId,
         )
-        syncTabStack()
+        applyActiveTab(
+            activeTab = activeTab,
+            activeTabId = activeTabId,
+        )
         loadTab(tabId = activeTab.id, location = activeTab.location)
     }
 
@@ -743,7 +738,7 @@ class DefaultPaneComponent(
             try {
                 val result = fileRepository.list(location)
                 // Stale guard：如果 tab 已经导航到别处，丢弃本次结果
-                val currentTab = mutableState.value.tabs.firstOrNull { it.id == tabId }
+                val currentTab = tab(tabId)
                 if (currentTab == null || currentTab.location != location) return@launch
 
                 result.fold(
@@ -790,7 +785,7 @@ class DefaultPaneComponent(
                 recordHistory = false,
             )
         }
-        val tab = mutableState.value.tabs.firstOrNull { it.id == tabId }
+        val tab = tab(tabId)
         if (tab != null) {
             loadTab(tabId = tab.id, location = tab.location)
         }
@@ -819,21 +814,6 @@ class DefaultPaneComponent(
             }
             .catch { /* 监听异常静默忽略 */ }
             .launchIn(scope)
-    }
-
-    private fun createInitialState(
-        initialLocation: String,
-        defaultViewMode: ViewMode,
-    ): PaneState {
-        val tab = createTabState(
-            location = pathService.normalizeLocation(initialLocation),
-            defaultViewMode = defaultViewMode,
-        )
-        return tab.toPaneState(
-            paneId = paneId,
-            activeTabId = tab.id,
-            tabs = listOf(tab),
-        )
     }
 
     private fun createTabState(
@@ -889,37 +869,52 @@ class DefaultPaneComponent(
         transform: (PaneTabState) -> PaneTabState,
     ) {
         val state = mutableState.value
-        var updatedActiveTab: PaneTabState? = null
-        val nextTabs = state.tabs.map { tab ->
+        var updatedTab: PaneTabState? = null
+        tabs().forEach { tab ->
             if (tab.id == tabId) {
                 transform(tab).withDerivedState(
                     inlineExpandedLocations = state.inlineExpandedLocations,
                     inlineExpandedEntries = state.inlineExpandedEntries,
                 ).also { updated ->
-                    if (state.activeTabId == tabId) {
-                        updatedActiveTab = updated
-                    }
+                    updatedTab = updated
                 }
-            } else {
-                tab
             }
         }
 
-        val activeTab = updatedActiveTab ?: nextTabs.firstOrNull { it.id == state.activeTabId } ?: return
-        mutableState.value = activeTab.toPaneState(
-            paneId = paneId,
-            activeTabId = state.activeTabId,
-            tabs = nextTabs,
-            inlineExpandedLocations = state.inlineExpandedLocations,
-            inlineExpandedEntries = state.inlineExpandedEntries,
-        )
-        nextTabs.firstOrNull { tab -> tab.id == tabId }?.let(::updateTabComponentState)
+        val updated = updatedTab ?: return
+        updateTabComponentState(updated)
+        if (state.activeTabId == tabId) {
+            applyActiveTab(
+                activeTab = updated,
+                activeTabId = state.activeTabId,
+                inlineExpandedLocations = state.inlineExpandedLocations,
+                inlineExpandedEntries = state.inlineExpandedEntries,
+            )
+        }
     }
 
-    private fun syncTabStack() {
-        val state = mutableState.value
-        val configs = state.tabs.map { tab -> tab.toTabSnapshot().toTabConfig() }
-        val activeIndex = configs.indexOfFirst { config -> config.id == state.activeTabId }
+    private fun applyTabStackUpdate(update: PaneTabStackUpdate) {
+        navigateTabStack(
+            tabs = update.tabs,
+            activeTabId = update.activeTab.id,
+        )
+        applyActiveTab(update.activeTab)
+    }
+
+    private fun applyTabStackUpdate(update: PaneTabDetachUpdate) {
+        navigateTabStack(
+            tabs = update.tabs,
+            activeTabId = update.activeTab.id,
+        )
+        applyActiveTab(update.activeTab)
+    }
+
+    private fun navigateTabStack(
+        tabs: List<PaneTabState>,
+        activeTabId: String,
+    ) {
+        val configs = tabs.map { tab -> tab.toTabSnapshot().toTabConfig() }
+        val activeIndex = configs.indexOfFirst { config -> config.id == activeTabId }
         val orderedConfigs = if (activeIndex in configs.indices && activeIndex != configs.lastIndex) {
             configs.toMutableList().apply {
                 add(removeAt(activeIndex))
@@ -929,8 +924,22 @@ class DefaultPaneComponent(
         }
         if (orderedConfigs.isNotEmpty()) {
             tabNavigation.navigate { orderedConfigs }
-            state.tabs.forEach(::updateTabComponentState)
+            tabs.forEach(::updateTabComponentState)
         }
+    }
+
+    private fun applyActiveTab(
+        activeTab: PaneTabState,
+        activeTabId: String = activeTab.id,
+        inlineExpandedLocations: Set<String> = emptySet(),
+        inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
+    ) {
+        mutableState.value = activeTab.toPaneState(
+            paneId = paneId,
+            activeTabId = activeTabId,
+            inlineExpandedLocations = inlineExpandedLocations,
+            inlineExpandedEntries = inlineExpandedEntries,
+        )
     }
 
     private fun updateTabComponentState(tab: PaneTabState) {
@@ -941,7 +950,19 @@ class DefaultPaneComponent(
     }
 
     private fun activeTab(): PaneTabState? {
-        return mutableState.value.tabs.firstOrNull { it.id == mutableState.value.activeTabId }
+        return tabStack.value.active.instance.state.value
+    }
+
+    private fun tab(tabId: String): PaneTabState? {
+        return tabStack.value.items
+            .firstOrNull { child -> child.configuration.id == tabId }
+            ?.instance
+            ?.state
+            ?.value
+    }
+
+    private fun tabs(): List<PaneTabState> {
+        return tabStack.value.items.map { child -> child.instance.state.value }
     }
 
     private fun currentVisibleEntries(): List<VFile> {

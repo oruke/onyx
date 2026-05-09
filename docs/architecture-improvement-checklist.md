@@ -10,7 +10,6 @@ Onyx 的长期目标是桌面端专业文件管理器，不是示例应用。后
 
 - UI 层仍有直接 `java.io` / `java.nio` / `ProcessBuilder` 调用，导致文件系统细节泄漏到 Composable。
 - `RootComponent` 和 `PaneComponent` 接口过宽，新增功能容易继续堆方法。
-- 多标签仍由 `List<PaneTabState> + activeTabId` 手写管理，尚未落到 Decompose `ChildStack`。
 - VFS API 只覆盖 `list` 和基础命令，预览、缩略图、路径运算、同卷判断、监听等能力散落在 UI 和组件实现中。
 - core/app 层存在 Compose Resources 依赖，业务消息和 UI 资源尚未完全解耦。
 
@@ -71,7 +70,7 @@ ui
 ## P1：Tab 改为 Decompose ChildStack
 
 - [x] 每个 Tab 建立 `TabComponent`。
-- [ ] `PaneComponent` 只管理 `ChildStack<TabConfig, TabComponent>`。（已接入并同步 `ChildStack`，待移除旧 `PaneState.tabs` 投影）
+- [x] `PaneComponent` 只管理 `ChildStack<TabConfig, TabComponent>`。
 - [x] 跨面板标签拖拽传递 `TabConfig` / `TabSessionSnapshot`。
 - [x] Session 持久化改为 `TabSnapshot` 映射。
 

@@ -771,8 +771,8 @@ class DefaultRootComponent(
             layoutMode = layoutMode.value,
             paneSplitFraction = paneSplitFraction.value,
             activePane = activePane.value,
-            primaryPane = primaryPane.state.value.toPaneSessionSnapshot(),
-            secondaryPane = secondaryPane.state.value.toPaneSessionSnapshot(),
+            primaryPane = primaryPane.toPaneSessionSnapshot(),
+            secondaryPane = secondaryPane.toPaneSessionSnapshot(),
         )
     }
 
@@ -876,10 +876,12 @@ class DefaultRootComponent(
 
 }
 
-private fun PaneState.toPaneSessionSnapshot(): PaneSessionSnapshot {
+private fun PaneComponent.toPaneSessionSnapshot(): PaneSessionSnapshot {
     return PaneSessionSnapshot(
-        activeTabId = activeTabId,
-        tabs = tabs.map { tab -> tab.toTabSnapshot() },
+        activeTabId = state.value.activeTabId,
+        tabs = tabStack.value.items.map { child ->
+            child.instance.state.value.toTabSnapshot()
+        },
     )
 }
 
