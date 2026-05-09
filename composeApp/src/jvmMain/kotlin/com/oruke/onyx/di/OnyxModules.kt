@@ -127,6 +127,7 @@ val fileModule = module {
             contentServices = listOf<RoutableVfsContentService>(
                 get<JvmLocalFileProvider>(),
                 get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
             ),
             providerRegistry = get(),
         )

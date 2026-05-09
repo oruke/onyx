@@ -8,13 +8,22 @@ import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
+import io.ktor.http.content.OutgoingContent
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.readAvailable
+import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
@@ -48,10 +57,12 @@ class RemoteAuthStoreWebDavAuthRepository(
 class WebDavVfsProvider(
     private val authRepository: WebDavAuthRepository = WebDavAuthRepository.None,
     private val client: WebDavClient = KtorWebDavClient(),
-) : VfsProvider, RoutableFileCommandService, VfsConnectionTester {
+) : VfsProvider, RoutableFileCommandService, RoutableVfsContentService, VfsConnectionTester {
     override val protocol: VfsProtocol = VfsProtocol.WEBDAV
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
+        VfsProviderCapability.READ_CONTENT,
+        VfsProviderCapability.WRITE_CONTENT,
         VfsProviderCapability.CREATE_FILE,
         VfsProviderCapability.CREATE_DIRECTORY,
         VfsProviderCapability.RENAME,
@@ -171,6 +182,35 @@ class WebDavVfsProvider(
         }
     }
 
+    override suspend fun readFile(entry: VFile): Result<VfsContentSource> {
+        if (!supports(entry.location)) {
+            return Result.failure(VfsProviderNotFoundException(entry.location))
+        }
+        return runCatching {
+            client.readFile(entry, authRepository.authContext(entry.location))
+        }
+    }
+
+    override suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<VFile?> {
+        if (!supports(parentLocation)) {
+            return Result.failure(VfsProviderNotFoundException(parentLocation))
+        }
+        return runCatching {
+            client.writeFile(
+                parentLocation = parentLocation.withTrailingSlash(),
+                name = name,
+                chunks = chunks,
+                conflictStrategy = conflictStrategy,
+                authContext = authRepository.authContext(parentLocation),
+            )
+        }
+    }
+
     private fun unsupported(
         location: String,
         capability: VfsProviderCapability,
@@ -223,6 +263,19 @@ interface WebDavClient {
         name: String,
         authContext: VfsAuthContext,
     ): VFile
+
+    suspend fun readFile(
+        entry: VFile,
+        authContext: VfsAuthContext,
+    ): VfsContentSource
+
+    suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): VFile?
 }
 
 class KtorWebDavClient(
@@ -367,6 +420,9 @@ class KtorWebDavClient(
         validateTargetName(name)
         val targetLocation = webDavChildLocation(parentLocation, name.trim(), directory = false)
         try {
+            if (resourceExists(targetLocation, authContext)) {
+                throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
+            }
             val response = httpClient.request(targetLocation.toHttpWebDavUrl()) {
                 method = HttpMethod.Put
                 applyAuth(authContext, targetLocation)
@@ -391,6 +447,9 @@ class KtorWebDavClient(
         validateTargetName(name)
         val targetLocation = webDavChildLocation(parentLocation, name.trim(), directory = true)
         try {
+            if (resourceExists(targetLocation, authContext)) {
+                throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
+            }
             val response = httpClient.request(targetLocation.toHttpWebDavUrl()) {
                 method = HttpMethod("MKCOL")
                 applyAuth(authContext, targetLocation)
@@ -403,6 +462,142 @@ class KtorWebDavClient(
             throw failure.toNetworkFailure(targetLocation)
         } catch (failure: IOException) {
             throw failure.toNetworkFailure(targetLocation)
+        }
+    }
+
+    override suspend fun readFile(
+        entry: VFile,
+        authContext: VfsAuthContext,
+    ): VfsContentSource = withContext(Dispatchers.IO) {
+        if (entry.kind == VFileKind.DIRECTORY) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.WEBDAV,
+                    location = entry.location,
+                    capability = VfsProviderCapability.READ_CONTENT,
+                )
+            )
+        }
+        VfsContentSource(
+            name = entry.name,
+            sizeBytes = entry.sizeBytes,
+            chunks = flow {
+                try {
+                    val response = httpClient.request(entry.location.toHttpWebDavUrl()) {
+                        method = HttpMethod.Get
+                        applyAuth(authContext, entry.location)
+                    }
+                    response.requireSuccess(entry.location, authContext, acceptedStatuses = DownloadSuccessStatuses)
+                    val channel = response.bodyAsChannel()
+                    val buffer = ByteArray(CONTENT_BUFFER_SIZE)
+                    while (true) {
+                        val read = channel.readAvailable(buffer, 0, buffer.size)
+                        if (read < 0) break
+                        if (read > 0) {
+                            emit(buffer.copyOf(read))
+                        }
+                    }
+                } catch (failure: VfsProviderException) {
+                    throw failure
+                } catch (failure: SSLException) {
+                    throw failure.toNetworkFailure(entry.location)
+                } catch (failure: IOException) {
+                    throw failure.toNetworkFailure(entry.location)
+                }
+            }.flowOn(Dispatchers.IO),
+        )
+    }
+
+    override suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): VFile? = withContext(Dispatchers.IO) {
+        validateTargetName(name)
+        val targetLocation = resolveContentTargetLocation(
+            parentLocation = parentLocation,
+            name = name.trim(),
+            conflictStrategy = conflictStrategy,
+            authContext = authContext,
+        ) ?: return@withContext null
+        try {
+            val response = httpClient.request(targetLocation.toHttpWebDavUrl()) {
+                method = HttpMethod.Put
+                applyAuth(authContext, targetLocation)
+                setBody(
+                    object : OutgoingContent.WriteChannelContent() {
+                        override suspend fun writeTo(channel: ByteWriteChannel) {
+                            chunks.collect { chunk -> channel.writeFully(chunk) }
+                        }
+                    }
+                )
+            }
+            response.requireSuccess(targetLocation, authContext, acceptedStatuses = MutationSuccessStatuses)
+            targetLocation.toWebDavVFile(name = targetLocation.fileNameFromWebDavLocation(), parentLocation = parentLocation, directory = false)
+        } catch (failure: VfsProviderException) {
+            throw failure
+        } catch (failure: SSLException) {
+            throw failure.toNetworkFailure(targetLocation)
+        } catch (failure: IOException) {
+            throw failure.toNetworkFailure(targetLocation)
+        }
+    }
+
+    private suspend fun resolveContentTargetLocation(
+        parentLocation: String,
+        name: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): String? {
+        val targetLocation = webDavChildLocation(parentLocation, name, directory = false)
+        return when (conflictStrategy) {
+            TransferConflictStrategy.OVERWRITE -> targetLocation
+            TransferConflictStrategy.SKIP -> {
+                if (resourceExists(targetLocation, authContext)) null else targetLocation
+            }
+
+            TransferConflictStrategy.KEEP_BOTH -> {
+                var candidateName = name
+                repeat(MAX_KEEP_BOTH_ATTEMPTS) { index ->
+                    val candidateLocation = webDavChildLocation(parentLocation, candidateName, directory = false)
+                    if (!resourceExists(candidateLocation, authContext)) {
+                        return candidateLocation
+                    }
+                    candidateName = name.withCopySuffix(index + 1)
+                }
+                throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
+            }
+        }
+    }
+
+    private suspend fun resourceExists(
+        location: String,
+        authContext: VfsAuthContext,
+    ): Boolean {
+        try {
+            val response = httpClient.request(location.toHttpWebDavUrl()) {
+                method = HttpMethod("PROPFIND")
+                header("Depth", "0")
+                contentType(ContentType.Application.Xml)
+                applyAuth(authContext, location)
+                setBody(PROPFIND_BODY)
+            }
+            return when (response.status.value) {
+                200, 207 -> true
+                404 -> false
+                else -> {
+                    response.requireSuccess(location, authContext)
+                    true
+                }
+            }
+        } catch (failure: VfsProviderException) {
+            throw failure
+        } catch (failure: SSLException) {
+            throw failure.toNetworkFailure(location)
+        } catch (failure: IOException) {
+            throw failure.toNetworkFailure(location)
         }
     }
 
@@ -446,6 +641,7 @@ class KtorWebDavClient(
 
             status.value == 403 -> throw VfsProviderException(VfsProviderError.PermissionDenied(VfsProtocol.WEBDAV, location))
             status.value == 404 -> throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.WEBDAV, location))
+            status.value == 412 -> throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, location))
             status.value in 500..599 -> throw VfsProviderException(
                 VfsProviderError.NetworkFailure(
                     protocol = VfsProtocol.WEBDAV,
@@ -492,8 +688,21 @@ class KtorWebDavClient(
         directory: Boolean,
     ): String {
         val parentUri = URI(parentLocation.withTrailingSlash().encodeSpaces())
-        val childPath = parentUri.path.withTrailingSlash() + name + if (directory) "/" else ""
+        val childPath = parentUri.path.withTrailingSlash() + name + (if (directory) "/" else "")
         return URI(parentUri.scheme, null, parentUri.host, parentUri.port, childPath, null, null).toASCIIString()
+    }
+
+    private fun String.fileNameFromWebDavLocation(): String {
+        return URI(encodeSpaces()).path.trimEnd('/').substringAfterLast('/').urlDecode()
+    }
+
+    private fun String.withCopySuffix(index: Int): String {
+        val dotIndex = lastIndexOf('.').takeIf { dot -> dot > 0 }
+        return if (dotIndex == null) {
+            "$this ($index)"
+        } else {
+            substring(0, dotIndex) + " ($index)" + substring(dotIndex)
+        }
     }
 
     private fun String.parentWebDavLocation(): String {
@@ -525,6 +734,7 @@ class KtorWebDavClient(
                     add(VFileCapability.LIST_CHILDREN)
                 } else {
                     add(VFileCapability.READ_CONTENT)
+                    add(VFileCapability.WRITE_CONTENT)
                 }
             },
         )
@@ -533,6 +743,9 @@ class KtorWebDavClient(
     private companion object {
         val ListSuccessStatuses = setOf(200, 207)
         val MutationSuccessStatuses = setOf(200, 201, 204)
+        val DownloadSuccessStatuses = setOf(200, 206)
+        const val CONTENT_BUFFER_SIZE = 64 * 1024
+        const val MAX_KEEP_BOTH_ATTEMPTS = 10_000
         val PROPFIND_BODY = """
             <?xml version="1.0" encoding="utf-8"?>
             <d:propfind xmlns:d="DAV:">
@@ -587,10 +800,13 @@ class WebDavMultiStatusParser {
                         hidden = displayName.startsWith("."),
                         capabilities = buildSet {
                             add(VFileCapability.READ_METADATA)
+                            add(VFileCapability.RENAME)
+                            add(VFileCapability.DELETE)
                             if (directory) {
                                 add(VFileCapability.LIST_CHILDREN)
                             } else {
                                 add(VFileCapability.READ_CONTENT)
+                                add(VFileCapability.WRITE_CONTENT)
                             }
                         },
                     )
