@@ -296,10 +296,10 @@
     <string name="action_close_search_panel">Close Search</string>
     <string name="label_search_title">Search</string>
     <string name="label_search_scope">Scope: %1$s</string>
-    <string name="label_search_placeholder">Name or .extension</string>
+    <string name="label_search_placeholder">Name, .ext, size&gt;10M, modified&gt;2026-01-01</string>
     <string name="label_command_palette_placeholder">Filter commands</string>
     <string name="label_command_palette_empty">No matching commands</string>
-    <string name="label_search_idle">Enter a name or extension to search recursively.</string>
+    <string name="label_search_idle">Enter a name, extension, size filter, date filter, or type:file/type:dir to search recursively.</string>
     <string name="label_search_running_summary">Scanned %1$d item(s), %2$d match(es)</string>
     <string name="label_search_completed_summary">%1$d result(s), %2$d item(s) scanned</string>
     <string name="label_search_completed_limited_summary">%1$d result(s), %2$d item(s) scanned. Result limit reached.</string>
