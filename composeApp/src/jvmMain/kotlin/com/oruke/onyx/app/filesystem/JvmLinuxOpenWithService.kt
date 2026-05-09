@@ -232,8 +232,8 @@ class JvmPlatformOpenWithService(
     override suspend fun listApps(entry: VFile): List<OpenWithApp> {
         return when (currentHostPlatform()) {
             HostPlatform.LINUX -> linuxOpenWithService.listApps(entry)
+            HostPlatform.MACOS -> listMacApplications()
             HostPlatform.WINDOWS,
-            HostPlatform.MACOS,
             HostPlatform.OTHER -> emptyList()
         }
     }
@@ -279,6 +279,41 @@ class JvmPlatformOpenWithService(
         }
     }
 
+    private suspend fun listMacApplications(): List<OpenWithApp> = withContext(Dispatchers.IO) {
+        val applicationDirs = listOf(
+            Path.of("/Applications"),
+            Path.of(System.getProperty("user.home"), "Applications"),
+            Path.of("/System/Applications"),
+        )
+        applicationDirs
+            .asSequence()
+            .filter { dir -> Files.isDirectory(dir) }
+            .flatMap { dir ->
+                runCatching {
+                    Files.walk(dir, MAC_APP_SCAN_DEPTH).use { stream ->
+                        stream
+                            .filter { path -> path.fileName.toString().endsWith(".app", ignoreCase = true) }
+                            .map { path -> path.toOpenWithApp() }
+                            .toList()
+                    }
+                }.getOrDefault(emptyList()).asSequence()
+            }
+            .distinctBy { app -> app.id }
+            .sortedBy { app -> app.displayName.lowercase(Locale.getDefault()) }
+            .take(MAX_MAC_APPLICATIONS)
+            .toList()
+    }
+
+    private fun Path.toOpenWithApp(): OpenWithApp {
+        val displayName = fileName.toString().removeSuffix(".app")
+        return OpenWithApp(
+            id = toString(),
+            displayName = displayName,
+            command = displayName,
+            iconPath = toString(),
+        )
+    }
+
     private fun currentHostPlatform(): HostPlatform {
         val osName = System.getProperty("os.name").lowercase(Locale.getDefault())
         return when {
@@ -298,5 +333,10 @@ class JvmPlatformOpenWithService(
         MACOS,
         LINUX,
         OTHER,
+    }
+
+    private companion object {
+        const val MAC_APP_SCAN_DEPTH = 2
+        const val MAX_MAC_APPLICATIONS = 120
     }
 }
