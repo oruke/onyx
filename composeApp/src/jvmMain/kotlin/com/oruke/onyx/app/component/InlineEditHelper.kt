@@ -28,46 +28,56 @@ internal sealed interface InlineEditOperation {
 
 internal fun PaneTabState.beginRenameInlineEdit(targetEntry: VFile): PaneTabState {
     if (inlineEditState != null) return this
-    return copy(
-        inlineEditState = PaneInlineEditState(
-            mode = PaneInlineEditMode.RENAME,
-            targetEntryId = targetEntry.id,
-            draftName = targetEntry.name,
-        ),
-    )
+    return withTabState { current ->
+        current.copy(
+            inlineEditState = PaneInlineEditState(
+                mode = PaneInlineEditMode.RENAME,
+                targetEntryId = targetEntry.id,
+                draftName = targetEntry.name,
+            ),
+        )
+    }
 }
 
 internal fun PaneTabState.beginCreateFileInlineEdit(draftName: String): PaneTabState {
     if (inlineEditState != null) return this
-    return copy(
-        inlineEditState = PaneInlineEditState(
-            mode = PaneInlineEditMode.CREATE_FILE,
-            draftName = draftName,
-        ),
-    )
+    return withTabState { current ->
+        current.copy(
+            inlineEditState = PaneInlineEditState(
+                mode = PaneInlineEditMode.CREATE_FILE,
+                draftName = draftName,
+            ),
+        )
+    }
 }
 
 internal fun PaneTabState.beginCreateDirectoryInlineEdit(draftName: String): PaneTabState {
     if (inlineEditState != null) return this
-    return copy(
-        inlineEditState = PaneInlineEditState(
-            mode = PaneInlineEditMode.CREATE_DIRECTORY,
-            draftName = draftName,
-        ),
-    )
+    return withTabState { current ->
+        current.copy(
+            inlineEditState = PaneInlineEditState(
+                mode = PaneInlineEditMode.CREATE_DIRECTORY,
+                draftName = draftName,
+            ),
+        )
+    }
 }
 
 internal fun PaneTabState.withInlineEditDraft(draft: String): PaneTabState {
     val currentInlineEdit = inlineEditState ?: return this
     if (draft == currentInlineEdit.draftName) return this
-    return copy(
-        inlineEditState = currentInlineEdit.copy(draftName = draft),
-    )
+    return withTabState { current ->
+        current.copy(
+            inlineEditState = currentInlineEdit.copy(draftName = draft),
+        )
+    }
 }
 
 internal fun PaneTabState.clearInlineEditState(): PaneTabState {
     if (inlineEditState == null) return this
-    return copy(inlineEditState = null)
+    return withTabState { current ->
+        current.copy(inlineEditState = null)
+    }
 }
 
 internal fun PaneTabState.confirmInlineEditState(

@@ -46,30 +46,13 @@ internal fun PaneTabState.toPaneState(
 ): PaneState {
     return PaneState(
         paneId = paneId,
-        activeTabId = activeTabId,
-        tabs = tabs,
-        location = location,
-        canGoBack = canGoBack,
-        canGoForward = canGoForward,
-        detailsColumns = detailsColumns,
-        detailsColumnWeights = detailsColumnWeights,
-        detailsSort = detailsSort,
-        viewMode = viewMode,
-        filterQuery = filterQuery,
-        selectedEntryIds = selectedEntryIds,
-        selectionAnchorId = selectionAnchorId,
-        selectionFocusId = selectionFocusId,
-        statusInfo = statusInfo,
-        inlineEditState = inlineEditState,
-        inspectorState = inspectorState,
-        operationFeedback = operationFeedback,
-        showHiddenItems = showHiddenItems,
-        hiddenColumns = hiddenColumns,
-        galleryItemSizeDp = galleryItemSizeDp,
-        entriesState = entriesState,
-        inlineExpandedLocations = inlineExpandedLocations,
-        inlineExpandedEntries = inlineExpandedEntries,
-        pendingScrollToEntryId = pendingScrollToEntryId,
+        chromeState = PaneChromeState(
+            activeTabId = activeTabId,
+            tabs = tabs,
+            inlineExpandedLocations = inlineExpandedLocations,
+            inlineExpandedEntries = inlineExpandedEntries,
+        ),
+        activeTabState = tabState,
     )
 }
 
@@ -92,29 +75,31 @@ internal fun TabSessionSnapshot.toPaneTabState(pathService: VfsPathService): Pan
     return PaneTabState(
         id = id,
         title = pathService.title(location),
-        location = location,
-        canGoBack = backStack.isNotEmpty(),
-        canGoForward = forwardStack.isNotEmpty(),
-        detailsColumns = detailsColumns,
-        detailsColumnWeights = if (detailsColumnWeights.values.all { it < 2f }) {
-            defaultDetailsColumnWeights()
-        } else {
-            detailsColumnWeights
-        },
-        detailsSort = detailsSort,
-        viewMode = viewMode,
-        filterQuery = filterQuery,
-        selectedEntryIds = emptySet(),
-        selectionAnchorId = null,
-        selectionFocusId = null,
-        statusInfo = PaneStatusInfo(),
-        inlineEditState = null,
-        inspectorState = PaneInspectorState(),
-        operationFeedback = null,
-        showHiddenItems = showHiddenItems,
-        hiddenColumns = emptySet(),
-        galleryItemSizeDp = 160,
-        entriesState = PaneEntriesState.Idle,
+        tabState = TabState(
+            location = location,
+            canGoBack = backStack.isNotEmpty(),
+            canGoForward = forwardStack.isNotEmpty(),
+            detailsColumns = detailsColumns,
+            detailsColumnWeights = if (detailsColumnWeights.values.all { it < 2f }) {
+                defaultDetailsColumnWeights()
+            } else {
+                detailsColumnWeights
+            },
+            detailsSort = detailsSort,
+            viewMode = viewMode,
+            filterQuery = filterQuery,
+            selectedEntryIds = emptySet(),
+            selectionAnchorId = null,
+            selectionFocusId = null,
+            statusInfo = PaneStatusInfo(),
+            inlineEditState = null,
+            inspectorState = PaneInspectorState(),
+            operationFeedback = null,
+            showHiddenItems = showHiddenItems,
+            hiddenColumns = emptySet(),
+            galleryItemSizeDp = 160,
+            entriesState = PaneEntriesState.Idle,
+        ),
         allEntries = emptyList(),
         backStack = backStack,
         forwardStack = forwardStack,
@@ -156,24 +141,28 @@ internal fun PaneTabState.withDerivedState(
             PaneEntriesState.Idle
         }
     }
-    return copy(
-        selectedEntryIds = selection.selectedEntryIds,
-        selectionAnchorId = selection.anchorId,
-        selectionFocusId = selection.focusId,
-        statusInfo = SelectionHelper.buildStatusInfo(
-            allEntries = allEntries,
-            visibleEntries = visibleEntries,
+    return withTabState { current ->
+        current.copy(
             selectedEntryIds = selection.selectedEntryIds,
-        ),
-        entriesState = nextEntriesState,
-    )
+            selectionAnchorId = selection.anchorId,
+            selectionFocusId = selection.focusId,
+            statusInfo = SelectionHelper.buildStatusInfo(
+                allEntries = allEntries,
+                visibleEntries = visibleEntries,
+                selectedEntryIds = selection.selectedEntryIds,
+            ),
+            entriesState = nextEntriesState,
+        )
+    }
 }
 
 internal fun PaneTabState.prepareForRefresh(): PaneTabState {
-    return copy(
-        inlineEditState = null,
-        entriesState = PaneEntriesState.Loading,
-    )
+    return withTabState { current ->
+        current.copy(
+            inlineEditState = null,
+            entriesState = PaneEntriesState.Loading,
+        )
+    }
 }
 
 internal fun PaneTabState.navigateBackState(previousTitle: String): PaneTabState {
@@ -222,22 +211,28 @@ internal fun PaneTabState.withLoadedEntries(
     return if (focusEntry != null) {
         copy(
             allEntries = entries,
-            entriesState = PaneEntriesState.Ready(entries),
-            selectedEntryIds = setOf(focusEntry.id),
-            selectionAnchorId = focusEntry.id,
-            selectionFocusId = focusEntry.id,
-            pendingScrollToEntryId = focusEntry.id,
-        )
+        ).withTabState { current ->
+            current.copy(
+                entriesState = PaneEntriesState.Ready(entries),
+                selectedEntryIds = setOf(focusEntry.id),
+                selectionAnchorId = focusEntry.id,
+                selectionFocusId = focusEntry.id,
+                pendingScrollToEntryId = focusEntry.id,
+            )
+        }
     } else {
         copy(
             allEntries = entries,
-            entriesState = PaneEntriesState.Ready(entries),
-        )
+        ).withTabState { current ->
+            current.copy(entriesState = PaneEntriesState.Ready(entries))
+        }
     }
 }
 
 internal fun PaneTabState.withLoadFailure(reason: String?): PaneTabState {
-    return copy(entriesState = PaneEntriesState.Failure(reason))
+    return withTabState { current ->
+        current.copy(entriesState = PaneEntriesState.Failure(reason))
+    }
 }
 
 private fun PaneTabState.navigateToLoadingLocation(
@@ -247,19 +242,22 @@ private fun PaneTabState.navigateToLoadingLocation(
     forwardStack: List<String>,
 ): PaneTabState {
     return copy(
-        location = location,
         title = title,
-        canGoBack = backStack.isNotEmpty(),
-        canGoForward = forwardStack.isNotEmpty(),
-        selectedEntryIds = emptySet(),
-        selectionAnchorId = null,
-        selectionFocusId = null,
-        entriesState = PaneEntriesState.Loading,
         allEntries = emptyList(),
-        inlineEditState = null,
         backStack = backStack,
         forwardStack = forwardStack,
-    )
+    ).withTabState { current ->
+        current.copy(
+            location = location,
+            canGoBack = backStack.isNotEmpty(),
+            canGoForward = forwardStack.isNotEmpty(),
+            selectedEntryIds = emptySet(),
+            selectionAnchorId = null,
+            selectionFocusId = null,
+            entriesState = PaneEntriesState.Loading,
+            inlineEditState = null,
+        )
+    }
 }
 
 internal fun createDefaultPaneTabState(
@@ -271,28 +269,30 @@ internal fun createDefaultPaneTabState(
     return PaneTabState(
         id = id,
         title = title,
-        location = location,
-        canGoBack = false,
-        canGoForward = false,
-        detailsColumns = defaultDetailsColumns(),
-        detailsColumnWeights = defaultDetailsColumnWeights(),
-        detailsSort = DetailsSort(
-            column = DetailsColumn.NAME,
-            direction = SortDirection.ASCENDING,
+        tabState = TabState(
+            location = location,
+            canGoBack = false,
+            canGoForward = false,
+            detailsColumns = defaultDetailsColumns(),
+            detailsColumnWeights = defaultDetailsColumnWeights(),
+            detailsSort = DetailsSort(
+                column = DetailsColumn.NAME,
+                direction = SortDirection.ASCENDING,
+            ),
+            viewMode = defaultViewMode,
+            filterQuery = "",
+            selectedEntryIds = emptySet(),
+            selectionAnchorId = null,
+            selectionFocusId = null,
+            statusInfo = PaneStatusInfo(),
+            inlineEditState = null,
+            inspectorState = PaneInspectorState(),
+            operationFeedback = null,
+            showHiddenItems = false,
+            hiddenColumns = emptySet(),
+            galleryItemSizeDp = 160,
+            entriesState = PaneEntriesState.Idle,
         ),
-        viewMode = defaultViewMode,
-        filterQuery = "",
-        selectedEntryIds = emptySet(),
-        selectionAnchorId = null,
-        selectionFocusId = null,
-        statusInfo = PaneStatusInfo(),
-        inlineEditState = null,
-        inspectorState = PaneInspectorState(),
-        operationFeedback = null,
-        showHiddenItems = false,
-        hiddenColumns = emptySet(),
-        galleryItemSizeDp = 160,
-        entriesState = PaneEntriesState.Idle,
         allEntries = emptyList(),
         backStack = emptyList(),
         forwardStack = emptyList(),

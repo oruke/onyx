@@ -47,19 +47,23 @@ internal fun PaneTabState.selectEntryState(
     }
 
     val finalSelection = nextSelection.ifEmpty { setOf(entryId) }
-    return copy(
-        selectedEntryIds = finalSelection,
-        selectionAnchorId = if (range) {
-            currentAnchor ?: currentFocus ?: entryId
-        } else {
-            entryId
-        },
-        selectionFocusId = entryId,
-    )
+    return withTabState { current ->
+        current.copy(
+            selectedEntryIds = finalSelection,
+            selectionAnchorId = if (range) {
+                currentAnchor ?: currentFocus ?: entryId
+            } else {
+                entryId
+            },
+            selectionFocusId = entryId,
+        )
+    }
 }
 
 internal fun PaneTabState.withSelectedEntryIds(entryIds: Set<String>): PaneTabState {
-    return copy(selectedEntryIds = entryIds)
+    return withTabState { current ->
+        current.copy(selectedEntryIds = entryIds)
+    }
 }
 
 internal fun PaneTabState.moveSelectionState(
@@ -85,39 +89,47 @@ internal fun PaneTabState.moveSelectionState(
         val anchorId = SelectionHelper.validEntryId(selectionAnchorId, entries)
             ?: currentFocusId
             ?: nextEntryId
-        copy(
-            selectedEntryIds = SelectionHelper.buildRangeSelection(
-                entries = entries,
-                anchorId = anchorId,
-                targetId = nextEntryId,
-                additive = false,
-                existingSelection = emptySet(),
-            ),
-            selectionAnchorId = anchorId,
-            selectionFocusId = nextEntryId,
-        )
+        withTabState { current ->
+            current.copy(
+                selectedEntryIds = SelectionHelper.buildRangeSelection(
+                    entries = entries,
+                    anchorId = anchorId,
+                    targetId = nextEntryId,
+                    additive = false,
+                    existingSelection = emptySet(),
+                ),
+                selectionAnchorId = anchorId,
+                selectionFocusId = nextEntryId,
+            )
+        }
     } else {
-        copy(
-            selectedEntryIds = setOf(nextEntryId),
-            selectionAnchorId = nextEntryId,
-            selectionFocusId = nextEntryId,
-        )
+        withTabState { current ->
+            current.copy(
+                selectedEntryIds = setOf(nextEntryId),
+                selectionAnchorId = nextEntryId,
+                selectionFocusId = nextEntryId,
+            )
+        }
     }
 }
 
 internal fun PaneTabState.selectAllEntriesState(entries: List<VFile>): PaneTabState {
     if (entries.isEmpty()) return this
-    return copy(
-        selectedEntryIds = entries.mapTo(linkedSetOf()) { it.id },
-        selectionAnchorId = entries.first().id,
-        selectionFocusId = entries.first().id,
-    )
+    return withTabState { current ->
+        current.copy(
+            selectedEntryIds = entries.mapTo(linkedSetOf()) { it.id },
+            selectionAnchorId = entries.first().id,
+            selectionFocusId = entries.first().id,
+        )
+    }
 }
 
 internal fun PaneTabState.clearSelectionState(): PaneTabState {
-    return copy(
-        selectedEntryIds = emptySet(),
-        selectionAnchorId = null,
-        selectionFocusId = null,
-    )
+    return withTabState { current ->
+        current.copy(
+            selectedEntryIds = emptySet(),
+            selectionAnchorId = null,
+            selectionFocusId = null,
+        )
+    }
 }

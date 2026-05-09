@@ -20,8 +20,10 @@ internal fun PaneState.toggleInlineExpandState(directoryLocation: String): Inlin
         }.toSet()
         return InlineExpandToggleResult(
             state = copy(
-                inlineExpandedLocations = inlineExpandedLocations - toRemove,
-                inlineExpandedEntries = inlineExpandedEntries - toRemove,
+                chromeState = chromeState.copy(
+                    inlineExpandedLocations = inlineExpandedLocations - toRemove,
+                    inlineExpandedEntries = inlineExpandedEntries - toRemove,
+                ),
             ),
             loadRequest = null,
         )
@@ -38,8 +40,10 @@ internal fun PaneState.toggleInlineExpandState(directoryLocation: String): Inlin
     )
     return InlineExpandToggleResult(
         state = copy(
-            inlineExpandedLocations = inlineExpandedLocations + directoryLocation,
-            inlineExpandedEntries = inlineExpandedEntries + (directoryLocation to loading),
+            chromeState = chromeState.copy(
+                inlineExpandedLocations = inlineExpandedLocations + directoryLocation,
+                inlineExpandedEntries = inlineExpandedEntries + (directoryLocation to loading),
+            ),
         ),
         loadRequest = InlineExpandLoadRequest(
             location = directoryLocation,
@@ -55,12 +59,14 @@ internal fun PaneState.withInlineExpandChildren(
 ): PaneState {
     if (location !in inlineExpandedLocations) return this
     return copy(
-        inlineExpandedEntries = inlineExpandedEntries + (
-            location to InlineExpandedEntry(
-                parentLocation = location,
-                depth = depth,
-                entries = entries.sortedForInlineExpand(),
-            )
+        chromeState = chromeState.copy(
+            inlineExpandedEntries = inlineExpandedEntries + (
+                location to InlineExpandedEntry(
+                    parentLocation = location,
+                    depth = depth,
+                    entries = entries.sortedForInlineExpand(),
+                )
+            ),
         ),
     )
 }
@@ -71,21 +77,25 @@ internal fun PaneState.withInlineExpandFailure(
 ): PaneState {
     if (location !in inlineExpandedLocations) return this
     return copy(
-        inlineExpandedEntries = inlineExpandedEntries + (
-            location to InlineExpandedEntry(
-                parentLocation = location,
-                depth = depth,
-                entries = emptyList(),
-                error = true,
-            )
+        chromeState = chromeState.copy(
+            inlineExpandedEntries = inlineExpandedEntries + (
+                location to InlineExpandedEntry(
+                    parentLocation = location,
+                    depth = depth,
+                    entries = emptyList(),
+                    error = true,
+                )
+            ),
         ),
     )
 }
 
 internal fun PaneState.clearInlineExpandState(): PaneState {
     return copy(
-        inlineExpandedLocations = emptySet(),
-        inlineExpandedEntries = emptyMap(),
+        chromeState = chromeState.copy(
+            inlineExpandedLocations = emptySet(),
+            inlineExpandedEntries = emptyMap(),
+        ),
     )
 }
 

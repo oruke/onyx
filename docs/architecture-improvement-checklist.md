@@ -56,7 +56,7 @@ ui
 
 ## P1：收敛状态与事件模型
 
-- [ ] 拆分 `PaneState` 与 `PaneTabState` 重复字段，提取 `TabState` 与 `PaneChromeState`。
+- [x] 拆分 `PaneState` 与 `PaneTabState` 重复字段，提取 `TabState` 与 `PaneChromeState`。
 - [x] 引入 `PaneIntent` 与 `PaneComponent.dispatch` 入口。
 - [x] 引入 `RootIntent` 与 `RootComponent.dispatch` 入口。
 - [x] UI 命令调用迁移为发送 `RootIntent` / `PaneIntent`。

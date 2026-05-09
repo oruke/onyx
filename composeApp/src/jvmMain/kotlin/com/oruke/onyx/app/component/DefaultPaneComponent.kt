@@ -339,7 +339,8 @@ class DefaultPaneComponent(
 
     override fun updateInlineEditDraft(draft: String) {
         val tab = activeTab() ?: return
-        if (tab.inlineEditState == null || draft == tab.inlineEditState.draftName) {
+        val inlineEditState = tab.inlineEditState
+        if (inlineEditState == null || draft == inlineEditState.draftName) {
             return
         }
         updateTab(tab.id) { currentTab ->
@@ -423,13 +424,15 @@ class DefaultPaneComponent(
 
     override fun setViewMode(mode: ViewMode) {
         val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab -> currentTab.copy(viewMode = mode) }
+        updateTab(tab.id) { currentTab ->
+            currentTab.withTabState { current -> current.copy(viewMode = mode) }
+        }
     }
 
     override fun setFilterQuery(query: String) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(filterQuery = query.trim())
+            currentTab.withTabState { current -> current.copy(filterQuery = query.trim()) }
         }
     }
 
@@ -450,9 +453,11 @@ class DefaultPaneComponent(
             )
         }
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                detailsSort = nextSort,
-            )
+            currentTab.withTabState { current ->
+                current.copy(
+                    detailsSort = nextSort,
+                )
+            }
         }
     }
 
@@ -460,9 +465,11 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         val showHiddenItems = !tab.showHiddenItems
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                showHiddenItems = showHiddenItems,
-            )
+            currentTab.withTabState { current ->
+                current.copy(
+                    showHiddenItems = showHiddenItems,
+                )
+            }
         }
     }
 
@@ -473,7 +480,7 @@ class DefaultPaneComponent(
         updateTab(tab.id) { currentTab ->
             val hidden = currentTab.hiddenColumns.toMutableSet()
             if (column in hidden) hidden.remove(column) else hidden.add(column)
-            currentTab.copy(hiddenColumns = hidden)
+            currentTab.withTabState { current -> current.copy(hiddenColumns = hidden) }
         }
     }
 
@@ -481,7 +488,7 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         val clamped = sizeDp.coerceIn(80, 320)
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(galleryItemSizeDp = clamped)
+            currentTab.withTabState { current -> current.copy(galleryItemSizeDp = clamped) }
         }
     }
 
@@ -494,11 +501,13 @@ class DefaultPaneComponent(
         val currentWidth = tab.detailsColumnWeights[column] ?: defaultDetailsColumnWidth(column)
         val newWidth = (currentWidth + deltaWeight).coerceAtLeast(MIN_DETAILS_COLUMN_WIDTH)
         updateTab(tab.id) { currentTab ->
-            currentTab.copy(
-                detailsColumnWeights = currentTab.detailsColumnWeights + mapOf(
-                    column to newWidth,
+            currentTab.withTabState { current ->
+                current.copy(
+                    detailsColumnWeights = current.detailsColumnWeights + mapOf(
+                        column to newWidth,
+                    )
                 )
-            )
+            }
         }
     }
 
@@ -680,7 +689,7 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         if (tab.pendingScrollToEntryId != null) {
             updateTab(tab.id) { currentTab ->
-                currentTab.copy(pendingScrollToEntryId = null)
+                currentTab.withTabState { current -> current.copy(pendingScrollToEntryId = null) }
             }
         }
     }
@@ -853,7 +862,7 @@ class DefaultPaneComponent(
 
     private fun clearOperationFeedback(tabId: String) {
         updateTab(tabId) { currentTab ->
-            currentTab.copy(operationFeedback = null)
+            currentTab.withTabState { current -> current.copy(operationFeedback = null) }
         }
     }
 
@@ -863,12 +872,14 @@ class DefaultPaneComponent(
         detail: I18nMessage?,
     ) {
         updateTab(tabId) { currentTab ->
-            currentTab.copy(
-                operationFeedback = PaneOperationFeedback(
-                    kind = kind,
-                    detail = detail,
+            currentTab.withTabState { current ->
+                current.copy(
+                    operationFeedback = PaneOperationFeedback(
+                        kind = kind,
+                        detail = detail,
+                    )
                 )
-            )
+            }
         }
     }
 

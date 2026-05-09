@@ -12,10 +12,7 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.flow.StateFlow
 
-data class PaneState(
-    val paneId: PaneId,
-    val activeTabId: String,
-    val tabs: List<PaneTabState>,
+data class TabState(
     val location: String,
     val canGoBack: Boolean,
     val canGoForward: Boolean,
@@ -35,38 +32,80 @@ data class PaneState(
     val hiddenColumns: Set<DetailsColumn>,
     val galleryItemSizeDp: Int,
     val entriesState: PaneEntriesState,
-    val inlineExpandedLocations: Set<String> = emptySet(),
-    val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
     val pendingScrollToEntryId: String? = null,
 )
+
+data class PaneChromeState(
+    val activeTabId: String,
+    val tabs: List<PaneTabState>,
+    val inlineExpandedLocations: Set<String> = emptySet(),
+    val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
+)
+
+data class PaneState(
+    val paneId: PaneId,
+    val chromeState: PaneChromeState,
+    val activeTabState: TabState,
+) {
+    val activeTabId: String get() = chromeState.activeTabId
+    val tabs: List<PaneTabState> get() = chromeState.tabs
+    val inlineExpandedLocations: Set<String> get() = chromeState.inlineExpandedLocations
+    val inlineExpandedEntries: Map<String, InlineExpandedEntry> get() = chromeState.inlineExpandedEntries
+    val location: String get() = activeTabState.location
+    val canGoBack: Boolean get() = activeTabState.canGoBack
+    val canGoForward: Boolean get() = activeTabState.canGoForward
+    val detailsColumns: List<DetailsColumn> get() = activeTabState.detailsColumns
+    val detailsColumnWeights: Map<DetailsColumn, Float> get() = activeTabState.detailsColumnWeights
+    val detailsSort: DetailsSort get() = activeTabState.detailsSort
+    val viewMode: ViewMode get() = activeTabState.viewMode
+    val filterQuery: String get() = activeTabState.filterQuery
+    val selectedEntryIds: Set<String> get() = activeTabState.selectedEntryIds
+    val selectionAnchorId: String? get() = activeTabState.selectionAnchorId
+    val selectionFocusId: String? get() = activeTabState.selectionFocusId
+    val statusInfo: PaneStatusInfo get() = activeTabState.statusInfo
+    val inlineEditState: PaneInlineEditState? get() = activeTabState.inlineEditState
+    val inspectorState: PaneInspectorState get() = activeTabState.inspectorState
+    val operationFeedback: PaneOperationFeedback? get() = activeTabState.operationFeedback
+    val showHiddenItems: Boolean get() = activeTabState.showHiddenItems
+    val hiddenColumns: Set<DetailsColumn> get() = activeTabState.hiddenColumns
+    val galleryItemSizeDp: Int get() = activeTabState.galleryItemSizeDp
+    val entriesState: PaneEntriesState get() = activeTabState.entriesState
+    val pendingScrollToEntryId: String? get() = activeTabState.pendingScrollToEntryId
+}
 
 data class PaneTabState(
     val id: String,
     val title: String,
-    val location: String,
-    val canGoBack: Boolean,
-    val canGoForward: Boolean,
-    val detailsColumns: List<DetailsColumn>,
-    val detailsColumnWeights: Map<DetailsColumn, Float>,
-    val detailsSort: DetailsSort,
-    val viewMode: ViewMode,
-    val filterQuery: String,
-    val selectedEntryIds: Set<String>,
-    val selectionAnchorId: String?,
-    val selectionFocusId: String?,
-    val statusInfo: PaneStatusInfo,
-    val inlineEditState: PaneInlineEditState?,
-    val inspectorState: PaneInspectorState,
-    val operationFeedback: PaneOperationFeedback?,
-    val showHiddenItems: Boolean,
-    val hiddenColumns: Set<DetailsColumn>,
-    val galleryItemSizeDp: Int,
-    val entriesState: PaneEntriesState,
+    val tabState: TabState,
     val allEntries: List<VFile>,
     val backStack: List<String>,
     val forwardStack: List<String>,
-    val pendingScrollToEntryId: String? = null,
-)
+) {
+    val location: String get() = tabState.location
+    val canGoBack: Boolean get() = tabState.canGoBack
+    val canGoForward: Boolean get() = tabState.canGoForward
+    val detailsColumns: List<DetailsColumn> get() = tabState.detailsColumns
+    val detailsColumnWeights: Map<DetailsColumn, Float> get() = tabState.detailsColumnWeights
+    val detailsSort: DetailsSort get() = tabState.detailsSort
+    val viewMode: ViewMode get() = tabState.viewMode
+    val filterQuery: String get() = tabState.filterQuery
+    val selectedEntryIds: Set<String> get() = tabState.selectedEntryIds
+    val selectionAnchorId: String? get() = tabState.selectionAnchorId
+    val selectionFocusId: String? get() = tabState.selectionFocusId
+    val statusInfo: PaneStatusInfo get() = tabState.statusInfo
+    val inlineEditState: PaneInlineEditState? get() = tabState.inlineEditState
+    val inspectorState: PaneInspectorState get() = tabState.inspectorState
+    val operationFeedback: PaneOperationFeedback? get() = tabState.operationFeedback
+    val showHiddenItems: Boolean get() = tabState.showHiddenItems
+    val hiddenColumns: Set<DetailsColumn> get() = tabState.hiddenColumns
+    val galleryItemSizeDp: Int get() = tabState.galleryItemSizeDp
+    val entriesState: PaneEntriesState get() = tabState.entriesState
+    val pendingScrollToEntryId: String? get() = tabState.pendingScrollToEntryId
+
+    fun withTabState(transform: (TabState) -> TabState): PaneTabState {
+        return copy(tabState = transform(tabState))
+    }
+}
 
 sealed interface PaneEntriesState {
     data object Idle : PaneEntriesState
