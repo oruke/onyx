@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Locale
 
 /**
  * Linux "打开方式"服务 — 基于 xdg-mime 和 .desktop 文件。
@@ -222,5 +223,80 @@ class JvmLinuxOpenWithService : OpenWithService {
         } catch (_: Exception) {
             null
         }
+    }
+}
+
+class JvmPlatformOpenWithService(
+    private val linuxOpenWithService: OpenWithService = JvmLinuxOpenWithService(),
+) : OpenWithService {
+    override suspend fun listApps(entry: VFile): List<OpenWithApp> {
+        return when (currentHostPlatform()) {
+            HostPlatform.LINUX -> linuxOpenWithService.listApps(entry)
+            HostPlatform.WINDOWS,
+            HostPlatform.MACOS,
+            HostPlatform.OTHER -> emptyList()
+        }
+    }
+
+    override suspend fun openWith(entry: VFile, app: OpenWithApp): Result<Unit> {
+        return when (currentHostPlatform()) {
+            HostPlatform.LINUX -> linuxOpenWithService.openWith(entry, app)
+            HostPlatform.MACOS -> runProcess("open", "-a", app.command.ifBlank { app.displayName }, entry.location)
+            HostPlatform.WINDOWS -> runProcess(app.command, entry.location)
+            HostPlatform.OTHER -> Result.failure(UnsupportedOperationException())
+        }
+    }
+
+    override suspend fun openWithChooser(entry: VFile): Result<Unit> {
+        return when (currentHostPlatform()) {
+            HostPlatform.LINUX -> linuxOpenWithService.openWithChooser(entry)
+            HostPlatform.WINDOWS -> runProcess("rundll32", "shell32.dll,OpenAs_RunDLL", entry.location)
+            HostPlatform.MACOS -> runMacOpenWithChooser(entry.location)
+            HostPlatform.OTHER -> Result.failure(UnsupportedOperationException())
+        }
+    }
+
+    private suspend fun runProcess(vararg command: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            ProcessBuilder(*command)
+                .directory(File(command.last()).parentFile ?: File("."))
+                .start()
+            Unit
+        }
+    }
+
+    private suspend fun runMacOpenWithChooser(location: String): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val script = """
+                set onyxTarget to POSIX file "${location.appleScriptEscaped()}"
+                set onyxApp to choose application
+                tell onyxApp to open onyxTarget
+            """.trimIndent()
+            ProcessBuilder("osascript", "-e", script)
+                .directory(File(location).parentFile ?: File("."))
+                .start()
+            Unit
+        }
+    }
+
+    private fun currentHostPlatform(): HostPlatform {
+        val osName = System.getProperty("os.name").lowercase(Locale.getDefault())
+        return when {
+            osName.contains("mac") || osName.contains("darwin") -> HostPlatform.MACOS
+            osName.contains("win") -> HostPlatform.WINDOWS
+            osName.contains("nux") || osName.contains("nix") || osName.contains("linux") -> HostPlatform.LINUX
+            else -> HostPlatform.OTHER
+        }
+    }
+
+    private fun String.appleScriptEscaped(): String {
+        return replace("\\", "\\\\").replace("\"", "\\\"")
+    }
+
+    private enum class HostPlatform {
+        WINDOWS,
+        MACOS,
+        LINUX,
+        OTHER,
     }
 }

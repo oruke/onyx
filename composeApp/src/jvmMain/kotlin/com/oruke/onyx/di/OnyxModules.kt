@@ -16,9 +16,9 @@ import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
 import com.oruke.onyx.app.filesystem.JvmArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.JvmFileTypeService
 import com.oruke.onyx.app.filesystem.JvmImageMetadataService
-import com.oruke.onyx.app.filesystem.JvmLinuxOpenWithService
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
 import com.oruke.onyx.app.filesystem.JvmPreviewService
+import com.oruke.onyx.app.filesystem.JvmPlatformOpenWithService
 import com.oruke.onyx.app.filesystem.JvmTerminalLauncherService
 import com.oruke.onyx.app.filesystem.JvmTextClipboardService
 import com.oruke.onyx.app.filesystem.JvmThumbnailService
@@ -126,7 +126,7 @@ val fileModule = module {
     single<ExternalOpenService> { JvmDesktopExternalOpenService() }
     single<TrashService> { JvmDesktopTrashService() }
     single<TextClipboardService> { JvmTextClipboardService() }
-    single<OpenWithService> { JvmLinuxOpenWithService() }
+    single<OpenWithService> { JvmPlatformOpenWithService() }
     single<VfsPathService> { JvmVfsPathService() }
     single<EntryNameSuggestionService> { ResourceEntryNameSuggestionService() }
     single<FileTypeService> { JvmFileTypeService() }
