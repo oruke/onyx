@@ -116,11 +116,186 @@ enum class FileTransferOperation {
     EXTRACT,
 }
 
+sealed interface RootIntent {
+    data class SetLayoutMode(
+        val mode: PaneLayoutMode,
+    ) : RootIntent
+
+    data class SetPaneSplitFraction(
+        val fraction: Float,
+    ) : RootIntent
+
+    data object OpenSettings : RootIntent
+
+    data class UpdateSettingsDraft(
+        val draft: OnyxSettings,
+    ) : RootIntent
+
+    data class ActivatePane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class UpdateSettings(
+        val settings: OnyxSettings,
+    ) : RootIntent
+
+    data class OpenLocationInActivePane(
+        val location: String,
+    ) : RootIntent
+
+    data class ToggleFavoriteLocation(
+        val location: String,
+    ) : RootIntent
+
+    data class ToggleSidebarTreeNode(
+        val location: String,
+    ) : RootIntent
+
+    data class RetrySidebarTreeNode(
+        val location: String,
+    ) : RootIntent
+
+    data class BeginCreateDirectoriesInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class UpdateCreateDirectoriesDraft(
+        val draft: String,
+    ) : RootIntent
+
+    data object ConfirmDialog : RootIntent
+
+    data object DismissDialog : RootIntent
+
+    data class ResolveConflict(
+        val strategy: TransferConflictStrategy,
+        val applyToAll: Boolean,
+    ) : RootIntent
+
+    data class MoveTab(
+        val sourcePaneId: PaneId,
+        val tabId: String,
+        val targetPaneId: PaneId,
+        val targetIndex: Int,
+    ) : RootIntent
+
+    data object RefreshActivePane : RootIntent
+
+    data object TogglePreviewPane : RootIntent
+
+    data class StageCopySelectedInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class StageCutSelectedInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class RequestPasteIntoPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class RequestTransferSelectedToDirectory(
+        val sourcePaneId: PaneId,
+        val targetDirectoryLocation: String,
+        val operation: FileTransferOperation,
+    ) : RootIntent
+
+    data class RequestDeleteSelectedInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class ExtractSelectedInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class ExtractToDirectoryInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class ExtractSmartInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class SubmitArchivePassword(
+        val password: String,
+    ) : RootIntent
+
+    data class BatchRenameInPane(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class ExecuteBatchRename(
+        val paneId: PaneId,
+        val renameMap: List<Pair<VFile, String>>,
+    ) : RootIntent
+
+    data class ResetBatchRenameForContinue(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    data class DismissTask(
+        val taskId: String,
+    ) : RootIntent
+
+    data class CancelTask(
+        val taskId: String,
+    ) : RootIntent
+
+    data class PauseTask(
+        val taskId: String,
+    ) : RootIntent
+
+    data class ResumeTask(
+        val taskId: String,
+    ) : RootIntent
+
+    data object ClearAllTasks : RootIntent
+
+    data class OpenImageViewer(
+        val file: VFile,
+        val allImages: List<VFile>,
+    ) : RootIntent
+
+    data object CloseImageViewer : RootIntent
+
+    data object ImageViewerNext : RootIntent
+
+    data object ImageViewerPrevious : RootIntent
+
+    data class ImageViewerSetZoom(
+        val factor: Float,
+    ) : RootIntent
+
+    data class ImageViewerSetFitMode(
+        val mode: ImageFitMode,
+    ) : RootIntent
+
+    data class ImageViewerRotate(
+        val clockwise: Boolean,
+    ) : RootIntent
+
+    data class OpenWithApp(
+        val entry: VFile,
+        val app: com.oruke.onyx.app.filesystem.OpenWithApp,
+    ) : RootIntent
+
+    data class OpenWithChooser(
+        val entry: VFile,
+    ) : RootIntent
+
+    data class OpenTerminalAt(
+        val location: String,
+    ) : RootIntent
+}
+
 interface RootComponent {
     val state: StateFlow<RootState>
     val imageViewerState: StateFlow<ImageViewerState>
     val primaryPane: PaneComponent
     val secondaryPane: PaneComponent
+
+    fun dispatch(intent: RootIntent)
 
     fun setLayoutMode(mode: PaneLayoutMode)
 

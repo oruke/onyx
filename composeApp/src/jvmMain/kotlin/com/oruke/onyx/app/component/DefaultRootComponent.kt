@@ -272,6 +272,77 @@ class DefaultRootComponent(
         }
     }
 
+    override fun dispatch(intent: RootIntent) {
+        when (intent) {
+            is RootIntent.SetLayoutMode -> setLayoutMode(intent.mode)
+            is RootIntent.SetPaneSplitFraction -> setPaneSplitFraction(intent.fraction)
+            RootIntent.OpenSettings -> openSettings()
+            is RootIntent.UpdateSettingsDraft -> updateSettingsDraft(intent.draft)
+            is RootIntent.ActivatePane -> activatePane(intent.paneId)
+            is RootIntent.UpdateSettings -> updateSettings(intent.settings)
+            is RootIntent.OpenLocationInActivePane -> openLocationInActivePane(intent.location)
+            is RootIntent.ToggleFavoriteLocation -> toggleFavoriteLocation(intent.location)
+            is RootIntent.ToggleSidebarTreeNode -> toggleSidebarTreeNode(intent.location)
+            is RootIntent.RetrySidebarTreeNode -> retrySidebarTreeNode(intent.location)
+            is RootIntent.BeginCreateDirectoriesInPane -> beginCreateDirectoriesInPane(intent.paneId)
+            is RootIntent.UpdateCreateDirectoriesDraft -> updateCreateDirectoriesDraft(intent.draft)
+            RootIntent.ConfirmDialog -> confirmDialog()
+            RootIntent.DismissDialog -> dismissDialog()
+            is RootIntent.ResolveConflict -> resolveConflict(
+                strategy = intent.strategy,
+                applyToAll = intent.applyToAll,
+            )
+            is RootIntent.MoveTab -> moveTab(
+                sourcePaneId = intent.sourcePaneId,
+                tabId = intent.tabId,
+                targetPaneId = intent.targetPaneId,
+                targetIndex = intent.targetIndex,
+            )
+            RootIntent.RefreshActivePane -> refreshActivePane()
+            RootIntent.TogglePreviewPane -> togglePreviewPane()
+            is RootIntent.StageCopySelectedInPane -> stageCopySelectedInPane(intent.paneId)
+            is RootIntent.StageCutSelectedInPane -> stageCutSelectedInPane(intent.paneId)
+            is RootIntent.RequestPasteIntoPane -> requestPasteIntoPane(intent.paneId)
+            is RootIntent.RequestTransferSelectedToDirectory -> requestTransferSelectedToDirectory(
+                sourcePaneId = intent.sourcePaneId,
+                targetDirectoryLocation = intent.targetDirectoryLocation,
+                operation = intent.operation,
+            )
+            is RootIntent.RequestDeleteSelectedInPane -> requestDeleteSelectedInPane(intent.paneId)
+            is RootIntent.ExtractSelectedInPane -> extractSelectedInPane(intent.paneId)
+            is RootIntent.ExtractToDirectoryInPane -> extractToDirectoryInPane(intent.paneId)
+            is RootIntent.ExtractSmartInPane -> extractSmartInPane(intent.paneId)
+            is RootIntent.SubmitArchivePassword -> submitArchivePassword(intent.password)
+            is RootIntent.BatchRenameInPane -> batchRenameInPane(intent.paneId)
+            is RootIntent.ExecuteBatchRename -> executeBatchRename(
+                paneId = intent.paneId,
+                renameMap = intent.renameMap,
+            )
+            is RootIntent.ResetBatchRenameForContinue -> resetBatchRenameForContinue(intent.paneId)
+            is RootIntent.DismissTask -> dismissTask(intent.taskId)
+            is RootIntent.CancelTask -> cancelTask(intent.taskId)
+            is RootIntent.PauseTask -> pauseTask(intent.taskId)
+            is RootIntent.ResumeTask -> resumeTask(intent.taskId)
+            RootIntent.ClearAllTasks -> clearAllTasks()
+            is RootIntent.OpenImageViewer -> openImageViewer(
+                file = intent.file,
+                allImages = intent.allImages,
+            )
+            RootIntent.CloseImageViewer -> closeImageViewer()
+            RootIntent.ImageViewerNext -> imageViewerNext()
+            RootIntent.ImageViewerPrevious -> imageViewerPrevious()
+            is RootIntent.ImageViewerSetZoom -> imageViewerSetZoom(intent.factor)
+            is RootIntent.ImageViewerSetFitMode -> imageViewerSetFitMode(intent.mode)
+            is RootIntent.ImageViewerRotate -> imageViewerRotate(intent.clockwise)
+            is RootIntent.OpenWithApp -> openWithApp(
+                entry = intent.entry,
+                app = intent.app,
+            )
+            is RootIntent.OpenWithChooser -> openWithChooser(intent.entry)
+            is RootIntent.OpenTerminalAt -> openTerminalAt(intent.location)
+        }
+    }
+
     override fun setLayoutMode(mode: PaneLayoutMode) {
         layoutMode.value = mode
     }
