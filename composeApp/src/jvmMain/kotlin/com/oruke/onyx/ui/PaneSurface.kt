@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
+import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.core.model.PaneId
@@ -122,6 +123,9 @@ internal fun PaneSurface(
     var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
+    fun dispatch(intent: PaneIntent) {
+        component.dispatch(intent)
+    }
     val paneDropBackground by animateColorAsState(
         targetValue = if (fileDropTarget?.paneId == state.paneId &&
             fileDropTarget.directoryEntryId == null &&
@@ -164,12 +168,12 @@ internal fun PaneSurface(
                 if (inlineEditState != null) {
                     return@onPreviewKeyEvent when (event.key) {
                         Key.Enter -> {
-                            component.confirmInlineEdit()
+                            dispatch(PaneIntent.ConfirmInlineEdit)
                             true
                         }
 
                         Key.Escape -> {
-                            component.cancelInlineEdit()
+                            dispatch(PaneIntent.CancelInlineEdit)
                             true
                         }
 
@@ -180,12 +184,12 @@ internal fun PaneSurface(
 
                 when {
                     event.key == Key.Enter -> {
-                        component.openSelectedEntry()
+                        dispatch(PaneIntent.OpenSelectedEntry)
                         true
                     }
 
                     event.key == Key.F2 -> {
-                        component.beginRename()
+                        dispatch(PaneIntent.BeginRename)
                         true
                     }
 
@@ -193,7 +197,7 @@ internal fun PaneSurface(
                         if (event.isShiftPressed) {
                             actions.onBeginCreateDirectory()
                         } else {
-                            component.beginCreateFile()
+                            dispatch(PaneIntent.BeginCreateFile)
                         }
                         true
                     }
@@ -214,12 +218,12 @@ internal fun PaneSurface(
                     }
 
                     event.key == Key.DirectionDown -> {
-                        component.moveSelection(offset = 1, extendSelection = event.isShiftPressed)
+                        dispatch(PaneIntent.MoveSelection(offset = 1, extendSelection = event.isShiftPressed))
                         true
                     }
 
                     event.key == Key.DirectionUp -> {
-                        component.moveSelection(offset = -1, extendSelection = event.isShiftPressed)
+                        dispatch(PaneIntent.MoveSelection(offset = -1, extendSelection = event.isShiftPressed))
                         true
                     }
 
@@ -233,7 +237,7 @@ internal fun PaneSurface(
                     }
 
                     event.key == Key.A && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        component.selectAll()
+                        dispatch(PaneIntent.SelectAll)
                         true
                     }
 
@@ -242,9 +246,9 @@ internal fun PaneSurface(
                             showContextMenu = false
                         } else if (showFilterBar) {
                             showFilterBar = false
-                            component.setFilterQuery("")
+                            dispatch(PaneIntent.SetFilterQuery(""))
                         } else {
-                            component.clearSelection()
+                            dispatch(PaneIntent.ClearSelection)
                         }
                         true
                     }
@@ -260,12 +264,12 @@ internal fun PaneSurface(
                     }
 
                     event.key == Key.F5 -> {
-                        component.refresh()
+                        dispatch(PaneIntent.Refresh)
                         true
                     }
 
                     event.key == Key.Backspace -> {
-                        component.goUp()
+                        dispatch(PaneIntent.GoUp)
                         true
                     }
 
@@ -293,9 +297,9 @@ internal fun PaneSurface(
             state = state,
             active = active,
             onActivate = onActivate,
-            onSelectTab = component::selectTab,
-            onCloseTab = component::closeTab,
-            onCreateTab = { component.createTab() },
+            onSelectTab = { tabId -> dispatch(PaneIntent.SelectTab(tabId)) },
+            onCloseTab = { tabId -> dispatch(PaneIntent.CloseTab(tabId)) },
+            onCreateTab = { dispatch(PaneIntent.CreateTab()) },
             onDropTab = { tabId, position -> onDropTab(state.paneId, tabId, position) },
             onDragPositionChange = onTabDragPositionChange,
             onDragEnd = onTabDragEnd,
@@ -320,14 +324,14 @@ internal fun PaneSurface(
         ) {
             ToolbarIconButton(
                 enabled = state.canGoBack,
-                onClick = { onActivate(); component.goBack() },
+                onClick = { onActivate(); dispatch(PaneIntent.GoBack) },
                 tooltip = stringResource(Res.string.action_go_back),
             ) {
                 Icon(key = AllIconsKeys.Actions.Back, contentDescription = stringResource(Res.string.action_go_back))
             }
             ToolbarIconButton(
                 enabled = state.canGoForward,
-                onClick = { onActivate(); component.goForward() },
+                onClick = { onActivate(); dispatch(PaneIntent.GoForward) },
                 tooltip = stringResource(Res.string.action_go_forward),
             ) {
                 Icon(
@@ -337,14 +341,14 @@ internal fun PaneSurface(
             }
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); component.goUp() },
+                onClick = { onActivate(); dispatch(PaneIntent.GoUp) },
                 tooltip = stringResource(Res.string.action_go_up),
             ) {
                 Icon(key = AllIconsKeys.General.ArrowUp, contentDescription = stringResource(Res.string.action_go_up))
             }
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); component.openDirectory(System.getProperty("user.home")) },
+                onClick = { onActivate(); dispatch(PaneIntent.OpenDirectory(System.getProperty("user.home"))) },
                 tooltip = stringResource(Res.string.action_go_home),
             ) {
                 Icon(key = AllIconsKeys.Nodes.HomeFolder, contentDescription = stringResource(Res.string.action_go_home))
@@ -370,7 +374,7 @@ internal fun PaneSurface(
                 HybridAddressBar(
                     location = state.location,
                     onActivate = onActivate,
-                    onOpenLocation = component::openDirectory,
+                    onOpenLocation = { location -> dispatch(PaneIntent.OpenDirectory(location)) },
                     buildBreadcrumbs = buildBreadcrumbs,
                 )
             }
@@ -382,7 +386,7 @@ internal fun PaneSurface(
                 onClick = {
                     onActivate()
                     showFilterBar = !showFilterBar
-                    if (!showFilterBar) component.setFilterQuery("")
+                    if (!showFilterBar) dispatch(PaneIntent.SetFilterQuery(""))
                 },
                 tooltip = stringResource(Res.string.action_filter) + " (Ctrl+F)",
                 selected = showFilterBar || filterQuery.isNotEmpty(),
@@ -402,7 +406,7 @@ internal fun PaneSurface(
                 ) {
                     BasicTextField(
                         value = filterQuery,
-                        onValueChange = { component.setFilterQuery(it) },
+                        onValueChange = { dispatch(PaneIntent.SetFilterQuery(it)) },
                         modifier = Modifier
                             .fillMaxSize()
                             .focusRequester(filterFocusRequester)
@@ -417,7 +421,7 @@ internal fun PaneSurface(
                             .onPreviewKeyEvent { event ->
                                 if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
                                     showFilterBar = false
-                                    component.setFilterQuery("")
+                                    dispatch(PaneIntent.SetFilterQuery(""))
                                     focusRequester.requestFocus()
                                     true
                                 } else false
@@ -449,7 +453,7 @@ internal fun PaneSurface(
 
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); component.refresh() },
+                onClick = { onActivate(); dispatch(PaneIntent.Refresh) },
                 tooltip = stringResource(Res.string.action_refresh_active),
             ) {
                 Icon(
@@ -459,7 +463,7 @@ internal fun PaneSurface(
             }
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); component.toggleHiddenItems() },
+                onClick = { onActivate(); dispatch(PaneIntent.ToggleHiddenItems) },
                 tooltip = stringResource(Res.string.action_toggle_hidden_files),
                 selected = state.showHiddenItems,
             ) {
@@ -476,11 +480,11 @@ internal fun PaneSurface(
             // 3 秒后自动消失
             LaunchedEffect(feedback) {
                 kotlinx.coroutines.delay(3000)
-                component.dismissOperationFeedback()
+                dispatch(PaneIntent.DismissOperationFeedback)
             }
             OperationFeedbackBar(
                 feedback = feedback,
-                onDismiss = { component.dismissOperationFeedback() },
+                onDismiss = { dispatch(PaneIntent.DismissOperationFeedback) },
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
         }
@@ -522,11 +526,15 @@ internal fun PaneSurface(
                     paneActive = active,
                     contextMenuVisible = showContextMenu,
                     onActivate = onActivate,
-                    onOpenEntry = component::openEntry,
-                    onToggleSort = component::toggleSort,
-                    onResizeColumn = component::resizeDetailsColumn,
-                    onToggleColumnVisibility = component::toggleColumnVisibility,
-                    onSelectEntry = component::selectEntry,
+                    onOpenEntry = { entry -> dispatch(PaneIntent.OpenEntry(entry)) },
+                    onToggleSort = { column -> dispatch(PaneIntent.ToggleSort(column)) },
+                    onResizeColumn = { column, nextColumn, deltaWeight ->
+                        dispatch(PaneIntent.ResizeDetailsColumn(column, nextColumn, deltaWeight))
+                    },
+                    onToggleColumnVisibility = { column -> dispatch(PaneIntent.ToggleColumnVisibility(column)) },
+                    onSelectEntry = { entryId, additive, range ->
+                        dispatch(PaneIntent.SelectEntry(entryId, additive, range))
+                    },
                     paneId = state.paneId,
                     fileDropTarget = fileDropTarget,
                     onStartFileDrag = onFileDragStart,
@@ -534,32 +542,32 @@ internal fun PaneSurface(
                     onFileDragEnd = onFileDragEnd,
                     onFileDropZoneChange = onFileDropZoneChange,
                     inlineEditState = inlineEditState,
-                    onUpdateInlineEditDraft = component::updateInlineEditDraft,
-                    onConfirmInlineEdit = component::confirmInlineEdit,
-                    onCancelInlineEdit = component::cancelInlineEdit,
+                    onUpdateInlineEditDraft = { draft -> dispatch(PaneIntent.UpdateInlineEditDraft(draft)) },
+                    onConfirmInlineEdit = { dispatch(PaneIntent.ConfirmInlineEdit) },
+                    onCancelInlineEdit = { dispatch(PaneIntent.CancelInlineEdit) },
                     onShowContextMenu = { entryId, entrySelected, pointerPosition ->
                         onActivate()
                         contextMenuOffset = pointerPosition
-                        if (!entrySelected) component.selectEntry(entryId)
+                        if (!entrySelected) dispatch(PaneIntent.SelectEntry(entryId))
                         showContextMenu = true
                     },
                     onDismissContextMenu = { showContextMenu = false },
-                    onBeginRename = component::beginRename,
+                    onBeginRename = { dispatch(PaneIntent.BeginRename) },
                     galleryItemSizeDp = state.galleryItemSizeDp,
-                    onSelectEntries = component::selectEntries,
+                    onSelectEntries = { entryIds -> dispatch(PaneIntent.SelectEntries(entryIds)) },
                     inlineExpandedLocations = state.inlineExpandedLocations,
                     inlineExpandedEntries = state.inlineExpandedEntries,
                     onToggleInlineExpand = { location ->
                         onActivate()
-                        component.toggleInlineExpand(location)
+                        dispatch(PaneIntent.ToggleInlineExpand(location))
                     },
                     pendingScrollToEntryId = state.pendingScrollToEntryId,
-                    onConsumeScroll = component::consumePendingScroll,
+                    onConsumeScroll = { dispatch(PaneIntent.ConsumePendingScroll) },
                     onBlankAreaContextMenu = { pointerPosition ->
                         contextMenuOffset = pointerPosition
                         showContextMenu = true
                     },
-                    onRetry = component::refresh,
+                    onRetry = { dispatch(PaneIntent.Refresh) },
                     loadThumbnail = loadThumbnail,
                     loadArchiveThumbnail = loadArchiveThumbnail,
                 )
@@ -591,15 +599,15 @@ internal fun PaneSurface(
                         },
                         canBatchRename = selectedCount >= 2,
                         onOpenSelection = {
-                            component.openSelectedEntry()
+                            dispatch(PaneIntent.OpenSelectedEntry)
                             showContextMenu = false
                         },
                         onOpenSelectionInNewTab = {
-                            component.openSelectedInNewTab()
+                            dispatch(PaneIntent.OpenSelectedInNewTab)
                             showContextMenu = false
                         },
                         onRenameSelection = {
-                            component.beginRename()
+                            dispatch(PaneIntent.BeginRename)
                             showContextMenu = false
                         },
                         onBatchRename = {
@@ -607,7 +615,7 @@ internal fun PaneSurface(
                             showContextMenu = false
                         },
                         onCreateFile = {
-                            component.beginCreateFile()
+                            dispatch(PaneIntent.BeginCreateFile)
                             showContextMenu = false
                         },
                         onCreateDirectory = {
@@ -631,7 +639,7 @@ internal fun PaneSurface(
                             showContextMenu = false
                         },
                         onCopyPath = {
-                            component.copySelectedPaths()
+                            dispatch(PaneIntent.CopySelectedPaths)
                             showContextMenu = false
                         },
                         onCopySelection = {
@@ -656,7 +664,7 @@ internal fun PaneSurface(
                             showContextMenu = false
                         },
                         onRefresh = {
-                            component.refresh()
+                            dispatch(PaneIntent.Refresh)
                             showContextMenu = false
                         },
                         onOpenTerminal = {
