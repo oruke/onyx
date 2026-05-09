@@ -116,7 +116,7 @@ ui
 
 ### P1：影响专业文件管理器可用性的缺口
 
-- [ ] SMB、WebDAV、S3 仍未达到完整可用：基础 provider 已接入 registry，SMB 支持同认证上下文内基础命令，WebDAV/S3 支持只读列表；SMB/WebDAV 已有认证失败凭据弹窗，远程凭据已区分不保存/会话保存/系统钥匙串占位，SMB/WebDAV/S3 已有统一连接测试服务和连接管理 UI，但仍缺真实系统钥匙串/密钥环实现和真实服务验收。
+- [ ] SMB、WebDAV、S3 仍未达到完整可用：基础 provider 已接入 registry，SMB 支持同认证上下文内基础命令，WebDAV/S3 支持只读列表；SMB/WebDAV 已有认证失败凭据弹窗，远程凭据已区分不保存/会话保存/系统钥匙串，Linux 通过 `secret-tool`、macOS 通过 `security` 存取系统钥匙串，Windows 仍明确不支持；SMB/WebDAV/S3 已有统一连接测试服务和连接管理 UI，但仍缺真实服务验收和 Windows Credential Manager 适配。
 - [ ] 搜索能力缺失：当前已有递归名称/扩展名搜索、搜索结果面板、取消和扫描进度；仍缺内容搜索、大小/修改时间过滤、索引策略和跨协议能力差异提示。
 - [ ] 命令体系不完整：基础文件操作已有 `OnyxCommandRegistry`、快捷键描述、事件匹配、命令面板和提示生成入口；但仍缺快捷键配置化、完整菜单状态同步和跨 Root/Pane 的统一命令调度。
 - [ ] 跨 provider 文件命令不足：本地与 SMB 已能通过 `ProviderBackedFileCommandService` 分发同 provider 命令，WebDAV/S3 写入能力差异已有明确错误，跨 provider 传输会返回结构化错误并在任务中心显示明确提示；但远程协议之间、压缩包内部写入、远程到本地、本地到远程等场景仍缺统一读写流 API 和真实传输实现。

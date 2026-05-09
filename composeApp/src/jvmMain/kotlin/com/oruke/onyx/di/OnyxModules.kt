@@ -19,13 +19,13 @@ import com.oruke.onyx.app.filesystem.JvmImageMetadataService
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
 import com.oruke.onyx.app.filesystem.JvmPreviewService
 import com.oruke.onyx.app.filesystem.JvmPlatformOpenWithService
+import com.oruke.onyx.app.filesystem.JvmRemoteAuthStore
 import com.oruke.onyx.app.filesystem.JvmTerminalLauncherService
 import com.oruke.onyx.app.filesystem.JvmTextClipboardService
 import com.oruke.onyx.app.filesystem.JvmThumbnailService
 import com.oruke.onyx.app.filesystem.JvmVfsPathService
 import com.oruke.onyx.app.filesystem.LocalVfsProvider
 import com.oruke.onyx.app.filesystem.ImageMetadataService
-import com.oruke.onyx.app.filesystem.InMemoryRemoteAuthStore
 import com.oruke.onyx.app.filesystem.OpenWithService
 import com.oruke.onyx.app.filesystem.ProviderBackedVfsConnectionTestService
 import com.oruke.onyx.app.filesystem.ProviderBackedFileCommandService
@@ -86,7 +86,7 @@ val fileModule = module {
     }
     single { LocalVfsProvider(get()) }
     single { ArchiveVfsProvider(get()) }
-    single<RemoteAuthStore> { InMemoryRemoteAuthStore() }
+    single<RemoteAuthStore> { JvmRemoteAuthStore() }
     single<SmbAuthRepository> { RemoteAuthStoreSmbAuthRepository(get()) }
     single<WebDavAuthRepository> { RemoteAuthStoreWebDavAuthRepository(get()) }
     single<S3AuthRepository> { RemoteAuthStoreS3AuthRepository(get()) }

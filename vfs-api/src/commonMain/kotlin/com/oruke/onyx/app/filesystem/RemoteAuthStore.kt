@@ -9,6 +9,7 @@ enum class RemoteCredentialSavePolicy {
 enum class RemoteCredentialSaveResult {
     AVAILABLE_FOR_CURRENT_REQUEST,
     STORED_FOR_SESSION,
+    STORED_IN_SYSTEM_KEYRING,
     UNSUPPORTED,
 }
 
