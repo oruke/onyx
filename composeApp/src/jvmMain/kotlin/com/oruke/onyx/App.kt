@@ -27,8 +27,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.app.component.PaneEntriesState
+import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootDialogState
+import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.core.model.PaneId
@@ -88,8 +90,8 @@ fun DecoratedWindowScope.WindowApp(rootComponent: RootComponent) {
     )
     var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     val onUiScaleChange: (Int) -> Unit = { value ->
-        rootComponent.updateSettings(
-            state.settings.copy(uiScale = value),
+        rootComponent.dispatch(
+            RootIntent.UpdateSettings(state.settings.copy(uiScale = value)),
         )
     }
 
@@ -112,12 +114,12 @@ fun DecoratedWindowScope.WindowApp(rootComponent: RootComponent) {
                 sidebarVisible = state.settings.sidebarVisible,
                 onUiScaleChange = onUiScaleChange,
                 onToggleSidebar = {
-                    rootComponent.updateSettings(
-                        state.settings.copy(sidebarVisible = !state.settings.sidebarVisible),
+                    rootComponent.dispatch(
+                        RootIntent.UpdateSettings(state.settings.copy(sidebarVisible = !state.settings.sidebarVisible)),
                     )
                 },
                 showPreviewPane = state.showPreviewPane,
-                onTogglePreviewPane = rootComponent::togglePreviewPane,
+                onTogglePreviewPane = { rootComponent.dispatch(RootIntent.TogglePreviewPane) },
             )
         }
 
@@ -171,7 +173,12 @@ private fun AppContent(
     var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     var appContentSize by remember { mutableStateOf(IntSize.Zero) }
     var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
-    val toggleFavoriteLocation: (String) -> Unit = rootComponent::toggleFavoriteLocation
+    fun dispatch(intent: RootIntent) {
+        rootComponent.dispatch(intent)
+    }
+    val toggleFavoriteLocation: (String) -> Unit = { location ->
+        dispatch(RootIntent.ToggleFavoriteLocation(location))
+    }
     fun resolveTabDropTarget(windowPosition: IntOffset): TabDropTarget? {
         val target = tabDropZones.entries.firstOrNull { (_, zone) ->
             zone.bounds.containsPoint(windowPosition)
@@ -184,11 +191,13 @@ private fun AppContent(
 
     val onTabDrop: (PaneId, String, IntOffset) -> Unit = onTabDrop@{ sourcePaneId, tabId, windowPosition ->
         val target = resolveTabDropTarget(windowPosition) ?: return@onTabDrop
-        rootComponent.moveTab(
-            sourcePaneId = sourcePaneId,
-            tabId = tabId,
-            targetPaneId = target.paneId,
-            targetIndex = target.index,
+        dispatch(
+            RootIntent.MoveTab(
+                sourcePaneId = sourcePaneId,
+                tabId = tabId,
+                targetPaneId = target.paneId,
+                targetIndex = target.index,
+            )
         )
         tabDropTarget = null
     }
@@ -287,12 +296,14 @@ private fun AppContent(
         val target = windowPosition?.let(::resolveFileDropTarget) ?: fileDropTarget
         // 如果 AWT 系统拖放已激活，不执行内部传输逻辑
         if (!ExternalDragHelper.isSystemDragActive && dragState != null && target != null) {
-            rootComponent.requestTransferSelectedToDirectory(
-                sourcePaneId = dragState.sourcePaneId,
-                targetDirectoryLocation = target.targetDirectoryLocation,
-                operation = dragState.operation,
+            dispatch(
+                RootIntent.RequestTransferSelectedToDirectory(
+                    sourcePaneId = dragState.sourcePaneId,
+                    targetDirectoryLocation = target.targetDirectoryLocation,
+                    operation = dragState.operation,
+                )
             )
-            rootComponent.activatePane(target.paneId)
+            dispatch(RootIntent.ActivatePane(target.paneId))
         }
         fileDragState = null
         fileDropTarget = null
@@ -306,39 +317,43 @@ private fun AppContent(
         is RootDialogState.DeleteSelectionConfirmation -> {
             ConfirmationDialog(
                 state = dialogState,
-                onConfirm = rootComponent::confirmDialog,
-                onDismiss = rootComponent::dismissDialog,
+                onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
             )
         }
 
         is RootDialogState.ConflictResolution -> {
             ConflictResolutionDialog(
                 state = dialogState,
-                onResolve = rootComponent::resolveConflict,
-                onDismiss = rootComponent::dismissDialog,
+                onResolve = { strategy, applyToAll ->
+                    dispatch(RootIntent.ResolveConflict(strategy, applyToAll))
+                },
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
             )
         }
 
         is RootDialogState.CreateDirectories -> {
             CreateDirectoriesDialog(
                 state = dialogState,
-                onDraftChange = rootComponent::updateCreateDirectoriesDraft,
-                onConfirm = rootComponent::confirmDialog,
-                onDismiss = rootComponent::dismissDialog,
+                onDraftChange = { draft -> dispatch(RootIntent.UpdateCreateDirectoriesDraft(draft)) },
+                onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
             )
         }
 
         is RootDialogState.Settings -> {
             SettingsDialog(
                 state = dialogState,
-                onDraftChange = rootComponent::updateSettingsDraft,
-                onConfirm = rootComponent::confirmDialog,
-                onDismiss = rootComponent::dismissDialog,
+                onDraftChange = { draft -> dispatch(RootIntent.UpdateSettingsDraft(draft)) },
+                onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
                 initialWidth = state.settings.settingsWindowWidth,
                 initialHeight = state.settings.settingsWindowHeight,
                 onWindowSizeChanged = { w, h ->
-                    rootComponent.updateSettings(
-                        state.settings.copy(settingsWindowWidth = w, settingsWindowHeight = h),
+                    dispatch(
+                        RootIntent.UpdateSettings(
+                            state.settings.copy(settingsWindowWidth = w, settingsWindowHeight = h),
+                        )
                     )
                 },
             )
@@ -348,14 +363,16 @@ private fun AppContent(
             BatchRenameDialog(
                 state = dialogState,
                 onConfirm = { renameMap ->
-                    rootComponent.executeBatchRename(dialogState.paneId, renameMap)
+                    dispatch(RootIntent.ExecuteBatchRename(dialogState.paneId, renameMap))
                 },
-                onDismiss = rootComponent::dismissDialog,
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
                 initialWidth = state.settings.batchRenameWindowWidth,
                 initialHeight = state.settings.batchRenameWindowHeight,
                 onWindowSizeChanged = { w, h ->
-                    rootComponent.updateSettings(
-                        state.settings.copy(batchRenameWindowWidth = w, batchRenameWindowHeight = h),
+                    dispatch(
+                        RootIntent.UpdateSettings(
+                            state.settings.copy(batchRenameWindowWidth = w, batchRenameWindowHeight = h),
+                        )
                     )
                 },
             )
@@ -365,8 +382,8 @@ private fun AppContent(
             ArchivePasswordDialog(
                 archiveName = dialogState.archiveName,
                 error = dialogState.error,
-                onConfirm = rootComponent::submitArchivePassword,
-                onDismiss = rootComponent::dismissDialog,
+                onConfirm = { password -> dispatch(RootIntent.SubmitArchivePassword(password)) },
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
             )
         }
 
@@ -414,14 +431,14 @@ private fun AppContent(
                                 showTree = state.settings.sidebarTreeVisible,
                                 onActivate = {
                                     when (state.activePane) {
-                                        PaneId.PRIMARY -> rootComponent.activatePane(PaneId.PRIMARY)
-                                        PaneId.SECONDARY -> rootComponent.activatePane(PaneId.SECONDARY)
+                                        PaneId.PRIMARY -> dispatch(RootIntent.ActivatePane(PaneId.PRIMARY))
+                                        PaneId.SECONDARY -> dispatch(RootIntent.ActivatePane(PaneId.SECONDARY))
                                     }
                                 },
-                                onOpenLocation = rootComponent::openLocationInActivePane,
+                                onOpenLocation = { location -> dispatch(RootIntent.OpenLocationInActivePane(location)) },
                                 onToggleFavoriteLocation = toggleFavoriteLocation,
-                                onToggleTreeNode = rootComponent::toggleSidebarTreeNode,
-                                onRetryTreeNode = rootComponent::retrySidebarTreeNode,
+                                onToggleTreeNode = { location -> dispatch(RootIntent.ToggleSidebarTreeNode(location)) },
+                                onRetryTreeNode = { location -> dispatch(RootIntent.RetrySidebarTreeNode(location)) },
                             )
                             Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
                         }
@@ -476,7 +493,11 @@ private fun AppContent(
                                         orientation = Orientation.Vertical,
                                         onDragDelta = { delta ->
                                             val width = contentSize.width.toFloat().coerceAtLeast(1f)
-                                            rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width)
+                                            dispatch(
+                                                RootIntent.SetPaneSplitFraction(
+                                                    rootComponent.state.value.paneSplitFraction + delta / width,
+                                                )
+                                            )
                                         },
                                     )
                                     BoundPaneSurface(
@@ -528,7 +549,11 @@ private fun AppContent(
                                         orientation = Orientation.Horizontal,
                                         onDragDelta = { delta ->
                                             val height = contentSize.height.toFloat().coerceAtLeast(1f)
-                                            rootComponent.setPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height)
+                                            dispatch(
+                                                RootIntent.SetPaneSplitFraction(
+                                                    rootComponent.state.value.paneSplitFraction + delta / height,
+                                                )
+                                            )
                                         },
                                     )
                                     BoundPaneSurface(
@@ -573,11 +598,11 @@ private fun AppContent(
                     if (state.tasks.isNotEmpty()) {
                         JobsBar(
                             tasks = state.tasks,
-                            onPauseTask = rootComponent::pauseTask,
-                            onResumeTask = rootComponent::resumeTask,
-                            onCancelTask = rootComponent::cancelTask,
-                            onDismissTask = rootComponent::dismissTask,
-                            onClearAllTasks = rootComponent::clearAllTasks,
+                            onPauseTask = { taskId -> dispatch(RootIntent.PauseTask(taskId)) },
+                            onResumeTask = { taskId -> dispatch(RootIntent.ResumeTask(taskId)) },
+                            onCancelTask = { taskId -> dispatch(RootIntent.CancelTask(taskId)) },
+                            onDismissTask = { taskId -> dispatch(RootIntent.DismissTask(taskId)) },
+                            onClearAllTasks = { dispatch(RootIntent.ClearAllTasks) },
                         )
                     }
 
@@ -589,8 +614,8 @@ private fun AppContent(
                             activePane = state.activePane,
                             onSetActiveViewMode = { mode ->
                                 when (state.activePane) {
-                                    PaneId.PRIMARY -> rootComponent.primaryPane.setViewMode(mode)
-                                    PaneId.SECONDARY -> rootComponent.secondaryPane.setViewMode(mode)
+                                    PaneId.PRIMARY -> rootComponent.primaryPane.dispatch(PaneIntent.SetViewMode(mode))
+                                    PaneId.SECONDARY -> rootComponent.secondaryPane.dispatch(PaneIntent.SetViewMode(mode))
                                 }
                             },
                             galleryItemSizeDp = when (state.activePane) {
@@ -599,8 +624,8 @@ private fun AppContent(
                             },
                             onGalleryItemSizeChange = { size ->
                                 when (state.activePane) {
-                                    PaneId.PRIMARY -> rootComponent.primaryPane.setGalleryItemSize(size)
-                                    PaneId.SECONDARY -> rootComponent.secondaryPane.setGalleryItemSize(size)
+                                    PaneId.PRIMARY -> rootComponent.primaryPane.dispatch(PaneIntent.SetGalleryItemSize(size))
+                                    PaneId.SECONDARY -> rootComponent.secondaryPane.dispatch(PaneIntent.SetGalleryItemSize(size))
                                 }
                             },
                         )

@@ -13,6 +13,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
+import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.app.platform.ExternalDragHelper
 import com.oruke.onyx.di.fileModule
@@ -67,11 +68,13 @@ fun main() = application {
                     .collect { size ->
                         val w = size.width; val h = size.height
                         if (w != Dp.Unspecified && h != Dp.Unspecified) {
-                            rootComponent.updateSettings(
-                                state.settings.copy(
-                                    mainWindowWidth = w.value.toInt(),
-                                    mainWindowHeight = h.value.toInt(),
-                                ),
+                            rootComponent.dispatch(
+                                RootIntent.UpdateSettings(
+                                    state.settings.copy(
+                                        mainWindowWidth = w.value.toInt(),
+                                        mainWindowHeight = h.value.toInt(),
+                                    ),
+                                )
                             )
                         }
                     }
@@ -106,7 +109,7 @@ fun main() = application {
                     )
                 }
                 Window(
-                    onCloseRequest = rootComponent::closeImageViewer,
+                    onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
                     title = imageViewerState.currentFile?.name ?: "Onyx Viewer",
                     icon = painterResource(Res.drawable.onyx_logo),
                     state = viewerWindowState,
@@ -122,12 +125,12 @@ fun main() = application {
                     ) {
                         ImageViewerContent(
                             state = imageViewerState,
-                            onClose = rootComponent::closeImageViewer,
-                            onNext = rootComponent::imageViewerNext,
-                            onPrevious = rootComponent::imageViewerPrevious,
-                            onSetZoom = rootComponent::imageViewerSetZoom,
-                            onSetFitMode = rootComponent::imageViewerSetFitMode,
-                            onRotate = rootComponent::imageViewerRotate,
+                            onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
+                            onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
+                            onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
+                            onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
+                            onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
+                            onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
                             loadThumbnail = rootComponent::loadThumbnail,
                             readImageSize = rootComponent::readImageSize,
                         )
