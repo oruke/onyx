@@ -1,5 +1,7 @@
 package com.oruke.onyx.core.model
 
+import kotlinx.serialization.Serializable
+
 data class BackgroundTask(
     val id: String,
     val kind: BackgroundTaskKind,
@@ -16,6 +18,7 @@ data class BackgroundTask(
     val errors: List<TaskError> = emptyList(),
 )
 
+@Serializable
 enum class BackgroundTaskKind {
     COPY,
     MOVE,
@@ -25,6 +28,7 @@ enum class BackgroundTaskKind {
     EXTERNAL_IMPORT,
 }
 
+@Serializable
 enum class BackgroundTaskStatus {
     QUEUED,
     RUNNING,
@@ -34,6 +38,7 @@ enum class BackgroundTaskStatus {
     CANCELLED,
 }
 
+@Serializable
 data class TaskError(
     val fileName: String,
     val message: String,

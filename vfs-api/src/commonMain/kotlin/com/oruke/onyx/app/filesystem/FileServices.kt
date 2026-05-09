@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.filesystem
 
 import com.oruke.onyx.core.model.AppSessionSnapshot
+import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
@@ -374,4 +375,10 @@ interface SessionRepository {
     suspend fun loadSession(): Result<AppSessionSnapshot?>
 
     suspend fun saveSession(snapshot: AppSessionSnapshot): Result<Unit>
+}
+
+interface TaskPersistenceRepository {
+    suspend fun loadTasks(): Result<List<BackgroundTask>>
+
+    suspend fun saveTasks(tasks: List<BackgroundTask>): Result<Unit>
 }

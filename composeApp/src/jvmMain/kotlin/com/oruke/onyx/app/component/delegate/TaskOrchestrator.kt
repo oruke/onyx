@@ -1,8 +1,11 @@
 package com.oruke.onyx.app.component.delegate
 
+import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.app.filesystem.TaskPersistenceRepository
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -10,6 +13,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * 后台任务生命周期管理器。
@@ -19,6 +24,7 @@ import kotlinx.coroutines.launch
  */
 class TaskOrchestrator(
     private val scope: CoroutineScope,
+    private val taskRepository: TaskPersistenceRepository? = null,
 ) {
     private val _tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     val tasks: StateFlow<List<BackgroundTask>> = _tasks.asStateFlow()
@@ -32,8 +38,14 @@ class TaskOrchestrator(
     /** 失败任务的重试入口。重试会清理旧任务并重新发起同一业务请求。 */
     private val taskRetryHandlers = mutableMapOf<String, () -> Unit>()
 
+    private val persistenceMutex = Mutex()
+
+    init {
+        restorePersistedTasks()
+    }
+
     fun appendTask(task: BackgroundTask) {
-        _tasks.value = listOf(task) + _tasks.value
+        replaceTasks(listOf(task) + _tasks.value)
     }
 
     fun updateTask(
@@ -45,7 +57,7 @@ class TaskOrchestrator(
         processedBytes: Long? = null,
         totalBytes: Long? = null,
     ) {
-        _tasks.value = _tasks.value.map { task ->
+        replaceTasks(_tasks.value.map { task ->
             if (task.id == taskId) {
                 task.copy(
                     status = status,
@@ -58,13 +70,13 @@ class TaskOrchestrator(
             } else {
                 task
             }
-        }
+        })
     }
 
     fun updateTaskFields(taskId: String, transform: (BackgroundTask) -> BackgroundTask) {
-        _tasks.value = _tasks.value.map { task ->
+        replaceTasks(_tasks.value.map { task ->
             if (task.id == taskId) transform(task) else task
-        }
+        })
     }
 
     fun registerJob(taskId: String, job: Job) {
@@ -88,7 +100,7 @@ class TaskOrchestrator(
         taskJobs.remove(taskId)?.cancel()
         taskPauseFlags.remove(taskId)
         taskRetryHandlers.remove(taskId)
-        _tasks.value = _tasks.value.filterNot { task -> task.id == taskId }
+        replaceTasks(_tasks.value.filterNot { task -> task.id == taskId })
     }
 
     fun cancelTask(taskId: String) {
@@ -120,7 +132,7 @@ class TaskOrchestrator(
         taskJobs.clear()
         taskPauseFlags.clear()
         taskRetryHandlers.clear()
-        _tasks.value = emptyList()
+        replaceTasks(emptyList())
     }
 
     /**
@@ -130,7 +142,63 @@ class TaskOrchestrator(
         scope.launch {
             delay(5000)
             taskRetryHandlers.remove(taskId)
-            _tasks.value = _tasks.value.filterNot { task -> task.id == taskId }
+            replaceTasks(_tasks.value.filterNot { task -> task.id == taskId })
         }
+    }
+
+    private fun replaceTasks(tasks: List<BackgroundTask>) {
+        _tasks.value = tasks
+        persistTasks()
+    }
+
+    private fun restorePersistedTasks() {
+        val repository = taskRepository ?: return
+        scope.launch {
+            repository.loadTasks().fold(
+                onSuccess = { persistedTasks ->
+                    if (persistedTasks.isEmpty()) return@fold
+                    val currentIds = _tasks.value.map { task -> task.id }.toSet()
+                    val restoredTasks = persistedTasks
+                        .map { task -> task.withRestoredStatus() }
+                        .filterNot { task -> task.id in currentIds }
+                    if (restoredTasks.isNotEmpty()) {
+                        replaceTasks((restoredTasks + _tasks.value).take(MAX_PERSISTED_TASKS))
+                    }
+                },
+                onFailure = { failure ->
+                    OnyxLogger.warn("TaskOrchestrator", "任务历史恢复失败", failure)
+                },
+            )
+        }
+    }
+
+    private fun persistTasks() {
+        val repository = taskRepository ?: return
+        val snapshot = _tasks.value.take(MAX_PERSISTED_TASKS)
+        scope.launch {
+            persistenceMutex.withLock {
+                repository.saveTasks(snapshot).onFailure { failure ->
+                    OnyxLogger.warn("TaskOrchestrator", "任务历史保存失败", failure)
+                }
+            }
+        }
+    }
+
+    private fun BackgroundTask.withRestoredStatus(): BackgroundTask {
+        return when (status) {
+            BackgroundTaskStatus.QUEUED,
+            BackgroundTaskStatus.RUNNING,
+            BackgroundTaskStatus.PAUSED -> copy(
+                status = BackgroundTaskStatus.CANCELLED,
+                detail = I18nMessage(MessageKey.MSG_CANCELLED),
+                progress = null,
+            )
+
+            else -> this
+        }
+    }
+
+    private companion object {
+        const val MAX_PERSISTED_TASKS = 200
     }
 }

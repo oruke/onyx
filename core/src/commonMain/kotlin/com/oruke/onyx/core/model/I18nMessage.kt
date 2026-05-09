@@ -1,5 +1,8 @@
 package com.oruke.onyx.core.model
 
+import kotlinx.serialization.Serializable
+
+@Serializable
 enum class MessageKey {
     ACTION_BATCH_RENAME,
     ACTION_EXTRACT_HERE,

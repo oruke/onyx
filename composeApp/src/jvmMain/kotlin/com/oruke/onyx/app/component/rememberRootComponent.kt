@@ -24,6 +24,7 @@ import com.oruke.onyx.app.filesystem.PreviewService
 import com.oruke.onyx.app.filesystem.RemoteAuthStore
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.TaskPersistenceRepository
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
@@ -51,7 +52,10 @@ fun rememberRootComponent(): RootComponent {
         val componentContext = DefaultComponentContext(lifecycle = lifecycle)
         // 创建 delegate 实例
         val delegateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-        val taskOrchestrator = TaskOrchestrator(scope = delegateScope)
+        val taskOrchestrator = TaskOrchestrator(
+            scope = delegateScope,
+            taskRepository = koin.get<TaskPersistenceRepository>(),
+        )
         val clipboardManager = ClipboardManager()
         val imageViewerController = ImageViewerController()
         val sessionManager = SessionManager(
