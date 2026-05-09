@@ -1,6 +1,7 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
@@ -72,12 +73,16 @@ internal fun BoundPaneSurface(
         isImageFileName = rootComponent::isImageFileName,
         onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
     )
+    val commandShortcuts = remember(state.settings.commandShortcutOverrides) {
+        commandShortcutMapFromSettings(state.settings.commandShortcutOverrides)
+    }
 
     PaneSurface(
         state = paneState,
         active = state.activePane == paneId,
         component = paneComponent,
         actions = actions,
+        commandShortcuts = commandShortcuts,
         modifier = modifier,
         onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
         canPaste = state.canPaste,

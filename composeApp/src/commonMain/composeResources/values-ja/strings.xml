@@ -338,4 +338,9 @@
     <string name="label_verbose_logging_hint">次回起動時に自動オフ</string>
     <string name="label_setting_enabled">有効</string>
     <string name="label_setting_disabled">無効</string>
+    <string name="label_settings_shortcuts">ショートカット</string>
+    <string name="label_shortcut_capture">記録</string>
+    <string name="label_shortcut_reset_default">既定</string>
+    <string name="label_shortcut_disabled">無効</string>
+    <string name="label_shortcut_recording">キー入力</string>
 </resources>

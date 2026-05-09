@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -36,7 +37,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -55,6 +61,7 @@ import com.oruke.onyx.app.component.RemoteConnectionDraft
 import com.oruke.onyx.app.component.RemoteConnectionTestState
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.AppLocale
+import com.oruke.onyx.core.model.CommandShortcutOverride
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.OnyxSettings
@@ -122,8 +129,13 @@ import onyx.composeapp.generated.resources.label_settings_appearance
 import onyx.composeapp.generated.resources.label_settings_columns
 import onyx.composeapp.generated.resources.label_settings_connections
 import onyx.composeapp.generated.resources.label_settings_general
+import onyx.composeapp.generated.resources.label_settings_shortcuts
 import onyx.composeapp.generated.resources.label_settings_layout
 import onyx.composeapp.generated.resources.label_settings_title
+import onyx.composeapp.generated.resources.label_shortcut_capture
+import onyx.composeapp.generated.resources.label_shortcut_disabled
+import onyx.composeapp.generated.resources.label_shortcut_recording
+import onyx.composeapp.generated.resources.label_shortcut_reset_default
 import onyx.composeapp.generated.resources.label_remote_credentials_save_do_not_save
 import onyx.composeapp.generated.resources.label_remote_credentials_save_policy
 import onyx.composeapp.generated.resources.label_remote_credentials_save_session
@@ -141,7 +153,7 @@ import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
 
-private enum class SettingsCategory { GENERAL, CONNECTIONS, LAYOUT, APPEARANCE, COLUMNS }
+private enum class SettingsCategory { GENERAL, CONNECTIONS, LAYOUT, APPEARANCE, COLUMNS, SHORTCUTS }
 
 @Composable
 internal fun SettingsDialog(
@@ -209,6 +221,7 @@ internal fun SettingsDialog(
                                     SettingsCategory.LAYOUT -> stringResource(Res.string.label_settings_layout)
                                     SettingsCategory.APPEARANCE -> stringResource(Res.string.label_settings_appearance)
                                     SettingsCategory.COLUMNS -> stringResource(Res.string.label_settings_columns)
+                                    SettingsCategory.SHORTCUTS -> stringResource(Res.string.label_settings_shortcuts)
                                 },
                                 selected = category == cat,
                                 accent = palette.accent,
@@ -369,6 +382,15 @@ internal fun SettingsDialog(
                                     }
                                 }
                             }
+
+                            SettingsCategory.SHORTCUTS -> {
+                                CommandShortcutSettings(
+                                    settings = draft,
+                                    onDraftChange = onDraftChange,
+                                    fontSize = bodyFs,
+                                    labelFontSize = labelFs,
+                                )
+                            }
                         }
                     }
                 }
@@ -381,6 +403,164 @@ internal fun SettingsDialog(
             }
         }
     }
+}
+
+@Composable
+private fun CommandShortcutSettings(
+    settings: OnyxSettings,
+    onDraftChange: (OnyxSettings) -> Unit,
+    fontSize: TextUnit,
+    labelFontSize: TextUnit,
+) {
+    var recordingCommand by remember { mutableStateOf<OnyxCommand?>(null) }
+    val focusRequester = remember { FocusRequester() }
+    val shortcutMap = remember(settings.commandShortcutOverrides) {
+        commandShortcutMapFromSettings(settings.commandShortcutOverrides)
+    }
+
+    LaunchedEffect(recordingCommand) {
+        if (recordingCommand != null) {
+            focusRequester.requestFocus()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                val command = recordingCommand ?: return@onPreviewKeyEvent false
+                if (event.key == Key.Escape) {
+                    recordingCommand = null
+                    true
+                } else {
+                    val shortcut = event.toOnyxShortcutOrNull() ?: return@onPreviewKeyEvent false
+                    onDraftChange(settings.withCommandShortcut(command, shortcut))
+                    recordingCommand = null
+                    true
+                }
+            },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        OnyxCommandRegistry.paneCommands.forEach { spec ->
+            CommandShortcutRow(
+                spec = spec,
+                shortcut = shortcutMap.shortcutFor(spec.command),
+                recording = recordingCommand == spec.command,
+                fontSize = fontSize,
+                labelFontSize = labelFontSize,
+                onCapture = { recordingCommand = spec.command },
+                onReset = {
+                    recordingCommand = null
+                    onDraftChange(settings.resetCommandShortcut(spec.command))
+                },
+                onDisable = {
+                    recordingCommand = null
+                    onDraftChange(settings.withCommandShortcut(spec.command, shortcut = null))
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CommandShortcutRow(
+    spec: OnyxCommandSpec,
+    shortcut: OnyxShortcut?,
+    recording: Boolean,
+    fontSize: TextUnit,
+    labelFontSize: TextUnit,
+    onCapture: () -> Unit,
+    onReset: () -> Unit,
+    onDisable: () -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = stringResource(spec.label),
+            fontSize = labelFontSize,
+            color = palette.foreground,
+            modifier = Modifier.width(150.dp),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Text(
+            text = if (recording) {
+                stringResource(Res.string.label_shortcut_recording)
+            } else {
+                onyxShortcutHint(shortcut) ?: stringResource(Res.string.label_shortcut_disabled)
+            },
+            fontSize = fontSize,
+            color = if (shortcut == null && !recording) palette.disabledForeground else palette.mutedForeground,
+            modifier = Modifier.width(112.dp),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            DialogTextButton(
+                text = stringResource(Res.string.label_shortcut_capture),
+                fontSize = 10.sp,
+                focused = recording,
+                onClick = onCapture,
+            )
+            DialogTextButton(
+                text = stringResource(Res.string.label_shortcut_reset_default),
+                fontSize = 10.sp,
+                onClick = onReset,
+            )
+            DialogTextButton(
+                text = stringResource(Res.string.label_shortcut_disabled),
+                fontSize = 10.sp,
+                onClick = onDisable,
+            )
+        }
+    }
+}
+
+private fun OnyxSettings.withCommandShortcut(
+    command: OnyxCommand,
+    shortcut: OnyxShortcut?,
+): OnyxSettings {
+    val currentMap = commandShortcutMapFromSettings(commandShortcutOverrides)
+    val overrides = commandShortcutOverrides
+        .filterNot { override -> override.command == command.name }
+        .toMutableList()
+
+    if (shortcut != null) {
+        OnyxCommandRegistry.paneCommands
+            .map { spec -> spec.command }
+            .filter { existingCommand -> existingCommand != command && currentMap.shortcutFor(existingCommand) == shortcut }
+            .forEach { conflictingCommand ->
+                overrides.removeAll { override -> override.command == conflictingCommand.name }
+                overrides += conflictingCommand.toShortcutOverride(shortcut = null)
+            }
+    }
+
+    if (shortcut != command.defaultShortcut) {
+        overrides += command.toShortcutOverride(shortcut)
+    }
+
+    return copy(commandShortcutOverrides = overrides.normalizedCommandShortcutOverrides())
+}
+
+private fun OnyxSettings.resetCommandShortcut(command: OnyxCommand): OnyxSettings {
+    return copy(
+        commandShortcutOverrides = commandShortcutOverrides
+            .filterNot { override -> override.command == command.name }
+            .normalizedCommandShortcutOverrides(),
+    )
+}
+
+private fun List<CommandShortcutOverride>.normalizedCommandShortcutOverrides(): List<CommandShortcutOverride> {
+    return distinctBy { override -> override.command }.sortedBy { override -> override.command }
 }
 
 @Composable

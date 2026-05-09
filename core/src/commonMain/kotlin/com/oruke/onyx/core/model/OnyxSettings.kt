@@ -21,6 +21,8 @@ data class OnyxSettings(
     val zebraStripeEnabled: Boolean = true,
     // 列可见性控制
     val hiddenDetailsColumns: Set<DetailsColumn> = emptySet(),
+    // 命令快捷键覆盖；command 使用 UI 命令枚举名，避免 core 反向依赖 UI 层。
+    val commandShortcutOverrides: List<CommandShortcutOverride> = emptyList(),
     // 窗口大小记忆
     val mainWindowWidth: Int = 1200,
     val mainWindowHeight: Int = 800,
@@ -29,6 +31,20 @@ data class OnyxSettings(
     val batchRenameWindowWidth: Int = 800,
     val batchRenameWindowHeight: Int = 620,
 )
+
+@Serializable
+data class CommandShortcutOverride(
+    val command: String,
+    val key: String? = null,
+    val modifiers: Set<CommandShortcutModifierSetting> = emptySet(),
+)
+
+@Serializable
+enum class CommandShortcutModifierSetting {
+    PRIMARY,
+    SHIFT,
+    ALT,
+}
 
 @Serializable
 enum class AppLocale {

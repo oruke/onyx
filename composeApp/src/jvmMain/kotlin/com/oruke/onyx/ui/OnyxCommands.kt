@@ -10,6 +10,8 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import com.oruke.onyx.core.model.CommandShortcutModifierSetting
+import com.oruke.onyx.core.model.CommandShortcutOverride
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_command_palette
 import onyx.composeapp.generated.resources.action_copy
@@ -97,6 +99,36 @@ internal data class OnyxCommandShortcutMap(
     }
 }
 
+internal fun commandShortcutMapFromSettings(
+    overrides: List<CommandShortcutOverride>,
+): OnyxCommandShortcutMap {
+    val mappedOverrides = overrides.mapNotNull { override ->
+        val command = OnyxCommand.entries.firstOrNull { candidate -> candidate.name == override.command }
+            ?: return@mapNotNull null
+        val shortcut = override.key?.let { keyName ->
+            val key = OnyxShortcutKey.entries.firstOrNull { candidate -> candidate.name == keyName }
+                ?: return@mapNotNull null
+            OnyxShortcut(
+                key = key,
+                modifiers = override.modifiers.mapNotNull { modifier -> modifier.toOnyxShortcutModifier() }.toSet(),
+            )
+        }
+        command to shortcut
+    }.toMap()
+    return OnyxCommandShortcutMap(mappedOverrides)
+}
+
+internal fun OnyxCommand.toShortcutOverride(shortcut: OnyxShortcut?): CommandShortcutOverride {
+    return CommandShortcutOverride(
+        command = name,
+        key = shortcut?.key?.name,
+        modifiers = shortcut?.modifiers
+            ?.map { modifier -> modifier.toSettingModifier() }
+            ?.toSet()
+            .orEmpty(),
+    )
+}
+
 internal enum class OnyxShortcutModifier {
     PRIMARY,
     SHIFT,
@@ -119,6 +151,37 @@ internal enum class OnyxShortcutKey(val composeKey: Key) {
     X(Key.X),
     V(Key.V),
     F(Key.F),
+}
+
+internal fun KeyEvent.toOnyxShortcutOrNull(): OnyxShortcut? {
+    if (type != KeyEventType.KeyDown) return null
+    val pressedKey = key
+    val shortcutKey = OnyxShortcutKey.entries.firstOrNull { candidate -> candidate.composeKey == pressedKey }
+        ?: return null
+    return OnyxShortcut(
+        key = shortcutKey,
+        modifiers = buildSet {
+            if (isCtrlPressed || isMetaPressed) add(OnyxShortcutModifier.PRIMARY)
+            if (isShiftPressed) add(OnyxShortcutModifier.SHIFT)
+            if (isAltPressed) add(OnyxShortcutModifier.ALT)
+        },
+    )
+}
+
+private fun CommandShortcutModifierSetting.toOnyxShortcutModifier(): OnyxShortcutModifier? {
+    return when (this) {
+        CommandShortcutModifierSetting.PRIMARY -> OnyxShortcutModifier.PRIMARY
+        CommandShortcutModifierSetting.SHIFT -> OnyxShortcutModifier.SHIFT
+        CommandShortcutModifierSetting.ALT -> OnyxShortcutModifier.ALT
+    }
+}
+
+private fun OnyxShortcutModifier.toSettingModifier(): CommandShortcutModifierSetting {
+    return when (this) {
+        OnyxShortcutModifier.PRIMARY -> CommandShortcutModifierSetting.PRIMARY
+        OnyxShortcutModifier.SHIFT -> CommandShortcutModifierSetting.SHIFT
+        OnyxShortcutModifier.ALT -> CommandShortcutModifierSetting.ALT
+    }
 }
 
 internal data class OnyxCommandSpec(
@@ -214,6 +277,20 @@ internal fun onyxShortcutHint(shortcut: OnyxShortcut?): String? {
 @Composable
 internal fun onyxCommandTooltip(label: String, command: OnyxCommand): String {
     val shortcutHint = onyxCommandShortcutHint(command)
+    return if (shortcutHint == null) {
+        label
+    } else {
+        stringResource(Res.string.label_with_shortcut, label, shortcutHint)
+    }
+}
+
+@Composable
+internal fun onyxCommandTooltip(
+    label: String,
+    command: OnyxCommand,
+    shortcuts: OnyxCommandShortcutMap,
+): String {
+    val shortcutHint = onyxCommandShortcutHint(command, shortcuts)
     return if (shortcutHint == null) {
         label
     } else {

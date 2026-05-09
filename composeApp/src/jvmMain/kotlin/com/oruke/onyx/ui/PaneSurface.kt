@@ -92,6 +92,7 @@ internal fun PaneSurface(
     active: Boolean,
     component: PaneComponent,
     actions: PaneActions,
+    commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
     modifier: Modifier = Modifier,
     onActivate: () -> Unit,
     canPaste: Boolean,
@@ -123,7 +124,6 @@ internal fun PaneSurface(
     var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
-    val commandShortcuts = remember { OnyxCommandShortcutMap.Default }
     val tabStack by component.tabStack.subscribeAsState()
     val tabBarState = PaneTabBarState(
         activeTabId = state.activeTabId,
@@ -531,7 +531,11 @@ internal fun PaneSurface(
                     showFilterBar = !showFilterBar
                     if (!showFilterBar) dispatch(PaneIntent.SetFilterQuery(""))
                 },
-                tooltip = onyxCommandTooltip(stringResource(Res.string.action_filter), OnyxCommand.Filter),
+                tooltip = onyxCommandTooltip(
+                    label = stringResource(Res.string.action_filter),
+                    command = OnyxCommand.Filter,
+                    shortcuts = commandShortcuts,
+                ),
                 selected = showFilterBar || filterQuery.isNotEmpty(),
             ) {
                 Icon(
@@ -816,6 +820,7 @@ internal fun PaneSurface(
                             showContextMenu = false
                             actions.onOpenTerminal(state.location)
                         },
+                        commandShortcuts = commandShortcuts,
                         onClose = { showContextMenu = false },
                     )
                 }

@@ -95,6 +95,7 @@ internal fun BoxScope.PaneContextMenu(
     onOpenWithChooser: () -> Unit,
     onRefresh: () -> Unit,
     onOpenTerminal: () -> Unit,
+    commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
     onClose: () -> Unit,
 ) {
     Popup(
@@ -130,6 +131,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = canOpenSelection,
                 iconKey = AllIconsKeys.Actions.MenuOpen,
                 command = OnyxCommand.OpenSelection,
+                commandShortcuts = commandShortcuts,
                 onClick = onOpenSelection,
             )
             ContextMenuItem(
@@ -177,6 +179,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = canRenameSelection,
                 iconKey = AllIconsKeys.Actions.Edit,
                 command = OnyxCommand.RenameSelection,
+                commandShortcuts = commandShortcuts,
                 onClick = onRenameSelection,
             )
             ContextMenuItem(
@@ -184,6 +187,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = true,
                 iconKey = AllIconsKeys.FileTypes.Any_type,
                 command = OnyxCommand.NewFile,
+                commandShortcuts = commandShortcuts,
                 onClick = onCreateFile,
             )
             ContextMenuItem(
@@ -191,6 +195,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = true,
                 iconKey = AllIconsKeys.Nodes.Folder,
                 command = OnyxCommand.NewDirectory,
+                commandShortcuts = commandShortcuts,
                 onClick = onCreateDirectory,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -199,6 +204,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.General.Delete,
                 command = OnyxCommand.DeleteSelection,
+                commandShortcuts = commandShortcuts,
                 onClick = onDeleteSelection,
             )
             if (canExtractSelection) {
@@ -240,6 +246,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.Copy,
                 command = OnyxCommand.CopySelection,
+                commandShortcuts = commandShortcuts,
                 onClick = onCopySelection,
             )
             ContextMenuItem(
@@ -247,6 +254,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.MenuCut,
                 command = OnyxCommand.CutSelection,
+                commandShortcuts = commandShortcuts,
                 onClick = onCutSelection,
             )
             ContextMenuItem(
@@ -254,6 +262,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = canPaste,
                 iconKey = AllIconsKeys.Actions.MenuPaste,
                 command = OnyxCommand.Paste,
+                commandShortcuts = commandShortcuts,
                 onClick = onPaste,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -262,6 +271,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Refresh,
                 command = OnyxCommand.Refresh,
+                commandShortcuts = commandShortcuts,
                 onClick = onRefresh,
             )
             ContextMenuItem(
@@ -275,6 +285,7 @@ internal fun BoxScope.PaneContextMenu(
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Close,
                 command = OnyxCommand.CloseMenu,
+                commandShortcuts = commandShortcuts,
                 onClick = onClose,
             )
         }
@@ -288,12 +299,13 @@ internal fun ContextMenuItem(
     iconKey: org.jetbrains.jewel.ui.icon.IconKey,
     onClick: () -> Unit,
     command: OnyxCommand? = null,
+    commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val background = if (enabled && isHovered) LocalOnyxPalette.current.rowHoverBackground else Color.Transparent
     val contentColor = if (enabled) LocalOnyxPalette.current.foreground else LocalOnyxPalette.current.disabledForeground
-    val shortcutHint = if (command == null) null else onyxCommandShortcutHint(command)
+    val shortcutHint = if (command == null) null else onyxCommandShortcutHint(command, commandShortcuts)
 
     Row(
         modifier = Modifier

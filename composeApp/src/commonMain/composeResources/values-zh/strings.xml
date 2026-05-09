@@ -336,4 +336,9 @@
     <string name="label_verbose_logging_hint">下次启动自动关闭</string>
     <string name="label_setting_enabled">开启</string>
     <string name="label_setting_disabled">关闭</string>
+    <string name="label_settings_shortcuts">快捷键</string>
+    <string name="label_shortcut_capture">录制</string>
+    <string name="label_shortcut_reset_default">默认</string>
+    <string name="label_shortcut_disabled">禁用</string>
+    <string name="label_shortcut_recording">输入快捷键</string>
 </resources>
