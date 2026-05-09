@@ -56,6 +56,22 @@
     <string name="action_extract_here">解压到此处</string>
     <string name="action_extract_to_directory">解压到独立目录</string>
     <string name="action_extract_smart">智能解压</string>
+    <string name="shortcut_separator">+</string>
+    <string name="shortcut_modifier_ctrl">Ctrl</string>
+    <string name="shortcut_modifier_cmd">Cmd</string>
+    <string name="shortcut_modifier_shift">Shift</string>
+    <string name="shortcut_modifier_alt">Alt</string>
+    <string name="shortcut_key_enter">Enter</string>
+    <string name="shortcut_key_escape">Esc</string>
+    <string name="shortcut_key_delete">Del</string>
+    <string name="shortcut_key_f2">F2</string>
+    <string name="shortcut_key_f5">F5</string>
+    <string name="shortcut_key_n">N</string>
+    <string name="shortcut_key_c">C</string>
+    <string name="shortcut_key_x">X</string>
+    <string name="shortcut_key_v">V</string>
+    <string name="shortcut_key_f">F</string>
+    <string name="label_with_shortcut">%1$s（%2$s）</string>
     <string name="label_archive_password">压缩包密码</string>
     <string name="label_archive_password_hint">请输入加密压缩包的密码</string>
     <string name="label_remote_credentials_title">远程连接凭据</string>
@@ -113,7 +129,7 @@
         assets/icons
         2026/04/发票
     </string>
-    <string name="label_create_directories_shortcuts">Ctrl/Cmd+Enter 创建 · Esc 关闭</string>
+    <string name="label_create_directories_shortcuts">%1$s 创建 · %2$s 关闭</string>
     <string name="label_conflict_resolution_title">处理冲突（%1$d/%2$d）</string>
     <string name="label_conflict_resolution_message">“%1$s” 在 %2$s 中已存在。请选择处理方式。</string>
     <string name="label_delete_confirmation_move_to_trash">将 %1$d 个所选项目移到回收站？</string>

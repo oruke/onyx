@@ -46,8 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -467,7 +465,7 @@ internal fun CreateDirectoriesDialog(
                                             return@onPreviewKeyEvent false
                                         }
                                         when {
-                                            (event.key == Key.Enter) && (event.isCtrlPressed || event.isMetaPressed) -> {
+                                            event.matchesCommand(OnyxCommand.CreateDirectories) -> {
                                                 onConfirm()
                                                 true
                                             }
@@ -514,7 +512,11 @@ internal fun CreateDirectoriesDialog(
                             )
                         }
                         Text(
-                            text = stringResource(Res.string.label_create_directories_shortcuts),
+                            text = stringResource(
+                                Res.string.label_create_directories_shortcuts,
+                                onyxCommandShortcutHint(OnyxCommand.CreateDirectories).orEmpty(),
+                                onyxCommandShortcutHint(OnyxCommand.CloseMenu).orEmpty(),
+                            ),
                             fontSize = 11.sp,
                             color = LocalOnyxPalette.current.mutedForeground,
                         )

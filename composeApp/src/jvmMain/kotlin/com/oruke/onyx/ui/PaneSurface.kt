@@ -194,36 +194,37 @@ internal fun PaneSurface(
                 }
 
                 when {
-                    event.key == Key.Enter -> {
+                    event.matchesCommand(OnyxCommand.OpenSelection) -> {
                         dispatch(PaneIntent.OpenSelectedEntry)
                         true
                     }
 
-                    event.key == Key.F2 -> {
+                    event.matchesCommand(OnyxCommand.RenameSelection) -> {
                         dispatch(PaneIntent.BeginRename)
                         true
                     }
 
-                    event.key == Key.N && (event.isCtrlPressed || event.isMetaPressed) -> {
-                        if (event.isShiftPressed) {
-                            actions.onBeginCreateDirectory()
-                        } else {
-                            dispatch(PaneIntent.BeginCreateFile)
-                        }
+                    event.matchesCommand(OnyxCommand.NewDirectory) -> {
+                        actions.onBeginCreateDirectory()
                         true
                     }
 
-                    event.key == Key.C && (event.isCtrlPressed || event.isMetaPressed) -> {
+                    event.matchesCommand(OnyxCommand.NewFile) -> {
+                        dispatch(PaneIntent.BeginCreateFile)
+                        true
+                    }
+
+                    event.matchesCommand(OnyxCommand.CopySelection) -> {
                         actions.onCopySelection()
                         true
                     }
 
-                    event.key == Key.X && (event.isCtrlPressed || event.isMetaPressed) -> {
+                    event.matchesCommand(OnyxCommand.CutSelection) -> {
                         actions.onCutSelection()
                         true
                     }
 
-                    event.key == Key.V && (event.isCtrlPressed || event.isMetaPressed) -> {
+                    event.matchesCommand(OnyxCommand.Paste) -> {
                         actions.onPaste()
                         true
                     }
@@ -238,7 +239,7 @@ internal fun PaneSurface(
                         true
                     }
 
-                    event.key == Key.Delete -> {
+                    event.matchesCommand(OnyxCommand.DeleteSelection) -> {
                         if (state.selectedEntryIds.isNotEmpty()) {
                             actions.onDeleteSelection()
                             true
@@ -264,7 +265,7 @@ internal fun PaneSurface(
                         true
                     }
 
-                    event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed) -> {
+                    event.matchesCommand(OnyxCommand.Filter) -> {
                         showFilterBar = true
                         true
                     }
@@ -274,7 +275,7 @@ internal fun PaneSurface(
                         true
                     }
 
-                    event.key == Key.F5 -> {
+                    event.matchesCommand(OnyxCommand.Refresh) -> {
                         dispatch(PaneIntent.Refresh)
                         true
                     }
@@ -399,7 +400,7 @@ internal fun PaneSurface(
                     showFilterBar = !showFilterBar
                     if (!showFilterBar) dispatch(PaneIntent.SetFilterQuery(""))
                 },
-                tooltip = stringResource(Res.string.action_filter) + " (Ctrl+F)",
+                tooltip = onyxCommandTooltip(stringResource(Res.string.action_filter), OnyxCommand.Filter),
                 selected = showFilterBar || filterQuery.isNotEmpty(),
             ) {
                 Icon(

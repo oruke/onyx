@@ -56,6 +56,22 @@
     <string name="action_extract_here">Extract Here</string>
     <string name="action_extract_to_directory">Extract to Directory</string>
     <string name="action_extract_smart">Smart Extract</string>
+    <string name="shortcut_separator">+</string>
+    <string name="shortcut_modifier_ctrl">Ctrl</string>
+    <string name="shortcut_modifier_cmd">Cmd</string>
+    <string name="shortcut_modifier_shift">Shift</string>
+    <string name="shortcut_modifier_alt">Alt</string>
+    <string name="shortcut_key_enter">Enter</string>
+    <string name="shortcut_key_escape">Esc</string>
+    <string name="shortcut_key_delete">Del</string>
+    <string name="shortcut_key_f2">F2</string>
+    <string name="shortcut_key_f5">F5</string>
+    <string name="shortcut_key_n">N</string>
+    <string name="shortcut_key_c">C</string>
+    <string name="shortcut_key_x">X</string>
+    <string name="shortcut_key_v">V</string>
+    <string name="shortcut_key_f">F</string>
+    <string name="label_with_shortcut">%1$s (%2$s)</string>
     <string name="label_archive_password">Archive Password</string>
     <string name="label_archive_password_hint">Enter password for encrypted archive</string>
     <string name="label_remote_credentials_title">Remote Credentials</string>
@@ -115,7 +131,7 @@
         assets/icons
         2026/04/invoices
     </string>
-    <string name="label_create_directories_shortcuts">Ctrl/Cmd+Enter to create · Esc to close</string>
+    <string name="label_create_directories_shortcuts">%1$s to create · %2$s to close</string>
     <string name="label_conflict_resolution_title">Resolve Conflict (%1$d/%2$d)</string>
     <string name="label_conflict_resolution_message">"%1$s" already exists in %2$s. Choose how to continue.</string>
     <string name="label_delete_confirmation_move_to_trash">Move %1$d selected item(s) to trash?</string>

@@ -129,7 +129,7 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_open),
                 enabled = canOpenSelection,
                 iconKey = AllIconsKeys.Actions.MenuOpen,
-                shortcutHint = "Enter",
+                command = OnyxCommand.OpenSelection,
                 onClick = onOpenSelection,
             )
             ContextMenuItem(
@@ -176,21 +176,21 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_rename),
                 enabled = canRenameSelection,
                 iconKey = AllIconsKeys.Actions.Edit,
-                shortcutHint = "F2",
+                command = OnyxCommand.RenameSelection,
                 onClick = onRenameSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_new_file),
                 enabled = true,
                 iconKey = AllIconsKeys.FileTypes.Any_type,
-                shortcutHint = "Ctrl+N",
+                command = OnyxCommand.NewFile,
                 onClick = onCreateFile,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_new_directory),
                 enabled = true,
                 iconKey = AllIconsKeys.Nodes.Folder,
-                shortcutHint = "Ctrl+Shift+N",
+                command = OnyxCommand.NewDirectory,
                 onClick = onCreateDirectory,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -198,7 +198,7 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_delete_selected),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.General.Delete,
-                shortcutHint = "Del",
+                command = OnyxCommand.DeleteSelection,
                 onClick = onDeleteSelection,
             )
             if (canExtractSelection) {
@@ -239,21 +239,21 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_copy),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.Copy,
-                shortcutHint = "Ctrl+C",
+                command = OnyxCommand.CopySelection,
                 onClick = onCopySelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_cut),
                 enabled = canOperateOnSelection,
                 iconKey = AllIconsKeys.Actions.MenuCut,
-                shortcutHint = "Ctrl+X",
+                command = OnyxCommand.CutSelection,
                 onClick = onCutSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_paste),
                 enabled = canPaste,
                 iconKey = AllIconsKeys.Actions.MenuPaste,
-                shortcutHint = "Ctrl+V",
+                command = OnyxCommand.Paste,
                 onClick = onPaste,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -261,7 +261,7 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_refresh_active),
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Refresh,
-                shortcutHint = "F5",
+                command = OnyxCommand.Refresh,
                 onClick = onRefresh,
             )
             ContextMenuItem(
@@ -274,7 +274,7 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_close_menu),
                 enabled = true,
                 iconKey = AllIconsKeys.Actions.Close,
-                shortcutHint = "Esc",
+                command = OnyxCommand.CloseMenu,
                 onClick = onClose,
             )
         }
@@ -287,12 +287,13 @@ internal fun ContextMenuItem(
     enabled: Boolean,
     iconKey: org.jetbrains.jewel.ui.icon.IconKey,
     onClick: () -> Unit,
-    shortcutHint: String? = null,
+    command: OnyxCommand? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val background = if (enabled && isHovered) LocalOnyxPalette.current.rowHoverBackground else Color.Transparent
     val contentColor = if (enabled) LocalOnyxPalette.current.foreground else LocalOnyxPalette.current.disabledForeground
+    val shortcutHint = if (command == null) null else onyxCommandShortcutHint(command)
 
     Row(
         modifier = Modifier
@@ -317,4 +318,3 @@ internal fun ContextMenuItem(
         }
     }
 }
-

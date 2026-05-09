@@ -56,6 +56,22 @@
     <string name="action_extract_here">ここに解凍</string>
     <string name="action_extract_to_directory">フォルダに解凍</string>
     <string name="action_extract_smart">スマート解凍</string>
+    <string name="shortcut_separator">+</string>
+    <string name="shortcut_modifier_ctrl">Ctrl</string>
+    <string name="shortcut_modifier_cmd">Cmd</string>
+    <string name="shortcut_modifier_shift">Shift</string>
+    <string name="shortcut_modifier_alt">Alt</string>
+    <string name="shortcut_key_enter">Enter</string>
+    <string name="shortcut_key_escape">Esc</string>
+    <string name="shortcut_key_delete">Del</string>
+    <string name="shortcut_key_f2">F2</string>
+    <string name="shortcut_key_f5">F5</string>
+    <string name="shortcut_key_n">N</string>
+    <string name="shortcut_key_c">C</string>
+    <string name="shortcut_key_x">X</string>
+    <string name="shortcut_key_v">V</string>
+    <string name="shortcut_key_f">F</string>
+    <string name="label_with_shortcut">%1$s（%2$s）</string>
     <string name="label_archive_password">アーカイブパスワード</string>
     <string name="label_archive_password_hint">暗号化アーカイブのパスワードを入力</string>
     <string name="label_remote_credentials_title">リモート認証情報</string>
@@ -115,7 +131,7 @@
         assets/icons
         2026/04/invoices
     </string>
-    <string name="label_create_directories_shortcuts">Ctrl/Cmd+Enter で作成 · Esc で閉じる</string>
+    <string name="label_create_directories_shortcuts">%1$s で作成 · %2$s で閉じる</string>
     <string name="label_conflict_resolution_title">競合を解決（%1$d/%2$d）</string>
     <string name="label_conflict_resolution_message">「%1$s」は %2$s に既に存在します。処理方法を選んでください。</string>
     <string name="label_delete_confirmation_move_to_trash">選択した %1$d 件の項目をゴミ箱に移動しますか？</string>
