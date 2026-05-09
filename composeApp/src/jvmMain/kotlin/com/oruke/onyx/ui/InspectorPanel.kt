@@ -128,6 +128,12 @@ internal fun InspectorPanel(
                             filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                             modifier = Modifier.fillMaxSize()
                         )
+                    } else {
+                        Icon(
+                            key = AllIconsKeys.FileTypes.Image,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp)
+                        )
                     }
                 } else {
                     Icon(
