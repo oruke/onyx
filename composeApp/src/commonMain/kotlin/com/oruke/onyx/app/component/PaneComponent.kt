@@ -1,5 +1,7 @@
 package com.oruke.onyx.app.component
 
+import com.arkivanov.decompose.router.stack.ChildStack
+import com.arkivanov.decompose.value.Value
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
@@ -249,6 +251,7 @@ sealed interface PaneIntent {
 
 interface PaneComponent {
     val state: StateFlow<PaneState>
+    val tabStack: Value<ChildStack<TabConfig, TabComponent>>
 
     fun dispatch(intent: PaneIntent)
 

@@ -1,6 +1,11 @@
 package com.oruke.onyx.app.component
 
 import com.arkivanov.decompose.ComponentContext
+import com.arkivanov.decompose.router.stack.ChildStack
+import com.arkivanov.decompose.router.stack.StackNavigation
+import com.arkivanov.decompose.router.stack.childStack
+import com.arkivanov.decompose.router.stack.navigate
+import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.delegate.SelectionHelper
@@ -71,6 +76,20 @@ class DefaultPaneComponent(
     )
 
     override val state: StateFlow<PaneState> = mutableState.asStateFlow()
+    private val tabNavigation = StackNavigation<TabConfig>()
+    override val tabStack: Value<ChildStack<TabConfig, TabComponent>> = childStack(
+        source = tabNavigation,
+        serializer = null,
+        initialStack = { mutableState.value.tabs.map { tab -> tab.toTabSnapshot().toTabConfig() } },
+        key = "PaneTabStack-$paneId",
+        childFactory = { config, childContext ->
+            DefaultTabComponent(
+                componentContext = childContext,
+                config = config,
+                pathService = pathService,
+            )
+        },
+    )
 
     private val fileWatcher = FileWatcher()
     private var fileWatcherJob: Job? = null
@@ -550,6 +569,7 @@ class DefaultPaneComponent(
             tab = tab,
         )
         mutableState.value = update.state
+        syncTabStack()
         loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
     }
 
@@ -559,6 +579,7 @@ class DefaultPaneComponent(
             tabId = tabId,
         ) ?: return
         mutableState.value = update.state
+        syncTabStack()
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
@@ -570,6 +591,7 @@ class DefaultPaneComponent(
             tabId = tabId,
         ) ?: return
         mutableState.value = update.state
+        syncTabStack()
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
@@ -585,6 +607,7 @@ class DefaultPaneComponent(
             targetIndex = targetIndex,
         ) ?: return
         mutableState.value = update.state
+        syncTabStack()
     }
 
     override fun detachTab(tabId: String): TabSnapshot? {
@@ -599,6 +622,7 @@ class DefaultPaneComponent(
             },
         ) ?: return null
         mutableState.value = update.state
+        syncTabStack()
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
@@ -621,6 +645,7 @@ class DefaultPaneComponent(
             targetIndex = targetIndex,
         )
         mutableState.value = update.state
+        syncTabStack()
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
@@ -640,6 +665,7 @@ class DefaultPaneComponent(
             activeTabId = activeTabId,
             tabs = restoredTabs,
         )
+        syncTabStack()
         loadTab(tabId = activeTab.id, location = activeTab.location)
     }
 
@@ -887,6 +913,22 @@ class DefaultPaneComponent(
             inlineExpandedLocations = state.inlineExpandedLocations,
             inlineExpandedEntries = state.inlineExpandedEntries,
         )
+    }
+
+    private fun syncTabStack() {
+        val state = mutableState.value
+        val configs = state.tabs.map { tab -> tab.toTabSnapshot().toTabConfig() }
+        val activeIndex = configs.indexOfFirst { config -> config.id == state.activeTabId }
+        val orderedConfigs = if (activeIndex in configs.indices && activeIndex != configs.lastIndex) {
+            configs.toMutableList().apply {
+                add(removeAt(activeIndex))
+            }
+        } else {
+            configs
+        }
+        if (orderedConfigs.isNotEmpty()) {
+            tabNavigation.navigate { orderedConfigs }
+        }
     }
 
     private fun activeTab(): PaneTabState? {
