@@ -239,6 +239,7 @@
     <string name="msg_moved_items">已移动 %1$d 个项目到 %2$s</string>
     <string name="msg_copy_failed">复制失败</string>
     <string name="msg_move_failed">移动失败</string>
+    <string name="msg_cross_provider_transfer_unsupported">暂不支持在 %1$s 和 %2$s 之间传输。</string>
     <string name="msg_extract_items">解压 %1$d 个项目</string>
     <string name="msg_extracted_items">已解压 %1$d 个项目到 %2$s</string>
     <string name="msg_extract_failed">解压失败</string>

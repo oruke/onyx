@@ -241,6 +241,7 @@
     <string name="msg_moved_items">Moved %1$d item(s) to %2$s</string>
     <string name="msg_copy_failed">Copy failed</string>
     <string name="msg_move_failed">Move failed</string>
+    <string name="msg_cross_provider_transfer_unsupported">Transfer between %1$s and %2$s is not supported yet.</string>
     <string name="msg_extract_items">Extract %1$d item(s)</string>
     <string name="msg_extracted_items">Extracted %1$d item(s) to %2$s</string>
     <string name="msg_extract_failed">Extract failed</string>

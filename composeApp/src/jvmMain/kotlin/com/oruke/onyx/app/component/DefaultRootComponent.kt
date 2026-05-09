@@ -1407,6 +1407,7 @@ private fun VfsProviderError.toConnectionMessage(): String {
         is VfsProviderError.AlreadyExists -> "Location already exists"
         is VfsProviderError.NetworkFailure -> reason ?: "Network failure"
         is VfsProviderError.UnsupportedOperation -> "Protocol or capability is not supported"
+        is VfsProviderError.CrossProviderTransferUnsupported -> "Cross-provider transfer is not supported"
     }
 }
 

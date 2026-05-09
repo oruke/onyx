@@ -241,6 +241,7 @@
     <string name="msg_moved_items">%1$d 個のアイテムを %2$s に移動しました</string>
     <string name="msg_copy_failed">コピーに失敗しました</string>
     <string name="msg_move_failed">移動に失敗しました</string>
+    <string name="msg_cross_provider_transfer_unsupported">%1$s と %2$s の間の転送はまだサポートされていません。</string>
     <string name="msg_extract_items">%1$d 個の項目を解凍</string>
     <string name="msg_extracted_items">%1$d 個の項目を %2$s に解凍しました</string>
     <string name="msg_extract_failed">解凍に失敗しました</string>

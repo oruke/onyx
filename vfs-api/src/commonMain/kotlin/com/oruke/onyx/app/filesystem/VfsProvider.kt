@@ -87,6 +87,14 @@ sealed interface VfsProviderError {
         override val location: String? = null,
         val capability: VfsProviderCapability? = null,
     ) : VfsProviderError
+
+    data class CrossProviderTransferUnsupported(
+        override val protocol: VfsProtocol,
+        override val location: String? = null,
+        val sourceProtocol: VfsProtocol,
+        val sourceLocation: String?,
+        val capability: VfsProviderCapability,
+    ) : VfsProviderError
 }
 
 class VfsProviderException(

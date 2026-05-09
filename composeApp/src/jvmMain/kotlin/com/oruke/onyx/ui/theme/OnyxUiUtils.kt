@@ -36,6 +36,7 @@ import onyx.composeapp.generated.resources.msg_cancelled
 import onyx.composeapp.generated.resources.msg_copied_items
 import onyx.composeapp.generated.resources.msg_copy_failed
 import onyx.composeapp.generated.resources.msg_copy_items
+import onyx.composeapp.generated.resources.msg_cross_provider_transfer_unsupported
 import onyx.composeapp.generated.resources.msg_create_folder_failed
 import onyx.composeapp.generated.resources.msg_create_folders
 import onyx.composeapp.generated.resources.msg_created_folders
@@ -85,6 +86,7 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_COPIED_ITEMS -> Res.string.msg_copied_items
         MessageKey.MSG_COPY_FAILED -> Res.string.msg_copy_failed
         MessageKey.MSG_COPY_ITEMS -> Res.string.msg_copy_items
+        MessageKey.MSG_CROSS_PROVIDER_TRANSFER_UNSUPPORTED -> Res.string.msg_cross_provider_transfer_unsupported
         MessageKey.MSG_CREATE_FOLDER_FAILED -> Res.string.msg_create_folder_failed
         MessageKey.MSG_CREATE_FOLDERS -> Res.string.msg_create_folders
         MessageKey.MSG_CREATED_FOLDERS -> Res.string.msg_created_folders

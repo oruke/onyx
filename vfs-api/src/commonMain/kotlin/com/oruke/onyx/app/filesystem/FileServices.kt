@@ -66,7 +66,11 @@ class ProviderBackedFileCommandService(
         return runCatching {
             entries.groupByCommandService(VfsProviderCapability.COPY).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.COPY)
+                    throw crossProviderUnsupportedFor(
+                        sourceLocation = serviceEntries.firstOrNull()?.location,
+                        targetLocation = targetDirectoryLocation,
+                        capability = VfsProviderCapability.COPY,
+                    )
                 }
                 service.copy(
                     entries = serviceEntries,
@@ -86,7 +90,11 @@ class ProviderBackedFileCommandService(
         return runCatching {
             entries.groupByCommandService(VfsProviderCapability.MOVE).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.MOVE)
+                    throw crossProviderUnsupportedFor(
+                        sourceLocation = serviceEntries.firstOrNull()?.location,
+                        targetLocation = targetDirectoryLocation,
+                        capability = VfsProviderCapability.MOVE,
+                    )
                 }
                 service.move(
                     entries = serviceEntries,
@@ -169,6 +177,28 @@ class ProviderBackedFileCommandService(
             )
         } else {
             VfsProviderNotFoundException(location)
+        }
+    }
+
+    private fun crossProviderUnsupportedFor(
+        sourceLocation: String?,
+        targetLocation: String,
+        capability: VfsProviderCapability,
+    ): Throwable {
+        val sourceProvider = sourceLocation?.let { location -> providerRegistry?.providerFor(location)?.getOrNull() }
+        val targetProvider = providerRegistry?.providerFor(targetLocation)?.getOrNull()
+        return if (sourceProvider != null && targetProvider != null) {
+            VfsProviderException(
+                VfsProviderError.CrossProviderTransferUnsupported(
+                    protocol = targetProvider.protocol,
+                    location = targetLocation,
+                    sourceProtocol = sourceProvider.protocol,
+                    sourceLocation = sourceLocation,
+                    capability = capability,
+                )
+            )
+        } else {
+            unsupportedFor(targetLocation, capability)
         }
     }
 }

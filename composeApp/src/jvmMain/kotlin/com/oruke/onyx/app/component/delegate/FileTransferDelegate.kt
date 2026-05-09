@@ -7,6 +7,8 @@ import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.app.filesystem.VfsProviderError
+import com.oruke.onyx.app.filesystem.VfsProviderException
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.app.usecase.FileTransferUseCase
 import com.oruke.onyx.app.usecase.TaskProgress
@@ -270,12 +272,7 @@ class FileTransferDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                        ?: when (operation) {
-                            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_FAILED)
-                            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_FAILED)
-                            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
-                        },
+                    detail = failure.toTransferFailureMessage(operation),
                     progress = null,
                 )
                 onRefreshAllPanes()
@@ -330,8 +327,7 @@ class FileTransferDelegate(
                 kind = taskKindFor(operation),
                 title = taskTitleFor(operation, entries.size),
                 status = BackgroundTaskStatus.FAILED,
-                detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                    ?: failureMessageFor(operation),
+                detail = failure.toTransferFailureMessage(operation),
                 progress = null,
                 totalCount = entries.size,
                 startTimeMillis = System.currentTimeMillis(),
@@ -365,6 +361,20 @@ class FileTransferDelegate(
             FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_FAILED)
             FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
         }
+    }
+
+    private fun Throwable.toTransferFailureMessage(operation: FileTransferOperation): I18nMessage {
+        val providerError = (this as? VfsProviderException)?.error
+        if (providerError is VfsProviderError.CrossProviderTransferUnsupported) {
+            return I18nMessage(
+                MessageKey.MSG_CROSS_PROVIDER_TRANSFER_UNSUPPORTED,
+                providerError.sourceProtocol.name,
+                providerError.protocol.name,
+            )
+        }
+        return message?.takeIf { it.isNotBlank() }?.let { detail ->
+            I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)
+        } ?: failureMessageFor(operation)
     }
 
     data class PendingTransferRequest(
