@@ -57,7 +57,9 @@ ui
 ## P1：收敛状态与事件模型
 
 - [ ] 拆分 `PaneState` 与 `PaneTabState` 重复字段，提取 `TabState` 与 `PaneChromeState`。
-- [ ] 引入 `RootIntent` / `PaneIntent`，UI 只发送事件。
+- [x] 引入 `PaneIntent` 与 `PaneComponent.dispatch` 入口。
+- [ ] 引入 `RootIntent` 与 `RootComponent.dispatch` 入口。
+- [ ] UI 迁移为只发送 `RootIntent` / `PaneIntent`。
 - [x] 把选择、排序、过滤的派生状态先拆成纯 helper。
 - [x] 把树状展开拆成纯 reducer/helper。
 - [x] 把内联编辑拆成纯 reducer/helper。

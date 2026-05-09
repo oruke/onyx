@@ -89,6 +89,59 @@ class DefaultPaneComponent(
         startWatching(mutableState.value.location)
     }
 
+    override fun dispatch(intent: PaneIntent) {
+        when (intent) {
+            PaneIntent.Refresh -> refresh()
+            PaneIntent.GoBack -> goBack()
+            PaneIntent.GoForward -> goForward()
+            PaneIntent.GoUp -> goUp()
+            is PaneIntent.OpenDirectory -> openDirectory(intent.location)
+            is PaneIntent.OpenEntry -> openEntry(intent.entry)
+            is PaneIntent.SetViewMode -> setViewMode(intent.mode)
+            is PaneIntent.SetFilterQuery -> setFilterQuery(intent.query)
+            is PaneIntent.ToggleSort -> toggleSort(intent.column)
+            PaneIntent.ToggleHiddenItems -> toggleHiddenItems()
+            is PaneIntent.ToggleColumnVisibility -> toggleColumnVisibility(intent.column)
+            is PaneIntent.SetGalleryItemSize -> setGalleryItemSize(intent.sizeDp)
+            is PaneIntent.ResizeDetailsColumn -> resizeDetailsColumn(
+                column = intent.column,
+                nextColumn = intent.nextColumn,
+                deltaWeight = intent.deltaWeight,
+            )
+            is PaneIntent.SelectEntry -> selectEntry(
+                entryId = intent.entryId,
+                additive = intent.additive,
+                range = intent.range,
+            )
+            is PaneIntent.SelectEntries -> selectEntries(intent.entryIds)
+            is PaneIntent.MoveSelection -> moveSelection(
+                offset = intent.offset,
+                extendSelection = intent.extendSelection,
+            )
+            PaneIntent.OpenSelectedEntry -> openSelectedEntry()
+            PaneIntent.BeginRename -> beginRename()
+            PaneIntent.BeginCreateFile -> beginCreateFile()
+            PaneIntent.BeginCreateDirectory -> beginCreateDirectory()
+            PaneIntent.OpenSelectedInNewTab -> openSelectedInNewTab()
+            PaneIntent.CopySelectedPaths -> copySelectedPaths()
+            is PaneIntent.UpdateInlineEditDraft -> updateInlineEditDraft(intent.draft)
+            PaneIntent.ConfirmInlineEdit -> confirmInlineEdit()
+            PaneIntent.CancelInlineEdit -> cancelInlineEdit()
+            PaneIntent.DismissOperationFeedback -> dismissOperationFeedback()
+            PaneIntent.SelectAll -> selectAll()
+            PaneIntent.ClearSelection -> clearSelection()
+            is PaneIntent.CreateTab -> createTab(intent.location ?: state.value.location)
+            is PaneIntent.SelectTab -> selectTab(intent.tabId)
+            is PaneIntent.CloseTab -> closeTab(intent.tabId)
+            is PaneIntent.MoveTab -> moveTab(
+                tabId = intent.tabId,
+                targetIndex = intent.targetIndex,
+            )
+            is PaneIntent.ToggleInlineExpand -> toggleInlineExpand(intent.directoryLocation)
+            PaneIntent.ConsumePendingScroll -> consumePendingScroll()
+        }
+    }
+
     override fun refresh() {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->

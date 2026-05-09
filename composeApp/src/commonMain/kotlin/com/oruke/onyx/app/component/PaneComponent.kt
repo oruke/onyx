@@ -96,9 +96,121 @@ data class InlineExpandedEntry(
     val error: Boolean = false,
 )
 
+sealed interface PaneIntent {
+    data object Refresh : PaneIntent
+
+    data object GoBack : PaneIntent
+
+    data object GoForward : PaneIntent
+
+    data object GoUp : PaneIntent
+
+    data class OpenDirectory(
+        val location: String,
+    ) : PaneIntent
+
+    data class OpenEntry(
+        val entry: VFile,
+    ) : PaneIntent
+
+    data class SetViewMode(
+        val mode: ViewMode,
+    ) : PaneIntent
+
+    data class SetFilterQuery(
+        val query: String,
+    ) : PaneIntent
+
+    data class ToggleSort(
+        val column: DetailsColumn,
+    ) : PaneIntent
+
+    data object ToggleHiddenItems : PaneIntent
+
+    data class ToggleColumnVisibility(
+        val column: DetailsColumn,
+    ) : PaneIntent
+
+    data class SetGalleryItemSize(
+        val sizeDp: Int,
+    ) : PaneIntent
+
+    data class ResizeDetailsColumn(
+        val column: DetailsColumn,
+        val nextColumn: DetailsColumn,
+        val deltaWeight: Float,
+    ) : PaneIntent
+
+    data class SelectEntry(
+        val entryId: String,
+        val additive: Boolean = false,
+        val range: Boolean = false,
+    ) : PaneIntent
+
+    data class SelectEntries(
+        val entryIds: Set<String>,
+    ) : PaneIntent
+
+    data class MoveSelection(
+        val offset: Int,
+        val extendSelection: Boolean = false,
+    ) : PaneIntent
+
+    data object OpenSelectedEntry : PaneIntent
+
+    data object BeginRename : PaneIntent
+
+    data object BeginCreateFile : PaneIntent
+
+    data object BeginCreateDirectory : PaneIntent
+
+    data object OpenSelectedInNewTab : PaneIntent
+
+    data object CopySelectedPaths : PaneIntent
+
+    data class UpdateInlineEditDraft(
+        val draft: String,
+    ) : PaneIntent
+
+    data object ConfirmInlineEdit : PaneIntent
+
+    data object CancelInlineEdit : PaneIntent
+
+    data object DismissOperationFeedback : PaneIntent
+
+    data object SelectAll : PaneIntent
+
+    data object ClearSelection : PaneIntent
+
+    data class CreateTab(
+        val location: String? = null,
+    ) : PaneIntent
+
+    data class SelectTab(
+        val tabId: String,
+    ) : PaneIntent
+
+    data class CloseTab(
+        val tabId: String,
+    ) : PaneIntent
+
+    data class MoveTab(
+        val tabId: String,
+        val targetIndex: Int,
+    ) : PaneIntent
+
+    data class ToggleInlineExpand(
+        val directoryLocation: String,
+    ) : PaneIntent
+
+    data object ConsumePendingScroll : PaneIntent
+}
+
 
 interface PaneComponent {
     val state: StateFlow<PaneState>
+
+    fun dispatch(intent: PaneIntent)
 
     fun refresh()
 
