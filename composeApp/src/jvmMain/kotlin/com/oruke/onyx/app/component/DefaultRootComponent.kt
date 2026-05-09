@@ -49,6 +49,7 @@ import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
@@ -1052,13 +1053,34 @@ class DefaultRootComponent(
     fun openWithApp(entry: VFile, app: OpenWithApp) {
         scope.launch {
             openWithService.openWith(entry, app)
+                .onSuccess {
+                    paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
+                }
+                .onFailure { failure ->
+                    showActivePaneOpenFailure(failure)
+                }
         }
     }
 
     fun openWithChooser(entry: VFile) {
         scope.launch {
             openWithService.openWithChooser(entry)
+                .onSuccess {
+                    paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
+                }
+                .onFailure { failure ->
+                    showActivePaneOpenFailure(failure)
+                }
         }
+    }
+
+    private fun showActivePaneOpenFailure(failure: Throwable) {
+        paneComponent(activePane.value).dispatch(
+            PaneIntent.ShowOperationFeedback(
+                kind = PaneOperationFeedbackKind.OPEN_FAILED,
+                detail = failure.toI18nMessage(),
+            )
+        )
     }
 
     override fun prepareExternalDrag(entries: List<VFile>): Boolean {

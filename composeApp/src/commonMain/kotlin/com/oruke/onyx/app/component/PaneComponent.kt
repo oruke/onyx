@@ -10,6 +10,7 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneInlineEditState
 import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.PaneOperationFeedback
+import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.TabSnapshot
@@ -245,6 +246,11 @@ sealed interface PaneIntent {
     data object CancelInlineEdit : PaneIntent
 
     data object DismissOperationFeedback : PaneIntent
+
+    data class ShowOperationFeedback(
+        val kind: PaneOperationFeedbackKind,
+        val detail: I18nMessage,
+    ) : PaneIntent
 
     data object SelectAll : PaneIntent
 

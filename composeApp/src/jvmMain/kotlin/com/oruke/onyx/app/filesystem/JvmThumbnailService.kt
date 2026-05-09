@@ -2,6 +2,7 @@ package com.oruke.onyx.app.filesystem
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import com.oruke.onyx.app.OnyxLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.FilterMipmap
@@ -169,7 +170,8 @@ class JvmThumbnailService : ThumbnailService {
 
             putCache(cacheKey, composeBitmap)
             composeBitmap
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            OnyxLogger.warn("JvmThumbnailService", "缩略图加载失败: $location", failure)
             null
         }
     }
@@ -317,7 +319,8 @@ class JvmThumbnailService : ThumbnailService {
                 inStream.close()
                 raf.close()
             }
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            OnyxLogger.warn("JvmThumbnailService", "压缩包缩略图加载失败: $location", failure)
             null
         }
     }

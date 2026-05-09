@@ -31,12 +31,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
+import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
+import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_inspector_directory
 import onyx.composeapp.generated.resources.label_inspector_file
@@ -176,9 +178,11 @@ internal fun PreviewPane(
                     val tooLargeText = stringResource(Res.string.label_preview_too_large)
                     val unavailableText = stringResource(Res.string.label_preview_unavailable)
                     var previewText by remember(selectedEntry.location) { mutableStateOf<String?>(loadingText) }
+                    var previewFailure by remember(selectedEntry.location) { mutableStateOf<I18nMessage?>(null) }
 
                     LaunchedEffect(selectedEntry.location) {
-                        previewText = when (
+                        previewFailure = null
+                        when (
                             val result = loadTextPreview(
                                 PreviewTextRequest(
                                     entry = selectedEntry,
@@ -187,14 +191,18 @@ internal fun PreviewPane(
                                 ),
                             )
                         ) {
-                            is PreviewTextResult.Text -> result.value
-                            PreviewTextResult.TooLarge -> tooLargeText
-                            PreviewTextResult.Unavailable -> unavailableText
+                            is PreviewTextResult.Text -> previewText = result.value
+                            PreviewTextResult.TooLarge -> previewText = tooLargeText
+                            PreviewTextResult.Unavailable -> previewText = unavailableText
+                            is PreviewTextResult.Failed -> {
+                                previewText = null
+                                previewFailure = result.reason
+                            }
                         }
                     }
 
                     Text(
-                        text = previewText ?: "",
+                        text = previewFailure?.resolve() ?: previewText ?: "",
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         color = LocalOnyxPalette.current.foreground,

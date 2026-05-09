@@ -392,7 +392,7 @@ class JvmTerminalLauncherService : TerminalLauncherService {
 
 class JvmPreviewService : PreviewService {
     override suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult = withContext(Dispatchers.IO) {
-        runCatching {
+        try {
             if (ArchiveService.isArchiveLocation(request.entry.location)) {
                 return@withContext PreviewTextResult.Unavailable
             }
@@ -406,7 +406,9 @@ class JvmPreviewService : PreviewService {
             Files.newBufferedReader(path).useLines { lines ->
                 PreviewTextResult.Text(lines.take(request.maxLines).joinToString("\n"))
             }
-        }.getOrDefault(PreviewTextResult.Unavailable)
+        } catch (failure: Throwable) {
+            PreviewTextResult.Failed(failure.toI18nMessage())
+        }
     }
 }
 

@@ -155,6 +155,7 @@ class DefaultPaneComponent(
             PaneIntent.ConfirmInlineEdit -> confirmInlineEdit()
             PaneIntent.CancelInlineEdit -> cancelInlineEdit()
             PaneIntent.DismissOperationFeedback -> dismissOperationFeedback()
+            is PaneIntent.ShowOperationFeedback -> showOperationFeedback(intent.kind, intent.detail)
             PaneIntent.SelectAll -> selectAll()
             PaneIntent.ClearSelection -> clearSelection()
             is PaneIntent.CreateTab -> createTab(intent.location ?: state.value.location)
@@ -447,6 +448,17 @@ class DefaultPaneComponent(
 
     fun dismissOperationFeedback() {
         clearOperationFeedback(activeTab()?.id ?: return)
+    }
+
+    fun showOperationFeedback(
+        kind: PaneOperationFeedbackKind,
+        detail: I18nMessage,
+    ) {
+        updateFailure(
+            tabId = activeTab()?.id ?: return,
+            kind = kind,
+            detail = detail,
+        )
     }
 
     fun setViewMode(mode: ViewMode) {
