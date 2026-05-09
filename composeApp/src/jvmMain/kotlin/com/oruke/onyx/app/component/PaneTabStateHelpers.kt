@@ -9,7 +9,7 @@ import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.PaneStatusInfo
 import com.oruke.onyx.core.model.SortDirection
-import com.oruke.onyx.core.model.TabSessionSnapshot
+import com.oruke.onyx.core.model.TabSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ViewMode
 
@@ -56,8 +56,8 @@ internal fun PaneTabState.toPaneState(
     )
 }
 
-internal fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
-    return TabSessionSnapshot(
+internal fun PaneTabState.toTabSnapshot(): TabSnapshot {
+    return TabSnapshot(
         id = id,
         location = location,
         detailsColumns = detailsColumns,
@@ -71,7 +71,7 @@ internal fun PaneTabState.toSessionSnapshot(): TabSessionSnapshot {
     )
 }
 
-internal fun TabSessionSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabState {
+internal fun TabSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabState {
     return PaneTabState(
         id = id,
         title = pathService.title(location),

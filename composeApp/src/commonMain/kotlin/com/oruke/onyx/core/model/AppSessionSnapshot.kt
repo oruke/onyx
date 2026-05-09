@@ -14,11 +14,11 @@ data class AppSessionSnapshot(
 @Serializable
 data class PaneSessionSnapshot(
     val activeTabId: String,
-    val tabs: List<TabSessionSnapshot>,
+    val tabs: List<TabSnapshot>,
 )
 
 @Serializable
-data class TabSessionSnapshot(
+data class TabSnapshot(
     val id: String,
     val location: String,
     val detailsColumns: List<DetailsColumn>,
@@ -30,3 +30,5 @@ data class TabSessionSnapshot(
     val backStack: List<String>,
     val forwardStack: List<String>,
 )
+
+typealias TabSessionSnapshot = TabSnapshot

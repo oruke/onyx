@@ -8,7 +8,7 @@ import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.PaneStatusInfo
-import com.oruke.onyx.core.model.TabSessionSnapshot
+import com.oruke.onyx.core.model.TabSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.flow.StateFlow
@@ -332,10 +332,10 @@ interface PaneComponent {
         targetIndex: Int,
     )
 
-    fun detachTab(tabId: String): TabSessionSnapshot?
+    fun detachTab(tabId: String): TabSnapshot?
 
     fun attachTab(
-        tabSnapshot: TabSessionSnapshot,
+        tabSnapshot: TabSnapshot,
         targetIndex: Int,
     )
 
