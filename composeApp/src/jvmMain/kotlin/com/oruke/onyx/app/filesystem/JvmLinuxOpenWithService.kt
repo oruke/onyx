@@ -233,7 +233,7 @@ class JvmPlatformOpenWithService(
         return when (currentHostPlatform()) {
             HostPlatform.LINUX -> linuxOpenWithService.listApps(entry)
             HostPlatform.MACOS -> listMacApplications()
-            HostPlatform.WINDOWS,
+            HostPlatform.WINDOWS -> listWindowsApplications(entry)
             HostPlatform.OTHER -> emptyList()
         }
     }
@@ -242,7 +242,7 @@ class JvmPlatformOpenWithService(
         return when (currentHostPlatform()) {
             HostPlatform.LINUX -> linuxOpenWithService.openWith(entry, app)
             HostPlatform.MACOS -> runProcess("open", "-a", app.command.ifBlank { app.displayName }, entry.location)
-            HostPlatform.WINDOWS -> runProcess(app.command, entry.location)
+            HostPlatform.WINDOWS -> runWindowsCommandTemplate(entry.location, app.command)
             HostPlatform.OTHER -> Result.failure(UnsupportedOperationException())
         }
     }
@@ -273,6 +273,19 @@ class JvmPlatformOpenWithService(
                 tell onyxApp to open onyxTarget
             """.trimIndent()
             ProcessBuilder("osascript", "-e", script)
+                .directory(File(location).parentFile ?: File("."))
+                .start()
+            Unit
+        }
+    }
+
+    private suspend fun runWindowsCommandTemplate(
+        location: String,
+        commandTemplate: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val command = commandTemplate.toWindowsCommandFor(location)
+            ProcessBuilder("cmd", "/c", command)
                 .directory(File(location).parentFile ?: File("."))
                 .start()
             Unit
@@ -314,6 +327,91 @@ class JvmPlatformOpenWithService(
         )
     }
 
+    private suspend fun listWindowsApplications(entry: VFile): List<OpenWithApp> = withContext(Dispatchers.IO) {
+        val extension = File(entry.location).extension
+            .takeIf { value -> value.isNotBlank() }
+            ?.let { value -> ".$value" }
+            ?: return@withContext emptyList()
+        val progIds = linkedSetOf<String>()
+        queryRegistryDefault("HKCR\\$extension")?.takeIf { value -> value.isNotBlank() }?.let { progIds += it }
+        progIds += queryRegistryValueNames("HKCR\\$extension\\OpenWithProgids")
+        progIds += queryRegistryValueNames(
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$extension\\OpenWithProgids"
+        )
+
+        progIds
+            .asSequence()
+            .mapNotNull { progId -> progId.toWindowsOpenWithApp() }
+            .distinctBy { app -> app.command.lowercase(Locale.getDefault()) }
+            .sortedBy { app -> app.displayName.lowercase(Locale.getDefault()) }
+            .take(MAX_WINDOWS_APPLICATIONS)
+            .toList()
+    }
+
+    private fun String.toWindowsOpenWithApp(): OpenWithApp? {
+        val command = queryRegistryDefault("HKCR\\$this\\shell\\open\\command")
+            ?.takeIf { value -> value.isNotBlank() }
+            ?: return null
+        val displayName = queryRegistryDefault("HKCR\\$this")
+            ?.takeIf { value -> value.isNotBlank() }
+            ?: this
+        return OpenWithApp(
+            id = this,
+            displayName = displayName,
+            command = command,
+            iconPath = queryRegistryDefault("HKCR\\$this\\DefaultIcon"),
+        )
+    }
+
+    private fun queryRegistryDefault(key: String): String? {
+        val output = runWindowsRegistryQuery(key, "/ve") ?: return null
+        return output
+            .lineSequence()
+            .mapNotNull { line -> line.toRegistryValue()?.data }
+            .firstOrNull { value -> value.isNotBlank() }
+    }
+
+    private fun queryRegistryValueNames(key: String): List<String> {
+        val output = runWindowsRegistryQuery(key) ?: return emptyList()
+        return output
+            .lineSequence()
+            .mapNotNull { line -> line.toRegistryValue()?.name }
+            .filter { name -> name.isNotBlank() && !name.equals("(Default)", ignoreCase = true) }
+            .distinct()
+            .toList()
+    }
+
+    private fun runWindowsRegistryQuery(vararg args: String): String? {
+        return runCatching {
+            val process = ProcessBuilder(listOf("reg", "query") + args.toList())
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().readText()
+            if (process.waitFor() == 0) output else null
+        }.getOrNull()
+    }
+
+    private fun String.toRegistryValue(): RegistryValue? {
+        val trimmed = trim()
+        if (trimmed.isBlank() || trimmed.startsWith("HKEY", ignoreCase = true)) return null
+        val parts = trimmed.split(Regex("\\s{2,}"), limit = 3)
+        if (parts.size < 2 || !parts[1].startsWith("REG_", ignoreCase = true)) return null
+        return RegistryValue(
+            name = parts[0],
+            type = parts[1],
+            data = parts.getOrNull(2)?.trim().orEmpty(),
+        )
+    }
+
+    private fun String.toWindowsCommandFor(location: String): String {
+        val target = "\"${location.replace("\"", "\\\"")}\""
+        val hadPlaceholder = WINDOWS_TARGET_PLACEHOLDERS.any { placeholder -> contains(placeholder) }
+        val command = WINDOWS_TARGET_PLACEHOLDERS.fold(this) { current, placeholder ->
+            current.replace(placeholder, target)
+        }
+        return if (hadPlaceholder) command else "$command $target"
+    }
+
     private fun currentHostPlatform(): HostPlatform {
         val osName = System.getProperty("os.name").lowercase(Locale.getDefault())
         return when {
@@ -335,8 +433,16 @@ class JvmPlatformOpenWithService(
         OTHER,
     }
 
+    private data class RegistryValue(
+        val name: String,
+        val type: String,
+        val data: String,
+    )
+
     private companion object {
         const val MAC_APP_SCAN_DEPTH = 2
         const val MAX_MAC_APPLICATIONS = 120
+        const val MAX_WINDOWS_APPLICATIONS = 120
+        val WINDOWS_TARGET_PLACEHOLDERS = listOf("%1", "%L", "%l")
     }
 }
