@@ -69,6 +69,7 @@ import onyx.composeapp.generated.resources.label_batch_rename_counter_start
 import onyx.composeapp.generated.resources.label_batch_rename_error_prefix
 import onyx.composeapp.generated.resources.label_batch_rename_file_count
 import onyx.composeapp.generated.resources.label_batch_rename_find
+import onyx.composeapp.generated.resources.label_batch_rename_invalid_regex
 import onyx.composeapp.generated.resources.label_batch_rename_mode_case
 import onyx.composeapp.generated.resources.label_batch_rename_mode_counter
 import onyx.composeapp.generated.resources.label_batch_rename_mode_find_replace
@@ -135,21 +136,34 @@ internal fun BatchRenameDialog(
     // 大小写
     var caseMode by remember { mutableStateOf(CaseMode.LOWERCASE) }
 
+    val regexValidationFailure by remember(mode, findText, useRegex) {
+        derivedStateOf {
+            if (mode == BatchRenameMode.FIND_REPLACE && useRegex && findText.isNotEmpty()) {
+                runCatching { Regex(findText) }.exceptionOrNull()
+            } else {
+                null
+            }
+        }
+    }
+
     val renameResults by remember(mode, findText, replaceText, useRegex, prefix, suffix, counterTemplate, counterStart, counterDigits, caseMode) {
         derivedStateOf {
+            val compiledRegex = if (mode == BatchRenameMode.FIND_REPLACE && useRegex && findText.isNotEmpty()) {
+                runCatching { Regex(findText) }.getOrNull()
+            } else {
+                null
+            }
             entries.mapIndexed { index, entry ->
                 val newName = when (mode) {
                     // 查找替换：在完整文件名上操作
                     BatchRenameMode.FIND_REPLACE -> {
                         if (findText.isEmpty()) entry.name
-                        else try {
+                        else {
                             if (useRegex) {
-                                entry.name.replace(Regex(findText), replaceText)
+                                compiledRegex?.let { regex -> entry.name.replace(regex, replaceText) } ?: entry.name
                             } else {
                                 entry.name.replace(findText, replaceText)
                             }
-                        } catch (_: Exception) {
-                            entry.name
                         }
                     }
 
@@ -196,6 +210,9 @@ internal fun BatchRenameDialog(
 
     val hasChanges by remember(changeCount) {
         derivedStateOf { changeCount > 0 }
+    }
+    val canConfirm by remember(hasChanges, regexValidationFailure) {
+        derivedStateOf { hasChanges && regexValidationFailure == null }
     }
 
     val title = stringResource(Res.string.label_batch_rename_title)
@@ -283,6 +300,18 @@ internal fun BatchRenameDialog(
                                     foreground = palette.mutedForeground,
                                     fontSize = labelFontSize,
                                     onClick = { useRegex = !useRegex },
+                                )
+                            }
+                            regexValidationFailure?.let { failure ->
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = stringResource(
+                                        Res.string.label_batch_rename_invalid_regex,
+                                        failure.message ?: findText,
+                                    ),
+                                    fontSize = labelFontSize,
+                                    color = Color(0xFFD74E4E),
+                                    maxLines = 1,
                                 )
                             }
                         }
@@ -534,13 +563,13 @@ internal fun BatchRenameDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             HoverButton(
                                 text = stringResource(Res.string.action_batch_rename),
-                                emphasized = hasChanges,
+                                emphasized = canConfirm,
                                 accent = palette.accent,
                                 surface = palette.surfaceVariant,
                                 foreground = palette.foreground,
                                 fontSize = bodyFontSize,
                                 onClick = {
-                                    if (hasChanges) {
+                                    if (canConfirm) {
                                         val filtered = renameResults.filter { (entry, newName) ->
                                             entry.name != newName && newName.isNotBlank()
                                         }

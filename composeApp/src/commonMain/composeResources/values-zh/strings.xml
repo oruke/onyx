@@ -296,6 +296,7 @@
     <string name="label_batch_rename_file_count">%1$d 个文件</string>
     <string name="label_batch_rename_changes_count">%1$d 项变更</string>
     <string name="label_batch_rename_counter_ext_hint">自动保留扩展名</string>
+    <string name="label_batch_rename_invalid_regex">正则表达式无效：%1$s</string>
     <string name="label_case_uppercase">全大写</string>
     <string name="label_case_lowercase">全小写</string>
     <string name="label_case_titlecase">首字母大写</string>

@@ -298,6 +298,7 @@
     <string name="label_batch_rename_file_count">%1$d files</string>
     <string name="label_batch_rename_changes_count">%1$d changes</string>
     <string name="label_batch_rename_counter_ext_hint">Extension preserved automatically</string>
+    <string name="label_batch_rename_invalid_regex">Invalid regex: %1$s</string>
     <string name="label_case_uppercase">UPPERCASE</string>
     <string name="label_case_lowercase">lowercase</string>
     <string name="label_case_titlecase">Title Case</string>

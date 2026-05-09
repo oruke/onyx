@@ -298,6 +298,7 @@
     <string name="label_batch_rename_file_count">%1$d ファイル</string>
     <string name="label_batch_rename_changes_count">%1$d 件の変更</string>
     <string name="label_batch_rename_counter_ext_hint">拡張子は自動的に保持されます</string>
+    <string name="label_batch_rename_invalid_regex">正規表現が無効です: %1$s</string>
     <string name="label_case_uppercase">大文字</string>
     <string name="label_case_lowercase">小文字</string>
     <string name="label_case_titlecase">先頭大文字</string>
