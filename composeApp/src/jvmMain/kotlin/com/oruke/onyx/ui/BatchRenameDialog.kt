@@ -54,6 +54,7 @@ import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_cancel_task
@@ -365,7 +366,7 @@ internal fun BatchRenameDialog(
                             text = when {
                                 state.errorMessage != null -> stringResource(
                                     Res.string.label_batch_rename_error_prefix,
-                                    state.errorMessage!!,
+                                    state.errorMessage.resolve(),
                                 )
                                 state.completed -> stringResource(
                                     Res.string.label_batch_rename_completed_detail,

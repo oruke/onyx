@@ -186,6 +186,13 @@
     <string name="msg_created_folders">Created %1$d folder(s)</string>
     <string name="msg_create_folder_failed">Create directory failed</string>
     <string name="msg_cancelled">Cancelled</string>
+    <string name="msg_unknown_error">Unknown error</string>
+    <string name="msg_load_settings_failed">Failed to load settings</string>
+    <string name="msg_restore_session_failed">Failed to restore session</string>
+    <string name="msg_batch_rename_files">%1$d files</string>
+    <string name="msg_batch_rename_starting">Starting…</string>
+    <string name="msg_batch_renamed_files">%1$d files renamed</string>
+    <string name="msg_archive_password_invalid">Incorrect password, please try again</string>
     <string name="msg_string_literal">%1$s</string>
 
     <string name="label_preview_no_selection">No item selected</string>

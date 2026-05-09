@@ -96,13 +96,13 @@ sealed interface RootDialogState {
         val processedCount: Int = 0,
         val currentDetail: String = "",
         val completed: Boolean = false,
-        val errorMessage: String? = null,
+        val errorMessage: I18nMessage? = null,
     ) : RootDialogState
 
     /** 压缩包密码输入对话框 */
     data class ArchivePassword(
         val archiveName: String,
-        val error: String? = null,
+        val error: I18nMessage? = null,
     ) : RootDialogState
 }
 

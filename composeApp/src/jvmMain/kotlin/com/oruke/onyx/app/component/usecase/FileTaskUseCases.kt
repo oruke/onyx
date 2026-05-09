@@ -10,13 +10,12 @@ import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.msg_string_literal
 import java.io.File
 
 data class TaskProgress(
@@ -45,7 +44,7 @@ class FileTransferUseCase(
             TaskProgress(
                 status = BackgroundTaskStatus.RUNNING,
                 detail = I18nMessage(
-                    Res.string.msg_string_literal,
+                    MessageKey.MSG_STRING_LITERAL,
                     buildTransferTaskDetail(request.entries, request.targetDirectoryLocation),
                 ),
                 progress = 0f,
@@ -63,7 +62,7 @@ class FileTransferUseCase(
             emit(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, entry.name),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
                     progress = progressValue(index, request.entries.size),
                     currentFileName = entry.name,
                     processedCount = index,
@@ -92,7 +91,7 @@ class FileTransferUseCase(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(
-                        Res.string.msg_string_literal,
+                        MessageKey.MSG_STRING_LITERAL,
                         "${entry.name} -> ${request.targetDirectoryLocation}",
                     ),
                     progress = if (totalBytes > 0L) {
@@ -125,7 +124,7 @@ class DeleteEntriesUseCase(
         emit(
             TaskProgress(
                 status = BackgroundTaskStatus.RUNNING,
-                detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(request.entries)),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(request.entries)),
                 progress = 0f,
             )
         )
@@ -139,7 +138,7 @@ class DeleteEntriesUseCase(
             emit(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, entry.name),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
                     progress = progressValue(index + 1, request.entries.size),
                     currentFileName = entry.name,
                     processedCount = index + 1,
@@ -161,7 +160,7 @@ class BatchRenameUseCase(
         emit(
             TaskProgress(
                 status = BackgroundTaskStatus.RUNNING,
-                detail = I18nMessage(Res.string.msg_string_literal, "Starting..."),
+                detail = I18nMessage(MessageKey.MSG_BATCH_RENAME_STARTING),
                 progress = 0f,
             )
         )
@@ -172,7 +171,7 @@ class BatchRenameUseCase(
             emit(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, detailText),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, detailText),
                     progress = progressValue(index + 1, request.renameMap.size),
                     currentFileName = newName,
                     processedCount = index + 1,
@@ -196,7 +195,7 @@ class ArchiveExtractionUseCase(
         emit(
             TaskProgress(
                 status = BackgroundTaskStatus.RUNNING,
-                detail = I18nMessage(Res.string.msg_string_literal, request.targetDirectoryLocation),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, request.targetDirectoryLocation),
                 progress = 0f,
             )
         )
@@ -217,7 +216,7 @@ class ArchiveExtractionUseCase(
             emit(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, group.first().third.name),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, group.first().third.name),
                     progress = progressValue(processedCount, request.entries.size),
                     currentFileName = archiveName,
                     processedCount = processedCount,
@@ -240,7 +239,7 @@ class ArchiveExtractionUseCase(
             emit(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, archiveName),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, archiveName),
                     progress = progressValue(processedCount, request.entries.size),
                     currentFileName = archiveName,
                     processedCount = processedCount,
@@ -256,7 +255,7 @@ class ArchiveExtractionUseCase(
         emit(
             TaskProgress(
                 status = BackgroundTaskStatus.RUNNING,
-                detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(request.archiveEntries)),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(request.archiveEntries)),
                 progress = 0f,
             )
         )
@@ -265,7 +264,7 @@ class ArchiveExtractionUseCase(
             emit(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, entry.name),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
                     progress = progressValue(index, request.archiveEntries.size),
                     currentFileName = entry.name,
                     processedCount = index,
@@ -281,7 +280,7 @@ class ArchiveExtractionUseCase(
             emit(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, entry.name),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
                     progress = progressValue(index + 1, request.archiveEntries.size),
                     currentFileName = entry.name,
                     processedCount = index + 1,

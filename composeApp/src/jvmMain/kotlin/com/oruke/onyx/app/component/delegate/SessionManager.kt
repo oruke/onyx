@@ -4,6 +4,8 @@ import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
 import com.oruke.onyx.core.model.AppSessionSnapshot
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.OnyxSettings
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -31,20 +33,21 @@ class SessionManager(
     data class RestoreResult(
         val settings: OnyxSettings?,
         val session: AppSessionSnapshot?,
-        val error: String?,
+        val error: I18nMessage?,
     )
 
     suspend fun restore(): RestoreResult {
         var settings: OnyxSettings? = null
         var session: AppSessionSnapshot? = null
-        var error: String? = null
+        var error: I18nMessage? = null
 
         settingsRepository.loadSettings().fold(
             onSuccess = { loadedSettings ->
                 settings = loadedSettings
             },
             onFailure = { failure ->
-                error = failure.message ?: "Failed to load settings"
+                error = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                    ?: I18nMessage(MessageKey.MSG_LOAD_SETTINGS_FAILED)
                 OnyxLogger.warn("SessionManager", "设置加载失败", failure)
             },
         )
@@ -54,7 +57,8 @@ class SessionManager(
                 session = loadedSession
             },
             onFailure = { failure ->
-                error = error ?: (failure.message ?: "Failed to restore session")
+                error = error ?: failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                    ?: I18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
                 OnyxLogger.warn("SessionManager", "会话恢复失败", failure)
             },
         )

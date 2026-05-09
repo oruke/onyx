@@ -90,10 +90,10 @@ ui
 
 ## P3：国际化与错误模型清理
 
-- [ ] core/app 层用 `MessageKey` 或 `DomainMessage`，不直接依赖 `StringResource`。
-- [ ] UI 层统一映射 `MessageKey -> Res.string.xxx`。
-- [ ] `PaneEntriesState.Failure(reason: String?)` 改为结构化错误。
-- [ ] 清理业务层裸字符串错误。
+- [x] core/app 层用 `MessageKey` 或 `DomainMessage`，不直接依赖 `StringResource`。
+- [x] UI 层统一映射 `MessageKey -> Res.string.xxx`。
+- [x] `PaneEntriesState.Failure(reason: String?)` 改为结构化错误。
+- [x] 清理业务层裸字符串错误。
 
 ## 验证要求
 

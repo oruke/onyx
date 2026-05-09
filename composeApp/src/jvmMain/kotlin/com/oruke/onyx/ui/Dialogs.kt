@@ -74,11 +74,13 @@ import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn
+import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
 import onyx.composeapp.generated.resources.action_close_menu
@@ -634,7 +636,7 @@ internal fun ApplyToAllToggle(
 @Composable
 internal fun ArchivePasswordDialog(
     archiveName: String,
-    error: String?,
+    error: I18nMessage?,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -730,7 +732,7 @@ internal fun ArchivePasswordDialog(
                         )
                         error?.let { errMsg ->
                             Text(
-                                text = errMsg,
+                                text = errMsg.resolve(),
                                 fontSize = 11.sp,
                                 color = Color(0xFFD74E4E),
                             )

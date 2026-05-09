@@ -21,6 +21,7 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
@@ -41,10 +42,6 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_new_directory
-import onyx.composeapp.generated.resources.action_new_file
-import onyx.composeapp.generated.resources.msg_string_literal
 import java.nio.file.Path
 import java.util.*
 
@@ -57,6 +54,7 @@ class DefaultPaneComponent(
     private val textClipboardService: TextClipboardService,
     private val externalOpenService: ExternalOpenService,
     private val pathService: VfsPathService,
+    private val entryNameSuggestionService: EntryNameSuggestionService,
     private val archiveFileTypeService: ArchiveFileTypeService,
     private val archiveEntryOpenService: ArchiveEntryOpenService,
     private val initialViewMode: ViewMode = ViewMode.DETAILS,
@@ -256,14 +254,15 @@ class DefaultPaneComponent(
                                     updateFailure(
                                         tabId = tab.id,
                                         kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                        detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
+                                        detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
                                     )
                                 }
                         } catch (e: Exception) {
                             updateFailure(
                                 tabId = tab.id,
                                 kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
+                                detail = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                                    ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
                             )
                         }
                     }
@@ -277,7 +276,7 @@ class DefaultPaneComponent(
                                 updateFailure(
                                     tabId = tab.id,
                                     kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                    detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
+                                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
                                 )
                             }
                     }
@@ -305,7 +304,7 @@ class DefaultPaneComponent(
             return
         }
         scope.launch {
-            val baseName = org.jetbrains.compose.resources.getString(Res.string.action_new_file)
+            val baseName = entryNameSuggestionService.newFileName()
             val nextName = tab.nextCreateName(baseName)
             updateTab(tab.id) { currentTab ->
                 currentTab.beginCreateFileInlineEdit(nextName)
@@ -319,7 +318,7 @@ class DefaultPaneComponent(
             return
         }
         scope.launch {
-            val baseName = org.jetbrains.compose.resources.getString(Res.string.action_new_directory)
+            val baseName = entryNameSuggestionService.newDirectoryName()
             val nextName = tab.nextCreateName(baseName)
             updateTab(tab.id) { currentTab ->
                 currentTab.beginCreateDirectoryInlineEdit(nextName)
@@ -355,7 +354,7 @@ class DefaultPaneComponent(
                     updateFailure(
                         tabId = tab.id,
                         kind = PaneOperationFeedbackKind.COPY_PATH_FAILED,
-                        detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
+                        detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
                     )
                 }
         }
@@ -392,7 +391,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.RENAME_FAILED,
-                            detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
+                            detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
                         )
                     }
                 }
@@ -410,7 +409,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.CREATE_FILE_FAILED,
-                            detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
+                            detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
                         )
                     }
                 }
@@ -428,7 +427,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.CREATE_DIRECTORY_FAILED,
-                            detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) },
+                            detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
                         )
                     }
                 }

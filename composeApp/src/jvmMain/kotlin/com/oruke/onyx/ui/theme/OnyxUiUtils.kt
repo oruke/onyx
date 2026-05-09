@@ -14,15 +14,45 @@ import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.SortDirection
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_batch_rename
+import onyx.composeapp.generated.resources.action_extract_here
+import onyx.composeapp.generated.resources.action_extract_smart
+import onyx.composeapp.generated.resources.action_extract_to_directory
 import onyx.composeapp.generated.resources.label_task_status_cancelled
 import onyx.composeapp.generated.resources.label_task_status_failed
+import onyx.composeapp.generated.resources.label_task_status_paused
 import onyx.composeapp.generated.resources.label_task_status_queued
 import onyx.composeapp.generated.resources.label_task_status_running
-import onyx.composeapp.generated.resources.label_task_status_paused
 import onyx.composeapp.generated.resources.label_task_status_succeeded
+import onyx.composeapp.generated.resources.msg_archive_password_invalid
+import onyx.composeapp.generated.resources.msg_batch_rename_files
+import onyx.composeapp.generated.resources.msg_batch_rename_starting
+import onyx.composeapp.generated.resources.msg_batch_renamed_files
+import onyx.composeapp.generated.resources.msg_cancelled
+import onyx.composeapp.generated.resources.msg_copied_items
+import onyx.composeapp.generated.resources.msg_copy_failed
+import onyx.composeapp.generated.resources.msg_copy_items
+import onyx.composeapp.generated.resources.msg_create_folder_failed
+import onyx.composeapp.generated.resources.msg_create_folders
+import onyx.composeapp.generated.resources.msg_created_folders
+import onyx.composeapp.generated.resources.msg_delete_failed
+import onyx.composeapp.generated.resources.msg_delete_items
+import onyx.composeapp.generated.resources.msg_deleted_items
+import onyx.composeapp.generated.resources.msg_extract_failed
+import onyx.composeapp.generated.resources.msg_extract_items
+import onyx.composeapp.generated.resources.msg_extracted_items
+import onyx.composeapp.generated.resources.msg_load_settings_failed
+import onyx.composeapp.generated.resources.msg_move_failed
+import onyx.composeapp.generated.resources.msg_move_items
+import onyx.composeapp.generated.resources.msg_moved_items
+import onyx.composeapp.generated.resources.msg_restore_session_failed
+import onyx.composeapp.generated.resources.msg_string_literal
+import onyx.composeapp.generated.resources.msg_unknown_error
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import java.awt.Cursor
 import java.time.Instant
@@ -39,7 +69,40 @@ internal val PaneDividerHitSlop = 7.dp
 
 @Composable
 internal fun I18nMessage.resolve(): String {
-    return stringResource(key, *args.toTypedArray())
+    return stringResource(key.toStringResource(), *args.toTypedArray())
+}
+
+private fun MessageKey.toStringResource(): StringResource {
+    return when (this) {
+        MessageKey.ACTION_BATCH_RENAME -> Res.string.action_batch_rename
+        MessageKey.ACTION_EXTRACT_HERE -> Res.string.action_extract_here
+        MessageKey.ACTION_EXTRACT_TO_DIRECTORY -> Res.string.action_extract_to_directory
+        MessageKey.ACTION_EXTRACT_SMART -> Res.string.action_extract_smart
+        MessageKey.MSG_BATCH_RENAME_FILES -> Res.string.msg_batch_rename_files
+        MessageKey.MSG_BATCH_RENAME_STARTING -> Res.string.msg_batch_rename_starting
+        MessageKey.MSG_BATCH_RENAMED_FILES -> Res.string.msg_batch_renamed_files
+        MessageKey.MSG_CANCELLED -> Res.string.msg_cancelled
+        MessageKey.MSG_COPIED_ITEMS -> Res.string.msg_copied_items
+        MessageKey.MSG_COPY_FAILED -> Res.string.msg_copy_failed
+        MessageKey.MSG_COPY_ITEMS -> Res.string.msg_copy_items
+        MessageKey.MSG_CREATE_FOLDER_FAILED -> Res.string.msg_create_folder_failed
+        MessageKey.MSG_CREATE_FOLDERS -> Res.string.msg_create_folders
+        MessageKey.MSG_CREATED_FOLDERS -> Res.string.msg_created_folders
+        MessageKey.MSG_DELETE_FAILED -> Res.string.msg_delete_failed
+        MessageKey.MSG_DELETE_ITEMS -> Res.string.msg_delete_items
+        MessageKey.MSG_DELETED_ITEMS -> Res.string.msg_deleted_items
+        MessageKey.MSG_EXTRACT_FAILED -> Res.string.msg_extract_failed
+        MessageKey.MSG_EXTRACT_ITEMS -> Res.string.msg_extract_items
+        MessageKey.MSG_EXTRACTED_ITEMS -> Res.string.msg_extracted_items
+        MessageKey.MSG_LOAD_SETTINGS_FAILED -> Res.string.msg_load_settings_failed
+        MessageKey.MSG_MOVE_FAILED -> Res.string.msg_move_failed
+        MessageKey.MSG_MOVE_ITEMS -> Res.string.msg_move_items
+        MessageKey.MSG_MOVED_ITEMS -> Res.string.msg_moved_items
+        MessageKey.MSG_RESTORE_SESSION_FAILED -> Res.string.msg_restore_session_failed
+        MessageKey.MSG_STRING_LITERAL -> Res.string.msg_string_literal
+        MessageKey.MSG_UNKNOWN_ERROR -> Res.string.msg_unknown_error
+        MessageKey.MSG_ARCHIVE_PASSWORD_INVALID -> Res.string.msg_archive_password_invalid
+    }
 }
 
 // ── Drag & Drop models ──────────────────────────────────────────────────────

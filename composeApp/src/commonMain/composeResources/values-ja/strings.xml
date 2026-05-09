@@ -186,6 +186,13 @@
     <string name="msg_created_folders">%1$d 個のフォルダーを作成しました</string>
     <string name="msg_create_folder_failed">フォルダーの作成に失敗しました</string>
     <string name="msg_cancelled">キャンセルされました</string>
+    <string name="msg_unknown_error">不明なエラー</string>
+    <string name="msg_load_settings_failed">設定の読み込みに失敗しました</string>
+    <string name="msg_restore_session_failed">セッションの復元に失敗しました</string>
+    <string name="msg_batch_rename_files">%1$d ファイル</string>
+    <string name="msg_batch_rename_starting">開始中…</string>
+    <string name="msg_batch_renamed_files">%1$d ファイルの名前を変更しました</string>
+    <string name="msg_archive_password_invalid">パスワードが正しくありません。もう一度入力してください</string>
     <string name="msg_string_literal">%1$s</string>
 
     <string name="label_preview_no_selection">項目が選択されていません</string>

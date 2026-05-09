@@ -13,6 +13,7 @@ import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CancellationException
@@ -22,16 +23,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_batch_rename
-import onyx.composeapp.generated.resources.msg_cancelled
-import onyx.composeapp.generated.resources.msg_create_folder_failed
-import onyx.composeapp.generated.resources.msg_create_folders
-import onyx.composeapp.generated.resources.msg_created_folders
-import onyx.composeapp.generated.resources.msg_delete_failed
-import onyx.composeapp.generated.resources.msg_delete_items
-import onyx.composeapp.generated.resources.msg_deleted_items
-import onyx.composeapp.generated.resources.msg_string_literal
 import java.util.*
 
 /**
@@ -68,9 +59,9 @@ class FileActionDelegate(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.DELETE,
-                title = I18nMessage(Res.string.msg_delete_items, selectedEntries.size),
+                title = I18nMessage(MessageKey.MSG_DELETE_ITEMS, selectedEntries.size),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(Res.string.msg_string_literal, getPaneState(request.paneId).location),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, getPaneState(request.paneId).location),
                 progress = 0f,
                 totalCount = selectedEntries.size,
                 startTimeMillis = System.currentTimeMillis(),
@@ -82,7 +73,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(selectedEntries)),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(selectedEntries)),
                     progress = 0f,
                 )
 
@@ -99,7 +90,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(Res.string.msg_deleted_items, selectedEntries.size),
+                    detail = I18nMessage(MessageKey.MSG_DELETED_ITEMS, selectedEntries.size),
                     progress = 1f,
                     processedCount = selectedEntries.size,
                 )
@@ -110,7 +101,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(Res.string.msg_cancelled),
+                    detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
                 onRefreshAllPanes()
@@ -120,8 +111,8 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
-                        ?: I18nMessage(Res.string.msg_delete_failed),
+                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                        ?: I18nMessage(MessageKey.MSG_DELETE_FAILED),
                     progress = null,
                 )
                 onRefreshAllPanes()
@@ -157,9 +148,9 @@ class FileActionDelegate(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.COPY,
-                title = I18nMessage(Res.string.msg_create_folders, paths.size),
+                title = I18nMessage(MessageKey.MSG_CREATE_FOLDERS, paths.size),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(Res.string.msg_string_literal, parentLocation),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, parentLocation),
                 progress = 0f,
                 totalCount = paths.size,
                 startTimeMillis = System.currentTimeMillis(),
@@ -172,7 +163,7 @@ class FileActionDelegate(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(
-                        Res.string.msg_string_literal,
+                        MessageKey.MSG_STRING_LITERAL,
                         paths.joinToString(limit = 3, truncated = " ...")
                     ),
                     progress = 0f,
@@ -186,7 +177,7 @@ class FileActionDelegate(
                     taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(Res.string.msg_string_literal, path),
+                        detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, path),
                         progress = (index + 1).toFloat() / paths.size,
                     )
                 }
@@ -194,7 +185,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(Res.string.msg_created_folders, paths.size),
+                    detail = I18nMessage(MessageKey.MSG_CREATED_FOLDERS, paths.size),
                     progress = 1f,
                     processedCount = paths.size,
                 )
@@ -205,7 +196,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(Res.string.msg_cancelled),
+                    detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
                 onRefreshPane(paneId)
@@ -215,8 +206,8 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
-                        ?: I18nMessage(Res.string.msg_create_folder_failed),
+                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                        ?: I18nMessage(MessageKey.MSG_CREATE_FOLDER_FAILED),
                     progress = null,
                 )
                 onRefreshPane(paneId)
@@ -240,9 +231,9 @@ class FileActionDelegate(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.RENAME,
-                title = I18nMessage(Res.string.action_batch_rename),
+                title = I18nMessage(MessageKey.ACTION_BATCH_RENAME),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(Res.string.msg_string_literal, "${renameMap.size} files"),
+                detail = I18nMessage(MessageKey.MSG_BATCH_RENAME_FILES, renameMap.size),
                 progress = 0f,
                 totalCount = renameMap.size,
                 startTimeMillis = System.currentTimeMillis(),
@@ -269,7 +260,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(Res.string.msg_string_literal, "${renameMap.size} files renamed"),
+                    detail = I18nMessage(MessageKey.MSG_BATCH_RENAMED_FILES, renameMap.size),
                     progress = 1f,
                     processedCount = renameMap.size,
                 )
@@ -292,10 +283,13 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(Res.string.msg_cancelled),
+                    detail = I18nMessage(MessageKey.MSG_CANCELLED),
                 )
                 (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
-                    dialogState.value = ds.copy(executing = false, errorMessage = "Cancelled")
+                    dialogState.value = ds.copy(
+                        executing = false,
+                        errorMessage = I18nMessage(MessageKey.MSG_CANCELLED),
+                    )
                 }
             } catch (e: Throwable) {
                 OnyxLogger.error("FileActionDelegate", "批量重命名失败", e)
@@ -303,10 +297,15 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
+                    detail = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                        ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
                 )
                 (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
-                    dialogState.value = ds.copy(executing = false, errorMessage = e.message ?: "Unknown error")
+                    dialogState.value = ds.copy(
+                        executing = false,
+                        errorMessage = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                            ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
+                    )
                 }
                 onRefreshAllPanes()
             }

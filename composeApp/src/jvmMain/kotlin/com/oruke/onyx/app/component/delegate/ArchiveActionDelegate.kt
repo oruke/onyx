@@ -9,6 +9,7 @@ import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.CancellationException
@@ -18,12 +19,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.msg_cancelled
-import onyx.composeapp.generated.resources.msg_extract_failed
-import onyx.composeapp.generated.resources.msg_extract_items
-import onyx.composeapp.generated.resources.msg_extracted_items
-import onyx.composeapp.generated.resources.msg_string_literal
 import java.util.*
 
 /**
@@ -55,9 +50,9 @@ class ArchiveActionDelegate(
             BackgroundTask(
                 id = taskId,
                 kind = BackgroundTaskKind.EXTRACT,
-                title = I18nMessage(Res.string.msg_extract_items, entries.size),
+                title = I18nMessage(MessageKey.MSG_EXTRACT_ITEMS, entries.size),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
                 progress = 0f,
                 totalCount = entries.size,
                 startTimeMillis = System.currentTimeMillis(),
@@ -69,7 +64,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
                     progress = 0f,
                 )
                 archiveExtractionUseCase.extractEntriesToDirectory(
@@ -84,7 +79,7 @@ class ArchiveActionDelegate(
                             entries = entries,
                             targetLocation = targetDirectoryLocation,
                             taskId = taskId,
-                            taskTitle = I18nMessage(Res.string.msg_extract_items, entries.size),
+                            taskTitle = I18nMessage(MessageKey.MSG_EXTRACT_ITEMS, entries.size),
                         )
                     },
                 ).collect { progress ->
@@ -95,7 +90,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(Res.string.msg_extracted_items, entries.size, targetDirectoryLocation),
+                    detail = I18nMessage(MessageKey.MSG_EXTRACTED_ITEMS, entries.size, targetDirectoryLocation),
                     progress = 1f,
                 )
                 // 刷新目标目录所在面板
@@ -106,7 +101,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(Res.string.msg_extract_failed),
+                    detail = I18nMessage(MessageKey.MSG_EXTRACT_FAILED),
                     progress = 0f,
                 )
             } catch (e: Exception) {
@@ -116,9 +111,9 @@ class ArchiveActionDelegate(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
                     detail = if (e.message != null) {
-                        I18nMessage(Res.string.msg_string_literal, e.message!!)
+                        I18nMessage(MessageKey.MSG_STRING_LITERAL, e.message!!)
                     } else {
-                        I18nMessage(Res.string.msg_extract_failed)
+                        I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
                     },
                     progress = 0f,
                 )
@@ -148,7 +143,7 @@ class ArchiveActionDelegate(
                 kind = BackgroundTaskKind.EXTRACT,
                 title = taskTitle,
                 status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(archiveEntries)),
                 progress = 0f,
                 totalCount = archiveEntries.size,
                 startTimeMillis = System.currentTimeMillis(),
@@ -160,7 +155,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(archiveEntries)),
                     progress = 0f,
                 )
                 archiveExtractionUseCase.extractArchiveFiles(
@@ -188,7 +183,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
+                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(archiveEntries)),
                     progress = 1f,
                     processedCount = archiveEntries.size,
                 )
@@ -200,7 +195,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(Res.string.msg_cancelled),
+                    detail = I18nMessage(MessageKey.MSG_CANCELLED),
                 )
             } catch (e: Throwable) {
                 OnyxLogger.error("ArchiveActionDelegate", "拖拽解压失败", e)
@@ -209,7 +204,8 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = I18nMessage(Res.string.msg_string_literal, e.message ?: "Unknown error"),
+                    detail = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                        ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
                 )
             }
         }
@@ -244,7 +240,7 @@ class ArchiveActionDelegate(
         taskTitle: I18nMessage,
         extractAction: suspend (VFile, String, String?) -> Result<Unit> = { _, _, _ -> Result.success(Unit) },
     ): String {
-        var errorMsg: String? = null
+        var errorMsg: I18nMessage? = null
         while (true) {
             kotlin.coroutines.coroutineContext.ensureActive()
             val deferred = CompletableDeferred<String>()
@@ -267,7 +263,7 @@ class ArchiveActionDelegate(
                 pendingArchiveExtraction = null
                 return candidatePassword
             } else {
-                errorMsg = "密码错误，请重新输入"
+                errorMsg = I18nMessage(MessageKey.MSG_ARCHIVE_PASSWORD_INVALID)
             }
         }
     }

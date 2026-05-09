@@ -229,7 +229,7 @@ internal fun PaneTabState.withLoadedEntries(
 
 internal fun PaneTabState.withLoadFailure(reason: String?): PaneTabState {
     return withTabState { current ->
-        current.copy(entriesState = PaneEntriesState.Failure(reason))
+        current.copy(entriesState = PaneEntriesState.Failure(PaneEntriesError.loadingFailed(reason)))
     }
 }
 

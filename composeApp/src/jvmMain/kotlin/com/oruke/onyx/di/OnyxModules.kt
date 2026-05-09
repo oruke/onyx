@@ -1,5 +1,6 @@
 package com.oruke.onyx.di
 
+import com.oruke.onyx.app.component.EntryNameSuggestionService
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
@@ -34,6 +35,7 @@ import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
+import com.oruke.onyx.ui.ResourceEntryNameSuggestionService
 import org.koin.dsl.module
 
 /**
@@ -63,6 +65,7 @@ val fileModule = module {
     single<TextClipboardService> { JvmTextClipboardService() }
     single<OpenWithService> { JvmLinuxOpenWithService() }
     single<VfsPathService> { JvmVfsPathService() }
+    single<EntryNameSuggestionService> { ResourceEntryNameSuggestionService() }
     single<ArchiveFileTypeService> { JvmArchiveFileTypeService() }
     single<ArchiveEntryOpenService> { JvmArchiveEntryOpenService(get(), get()) }
     single<TerminalLauncherService> { JvmTerminalLauncherService() }

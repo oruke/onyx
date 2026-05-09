@@ -4,6 +4,8 @@ import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.value.Value
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneInlineEditState
 import com.oruke.onyx.core.model.PaneInspectorState
@@ -118,8 +120,34 @@ sealed interface PaneEntriesState {
     ) : PaneEntriesState
 
     data class Failure(
-        val reason: String?,
+        val error: PaneEntriesError,
     ) : PaneEntriesState
+}
+
+data class PaneEntriesError(
+    val kind: PaneEntriesErrorKind,
+    val detail: I18nMessage? = null,
+) {
+    companion object {
+        fun loadingFailed(detail: String?): PaneEntriesError {
+            return PaneEntriesError(
+                kind = PaneEntriesErrorKind.LOAD_FAILED,
+                detail = detail?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+            )
+        }
+
+        fun unknown(): PaneEntriesError {
+            return PaneEntriesError(
+                kind = PaneEntriesErrorKind.UNKNOWN,
+                detail = I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
+            )
+        }
+    }
+}
+
+enum class PaneEntriesErrorKind {
+    LOAD_FAILED,
+    UNKNOWN,
 }
 
 // ── 内联展开（文件列表树状展开） ──────────────────────────────────────────
@@ -348,4 +376,10 @@ interface PaneComponent {
 
     /** UI 滚动到 pendingScrollToEntryId 后调用，清除待滚动标记 */
     fun consumePendingScroll()
+}
+
+interface EntryNameSuggestionService {
+    suspend fun newFileName(): String
+
+    suspend fun newDirectoryName(): String
 }

@@ -106,6 +106,7 @@ import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.horizontalResizePointerIcon
 import com.oruke.onyx.ui.theme.orEmpty
+import com.oruke.onyx.ui.theme.resolve
 import com.oruke.onyx.ui.theme.sortHint
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.visibleDetailsColumns
@@ -196,7 +197,7 @@ internal fun PaneEntriesContent(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "${stringResource(Res.string.label_error_prefix)} ${state.reason.orEmpty()}".trim(),
+                        text = "${stringResource(Res.string.label_error_prefix)} ${state.error.detail?.resolve().orEmpty()}".trim(),
                         color = LocalOnyxPalette.current.foreground,
                         fontSize = 12.sp,
                     )

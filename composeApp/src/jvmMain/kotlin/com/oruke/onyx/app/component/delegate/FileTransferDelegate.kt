@@ -14,6 +14,7 @@ import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -22,18 +23,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.msg_cancelled
-import onyx.composeapp.generated.resources.msg_copied_items
-import onyx.composeapp.generated.resources.msg_copy_failed
-import onyx.composeapp.generated.resources.msg_copy_items
-import onyx.composeapp.generated.resources.msg_extract_failed
-import onyx.composeapp.generated.resources.msg_extract_items
-import onyx.composeapp.generated.resources.msg_extracted_items
-import onyx.composeapp.generated.resources.msg_move_failed
-import onyx.composeapp.generated.resources.msg_move_items
-import onyx.composeapp.generated.resources.msg_moved_items
-import onyx.composeapp.generated.resources.msg_string_literal
 import java.util.*
 
 /**
@@ -211,7 +200,7 @@ class FileTransferDelegate(
                 kind = taskKind,
                 title = taskTitleFor(operation, entries.size),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
                 progress = 0f,
                 totalCount = entries.size,
                 totalBytes = initialTotalBytes,
@@ -248,13 +237,13 @@ class FileTransferDelegate(
                     status = BackgroundTaskStatus.SUCCEEDED,
                     detail = when (operation) {
                         FileTransferOperation.COPY ->
-                            I18nMessage(Res.string.msg_copied_items, entries.size, targetDirectoryLocation)
+                            I18nMessage(MessageKey.MSG_COPIED_ITEMS, entries.size, targetDirectoryLocation)
 
                         FileTransferOperation.MOVE ->
-                            I18nMessage(Res.string.msg_moved_items, entries.size, targetDirectoryLocation)
+                            I18nMessage(MessageKey.MSG_MOVED_ITEMS, entries.size, targetDirectoryLocation)
 
                         FileTransferOperation.EXTRACT ->
-                            I18nMessage(Res.string.msg_extracted_items, entries.size, targetDirectoryLocation)
+                            I18nMessage(MessageKey.MSG_EXTRACTED_ITEMS, entries.size, targetDirectoryLocation)
                     },
                     progress = 1f,
                     processedCount = entries.size,
@@ -270,7 +259,7 @@ class FileTransferDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(Res.string.msg_cancelled),
+                    detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
                 onRefreshAllPanes()
@@ -280,11 +269,11 @@ class FileTransferDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
+                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
                         ?: when (operation) {
-                            FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_failed)
-                            FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_failed)
-                            FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_failed)
+                            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_FAILED)
+                            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_FAILED)
+                            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
                         },
                     progress = null,
                 )
@@ -340,7 +329,7 @@ class FileTransferDelegate(
                 kind = taskKindFor(operation),
                 title = taskTitleFor(operation, entries.size),
                 status = BackgroundTaskStatus.FAILED,
-                detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
+                detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
                     ?: failureMessageFor(operation),
                 progress = null,
                 totalCount = entries.size,
@@ -363,17 +352,17 @@ class FileTransferDelegate(
         entryCount: Int,
     ): I18nMessage {
         return when (operation) {
-            FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_items, entryCount)
-            FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_items, entryCount)
-            FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_items, entryCount)
+            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_ITEMS, entryCount)
+            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_ITEMS, entryCount)
+            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_ITEMS, entryCount)
         }
     }
 
     private fun failureMessageFor(operation: FileTransferOperation): I18nMessage {
         return when (operation) {
-            FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_failed)
-            FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_failed)
-            FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_failed)
+            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_FAILED)
+            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_FAILED)
+            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
         }
     }
 

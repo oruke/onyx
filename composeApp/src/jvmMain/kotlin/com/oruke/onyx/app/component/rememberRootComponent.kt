@@ -68,6 +68,7 @@ fun rememberRootComponent(): RootComponent {
             archiveService = koin.get<ArchiveService>(),
             openWithService = koin.get<OpenWithService>(),
             pathService = koin.get<VfsPathService>(),
+            entryNameSuggestionService = koin.get<EntryNameSuggestionService>(),
             providerRegistry = koin.get<VfsProviderRegistry>(),
             archiveFileTypeService = koin.get<ArchiveFileTypeService>(),
             archiveEntryOpenService = koin.get<ArchiveEntryOpenService>(),

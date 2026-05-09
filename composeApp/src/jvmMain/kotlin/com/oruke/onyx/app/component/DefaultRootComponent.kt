@@ -29,6 +29,7 @@ import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.ImageFitMode
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
@@ -49,11 +50,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_extract_here
-import onyx.composeapp.generated.resources.action_extract_to_directory
-import onyx.composeapp.generated.resources.action_extract_smart
-import onyx.composeapp.generated.resources.msg_string_literal
 import com.oruke.onyx.app.component.delegate.ArchiveActionDelegate
 import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
@@ -77,6 +73,7 @@ class DefaultRootComponent(
     private val archiveService: ArchiveService,
     private val openWithService: OpenWithService,
     private val pathService: VfsPathService,
+    private val entryNameSuggestionService: EntryNameSuggestionService,
     private val providerRegistry: VfsProviderRegistry,
     private val archiveFileTypeService: ArchiveFileTypeService,
     private val archiveEntryOpenService: ArchiveEntryOpenService,
@@ -105,6 +102,7 @@ class DefaultRootComponent(
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
         pathService = pathService,
+        entryNameSuggestionService = entryNameSuggestionService,
         archiveFileTypeService = archiveFileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
@@ -118,6 +116,7 @@ class DefaultRootComponent(
         textClipboardService = textClipboardService,
         externalOpenService = externalOpenService,
         pathService = pathService,
+        entryNameSuggestionService = entryNameSuggestionService,
         archiveFileTypeService = archiveFileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
@@ -562,7 +561,7 @@ class DefaultRootComponent(
         archiveActionDelegate.launchArchiveExtraction(
             selectedEntries = selectedEntriesInPane(paneId),
             currentLocation = paneState(paneId).location,
-            taskTitle = I18nMessage(Res.string.action_extract_here),
+            taskTitle = I18nMessage(MessageKey.ACTION_EXTRACT_HERE),
         ) { entry, location, password ->
             archiveService.extract(
                 archivePath = entry.location,
@@ -576,7 +575,7 @@ class DefaultRootComponent(
         archiveActionDelegate.launchArchiveExtraction(
             selectedEntries = selectedEntriesInPane(paneId),
             currentLocation = paneState(paneId).location,
-            taskTitle = I18nMessage(Res.string.action_extract_to_directory),
+            taskTitle = I18nMessage(MessageKey.ACTION_EXTRACT_TO_DIRECTORY),
         ) { entry, location, password ->
             archiveService.extractToDirectory(
                 archivePath = entry.location,
@@ -590,7 +589,7 @@ class DefaultRootComponent(
         archiveActionDelegate.launchArchiveExtraction(
             selectedEntries = selectedEntriesInPane(paneId),
             currentLocation = paneState(paneId).location,
-            taskTitle = I18nMessage(Res.string.action_extract_smart),
+            taskTitle = I18nMessage(MessageKey.ACTION_EXTRACT_SMART),
         ) { entry, location, password ->
             archiveService.extractSmart(
                 archivePath = entry.location,
@@ -714,10 +713,8 @@ class DefaultRootComponent(
                 }
             },
             onFailure = { failure ->
-                restoreError = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) } ?: I18nMessage(
-                    Res.string.msg_string_literal,
-                    "Failed to load settings"
-                )
+                restoreError = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                    ?: I18nMessage(MessageKey.MSG_LOAD_SETTINGS_FAILED)
             },
         )
 
@@ -731,8 +728,8 @@ class DefaultRootComponent(
                 }
             },
             onFailure = { failure ->
-                restoreError = restoreError ?: failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
-                        ?: I18nMessage(Res.string.msg_string_literal, "Failed to restore session")
+                restoreError = restoreError ?: failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
+                    ?: I18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
                 layoutMode.value = settings.value.defaultLayoutMode
                 applyDefaultViewMode()
             },
