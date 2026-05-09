@@ -275,10 +275,17 @@
     <string name="label_inspector_size">大小</string>
     <string name="label_inspector_modified">修改时间</string>
     <string name="label_inspector_location">位置</string>
+    <string name="label_inspector_permissions">权限</string>
     <string name="label_inspector_sha256">SHA-256</string>
     <string name="label_inspector_unknown">未知</string>
     <string name="label_inspector_directory">文件夹</string>
     <string name="label_inspector_file">文件</string>
+    <string name="label_list_separator"> · </string>
+    <string name="label_permission_list">列出</string>
+    <string name="label_permission_read">读取</string>
+    <string name="label_permission_write">写入</string>
+    <string name="label_permission_rename">重命名</string>
+    <string name="label_permission_delete">删除</string>
 
     <string name="label_column_visibility">列设置</string>
 

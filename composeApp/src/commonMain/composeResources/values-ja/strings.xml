@@ -277,10 +277,17 @@
     <string name="label_inspector_size">サイズ</string>
     <string name="label_inspector_modified">更新日時</string>
     <string name="label_inspector_location">場所</string>
+    <string name="label_inspector_permissions">権限</string>
     <string name="label_inspector_sha256">SHA-256</string>
     <string name="label_inspector_unknown">不明</string>
     <string name="label_inspector_directory">フォルダー</string>
     <string name="label_inspector_file">ファイル</string>
+    <string name="label_list_separator"> · </string>
+    <string name="label_permission_list">一覧</string>
+    <string name="label_permission_read">読み取り</string>
+    <string name="label_permission_write">書き込み</string>
+    <string name="label_permission_rename">名前変更</string>
+    <string name="label_permission_delete">削除</string>
 
     <string name="label_column_visibility">カラム設定</string>
 

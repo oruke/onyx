@@ -277,10 +277,17 @@
     <string name="label_inspector_size">Size</string>
     <string name="label_inspector_modified">Modified</string>
     <string name="label_inspector_location">Location</string>
+    <string name="label_inspector_permissions">Permissions</string>
     <string name="label_inspector_sha256">SHA-256</string>
     <string name="label_inspector_unknown">Unknown</string>
     <string name="label_inspector_directory">Directory</string>
     <string name="label_inspector_file">File</string>
+    <string name="label_list_separator"> · </string>
+    <string name="label_permission_list">List</string>
+    <string name="label_permission_read">Read</string>
+    <string name="label_permission_write">Write</string>
+    <string name="label_permission_rename">Rename</string>
+    <string name="label_permission_delete">Delete</string>
 
     <string name="label_column_visibility">Columns</string>
 

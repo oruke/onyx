@@ -32,6 +32,7 @@ import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
@@ -42,10 +43,17 @@ import onyx.composeapp.generated.resources.label_inspector_directory
 import onyx.composeapp.generated.resources.label_inspector_file
 import onyx.composeapp.generated.resources.label_inspector_location
 import onyx.composeapp.generated.resources.label_inspector_modified
+import onyx.composeapp.generated.resources.label_inspector_permissions
 import onyx.composeapp.generated.resources.label_inspector_sha256
 import onyx.composeapp.generated.resources.label_inspector_size
 import onyx.composeapp.generated.resources.label_inspector_type
 import onyx.composeapp.generated.resources.label_inspector_unknown
+import onyx.composeapp.generated.resources.label_list_separator
+import onyx.composeapp.generated.resources.label_permission_delete
+import onyx.composeapp.generated.resources.label_permission_list
+import onyx.composeapp.generated.resources.label_permission_read
+import onyx.composeapp.generated.resources.label_permission_rename
+import onyx.composeapp.generated.resources.label_permission_write
 import onyx.composeapp.generated.resources.label_preview_loading
 import onyx.composeapp.generated.resources.label_preview_too_large
 import onyx.composeapp.generated.resources.label_preview_unavailable
@@ -156,6 +164,10 @@ internal fun InspectorPanel(
                     label = stringResource(Res.string.label_inspector_location),
                     value = entry.parentLocation ?: stringResource(Res.string.label_inspector_unknown),
                 )
+                InspectorDetailRow(
+                    label = stringResource(Res.string.label_inspector_permissions),
+                    value = inspectorPermissionValue(entry),
+                )
                 if (entry.kind == VFileKind.FILE) {
                     var hashResult by remember(entry.location) { mutableStateOf<FileHashResult?>(null) }
                     LaunchedEffect(entry.location) {
@@ -181,6 +193,31 @@ internal fun InspectorPanel(
             }
         }
     }
+}
+
+@Composable
+private fun inspectorPermissionValue(entry: VFile): String {
+    val capabilities = entry.capabilities
+    val labels = buildList {
+        if (VFileCapability.LIST_CHILDREN in capabilities) {
+            add(stringResource(Res.string.label_permission_list))
+        }
+        if (VFileCapability.READ_CONTENT in capabilities) {
+            add(stringResource(Res.string.label_permission_read))
+        }
+        if (VFileCapability.WRITE_CONTENT in capabilities) {
+            add(stringResource(Res.string.label_permission_write))
+        }
+        if (VFileCapability.RENAME in capabilities) {
+            add(stringResource(Res.string.label_permission_rename))
+        }
+        if (VFileCapability.DELETE in capabilities) {
+            add(stringResource(Res.string.label_permission_delete))
+        }
+    }
+    return labels
+        .ifEmpty { listOf(stringResource(Res.string.label_inspector_unknown)) }
+        .joinToString(separator = stringResource(Res.string.label_list_separator))
 }
 
 @Composable
