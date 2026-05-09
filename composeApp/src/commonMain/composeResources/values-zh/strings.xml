@@ -276,6 +276,8 @@
     <string name="label_inspector_modified">修改时间</string>
     <string name="label_inspector_location">位置</string>
     <string name="label_inspector_permissions">权限</string>
+    <string name="label_inspector_archive_encrypted">压缩包加密</string>
+    <string name="label_inspector_archive_capabilities">压缩包能力</string>
     <string name="label_inspector_sha256">SHA-256</string>
     <string name="label_inspector_unknown">未知</string>
     <string name="label_inspector_directory">文件夹</string>
@@ -286,6 +288,11 @@
     <string name="label_permission_write">写入</string>
     <string name="label_permission_rename">重命名</string>
     <string name="label_permission_delete">删除</string>
+    <string name="label_archive_encrypted_yes">已加密</string>
+    <string name="label_archive_encrypted_no">未加密</string>
+    <string name="label_archive_capability_browse">浏览</string>
+    <string name="label_archive_capability_extract">解压</string>
+    <string name="label_archive_capability_read_only">只读</string>
 
     <string name="label_column_visibility">列设置</string>
 

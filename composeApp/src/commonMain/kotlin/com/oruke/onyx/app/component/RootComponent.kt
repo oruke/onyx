@@ -1,6 +1,8 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.filesystem.OpenWithApp
+import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
+import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
@@ -451,6 +453,8 @@ interface RootComponent {
     suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult
 
     suspend fun readFileHash(request: FileHashRequest): FileHashResult
+
+    suspend fun readArchiveInfo(request: ArchiveInfoRequest): ArchiveInfoResult
 
     suspend fun loadThumbnail(location: String, maxDimension: Int): ImageBitmap?
 

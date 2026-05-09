@@ -55,6 +55,8 @@ import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
+import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
+import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.core.model.PaneId
@@ -113,6 +115,7 @@ internal fun PaneSurface(
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
     loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
     readFileHash: suspend (FileHashRequest) -> FileHashResult,
+    readArchiveInfo: suspend (ArchiveInfoRequest) -> ArchiveInfoResult,
     buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
 ) {
     // ── 从 state / component / actions 派生，消除冗余参数 ──
@@ -836,7 +839,9 @@ internal fun PaneSurface(
                     state = state.inspectorState,
                     loadThumbnail = loadThumbnail,
                     readFileHash = readFileHash,
+                    readArchiveInfo = readArchiveInfo,
                     isImageFileName = actions.isImageFileName,
+                    isArchiveFileName = actions.isArchiveFileName,
                 )
             }
         }

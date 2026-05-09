@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
+import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.core.model.PaneInspectorState
@@ -44,10 +46,17 @@ import onyx.composeapp.generated.resources.label_inspector_file
 import onyx.composeapp.generated.resources.label_inspector_location
 import onyx.composeapp.generated.resources.label_inspector_modified
 import onyx.composeapp.generated.resources.label_inspector_permissions
+import onyx.composeapp.generated.resources.label_inspector_archive_capabilities
+import onyx.composeapp.generated.resources.label_inspector_archive_encrypted
 import onyx.composeapp.generated.resources.label_inspector_sha256
 import onyx.composeapp.generated.resources.label_inspector_size
 import onyx.composeapp.generated.resources.label_inspector_type
 import onyx.composeapp.generated.resources.label_inspector_unknown
+import onyx.composeapp.generated.resources.label_archive_capability_browse
+import onyx.composeapp.generated.resources.label_archive_capability_extract
+import onyx.composeapp.generated.resources.label_archive_capability_read_only
+import onyx.composeapp.generated.resources.label_archive_encrypted_no
+import onyx.composeapp.generated.resources.label_archive_encrypted_yes
 import onyx.composeapp.generated.resources.label_list_separator
 import onyx.composeapp.generated.resources.label_permission_delete
 import onyx.composeapp.generated.resources.label_permission_list
@@ -74,7 +83,9 @@ internal fun InspectorPanel(
     state: PaneInspectorState,
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
     readFileHash: suspend (FileHashRequest) -> FileHashResult,
+    readArchiveInfo: suspend (ArchiveInfoRequest) -> ArchiveInfoResult,
     isImageFileName: (String) -> Boolean,
+    isArchiveFileName: (String) -> Boolean,
 ) {
     Column(
         modifier = Modifier
@@ -168,6 +179,20 @@ internal fun InspectorPanel(
                     label = stringResource(Res.string.label_inspector_permissions),
                     value = inspectorPermissionValue(entry),
                 )
+                if (entry.kind == VFileKind.FILE && isArchiveFileName(entry.name)) {
+                    var archiveInfoResult by remember(entry.location) { mutableStateOf<ArchiveInfoResult?>(null) }
+                    LaunchedEffect(entry.location) {
+                        archiveInfoResult = readArchiveInfo(ArchiveInfoRequest(entry))
+                    }
+                    InspectorDetailRow(
+                        label = stringResource(Res.string.label_inspector_archive_encrypted),
+                        value = archiveEncryptionValue(archiveInfoResult),
+                    )
+                    InspectorDetailRow(
+                        label = stringResource(Res.string.label_inspector_archive_capabilities),
+                        value = archiveCapabilityValue(archiveInfoResult),
+                    )
+                }
                 if (entry.kind == VFileKind.FILE) {
                     var hashResult by remember(entry.location) { mutableStateOf<FileHashResult?>(null) }
                     LaunchedEffect(entry.location) {
@@ -218,6 +243,41 @@ private fun inspectorPermissionValue(entry: VFile): String {
     return labels
         .ifEmpty { listOf(stringResource(Res.string.label_inspector_unknown)) }
         .joinToString(separator = stringResource(Res.string.label_list_separator))
+}
+
+@Composable
+private fun archiveEncryptionValue(result: ArchiveInfoResult?): String {
+    return when (result) {
+        null -> stringResource(Res.string.label_preview_loading)
+        is ArchiveInfoResult.Info -> if (result.encrypted) {
+            stringResource(Res.string.label_archive_encrypted_yes)
+        } else {
+            stringResource(Res.string.label_archive_encrypted_no)
+        }
+
+        ArchiveInfoResult.Unavailable -> stringResource(Res.string.label_preview_unavailable)
+        is ArchiveInfoResult.Failed -> result.reason.resolve()
+    }
+}
+
+@Composable
+private fun archiveCapabilityValue(result: ArchiveInfoResult?): String {
+    return when (result) {
+        null -> stringResource(Res.string.label_preview_loading)
+        is ArchiveInfoResult.Info -> buildList {
+            if (result.canBrowse) {
+                add(stringResource(Res.string.label_archive_capability_browse))
+            }
+            if (result.canExtract) {
+                add(stringResource(Res.string.label_archive_capability_extract))
+            }
+            if (!result.canWrite) {
+                add(stringResource(Res.string.label_archive_capability_read_only))
+            }
+        }.joinToString(separator = stringResource(Res.string.label_list_separator))
+        ArchiveInfoResult.Unavailable -> stringResource(Res.string.label_preview_unavailable)
+        is ArchiveInfoResult.Failed -> result.reason.resolve()
+    }
 }
 
 @Composable

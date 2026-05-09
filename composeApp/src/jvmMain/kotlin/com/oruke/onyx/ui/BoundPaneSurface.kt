@@ -100,6 +100,7 @@ internal fun BoundPaneSurface(
         loadThumbnail = rootComponent::loadThumbnail,
         loadArchiveThumbnail = rootComponent::loadArchiveThumbnail,
         readFileHash = rootComponent::readFileHash,
+        readArchiveInfo = rootComponent::readArchiveInfo,
         buildBreadcrumbs = rootComponent::buildBreadcrumbs,
     )
 }

@@ -5,6 +5,9 @@ import com.arkivanov.decompose.childContext
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
+import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
+import com.oruke.onyx.app.filesystem.ArchiveInfoResult
+import com.oruke.onyx.app.filesystem.ArchiveInfoService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileHashRequest
@@ -106,6 +109,7 @@ class DefaultRootComponent(
     private val terminalLauncherService: TerminalLauncherService,
     private val previewService: PreviewService,
     private val fileHashService: FileHashService,
+    private val archiveInfoService: ArchiveInfoService,
     private val thumbnailService: ThumbnailService,
     private val imageMetadataService: ImageMetadataService,
     private val connectionTestService: VfsConnectionTestService,
@@ -1144,6 +1148,10 @@ class DefaultRootComponent(
 
     override suspend fun readFileHash(request: FileHashRequest): FileHashResult {
         return fileHashService.readHash(request)
+    }
+
+    override suspend fun readArchiveInfo(request: ArchiveInfoRequest): ArchiveInfoResult {
+        return archiveInfoService.readInfo(request)
     }
 
     override suspend fun loadThumbnail(location: String, maxDimension: Int): ImageBitmap? {

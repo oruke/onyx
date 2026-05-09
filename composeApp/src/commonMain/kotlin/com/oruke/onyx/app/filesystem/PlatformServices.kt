@@ -99,6 +99,29 @@ interface FileHashService {
     suspend fun readHash(request: FileHashRequest): FileHashResult
 }
 
+data class ArchiveInfoRequest(
+    val entry: VFile,
+)
+
+sealed interface ArchiveInfoResult {
+    data class Info(
+        val encrypted: Boolean,
+        val canBrowse: Boolean,
+        val canExtract: Boolean,
+        val canWrite: Boolean,
+    ) : ArchiveInfoResult
+
+    data object Unavailable : ArchiveInfoResult
+
+    data class Failed(
+        val reason: I18nMessage,
+    ) : ArchiveInfoResult
+}
+
+interface ArchiveInfoService {
+    suspend fun readInfo(request: ArchiveInfoRequest): ArchiveInfoResult
+}
+
 interface FileTypeService {
     fun isImageFileName(fileName: String): Boolean
 

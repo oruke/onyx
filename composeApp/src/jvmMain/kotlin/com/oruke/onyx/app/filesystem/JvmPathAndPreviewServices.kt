@@ -484,6 +484,33 @@ class JvmFileHashService(
     }
 }
 
+class JvmArchiveInfoService(
+    private val archiveService: ArchiveService,
+) : ArchiveInfoService {
+    override suspend fun readInfo(request: ArchiveInfoRequest): ArchiveInfoResult = withContext(Dispatchers.IO) {
+        try {
+            val entry = request.entry
+            if (entry.kind != VFileKind.FILE || !ArchiveService.isArchive(entry.name) || entry.location.contains("://")) {
+                return@withContext ArchiveInfoResult.Unavailable
+            }
+            val path = Path.of(entry.location)
+            if (!Files.exists(path) || Files.isDirectory(path)) {
+                return@withContext ArchiveInfoResult.Unavailable
+            }
+            ArchiveInfoResult.Info(
+                encrypted = archiveService.isEncrypted(path.toString()),
+                canBrowse = true,
+                canExtract = true,
+                canWrite = false,
+            )
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Throwable) {
+            ArchiveInfoResult.Failed(failure.toI18nMessage())
+        }
+    }
+}
+
 class JvmFileTypeService : FileTypeService {
     override fun isImageFileName(fileName: String): Boolean {
         val ext = fileName.substringAfterLast('.', "").lowercase()
