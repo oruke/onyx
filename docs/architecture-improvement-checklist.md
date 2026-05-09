@@ -72,7 +72,7 @@ ui
 
 - [ ] 每个 Tab 建立 `TabComponent`。
 - [ ] `PaneComponent` 只管理 `ChildStack<TabConfig, TabComponent>`。
-- [ ] 跨面板标签拖拽传递 `TabConfig` / `TabSessionSnapshot`。
+- [x] 跨面板标签拖拽传递 `TabConfig` / `TabSessionSnapshot`。
 - [ ] Session 持久化改为 `TabSnapshot` 映射。
 
 ## P2：VFS provider 化

@@ -20,6 +20,7 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
+import com.oruke.onyx.core.model.TabSessionSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.ViewMode
@@ -586,7 +587,7 @@ class DefaultPaneComponent(
         mutableState.value = update.state
     }
 
-    override fun detachTab(tabId: String): PaneTabState? {
+    override fun detachTab(tabId: String): TabSessionSnapshot? {
         val state = mutableState.value
         val update = state.withDetachedTab(
             paneId = paneId,
@@ -601,17 +602,18 @@ class DefaultPaneComponent(
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
             loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
         }
-        return update.detachedTab
+        return update.detachedTabSnapshot
     }
 
     override fun attachTab(
-        tab: PaneTabState,
+        tabSnapshot: TabSessionSnapshot,
         targetIndex: Int,
     ) {
-        val uniqueTab = if (mutableState.value.tabs.any { it.id == tab.id }) {
-            tab.copy(id = UUID.randomUUID().toString())
+        val restoredTab = tabSnapshot.toPaneTabState(pathService)
+        val uniqueTab = if (mutableState.value.tabs.any { it.id == restoredTab.id }) {
+            restoredTab.copy(id = UUID.randomUUID().toString())
         } else {
-            tab
+            restoredTab
         }
         val update = mutableState.value.withAttachedTab(
             paneId = paneId,

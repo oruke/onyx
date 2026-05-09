@@ -467,9 +467,9 @@ class DefaultRootComponent(
             return
         }
 
-        val tab = paneComponent(sourcePaneId).detachTab(tabId) ?: return
+        val tabSnapshot = paneComponent(sourcePaneId).detachTab(tabId) ?: return
         paneComponent(targetPaneId).attachTab(
-            tab = tab,
+            tabSnapshot = tabSnapshot,
             targetIndex = targetIndex,
         )
         activatePane(targetPaneId)

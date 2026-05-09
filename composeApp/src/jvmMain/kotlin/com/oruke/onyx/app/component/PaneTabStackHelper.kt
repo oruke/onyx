@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.TabSessionSnapshot
 
 internal data class PaneTabStackUpdate(
     val state: PaneState,
@@ -10,7 +11,7 @@ internal data class PaneTabStackUpdate(
 internal data class PaneTabDetachUpdate(
     val state: PaneState,
     val activeTab: PaneTabState,
-    val detachedTab: PaneTabState,
+    val detachedTabSnapshot: TabSessionSnapshot,
 )
 
 internal fun PaneState.withCreatedTab(
@@ -109,7 +110,7 @@ internal fun PaneState.withDetachedTab(
                 tabs = listOf(replacementTab),
             ),
             activeTab = replacementTab,
-            detachedTab = detachedTab,
+            detachedTabSnapshot = detachedTab.toSessionSnapshot(),
         )
     }
 
@@ -126,7 +127,7 @@ internal fun PaneState.withDetachedTab(
             tabs = nextTabs,
         ),
         activeTab = nextActiveTab,
-        detachedTab = detachedTab,
+        detachedTabSnapshot = detachedTab.toSessionSnapshot(),
     )
 }
 
