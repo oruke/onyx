@@ -20,7 +20,6 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
-import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.ViewMode
@@ -425,70 +424,42 @@ class DefaultPaneComponent(
     override fun setViewMode(mode: ViewMode) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
-            currentTab.withTabState { current -> current.copy(viewMode = mode) }
+            currentTab.withViewModeState(mode)
         }
     }
 
     override fun setFilterQuery(query: String) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
-            currentTab.withTabState { current -> current.copy(filterQuery = query.trim()) }
+            currentTab.withFilterQueryState(query)
         }
     }
 
     override fun toggleSort(column: DetailsColumn) {
         val tab = activeTab() ?: return
-        val currentSort = tab.detailsSort
-        val nextSort = if (currentSort.column == column) {
-            currentSort.copy(
-                direction = when (currentSort.direction) {
-                    SortDirection.ASCENDING -> SortDirection.DESCENDING
-                    SortDirection.DESCENDING -> SortDirection.ASCENDING
-                }
-            )
-        } else {
-            DetailsSort(
-                column = column,
-                direction = SortDirection.ASCENDING,
-            )
-        }
         updateTab(tab.id) { currentTab ->
-            currentTab.withTabState { current ->
-                current.copy(
-                    detailsSort = nextSort,
-                )
-            }
+            currentTab.withToggledSortState(column)
         }
     }
 
     override fun toggleHiddenItems() {
         val tab = activeTab() ?: return
-        val showHiddenItems = !tab.showHiddenItems
         updateTab(tab.id) { currentTab ->
-            currentTab.withTabState { current ->
-                current.copy(
-                    showHiddenItems = showHiddenItems,
-                )
-            }
+            currentTab.withToggledHiddenItemsState()
         }
     }
 
     override fun toggleColumnVisibility(column: DetailsColumn) {
-        // NAME 列不可隐藏
-        if (column == DetailsColumn.NAME) return
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
-            val hidden = currentTab.hiddenColumns.toMutableSet()
-            if (column in hidden) hidden.remove(column) else hidden.add(column)
-            currentTab.withTabState { current -> current.copy(hiddenColumns = hidden) }
+            currentTab.withToggledColumnVisibilityState(column)
         }
     }
 
     override fun setGalleryItemSize(sizeDp: Int) {
         val tab = activeTab() ?: return
-        val clamped = sizeDp.coerceIn(80, 320)
         updateTab(tab.id) { currentTab ->
-            currentTab.withTabState { current -> current.copy(galleryItemSizeDp = clamped) }
+            currentTab.withGalleryItemSizeState(sizeDp)
         }
     }
 
@@ -498,16 +469,11 @@ class DefaultPaneComponent(
         deltaWeight: Float,
     ) {
         val tab = activeTab() ?: return
-        val currentWidth = tab.detailsColumnWeights[column] ?: defaultDetailsColumnWidth(column)
-        val newWidth = (currentWidth + deltaWeight).coerceAtLeast(MIN_DETAILS_COLUMN_WIDTH)
         updateTab(tab.id) { currentTab ->
-            currentTab.withTabState { current ->
-                current.copy(
-                    detailsColumnWeights = current.detailsColumnWeights + mapOf(
-                        column to newWidth,
-                    )
-                )
-            }
+            currentTab.withResizedDetailsColumnState(
+                column = column,
+                deltaWeight = deltaWeight,
+            )
         }
     }
 
