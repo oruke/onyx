@@ -132,7 +132,11 @@ internal fun GalleryItem(
     val coroutineScope = rememberCoroutineScope()
     var renameTimerJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    val isInlineEdit = draftName != null && onUpdateInlineEditDraft != null
+    val canInlineEdit =
+        draftName != null &&
+            onUpdateInlineEditDraft != null &&
+            onConfirmInlineEdit != null &&
+            onCancelInlineEdit != null
     val focusRequester = remember { FocusRequester() }
     var hasFocused by remember { mutableStateOf(false) }
 
@@ -146,8 +150,8 @@ internal fun GalleryItem(
         animationSpec = tween(durationMillis = 120),
     )
 
-    LaunchedEffect(isInlineEdit, draftName) {
-        if (isInlineEdit) {
+    LaunchedEffect(canInlineEdit, draftName) {
+        if (canInlineEdit) {
             focusRequester.requestFocus()
         }
     }
@@ -184,7 +188,7 @@ internal fun GalleryItem(
             .onPointerEvent(PointerEventType.Press) { event ->
                 if (entry == null) return@onPointerEvent
                 // 内联编辑期间，不处理选中逻辑（避免 selectEntry 清除编辑状态）
-                if (isInlineEdit) return@onPointerEvent
+                if (canInlineEdit) return@onPointerEvent
                 additiveSelection = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
                 rangeSelection = event.keyboardModifiers.isShiftPressed
                 dragOperation = if (event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed) {
@@ -289,19 +293,18 @@ internal fun GalleryItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
-        val isImage = entry?.name?.let(isImageFileName) == true
-        val isArchive = !isImage && entry?.name?.let(isArchiveFileName) == true
+        val currentEntry = entry
 
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(4.dp)),
             contentAlignment = Alignment.Center
         ) {
-            if (isImage && entry != null) {
-                val (thumbnail, _) = rememberAsyncBitmap(entry.location, 512, loadThumbnail)
+            if (currentEntry != null && isImageFileName(currentEntry.name)) {
+                val (thumbnail, _) = rememberAsyncBitmap(currentEntry.location, 512, loadThumbnail)
                 if (thumbnail != null) {
                     Image(
                         bitmap = thumbnail,
-                        contentDescription = entry.name,
+                        contentDescription = currentEntry.name,
                         contentScale = ContentScale.Fit,
                         filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                         modifier = Modifier
@@ -321,14 +324,14 @@ internal fun GalleryItem(
                         )
                     }
                 }
-            } else if (isArchive && entry != null) {
-                val (archiveThumbnail, _) = rememberAsyncBitmap(entry.location, 512, loadArchiveThumbnail)
+            } else if (currentEntry != null && isArchiveFileName(currentEntry.name)) {
+                val (archiveThumbnail, _) = rememberAsyncBitmap(currentEntry.location, 512, loadArchiveThumbnail)
                 if (archiveThumbnail != null) {
                     // 缩略图 + 格式标签叠加
                     Box(modifier = Modifier.fillMaxSize()) {
                         Image(
                             bitmap = archiveThumbnail,
-                            contentDescription = entry.name,
+                            contentDescription = currentEntry.name,
                             contentScale = ContentScale.Fit,
                             filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
                             modifier = Modifier
@@ -349,7 +352,7 @@ internal fun GalleryItem(
                                 )
                         )
                         // 右下角格式标签
-                        val ext = entry.name.substringAfterLast('.', "").uppercase()
+                        val ext = currentEntry.name.substringAfterLast('.', "").uppercase()
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
@@ -380,7 +383,11 @@ internal fun GalleryItem(
                 }
             } else {
                 val iconKey =
-                    if (entry?.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry?.name)
+                    if (currentEntry?.kind == VFileKind.DIRECTORY) {
+                        AllIconsKeys.Nodes.Folder
+                    } else {
+                        fileIconKey(currentEntry?.name)
+                    }
                 Icon(
                     key = iconKey,
                     contentDescription = null,
@@ -389,10 +396,14 @@ internal fun GalleryItem(
             }
         }
 
-        if (isInlineEdit && draftName != null && onUpdateInlineEditDraft != null && onConfirmInlineEdit != null && onCancelInlineEdit != null) {
+        if (canInlineEdit) {
+            val inlineDraftName = checkNotNull(draftName)
+            val updateInlineEditDraft = checkNotNull(onUpdateInlineEditDraft)
+            val confirmInlineEdit = checkNotNull(onConfirmInlineEdit)
+            val cancelInlineEdit = checkNotNull(onCancelInlineEdit)
             BasicTextField(
-                value = draftName,
-                onValueChange = { onUpdateInlineEditDraft(it) },
+                value = inlineDraftName,
+                onValueChange = updateInlineEditDraft,
                 modifier = Modifier
                     .fillMaxWidth()
                     .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(2.dp))
@@ -404,18 +415,18 @@ internal fun GalleryItem(
                             hasFocused = true
                         } else if (hasFocused) {
                             // 失焦时取消编辑，避免 Alt+Tab 等场景下误提交空名称
-                            onCancelInlineEdit()
+                            cancelInlineEdit()
                         }
                     }
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
                             Key.Enter -> {
-                                onConfirmInlineEdit(); true
+                                confirmInlineEdit(); true
                             }
 
                             Key.Escape -> {
-                                onCancelInlineEdit(); true
+                                cancelInlineEdit(); true
                             }
 
                             else -> false
