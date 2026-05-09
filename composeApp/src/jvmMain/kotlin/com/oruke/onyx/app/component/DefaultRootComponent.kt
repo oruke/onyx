@@ -196,6 +196,7 @@ class DefaultRootComponent(
     private val fileSearchUseCase = FileSearchUseCase(
         fileRepository = fileRepository,
         contentSearchService = JvmLocalFileContentSearchService(),
+        providerRegistry = providerRegistry,
     )
     private val searchState = MutableStateFlow(
         SearchPanelState(rootLocation = fileRepository.defaultLocation()),

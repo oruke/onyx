@@ -8,6 +8,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 class JvmLocalFileContentSearchService : FileContentSearchService {
+    override fun supportsLocation(location: String): Boolean {
+        return !location.contains("://")
+    }
+
     override fun supports(entry: VFile): Boolean {
         return entry.kind == VFileKind.FILE && !entry.location.contains("://")
     }

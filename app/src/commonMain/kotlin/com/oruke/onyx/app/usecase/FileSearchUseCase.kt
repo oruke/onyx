@@ -1,6 +1,8 @@
 package com.oruke.onyx.app.usecase
 
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.VfsProviderCapability
+import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
@@ -44,11 +46,21 @@ sealed interface FileSearchEvent {
 class FileSearchUseCase(
     private val fileRepository: FileRepository,
     private val contentSearchService: FileContentSearchService = UnsupportedFileContentSearchService,
+    private val providerRegistry: VfsProviderRegistry? = null,
 ) {
     fun search(request: FileSearchRequest): Flow<FileSearchEvent> = flow {
         val matcher = SearchMatcher(request.query.trim())
         if (!matcher.isValid) {
             emit(FileSearchEvent.Completed(scannedEntryCount = 0, limitReached = false))
+            return@flow
+        }
+        if (matcher.requiresContent && !supportsContentSearch(request.rootLocation)) {
+            emit(
+                FileSearchEvent.Failed(
+                    scannedEntryCount = 0,
+                    failure = UnsupportedOperationException("Content search is not supported for ${request.rootLocation}"),
+                )
+            )
             return@flow
         }
 
@@ -130,6 +142,7 @@ class FileSearchUseCase(
         private val criteria = SearchCriteria.parse(rawQuery)
         val isValid: Boolean = criteria.isValid
         val requiresDirectories: Boolean = criteria.kind == VFileKind.DIRECTORY
+        val requiresContent: Boolean = criteria.requiresContent
 
         suspend fun matches(
             entry: VFile,
@@ -142,9 +155,21 @@ class FileSearchUseCase(
             return criteria.matchesContent(entry, contentSearchService, maxContentBytes)
         }
     }
+
+    private fun supportsContentSearch(rootLocation: String): Boolean {
+        val providerSupportsContent = providerRegistry
+            ?.providerFor(rootLocation)
+            ?.getOrNull()
+            ?.capabilities
+            ?.contains(VfsProviderCapability.READ_CONTENT)
+            ?: true
+        return providerSupportsContent && contentSearchService.supportsLocation(rootLocation)
+    }
 }
 
 interface FileContentSearchService {
+    fun supportsLocation(location: String): Boolean = true
+
     fun supports(entry: VFile): Boolean
 
     suspend fun contains(
@@ -155,6 +180,8 @@ interface FileContentSearchService {
 }
 
 object UnsupportedFileContentSearchService : FileContentSearchService {
+    override fun supportsLocation(location: String): Boolean = false
+
     override fun supports(entry: VFile): Boolean = false
 
     override suspend fun contains(
@@ -176,6 +203,9 @@ private data class SearchCriteria(
     val modifiedBeforeEpochMillis: Long?,
     val contentQuery: String?,
 ) {
+    val requiresContent: Boolean
+        get() = contentQuery != null
+
     val isValid: Boolean
         get() = nameQuery.isNotBlank() ||
             extensionQuery != null ||
