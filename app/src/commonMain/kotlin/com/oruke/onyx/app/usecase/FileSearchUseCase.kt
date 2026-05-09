@@ -15,6 +15,7 @@ data class FileSearchRequest(
     val query: String,
     val includeDirectories: Boolean = true,
     val maxResults: Int = 500,
+    val maxContentBytes: Long = 1_048_576L,
 )
 
 sealed interface FileSearchEvent {
@@ -42,6 +43,7 @@ sealed interface FileSearchEvent {
 
 class FileSearchUseCase(
     private val fileRepository: FileRepository,
+    private val contentSearchService: FileContentSearchService = UnsupportedFileContentSearchService,
 ) {
     fun search(request: FileSearchRequest): Flow<FileSearchEvent> = flow {
         val matcher = SearchMatcher(request.query.trim())
@@ -83,7 +85,16 @@ class FileSearchUseCase(
                 if (entry.kind == VFileKind.DIRECTORY && !request.includeDirectories && !matcher.requiresDirectories) {
                     continue
                 }
-                if (matcher.matches(entry)) {
+                val matches = matcher.matches(entry, contentSearchService, request.maxContentBytes).getOrElse { failure ->
+                    emit(
+                        FileSearchEvent.Failed(
+                            scannedEntryCount = scannedEntryCount,
+                            failure = failure,
+                        )
+                    )
+                    return@flow
+                }
+                if (matches) {
                     results.add(entry)
                     if (results.size >= request.maxResults) {
                         limitReached = true
@@ -120,9 +131,38 @@ class FileSearchUseCase(
         val isValid: Boolean = criteria.isValid
         val requiresDirectories: Boolean = criteria.kind == VFileKind.DIRECTORY
 
-        fun matches(entry: VFile): Boolean {
-            return criteria.matches(entry)
+        suspend fun matches(
+            entry: VFile,
+            contentSearchService: FileContentSearchService,
+            maxContentBytes: Long,
+        ): Result<Boolean> {
+            if (!criteria.matchesMetadata(entry)) {
+                return Result.success(false)
+            }
+            return criteria.matchesContent(entry, contentSearchService, maxContentBytes)
         }
+    }
+}
+
+interface FileContentSearchService {
+    fun supports(entry: VFile): Boolean
+
+    suspend fun contains(
+        entry: VFile,
+        query: String,
+        maxBytes: Long,
+    ): Result<Boolean>
+}
+
+object UnsupportedFileContentSearchService : FileContentSearchService {
+    override fun supports(entry: VFile): Boolean = false
+
+    override suspend fun contains(
+        entry: VFile,
+        query: String,
+        maxBytes: Long,
+    ): Result<Boolean> {
+        return Result.failure(UnsupportedOperationException("Content search is not supported for ${entry.location}"))
     }
 }
 
@@ -134,6 +174,7 @@ private data class SearchCriteria(
     val maxSizeBytes: Long?,
     val modifiedAfterEpochMillis: Long?,
     val modifiedBeforeEpochMillis: Long?,
+    val contentQuery: String?,
 ) {
     val isValid: Boolean
         get() = nameQuery.isNotBlank() ||
@@ -142,9 +183,10 @@ private data class SearchCriteria(
             minSizeBytes != null ||
             maxSizeBytes != null ||
             modifiedAfterEpochMillis != null ||
-            modifiedBeforeEpochMillis != null
+            modifiedBeforeEpochMillis != null ||
+            contentQuery != null
 
-    fun matches(entry: VFile): Boolean {
+    fun matchesMetadata(entry: VFile): Boolean {
         if (kind != null && entry.kind != kind) {
             return false
         }
@@ -172,6 +214,21 @@ private data class SearchCriteria(
         return true
     }
 
+    suspend fun matchesContent(
+        entry: VFile,
+        contentSearchService: FileContentSearchService,
+        maxContentBytes: Long,
+    ): Result<Boolean> {
+        val query = contentQuery ?: return Result.success(true)
+        if (entry.kind != VFileKind.FILE) {
+            return Result.success(false)
+        }
+        if (!contentSearchService.supports(entry)) {
+            return Result.failure(UnsupportedOperationException("Content search is not supported for ${entry.location}"))
+        }
+        return contentSearchService.contains(entry, query, maxContentBytes)
+    }
+
     companion object {
         fun parse(rawQuery: String): SearchCriteria {
             var extensionQuery: String? = null
@@ -180,6 +237,7 @@ private data class SearchCriteria(
             var maxSizeBytes: Long? = null
             var modifiedAfterEpochMillis: Long? = null
             var modifiedBeforeEpochMillis: Long? = null
+            var contentQuery: String? = null
             val nameTokens = mutableListOf<String>()
 
             rawQuery
@@ -221,6 +279,12 @@ private data class SearchCriteria(
                             }
                         }
 
+                        normalized.startsWith("content:") || normalized.startsWith("contains:") -> {
+                            token.substringAfter(':').trim().takeIf { value -> value.isNotBlank() }?.let { value ->
+                                contentQuery = value.lowercase()
+                            }
+                        }
+
                         else -> nameTokens += normalized
                     }
                 }
@@ -233,6 +297,7 @@ private data class SearchCriteria(
                 maxSizeBytes = maxSizeBytes,
                 modifiedAfterEpochMillis = modifiedAfterEpochMillis,
                 modifiedBeforeEpochMillis = modifiedBeforeEpochMillis,
+                contentQuery = contentQuery,
             )
         }
 

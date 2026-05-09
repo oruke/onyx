@@ -294,10 +294,10 @@
     <string name="action_close_search_panel">关闭搜索</string>
     <string name="label_search_title">搜索</string>
     <string name="label_search_scope">范围：%1$s</string>
-    <string name="label_search_placeholder">名称、.扩展名、size&gt;10M、modified&gt;2026-01-01</string>
+    <string name="label_search_placeholder">名称、.扩展名、size&gt;10M、content:文本</string>
     <string name="label_command_palette_placeholder">筛选命令</string>
     <string name="label_command_palette_empty">没有匹配的命令</string>
-    <string name="label_search_idle">输入名称、扩展名、大小过滤、日期过滤或 type:file/type:dir 后递归搜索。</string>
+    <string name="label_search_idle">输入名称、扩展名、大小/日期/类型过滤或 content:文本 后递归搜索。</string>
     <string name="label_search_running_summary">已扫描 %1$d 项，匹配 %2$d 项</string>
     <string name="label_search_completed_summary">找到 %1$d 项，已扫描 %2$d 项</string>
     <string name="label_search_completed_limited_summary">找到 %1$d 项，已扫描 %2$d 项，已达到结果上限。</string>

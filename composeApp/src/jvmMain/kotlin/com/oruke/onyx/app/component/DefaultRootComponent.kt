@@ -38,6 +38,7 @@ import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.app.usecase.FileSearchEvent
 import com.oruke.onyx.app.usecase.FileSearchRequest
 import com.oruke.onyx.app.usecase.FileSearchUseCase
+import com.oruke.onyx.app.usecase.JvmLocalFileContentSearchService
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.DeleteMode
@@ -188,7 +189,10 @@ class DefaultRootComponent(
         onRefreshPane = { paneId -> paneComponent(paneId).refresh() },
         getPaneState = ::paneState,
     )
-    private val fileSearchUseCase = FileSearchUseCase(fileRepository)
+    private val fileSearchUseCase = FileSearchUseCase(
+        fileRepository = fileRepository,
+        contentSearchService = JvmLocalFileContentSearchService(),
+    )
     private val searchState = MutableStateFlow(
         SearchPanelState(rootLocation = fileRepository.defaultLocation()),
     )

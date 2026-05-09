@@ -296,10 +296,10 @@
     <string name="action_close_search_panel">検索を閉じる</string>
     <string name="label_search_title">検索</string>
     <string name="label_search_scope">範囲: %1$s</string>
-    <string name="label_search_placeholder">名前、.拡張子、size&gt;10M、modified&gt;2026-01-01</string>
+    <string name="label_search_placeholder">名前、.拡張子、size&gt;10M、content:テキスト</string>
     <string name="label_command_palette_placeholder">コマンドを絞り込む</string>
     <string name="label_command_palette_empty">一致するコマンドはありません</string>
-    <string name="label_search_idle">名前、拡張子、サイズ条件、日付条件、または type:file/type:dir を入力して再帰検索します。</string>
+    <string name="label_search_idle">名前、拡張子、サイズ/日付/種類条件、または content:テキスト を入力して再帰検索します。</string>
     <string name="label_search_running_summary">%1$d 件をスキャン、%2$d 件一致</string>
     <string name="label_search_completed_summary">%1$d 件見つかりました、%2$d 件をスキャン</string>
     <string name="label_search_completed_limited_summary">%1$d 件見つかりました、%2$d 件をスキャンしました。結果数の上限に達しました。</string>
