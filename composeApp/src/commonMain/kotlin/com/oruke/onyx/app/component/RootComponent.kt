@@ -3,6 +3,7 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
+import com.oruke.onyx.app.filesystem.RemoteCredentialSavePolicy
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.app.filesystem.VfsConnectionTestRequest
@@ -16,6 +17,9 @@ import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.RemoteConnectionProfile
+import com.oruke.onyx.core.model.RemoteConnectionProtocol
+import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.core.model.VFile
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
@@ -90,6 +94,10 @@ sealed interface RootDialogState {
 
     data class Settings(
         val draft: OnyxSettings,
+        val remoteConnectionDraft: RemoteConnectionDraft = RemoteConnectionDraft(),
+        val editingRemoteConnectionId: String? = null,
+        val remoteConnectionTestState: RemoteConnectionTestState = RemoteConnectionTestState.Idle,
+        val remoteConnectionError: RemoteConnectionDialogError? = null,
     ) : RootDialogState
 
     data class BatchRename(
@@ -127,10 +135,43 @@ data class RemoteCredentialsDraft(
     val username: String = "",
     val password: String = "",
     val domain: String = "",
+    val savePolicy: RemoteCredentialSavePolicy = RemoteCredentialSavePolicy.SESSION,
 )
 
 enum class RemoteCredentialsDialogError {
     USERNAME_EMPTY,
+    SYSTEM_KEYRING_UNAVAILABLE,
+}
+
+data class RemoteConnectionDraft(
+    val name: String = "",
+    val protocol: RemoteConnectionProtocol = RemoteConnectionProtocol.SMB,
+    val location: String = "",
+    val username: String = "",
+    val secret: String = "",
+    val domain: String = "",
+    val savePolicy: RemoteConnectionSavePolicy = RemoteConnectionSavePolicy.SESSION,
+)
+
+sealed interface RemoteConnectionTestState {
+    data object Idle : RemoteConnectionTestState
+
+    data object Testing : RemoteConnectionTestState
+
+    data class Reachable(
+        val capabilities: Set<String>,
+    ) : RemoteConnectionTestState
+
+    data class Failed(
+        val reason: I18nMessage,
+    ) : RemoteConnectionTestState
+}
+
+enum class RemoteConnectionDialogError {
+    NAME_EMPTY,
+    LOCATION_EMPTY,
+    USERNAME_EMPTY,
+    SYSTEM_KEYRING_UNAVAILABLE,
 }
 
 sealed interface RootIntent {
@@ -146,6 +187,28 @@ sealed interface RootIntent {
 
     data class UpdateSettingsDraft(
         val draft: OnyxSettings,
+    ) : RootIntent
+
+    data class UpdateRemoteConnectionDraft(
+        val draft: RemoteConnectionDraft,
+    ) : RootIntent
+
+    data class EditRemoteConnection(
+        val profile: RemoteConnectionProfile,
+    ) : RootIntent
+
+    data object NewRemoteConnection : RootIntent
+
+    data object SaveRemoteConnectionDraft : RootIntent
+
+    data object TestRemoteConnectionDraft : RootIntent
+
+    data class DeleteRemoteConnection(
+        val id: String,
+    ) : RootIntent
+
+    data class OpenRemoteConnection(
+        val location: String,
     ) : RootIntent
 
     data class ActivatePane(
@@ -352,6 +415,22 @@ fun RootComponent.setPaneSplitFraction(fraction: Float) = dispatch(RootIntent.Se
 fun RootComponent.openSettings() = dispatch(RootIntent.OpenSettings)
 
 fun RootComponent.updateSettingsDraft(draft: OnyxSettings) = dispatch(RootIntent.UpdateSettingsDraft(draft))
+
+fun RootComponent.updateRemoteConnectionDraft(draft: RemoteConnectionDraft) =
+    dispatch(RootIntent.UpdateRemoteConnectionDraft(draft))
+
+fun RootComponent.editRemoteConnection(profile: RemoteConnectionProfile) =
+    dispatch(RootIntent.EditRemoteConnection(profile))
+
+fun RootComponent.newRemoteConnection() = dispatch(RootIntent.NewRemoteConnection)
+
+fun RootComponent.saveRemoteConnectionDraft() = dispatch(RootIntent.SaveRemoteConnectionDraft)
+
+fun RootComponent.testRemoteConnectionDraft() = dispatch(RootIntent.TestRemoteConnectionDraft)
+
+fun RootComponent.deleteRemoteConnection(id: String) = dispatch(RootIntent.DeleteRemoteConnection(id))
+
+fun RootComponent.openRemoteConnection(location: String) = dispatch(RootIntent.OpenRemoteConnection(location))
 
 fun RootComponent.activatePane(paneId: PaneId) = dispatch(RootIntent.ActivatePane(paneId))
 

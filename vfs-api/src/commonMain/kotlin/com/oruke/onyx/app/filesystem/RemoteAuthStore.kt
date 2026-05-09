@@ -1,5 +1,17 @@
 package com.oruke.onyx.app.filesystem
 
+enum class RemoteCredentialSavePolicy {
+    DO_NOT_SAVE,
+    SESSION,
+    SYSTEM_KEYRING,
+}
+
+enum class RemoteCredentialSaveResult {
+    AVAILABLE_FOR_CURRENT_REQUEST,
+    STORED_FOR_SESSION,
+    UNSUPPORTED,
+}
+
 interface RemoteAuthStore {
     fun authContext(
         protocol: VfsProtocol,
@@ -10,12 +22,32 @@ interface RemoteAuthStore {
         protocol: VfsProtocol,
         location: String,
         authContext: VfsAuthContext,
-    )
+    ) {
+        put(
+            protocol = protocol,
+            location = location,
+            authContext = authContext,
+            savePolicy = RemoteCredentialSavePolicy.SESSION,
+        )
+    }
+
+    fun put(
+        protocol: VfsProtocol,
+        location: String,
+        authContext: VfsAuthContext,
+        savePolicy: RemoteCredentialSavePolicy,
+    ): RemoteCredentialSaveResult
 
     fun clear(
         protocol: VfsProtocol,
         location: String,
     )
+
+    fun clearSession()
+}
+
+interface RemoteKeyringAuthStore : RemoteAuthStore {
+    fun isSystemKeyringAvailable(): Boolean
 }
 
 internal data class RemoteAuthScope(

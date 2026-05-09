@@ -1,14 +1,42 @@
 package com.oruke.onyx.app.filesystem
 
 class InMemoryRemoteAuthStore : RemoteAuthStore {
-    private val authContexts = mutableMapOf<RemoteAuthScope, VfsAuthContext>()
+    private val sessionAuthContexts = mutableMapOf<RemoteAuthScope, VfsAuthContext>()
+    private val transientAuthContexts = mutableMapOf<RemoteAuthScope, VfsAuthContext>()
 
     @Synchronized
     override fun authContext(
         protocol: VfsProtocol,
         location: String,
     ): VfsAuthContext {
-        return authContexts[remoteAuthScope(protocol, location)] ?: VfsAuthContext.None
+        val scope = remoteAuthScope(protocol, location)
+        return transientAuthContexts.remove(scope)
+            ?: sessionAuthContexts[scope]
+            ?: VfsAuthContext.None
+    }
+
+    @Synchronized
+    override fun put(
+        protocol: VfsProtocol,
+        location: String,
+        authContext: VfsAuthContext,
+        savePolicy: RemoteCredentialSavePolicy,
+    ): RemoteCredentialSaveResult {
+        val scope = remoteAuthScope(protocol, location)
+        return when (savePolicy) {
+            RemoteCredentialSavePolicy.DO_NOT_SAVE -> {
+                transientAuthContexts[scope] = authContext
+                RemoteCredentialSaveResult.AVAILABLE_FOR_CURRENT_REQUEST
+            }
+
+            RemoteCredentialSavePolicy.SESSION -> {
+                sessionAuthContexts[scope] = authContext
+                transientAuthContexts.remove(scope)
+                RemoteCredentialSaveResult.STORED_FOR_SESSION
+            }
+
+            RemoteCredentialSavePolicy.SYSTEM_KEYRING -> RemoteCredentialSaveResult.UNSUPPORTED
+        }
     }
 
     @Synchronized
@@ -17,7 +45,12 @@ class InMemoryRemoteAuthStore : RemoteAuthStore {
         location: String,
         authContext: VfsAuthContext,
     ) {
-        authContexts[remoteAuthScope(protocol, location)] = authContext
+        put(
+            protocol = protocol,
+            location = location,
+            authContext = authContext,
+            savePolicy = RemoteCredentialSavePolicy.SESSION,
+        )
     }
 
     @Synchronized
@@ -25,6 +58,14 @@ class InMemoryRemoteAuthStore : RemoteAuthStore {
         protocol: VfsProtocol,
         location: String,
     ) {
-        authContexts.remove(remoteAuthScope(protocol, location))
+        val scope = remoteAuthScope(protocol, location)
+        sessionAuthContexts.remove(scope)
+        transientAuthContexts.remove(scope)
+    }
+
+    @Synchronized
+    override fun clearSession() {
+        sessionAuthContexts.clear()
+        transientAuthContexts.clear()
     }
 }

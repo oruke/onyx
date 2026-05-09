@@ -42,6 +42,7 @@ import onyx.composeapp.generated.resources.label_feedback_create_directory_faile
 import onyx.composeapp.generated.resources.label_feedback_create_file_failed
 import onyx.composeapp.generated.resources.label_feedback_open_failed
 import onyx.composeapp.generated.resources.label_feedback_rename_failed
+import onyx.composeapp.generated.resources.label_feedback_watch_degraded
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -68,6 +69,9 @@ internal fun OperationFeedbackBar(
 
         PaneOperationFeedbackKind.COPY_PATH_FAILED ->
             stringResource(Res.string.label_feedback_copy_path_failed, feedback.detail?.resolve().orEmpty())
+
+        PaneOperationFeedbackKind.WATCH_DEGRADED ->
+            stringResource(Res.string.label_feedback_watch_degraded, feedback.detail?.resolve().orEmpty())
     }
     Row(
         modifier = Modifier

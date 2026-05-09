@@ -831,7 +831,19 @@ class DefaultPaneComponent(
                     loadTab(tabId = tab.id, location = tab.location)
                 }
             }
-            .catch { /* 监听异常静默忽略 */ }
+            .catch { failure ->
+                OnyxLogger.warn("DefaultPaneComponent", "文件监听已降级：$location", failure)
+                val tab = activeTab() ?: return@catch
+                if (tab.location == location) {
+                    updateFailure(
+                        tabId = tab.id,
+                        kind = PaneOperationFeedbackKind.WATCH_DEGRADED,
+                        detail = failure.message?.let { message ->
+                            I18nMessage(MessageKey.MSG_STRING_LITERAL, message)
+                        },
+                    )
+                }
+            }
             .launchIn(scope)
     }
 

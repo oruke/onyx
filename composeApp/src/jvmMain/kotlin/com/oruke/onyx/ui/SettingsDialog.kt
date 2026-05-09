@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +38,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -44,18 +50,31 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.app.component.RemoteConnectionDialogError
+import com.oruke.onyx.app.component.RemoteConnectionDraft
+import com.oruke.onyx.app.component.RemoteConnectionTestState
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.RemoteConnectionProfile
+import com.oruke.onyx.core.model.RemoteConnectionProtocol
+import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
 import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_delete_connection
+import onyx.composeapp.generated.resources.action_edit_connection
+import onyx.composeapp.generated.resources.action_open
+import onyx.composeapp.generated.resources.action_new_connection
+import onyx.composeapp.generated.resources.action_save_connection
+import onyx.composeapp.generated.resources.action_test_connection
 import onyx.composeapp.generated.resources.action_layout_dual_horizontal
 import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
@@ -77,15 +96,39 @@ import onyx.composeapp.generated.resources.label_locale_japanese
 import onyx.composeapp.generated.resources.label_locale_system
 import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_mode_gallery
+import onyx.composeapp.generated.resources.label_remote_connection_domain
+import onyx.composeapp.generated.resources.label_remote_connection_empty
+import onyx.composeapp.generated.resources.label_remote_connection_error_location_required
+import onyx.composeapp.generated.resources.label_remote_connection_error_name_required
+import onyx.composeapp.generated.resources.label_remote_connection_error_username_required
+import onyx.composeapp.generated.resources.label_remote_connection_location
+import onyx.composeapp.generated.resources.label_remote_connection_name
+import onyx.composeapp.generated.resources.label_remote_connection_protocol
+import onyx.composeapp.generated.resources.label_remote_connection_secret
+import onyx.composeapp.generated.resources.label_remote_connection_test_failed
+import onyx.composeapp.generated.resources.label_remote_connection_test_ready
+import onyx.composeapp.generated.resources.label_remote_connection_test_success
+import onyx.composeapp.generated.resources.label_remote_connection_testing
+import onyx.composeapp.generated.resources.label_remote_connection_username
+import onyx.composeapp.generated.resources.label_remote_protocol_s3
+import onyx.composeapp.generated.resources.label_remote_protocol_smb
+import onyx.composeapp.generated.resources.label_remote_protocol_webdav
+import onyx.composeapp.generated.resources.label_remote_protocol_webdavs
 import onyx.composeapp.generated.resources.label_setting_disabled
 import onyx.composeapp.generated.resources.label_setting_enabled
 import onyx.composeapp.generated.resources.label_setting_hide
 import onyx.composeapp.generated.resources.label_setting_show
 import onyx.composeapp.generated.resources.label_settings_appearance
 import onyx.composeapp.generated.resources.label_settings_columns
+import onyx.composeapp.generated.resources.label_settings_connections
 import onyx.composeapp.generated.resources.label_settings_general
 import onyx.composeapp.generated.resources.label_settings_layout
 import onyx.composeapp.generated.resources.label_settings_title
+import onyx.composeapp.generated.resources.label_remote_credentials_save_do_not_save
+import onyx.composeapp.generated.resources.label_remote_credentials_save_policy
+import onyx.composeapp.generated.resources.label_remote_credentials_save_session
+import onyx.composeapp.generated.resources.label_remote_credentials_save_system_keyring
+import onyx.composeapp.generated.resources.label_remote_credentials_system_keyring_unavailable
 import onyx.composeapp.generated.resources.label_sidebar_tree_visibility
 import onyx.composeapp.generated.resources.label_sidebar_visibility
 import onyx.composeapp.generated.resources.label_status_bar_visibility
@@ -98,12 +141,19 @@ import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
 
-private enum class SettingsCategory { GENERAL, LAYOUT, APPEARANCE, COLUMNS }
+private enum class SettingsCategory { GENERAL, CONNECTIONS, LAYOUT, APPEARANCE, COLUMNS }
 
 @Composable
 internal fun SettingsDialog(
     state: RootDialogState.Settings,
     onDraftChange: (OnyxSettings) -> Unit,
+    onRemoteConnectionDraftChange: (RemoteConnectionDraft) -> Unit,
+    onNewRemoteConnection: () -> Unit,
+    onEditRemoteConnection: (RemoteConnectionProfile) -> Unit,
+    onSaveRemoteConnection: () -> Unit,
+    onTestRemoteConnection: () -> Unit,
+    onDeleteRemoteConnection: (String) -> Unit,
+    onOpenRemoteConnection: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     initialWidth: Int = 720,
@@ -155,6 +205,7 @@ internal fun SettingsDialog(
                             SettingsNavItem(
                                 text = when (cat) {
                                     SettingsCategory.GENERAL -> stringResource(Res.string.label_settings_general)
+                                    SettingsCategory.CONNECTIONS -> stringResource(Res.string.label_settings_connections)
                                     SettingsCategory.LAYOUT -> stringResource(Res.string.label_settings_layout)
                                     SettingsCategory.APPEARANCE -> stringResource(Res.string.label_settings_appearance)
                                     SettingsCategory.COLUMNS -> stringResource(Res.string.label_settings_columns)
@@ -223,6 +274,25 @@ internal fun SettingsDialog(
                                         )
                                     }
                                 }
+                            }
+
+                            SettingsCategory.CONNECTIONS -> {
+                                RemoteConnectionsSettings(
+                                    connections = draft.remoteConnections,
+                                    connectionDraft = state.remoteConnectionDraft,
+                                    editingConnectionId = state.editingRemoteConnectionId,
+                                    testState = state.remoteConnectionTestState,
+                                    error = state.remoteConnectionError,
+                                    onDraftChange = onRemoteConnectionDraftChange,
+                                    onNew = onNewRemoteConnection,
+                                    onEdit = onEditRemoteConnection,
+                                    onSave = onSaveRemoteConnection,
+                                    onTest = onTestRemoteConnection,
+                                    onDelete = onDeleteRemoteConnection,
+                                    onOpen = onOpenRemoteConnection,
+                                    fontSize = bodyFs,
+                                    labelFontSize = labelFs,
+                                )
                             }
 
                             SettingsCategory.LAYOUT -> {
@@ -310,6 +380,271 @@ internal fun SettingsDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RemoteConnectionsSettings(
+    connections: List<RemoteConnectionProfile>,
+    connectionDraft: RemoteConnectionDraft,
+    editingConnectionId: String?,
+    testState: RemoteConnectionTestState,
+    error: RemoteConnectionDialogError?,
+    onDraftChange: (RemoteConnectionDraft) -> Unit,
+    onNew: () -> Unit,
+    onEdit: (RemoteConnectionProfile) -> Unit,
+    onSave: () -> Unit,
+    onTest: () -> Unit,
+    onDelete: (String) -> Unit,
+    onOpen: (String) -> Unit,
+    fontSize: TextUnit,
+    labelFontSize: TextUnit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(
+            modifier = Modifier.width(240.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (connections.isEmpty()) {
+                Text(
+                    text = stringResource(Res.string.label_remote_connection_empty),
+                    fontSize = fontSize,
+                    color = LocalOnyxPalette.current.disabledForeground,
+                )
+            } else {
+                connections.forEach { connection ->
+                    RemoteConnectionRow(
+                        connection = connection,
+                        selected = connection.id == editingConnectionId,
+                        onOpen = { onOpen(connection.location) },
+                        onEdit = { onEdit(connection) },
+                        onDelete = { onDelete(connection.id) },
+                        fontSize = fontSize,
+                    )
+                }
+            }
+            DialogTextButton(
+                text = stringResource(Res.string.action_new_connection),
+                fontSize = fontSize,
+                onClick = onNew,
+            )
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SettingsSection(stringResource(Res.string.label_remote_connection_protocol), labelFontSize) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RemoteConnectionProtocol.entries.forEach { protocol ->
+                        SettingsOption(
+                            selected = connectionDraft.protocol == protocol,
+                            text = remoteProtocolLabel(protocol),
+                            fontSize = labelFontSize,
+                            onClick = { onDraftChange(connectionDraft.copy(protocol = protocol)) },
+                        )
+                    }
+                }
+            }
+            SettingsTextField(
+                label = stringResource(Res.string.label_remote_connection_name),
+                value = connectionDraft.name,
+                onValueChange = { value -> onDraftChange(connectionDraft.copy(name = value)) },
+                fontSize = fontSize,
+            )
+            SettingsTextField(
+                label = stringResource(Res.string.label_remote_connection_location),
+                value = connectionDraft.location,
+                onValueChange = { value -> onDraftChange(connectionDraft.copy(location = value)) },
+                fontSize = fontSize,
+            )
+            SettingsTextField(
+                label = stringResource(Res.string.label_remote_connection_username),
+                value = connectionDraft.username,
+                onValueChange = { value -> onDraftChange(connectionDraft.copy(username = value)) },
+                fontSize = fontSize,
+            )
+            SettingsTextField(
+                label = stringResource(Res.string.label_remote_connection_secret),
+                value = connectionDraft.secret,
+                onValueChange = { value -> onDraftChange(connectionDraft.copy(secret = value)) },
+                fontSize = fontSize,
+                password = true,
+            )
+            SettingsTextField(
+                label = stringResource(Res.string.label_remote_connection_domain),
+                value = connectionDraft.domain,
+                onValueChange = { value -> onDraftChange(connectionDraft.copy(domain = value)) },
+                fontSize = fontSize,
+            )
+            SettingsSection(stringResource(Res.string.label_remote_credentials_save_policy), labelFontSize) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    RemoteConnectionSavePolicy.entries.forEach { policy ->
+                        SettingsOption(
+                            selected = connectionDraft.savePolicy == policy,
+                            text = remoteSavePolicyLabel(policy),
+                            fontSize = labelFontSize,
+                            onClick = { onDraftChange(connectionDraft.copy(savePolicy = policy)) },
+                        )
+                    }
+                }
+            }
+            error?.let { err ->
+                Text(
+                    text = remoteConnectionErrorText(err),
+                    fontSize = 11.sp,
+                    color = Color(0xFFD74E4E),
+                )
+            }
+            RemoteConnectionTestStatus(testState)
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_test_connection),
+                    fontSize = fontSize,
+                    onClick = onTest,
+                )
+                DialogTextButton(
+                    text = stringResource(Res.string.action_save_connection),
+                    emphasized = true,
+                    fontSize = fontSize,
+                    onClick = onSave,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteConnectionRow(
+    connection: RemoteConnectionProfile,
+    selected: Boolean,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    fontSize: TextUnit,
+) {
+    val palette = LocalOnyxPalette.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                if (selected) palette.selectionBackground else palette.surface,
+                RoundedCornerShape(4.dp),
+            )
+            .border(1.dp, if (selected) palette.accent else palette.outlineVariant, RoundedCornerShape(4.dp))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            text = connection.name,
+            fontSize = fontSize,
+            color = palette.foreground,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Text(
+            text = connection.location,
+            fontSize = 10.sp,
+            color = palette.mutedForeground,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+            DialogTextButton(text = stringResource(Res.string.action_open), fontSize = 10.sp, onClick = onOpen)
+            DialogTextButton(text = stringResource(Res.string.action_edit_connection), fontSize = 10.sp, onClick = onEdit)
+            DialogTextButton(text = stringResource(Res.string.action_delete_connection), fontSize = 10.sp, onClick = onDelete)
+        }
+    }
+}
+
+@Composable
+private fun SettingsTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    fontSize: TextUnit,
+    password: Boolean = false,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, fontSize = 11.sp, color = LocalOnyxPalette.current.mutedForeground)
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = TextStyle(
+                fontSize = fontSize,
+                color = LocalOnyxPalette.current.foreground,
+            ),
+            cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
+            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(28.dp)
+                        .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
+                        .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    innerTextField()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RemoteConnectionTestStatus(testState: RemoteConnectionTestState) {
+    val text = when (testState) {
+        RemoteConnectionTestState.Idle -> stringResource(Res.string.label_remote_connection_test_ready)
+        RemoteConnectionTestState.Testing -> stringResource(Res.string.label_remote_connection_testing)
+        is RemoteConnectionTestState.Reachable -> {
+            val capabilities = testState.capabilities.joinToString(", ")
+            stringResource(Res.string.label_remote_connection_test_success, capabilities)
+        }
+        is RemoteConnectionTestState.Failed ->
+            stringResource(Res.string.label_remote_connection_test_failed, testState.reason.resolve())
+    }
+    val color = when (testState) {
+        is RemoteConnectionTestState.Reachable -> Color(0xFF2E8B57)
+        is RemoteConnectionTestState.Failed -> Color(0xFFD74E4E)
+        else -> LocalOnyxPalette.current.mutedForeground
+    }
+    Text(text = text, fontSize = 11.sp, color = color)
+}
+
+@Composable
+private fun remoteProtocolLabel(protocol: RemoteConnectionProtocol): String {
+    return when (protocol) {
+        RemoteConnectionProtocol.SMB -> stringResource(Res.string.label_remote_protocol_smb)
+        RemoteConnectionProtocol.WEBDAV -> stringResource(Res.string.label_remote_protocol_webdav)
+        RemoteConnectionProtocol.WEBDAVS -> stringResource(Res.string.label_remote_protocol_webdavs)
+        RemoteConnectionProtocol.S3 -> stringResource(Res.string.label_remote_protocol_s3)
+    }
+}
+
+@Composable
+private fun remoteSavePolicyLabel(policy: RemoteConnectionSavePolicy): String {
+    return when (policy) {
+        RemoteConnectionSavePolicy.DO_NOT_SAVE -> stringResource(Res.string.label_remote_credentials_save_do_not_save)
+        RemoteConnectionSavePolicy.SESSION -> stringResource(Res.string.label_remote_credentials_save_session)
+        RemoteConnectionSavePolicy.SYSTEM_KEYRING -> stringResource(Res.string.label_remote_credentials_save_system_keyring)
+    }
+}
+
+@Composable
+private fun remoteConnectionErrorText(error: RemoteConnectionDialogError): String {
+    return when (error) {
+        RemoteConnectionDialogError.NAME_EMPTY -> stringResource(Res.string.label_remote_connection_error_name_required)
+        RemoteConnectionDialogError.LOCATION_EMPTY -> stringResource(Res.string.label_remote_connection_error_location_required)
+        RemoteConnectionDialogError.USERNAME_EMPTY -> stringResource(Res.string.label_remote_connection_error_username_required)
+        RemoteConnectionDialogError.SYSTEM_KEYRING_UNAVAILABLE ->
+            stringResource(Res.string.label_remote_credentials_system_keyring_unavailable)
     }
 }
 

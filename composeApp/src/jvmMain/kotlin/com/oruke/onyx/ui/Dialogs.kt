@@ -75,6 +75,7 @@ import com.oruke.onyx.app.component.RemoteCredentialsDialogError
 import com.oruke.onyx.app.component.RemoteCredentialsDraft
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.app.filesystem.RemoteCredentialSavePolicy
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn
@@ -124,7 +125,13 @@ import onyx.composeapp.generated.resources.label_remote_credentials_error_userna
 import onyx.composeapp.generated.resources.label_remote_credentials_hint
 import onyx.composeapp.generated.resources.label_remote_credentials_password
 import onyx.composeapp.generated.resources.label_remote_credentials_rejected
+import onyx.composeapp.generated.resources.label_remote_credentials_do_not_save_hint
+import onyx.composeapp.generated.resources.label_remote_credentials_save_do_not_save
+import onyx.composeapp.generated.resources.label_remote_credentials_save_policy
+import onyx.composeapp.generated.resources.label_remote_credentials_save_session
+import onyx.composeapp.generated.resources.label_remote_credentials_save_system_keyring
 import onyx.composeapp.generated.resources.label_remote_credentials_session_only
+import onyx.composeapp.generated.resources.label_remote_credentials_system_keyring_unavailable
 import onyx.composeapp.generated.resources.label_remote_credentials_title
 import onyx.composeapp.generated.resources.label_remote_credentials_username
 import onyx.composeapp.generated.resources.label_setting_hide
@@ -659,7 +666,7 @@ internal fun RemoteCredentialsDialog(
     DialogWindow(
         onCloseRequest = onDismiss,
         title = title,
-        state = rememberDialogState(width = 460.dp, height = 330.dp),
+        state = rememberDialogState(width = 500.dp, height = 390.dp),
         resizable = false,
     ) {
         IntUiTheme(isDark = isSystemInDarkTheme()) {
@@ -700,8 +707,23 @@ internal fun RemoteCredentialsDialog(
                             onConfirm = onConfirm,
                             onDismiss = onDismiss,
                         )
+                        CredentialSavePolicySelector(
+                            selected = state.draft.savePolicy,
+                            onSelected = { savePolicy ->
+                                onDraftChange(state.draft.copy(savePolicy = savePolicy))
+                            },
+                        )
                         Text(
-                            text = stringResource(Res.string.label_remote_credentials_session_only),
+                            text = when (state.draft.savePolicy) {
+                                RemoteCredentialSavePolicy.DO_NOT_SAVE ->
+                                    stringResource(Res.string.label_remote_credentials_do_not_save_hint)
+
+                                RemoteCredentialSavePolicy.SESSION ->
+                                    stringResource(Res.string.label_remote_credentials_session_only)
+
+                                RemoteCredentialSavePolicy.SYSTEM_KEYRING ->
+                                    stringResource(Res.string.label_remote_credentials_save_system_keyring)
+                            },
                             fontSize = 11.sp,
                             color = LocalOnyxPalette.current.mutedForeground,
                         )
@@ -715,6 +737,13 @@ internal fun RemoteCredentialsDialog(
                         if (state.error == RemoteCredentialsDialogError.USERNAME_EMPTY) {
                             Text(
                                 text = stringResource(Res.string.label_remote_credentials_error_username_required),
+                                fontSize = 11.sp,
+                                color = Color(0xFFD74E4E),
+                            )
+                        }
+                        if (state.error == RemoteCredentialsDialogError.SYSTEM_KEYRING_UNAVAILABLE) {
+                            Text(
+                                text = stringResource(Res.string.label_remote_credentials_system_keyring_unavailable),
                                 fontSize = 11.sp,
                                 color = Color(0xFFD74E4E),
                             )
@@ -733,6 +762,66 @@ internal fun RemoteCredentialsDialog(
                     )
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun CredentialSavePolicySelector(
+    selected: RemoteCredentialSavePolicy,
+    onSelected: (RemoteCredentialSavePolicy) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            text = stringResource(Res.string.label_remote_credentials_save_policy),
+            fontSize = 11.sp,
+            color = LocalOnyxPalette.current.mutedForeground,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            RemoteCredentialSavePolicy.entries.forEach { policy ->
+                val active = policy == selected
+                val text = when (policy) {
+                    RemoteCredentialSavePolicy.DO_NOT_SAVE ->
+                        stringResource(Res.string.label_remote_credentials_save_do_not_save)
+
+                    RemoteCredentialSavePolicy.SESSION ->
+                        stringResource(Res.string.label_remote_credentials_save_session)
+
+                    RemoteCredentialSavePolicy.SYSTEM_KEYRING ->
+                        stringResource(Res.string.label_remote_credentials_save_system_keyring)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(28.dp)
+                        .background(
+                            if (active) {
+                                LocalOnyxPalette.current.accent
+                            } else {
+                                LocalOnyxPalette.current.surfaceVariant
+                            },
+                            RoundedCornerShape(6.dp),
+                        )
+                        .border(
+                            1.dp,
+                            if (active) LocalOnyxPalette.current.accent else LocalOnyxPalette.current.outlineVariant,
+                            RoundedCornerShape(6.dp),
+                        )
+                        .clickable { onSelected(policy) }
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = text,
+                        fontSize = 11.sp,
+                        color = if (active) Color.White else LocalOnyxPalette.current.foreground,
+                        maxLines = 1,
+                    )
+                }
+            }
         }
     }
 }

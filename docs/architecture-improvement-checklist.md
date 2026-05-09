@@ -8,14 +8,14 @@ Onyx 的长期目标是桌面端专业文件管理器，不是示例应用。后
 
 ## 当前状态
 
-P0-P3 已完成，P4 已完成首轮 Gradle 模块拆分与边界测试。P5 已补入 SMB、WebDAV、S3 的基础 provider 模块，`smb://`、`webdav://` / `webdavs://`、`s3://` 已进入统一 `VfsProviderRegistry`。`smb://host` 地址规范化、远程路径面包屑/父子关系判断、SMB/WebDAV 认证失败后的会话级凭据弹窗、远程连接测试服务已经接入。UI 直接文件系统依赖、Tab 状态模型、任务 UseCase、业务层资源依赖等首轮问题已经收敛。当前主要风险不再是单点边界泄漏，而是连接管理、完整凭据保存策略、跨 provider 命令、任务持久化和运行时验证矩阵。
+P0-P3 已完成，P4 已完成首轮 Gradle 模块拆分与边界测试。P5 已补入 SMB、WebDAV、S3 的基础 provider 模块，`smb://`、`webdav://` / `webdavs://`、`s3://` 已进入统一 `VfsProviderRegistry`。`smb://host` 地址规范化、远程路径面包屑/父子关系判断、SMB/WebDAV 认证失败后的凭据弹窗、远程连接测试服务、远程凭据保存策略、连接管理 UI 和 WebDAV/S3 写入能力差异提示已经接入。UI 直接文件系统依赖、Tab 状态模型、任务 UseCase、业务层资源依赖等首轮问题已经收敛。当前主要风险不再是单点边界泄漏，而是真实系统钥匙串/密钥环适配、跨 provider 命令、任务持久化和运行时验证矩阵。
 
 ## 当前主要风险
 
 - 项目已拆出 `:core`、`:vfs-api`、`:vfs-local`、`:vfs-archive`、`:vfs-smb`、`:vfs-webdav`、`:vfs-s3`、`:app`、`:composeApp`，但组件接口和部分平台服务仍留在 `composeApp`，后续还需要继续缩窄 UI 模块职责。
 - `RootComponent` 和 `PaneComponent` 已有 `dispatch` 入口，常规命令已迁移为 intent 扩展函数；后续功能如果继续直接挂接口，会再次膨胀。
-- `VfsProviderRegistry` 已能路由本地、压缩包、SMB、WebDAV、S3 provider；远程 provider 目前有会话级临时凭据恢复入口，但仍缺连接配置 UI、系统钥匙串/密钥环持久化策略和真实服务运行时验证。
-- `FileCommandService` 已增加按 location 路由的 `ProviderBackedFileCommandService`，本地与 SMB 基础命令可分发；跨 provider 复制/移动、WebDAV/S3 写入命令、远程到本地导出语义仍不完整。
+- `VfsProviderRegistry` 已能路由本地、压缩包、SMB、WebDAV、S3 provider；远程连接资料已进入设置持久化和侧边栏入口，凭据策略支持不保存/会话保存/系统钥匙串占位，但仍缺真实系统钥匙串/密钥环实现和真实服务运行时验证。
+- `FileCommandService` 已增加按 location 路由的 `ProviderBackedFileCommandService`，本地与 SMB 基础命令可分发；WebDAV/S3 等只读 provider 对写入命令会返回明确的协议不支持错误；跨 provider 复制/移动、WebDAV/S3 真实写入命令、远程到本地导出语义仍不完整。
 - 错误模型仍偏粗：`OnyxError` 只有少量类型，业务进度和异常详情仍大量使用 `MessageKey.MSG_STRING_LITERAL` 承载原始字符串。
 - 后台任务仍是内存态队列，暂停、恢复、取消已具备基础能力，但没有任务持久化、失败重试、跨启动恢复和可审计错误列表。
 - 桌面窗口、拖拽、外部打开、回收站、终端等平台行为需要实际运行时验证；编译和单元测试不能证明窗口装饰、尺寸记忆、拖拽命中区域可用。
@@ -116,10 +116,10 @@ ui
 
 ### P1：影响专业文件管理器可用性的缺口
 
-- [ ] SMB、WebDAV、S3 仍未达到完整可用：基础 provider 已接入 registry，SMB 支持同认证上下文内基础命令，WebDAV/S3 支持只读列表；SMB/WebDAV 已有认证失败凭据弹窗和会话内凭据存储，SMB/WebDAV/S3 已有统一连接测试服务，但仍缺连接配置 UI、完整凭据存储策略和真实服务验收。
+- [ ] SMB、WebDAV、S3 仍未达到完整可用：基础 provider 已接入 registry，SMB 支持同认证上下文内基础命令，WebDAV/S3 支持只读列表；SMB/WebDAV 已有认证失败凭据弹窗，远程凭据已区分不保存/会话保存/系统钥匙串占位，SMB/WebDAV/S3 已有统一连接测试服务和连接管理 UI，但仍缺真实系统钥匙串/密钥环实现和真实服务验收。
 - [ ] 搜索能力缺失：当前有面板过滤和批量重命名查找替换，但没有递归搜索、内容搜索、搜索结果面板、取消和进度。
 - [ ] 命令体系不完整：快捷键散落在 UI 事件处理里，缺少统一 Command Registry、快捷键配置、命令面板和菜单状态同步。
-- [ ] 跨 provider 文件命令不足：本地与 SMB 已能通过 `ProviderBackedFileCommandService` 分发同 provider 命令，但远程协议之间、压缩包内部写入、远程到本地、本地到远程等场景仍无法统一表达。
+- [ ] 跨 provider 文件命令不足：本地与 SMB 已能通过 `ProviderBackedFileCommandService` 分发同 provider 命令，WebDAV/S3 写入能力差异已有明确错误；但远程协议之间、压缩包内部写入、远程到本地、本地到远程等场景仍无法统一表达。
 - [ ] 任务系统缺少持久化队列：任务中心可显示、暂停、取消和自动清理，但没有重试、恢复、历史记录、失败明细聚合和跨启动恢复。
 - [ ] 错误可见性仍需加强：部分异常仍转成原始字符串或静默忽略，用户难以区分权限、认证、网络、文件冲突、路径非法和协议不支持。
 - [ ] 平台能力不均衡：`OpenWithService` 当前是 Linux `.desktop` 实现，回收站依赖 Desktop API，终端打开也需要按 Windows、macOS、Linux 分别验证。
@@ -129,7 +129,7 @@ ui
 
 - [x] Gradle 模块化：拆出 `:core`、`:vfs-api`、`:vfs-local`、`:vfs-archive`、`:app`、`:composeApp`，用模块依赖强制边界。
 - [x] 接口瘦身：`RootComponent`、`PaneComponent` 保留 `state`、`dispatch`、子组件入口，把常规命令迁移到 intent 扩展函数。
-- [ ] VFS 命令 provider 化：`copy`、`move`、`delete`、`rename`、`create` 已开始通过可路由命令服务收敛，本地与 SMB 已接入；`watch`、`openExternal`、`preview`、`thumbnail` 以及 WebDAV/S3 写入命令仍需继续 provider 化。
+- [ ] VFS 命令 provider 化：`copy`、`move`、`delete`、`rename`、`create` 已开始通过可路由命令服务收敛，本地与 SMB 已接入，WebDAV/S3 缺少写入命令时会返回明确不支持错误；`watch`、`openExternal`、`preview`、`thumbnail` 以及 WebDAV/S3 真实写入命令仍需继续 provider 化。
 - [ ] 文件类型能力下沉：图片、压缩包、可预览文本等识别仍部分在 UI helper 中，后续应由 `FileTypeService` 或 VFS metadata 提供。
 - [ ] 大目录性能：当前目录列表会一次性读取并排序，超大目录需要分页、增量加载或后台索引策略。
 - [ ] 预览能力扩展：当前偏文本、图片、缩略图，缺少 PDF、音视频元数据、二进制摘要、编码选择和大文件取消策略。
@@ -139,7 +139,7 @@ ui
 ### P3：体验和质量补强
 
 - [ ] 快捷键提示国际化：菜单里的 `Enter`、`Ctrl+C`、`F5` 等提示目前是硬编码展示文本，应统一由命令体系生成。
-- [ ] 文件监听错误处理：`FileWatcher` 已接入自动刷新，但监听异常不应静默，应至少记录日志并在需要时提示刷新已降级。
+- [x] 文件监听错误处理：`FileWatcher` 自动刷新异常会写入 `OnyxLogger.warn`，当前面板展示自动刷新已降级提示，不再静默吞掉监听失败。
 - [ ] Undo/Redo：删除、移动、重命名、批量重命名等破坏性操作缺少撤销模型。
 - [ ] 收藏与历史增强：已有收藏和最近位置字段，但还缺少书签管理、固定位置、历史搜索、无效路径清理。
 - [ ] 可访问性和键盘流：已有基础快捷键，但焦点顺序、屏幕阅读标签、无鼠标完整操作还未系统验证。
@@ -165,9 +165,9 @@ ui
 - [x] 修复远程 URI 地址栏导航：`smb://host` 自动规范化为 `smb://host/`，远程路径父级、标题、面包屑、同级判断不再误走本地 `Path`。
 - [x] 补 SMB/WebDAV 认证失败恢复入口：provider 返回 `AuthenticationRequired` / `AuthenticationRejected` 后，Pane 上报 Root，Root 弹出凭据输入框并写入会话级 `RemoteAuthStore` 后刷新当前面板。
 - [x] 补远程协议连接测试入口：新增 `VfsConnectionTestService`、`VfsConnectionTestRequest`、`VfsConnectionTestResult` 和 provider 级 `VfsConnectionTester`，SMB/WebDAV/S3 不再只能用 `list` 失败表示连接测试结果。
-- [ ] 补远程协议凭据保存策略：当前只有会话内内存保存；后续至少区分不保存、会话内保存、系统钥匙串/密钥环保存，禁止默认明文持久化密码和密钥。
-- [ ] 补 WebDAV/S3 写入命令或明确能力差异提示。
-- [ ] 新增连接管理 UI：新建连接、编辑连接、测试连接、删除连接、凭据保存策略。
+- [x] 补远程协议凭据保存策略：已区分不保存、会话内保存、系统钥匙串/密钥环保存；不保存使用一次性凭据并在下一次请求后消费，会话保存只写入内存，系统钥匙串暂不可用时返回明确错误，禁止默认明文持久化密码和密钥。
+- [x] 补 WebDAV/S3 写入命令或明确能力差异提示：`ProviderBackedFileCommandService` 在 provider 存在但缺少命令服务时返回 `UnsupportedOperation`，避免把 WebDAV/S3 写入能力缺失误报为 provider 不存在。
+- [x] 新增连接管理 UI：设置窗口新增连接分类，支持新建、编辑、测试、删除、打开远程连接和选择凭据保存策略；连接资料进入 `OnyxSettings.remoteConnections`，侧边栏显示已保存连接，密码和密钥不写入设置文件。
 
 ## P6：专业文件管理可用性
 

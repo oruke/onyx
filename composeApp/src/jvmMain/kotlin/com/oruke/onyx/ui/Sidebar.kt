@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.SidebarTreeNode
 import com.oruke.onyx.app.component.SidebarTreeNodeLoadState
 import com.oruke.onyx.app.component.SidebarTreeState
+import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.orEmpty
 import onyx.composeapp.generated.resources.Res
@@ -41,6 +42,7 @@ import onyx.composeapp.generated.resources.label_home
 import onyx.composeapp.generated.resources.label_sidebar_empty_favorites
 import onyx.composeapp.generated.resources.label_sidebar_empty_recent
 import onyx.composeapp.generated.resources.label_sidebar_section_favorites
+import onyx.composeapp.generated.resources.label_sidebar_section_connections
 import onyx.composeapp.generated.resources.label_sidebar_section_quick_access
 import onyx.composeapp.generated.resources.label_sidebar_section_recent
 import onyx.composeapp.generated.resources.label_sidebar_section_tree
@@ -55,6 +57,7 @@ internal fun PaneSidebar(
     location: String,
     favoriteLocations: List<String>,
     recentLocations: List<String>,
+    remoteConnections: List<RemoteConnectionProfile>,
     locationLabel: (String) -> String,
     treeState: SidebarTreeState,
     showTree: Boolean,
@@ -110,6 +113,26 @@ internal fun PaneSidebar(
                             onOpenLocation(favoriteLocation)
                         },
                         onToggleFavorite = { onToggleFavoriteLocation(favoriteLocation) },
+                    )
+                }
+            }
+        }
+
+        if (remoteConnections.isNotEmpty()) {
+            SidebarSection(
+                title = stringResource(Res.string.label_sidebar_section_connections),
+            ) {
+                remoteConnections.forEach { connection ->
+                    SidebarLocationItem(
+                        label = connection.name,
+                        location = connection.location,
+                        selected = location == connection.location,
+                        favorite = favoriteLocations.contains(connection.location),
+                        onOpen = {
+                            onActivate()
+                            onOpenLocation(connection.location)
+                        },
+                        onToggleFavorite = { onToggleFavoriteLocation(connection.location) },
                     )
                 }
             }

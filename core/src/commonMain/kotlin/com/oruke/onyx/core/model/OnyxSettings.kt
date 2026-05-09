@@ -14,6 +14,7 @@ data class OnyxSettings(
     val statusBarVisible: Boolean = true,
     val favoriteLocations: List<String> = emptyList(),
     val recentLocations: List<String> = emptyList(),
+    val remoteConnections: List<RemoteConnectionProfile> = emptyList(),
     // 动态外观系统持久化字段
     val listRowHeightDp: Int = 22,
     val listFontSizeSp: Int = 12,
@@ -41,4 +42,30 @@ enum class AppLocale {
 enum class DeleteMode {
     MOVE_TO_TRASH_PREFERRED,
     PERMANENT,
+}
+
+@Serializable
+data class RemoteConnectionProfile(
+    val id: String,
+    val name: String,
+    val protocol: RemoteConnectionProtocol,
+    val location: String,
+    val username: String = "",
+    val domain: String = "",
+    val savePolicy: RemoteConnectionSavePolicy = RemoteConnectionSavePolicy.SESSION,
+)
+
+@Serializable
+enum class RemoteConnectionProtocol {
+    SMB,
+    WEBDAV,
+    WEBDAVS,
+    S3,
+}
+
+@Serializable
+enum class RemoteConnectionSavePolicy {
+    DO_NOT_SAVE,
+    SESSION,
+    SYSTEM_KEYRING,
 }

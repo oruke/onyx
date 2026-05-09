@@ -15,6 +15,18 @@ internal fun OnyxSettings.sanitizeRootSettings(): OnyxSettings {
             .filter { recent -> recent.isNotEmpty() }
             .distinct()
             .take(MaxRecentLocations),
+        remoteConnections = remoteConnections
+            .map { connection ->
+                connection.copy(
+                    name = connection.name.trim(),
+                    location = connection.location.trim(),
+                    username = connection.username.trim(),
+                    domain = connection.domain.trim(),
+                )
+            }
+            .filter { connection -> connection.name.isNotEmpty() && connection.location.isNotEmpty() }
+            .distinctBy { connection -> connection.id }
+            .take(MaxRemoteConnections),
     )
 }
 
@@ -40,3 +52,4 @@ internal fun OnyxSettings.recordRecentLocations(
 
 private const val MaxFavoriteLocations = 12
 private const val MaxRecentLocations = 10
+private const val MaxRemoteConnections = 24

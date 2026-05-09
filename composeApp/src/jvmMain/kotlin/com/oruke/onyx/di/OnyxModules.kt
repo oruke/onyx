@@ -119,7 +119,8 @@ val fileModule = module {
             listOf<RoutableFileCommandService>(
                 get<JvmLocalFileProvider>(),
                 get<SmbVfsProvider>(),
-            )
+            ),
+            providerRegistry = get(),
         )
     }
     single<ExternalOpenService> { JvmDesktopExternalOpenService() }

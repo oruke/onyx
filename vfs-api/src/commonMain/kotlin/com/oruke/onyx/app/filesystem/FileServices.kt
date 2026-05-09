@@ -47,6 +47,7 @@ interface RoutableFileCommandService : FileCommandService {
 
 class ProviderBackedFileCommandService(
     services: List<RoutableFileCommandService>,
+    private val providerRegistry: VfsProviderRegistry? = null,
 ) : FileCommandService {
     private val services = services.toList()
 
@@ -63,9 +64,9 @@ class ProviderBackedFileCommandService(
     ): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         return runCatching {
-            entries.groupByCommandService().forEach { (service, serviceEntries) ->
+            entries.groupByCommandService(VfsProviderCapability.COPY).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    throw VfsProviderNotFoundException(targetDirectoryLocation)
+                    throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.COPY)
                 }
                 service.copy(
                     entries = serviceEntries,
@@ -83,9 +84,9 @@ class ProviderBackedFileCommandService(
     ): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         return runCatching {
-            entries.groupByCommandService().forEach { (service, serviceEntries) ->
+            entries.groupByCommandService(VfsProviderCapability.MOVE).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    throw VfsProviderNotFoundException(targetDirectoryLocation)
+                    throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.MOVE)
                 }
                 service.move(
                     entries = serviceEntries,
@@ -99,7 +100,7 @@ class ProviderBackedFileCommandService(
     override suspend fun delete(entries: List<VFile>): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         return runCatching {
-            entries.groupByCommandService().forEach { (service, serviceEntries) ->
+            entries.groupByCommandService(VfsProviderCapability.DELETE).forEach { (service, serviceEntries) ->
                 service.delete(serviceEntries).getOrThrow()
             }
         }
@@ -109,7 +110,7 @@ class ProviderBackedFileCommandService(
         entry: VFile,
         targetName: String,
     ): Result<VFile> {
-        return serviceFor(entry.location).fold(
+        return serviceFor(entry.location, VfsProviderCapability.RENAME).fold(
             onSuccess = { service -> service.rename(entry, targetName) },
             onFailure = { failure -> Result.failure(failure) },
         )
@@ -119,7 +120,7 @@ class ProviderBackedFileCommandService(
         parentLocation: String,
         name: String,
     ): Result<VFile> {
-        return serviceFor(parentLocation).fold(
+        return serviceFor(parentLocation, VfsProviderCapability.CREATE_FILE).fold(
             onSuccess = { service -> service.createFile(parentLocation, name) },
             onFailure = { failure -> Result.failure(failure) },
         )
@@ -129,22 +130,45 @@ class ProviderBackedFileCommandService(
         parentLocation: String,
         name: String,
     ): Result<VFile> {
-        return serviceFor(parentLocation).fold(
+        return serviceFor(parentLocation, VfsProviderCapability.CREATE_DIRECTORY).fold(
             onSuccess = { service -> service.createDirectory(parentLocation, name) },
             onFailure = { failure -> Result.failure(failure) },
         )
     }
 
-    private fun List<VFile>.groupByCommandService(): Map<RoutableFileCommandService, List<VFile>> {
-        return groupBy { entry -> serviceFor(entry.location).getOrThrow() }
+    private fun List<VFile>.groupByCommandService(
+        capability: VfsProviderCapability,
+    ): Map<RoutableFileCommandService, List<VFile>> {
+        return groupBy { entry -> serviceFor(entry.location, capability).getOrThrow() }
     }
 
-    private fun serviceFor(location: String): Result<RoutableFileCommandService> {
+    private fun serviceFor(
+        location: String,
+        capability: VfsProviderCapability,
+    ): Result<RoutableFileCommandService> {
         val service = services.firstOrNull { candidate -> candidate.supports(location) }
         return if (service != null) {
             Result.success(service)
         } else {
-            Result.failure(VfsProviderNotFoundException(location))
+            Result.failure(unsupportedFor(location, capability))
+        }
+    }
+
+    private fun unsupportedFor(
+        location: String,
+        capability: VfsProviderCapability,
+    ): Throwable {
+        val provider = providerRegistry?.providerFor(location)?.getOrNull()
+        return if (provider != null) {
+            VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = provider.protocol,
+                    location = location,
+                    capability = capability,
+                )
+            )
+        } else {
+            VfsProviderNotFoundException(location)
         }
     }
 }
