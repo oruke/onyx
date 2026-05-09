@@ -68,8 +68,12 @@ interface PreviewService {
     suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult
 }
 
-interface ArchiveFileTypeService {
+interface FileTypeService {
+    fun isImageFileName(fileName: String): Boolean
+
     fun isArchiveFileName(fileName: String): Boolean
+
+    fun isTextPreviewFileName(fileName: String): Boolean
 }
 
 interface ArchiveEntryOpenService {

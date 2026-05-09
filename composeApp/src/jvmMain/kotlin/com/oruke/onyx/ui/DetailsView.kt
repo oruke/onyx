@@ -175,6 +175,8 @@ internal fun PaneEntriesContent(
     onRetry: () -> Unit = {},
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
     loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
+    isImageFileName: (String) -> Boolean,
+    isArchiveFileName: (String) -> Boolean,
 ) {
     when (state) {
         PaneEntriesState.Idle, PaneEntriesState.Loading -> {
@@ -513,6 +515,8 @@ internal fun PaneEntriesContent(
                                             onStartRubberBand = wrappedOnStartRubberBand,
                                             loadThumbnail = loadThumbnail,
                                             loadArchiveThumbnail = loadArchiveThumbnail,
+                                            isImageFileName = isImageFileName,
+                                            isArchiveFileName = isArchiveFileName,
                                         )
                                     }
                                 }
@@ -550,6 +554,8 @@ internal fun PaneEntriesContent(
                                             onBeginRename = onBeginRename,
                                             loadThumbnail = loadThumbnail,
                                             loadArchiveThumbnail = loadArchiveThumbnail,
+                                            isImageFileName = isImageFileName,
+                                            isArchiveFileName = isArchiveFileName,
                                         )
                                     }
                                 }

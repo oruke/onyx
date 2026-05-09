@@ -4,17 +4,17 @@ import com.oruke.onyx.app.component.EntryNameSuggestionService
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveServiceLogger
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
-import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ArchiveVfsProvider
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.JsonSessionRepository
 import com.oruke.onyx.app.filesystem.JsonSettingsRepository
 import com.oruke.onyx.app.filesystem.JvmDesktopExternalOpenService
 import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
 import com.oruke.onyx.app.filesystem.JvmArchiveEntryOpenService
-import com.oruke.onyx.app.filesystem.JvmArchiveFileTypeService
+import com.oruke.onyx.app.filesystem.JvmFileTypeService
 import com.oruke.onyx.app.filesystem.JvmImageMetadataService
 import com.oruke.onyx.app.filesystem.JvmLinuxOpenWithService
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
@@ -129,7 +129,7 @@ val fileModule = module {
     single<OpenWithService> { JvmLinuxOpenWithService() }
     single<VfsPathService> { JvmVfsPathService() }
     single<EntryNameSuggestionService> { ResourceEntryNameSuggestionService() }
-    single<ArchiveFileTypeService> { JvmArchiveFileTypeService() }
+    single<FileTypeService> { JvmFileTypeService() }
     single<ArchiveEntryOpenService> { JvmArchiveEntryOpenService(get(), get()) }
     single<TerminalLauncherService> { JvmTerminalLauncherService() }
     single<PreviewService> { JvmPreviewService() }

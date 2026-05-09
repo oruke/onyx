@@ -14,10 +14,10 @@ import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
-import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.ImageMetadataService
 import com.oruke.onyx.app.filesystem.OpenWithService
 import com.oruke.onyx.app.filesystem.PreviewService
@@ -72,7 +72,7 @@ fun rememberRootComponent(): RootComponent {
             pathService = koin.get<VfsPathService>(),
             entryNameSuggestionService = koin.get<EntryNameSuggestionService>(),
             providerRegistry = koin.get<VfsProviderRegistry>(),
-            archiveFileTypeService = koin.get<ArchiveFileTypeService>(),
+            fileTypeService = koin.get<FileTypeService>(),
             archiveEntryOpenService = koin.get<ArchiveEntryOpenService>(),
             terminalLauncherService = koin.get<TerminalLauncherService>(),
             previewService = koin.get<PreviewService>(),

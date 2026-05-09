@@ -5,10 +5,10 @@ import com.arkivanov.decompose.childContext
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
-import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.ImageMetadataService
 import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.app.filesystem.OpenWithService
@@ -89,7 +89,7 @@ class DefaultRootComponent(
     private val pathService: VfsPathService,
     private val entryNameSuggestionService: EntryNameSuggestionService,
     private val providerRegistry: VfsProviderRegistry,
-    private val archiveFileTypeService: ArchiveFileTypeService,
+    private val fileTypeService: FileTypeService,
     private val archiveEntryOpenService: ArchiveEntryOpenService,
     private val terminalLauncherService: TerminalLauncherService,
     private val previewService: PreviewService,
@@ -119,7 +119,7 @@ class DefaultRootComponent(
         externalOpenService = externalOpenService,
         pathService = pathService,
         entryNameSuggestionService = entryNameSuggestionService,
-        archiveFileTypeService = archiveFileTypeService,
+        fileTypeService = fileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
         onRemoteAuthenticationRequired = ::requestRemoteCredentials,
@@ -134,7 +134,7 @@ class DefaultRootComponent(
         externalOpenService = externalOpenService,
         pathService = pathService,
         entryNameSuggestionService = entryNameSuggestionService,
-        archiveFileTypeService = archiveFileTypeService,
+        fileTypeService = fileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
         onRemoteAuthenticationRequired = ::requestRemoteCredentials,
@@ -869,7 +869,15 @@ class DefaultRootComponent(
     }
 
     override fun isArchiveFileName(fileName: String): Boolean {
-        return archiveFileTypeService.isArchiveFileName(fileName)
+        return fileTypeService.isArchiveFileName(fileName)
+    }
+
+    override fun isImageFileName(fileName: String): Boolean {
+        return fileTypeService.isImageFileName(fileName)
+    }
+
+    override fun isTextPreviewFileName(fileName: String): Boolean {
+        return fileTypeService.isTextPreviewFileName(fileName)
     }
 
     override fun locationLabel(location: String): String {

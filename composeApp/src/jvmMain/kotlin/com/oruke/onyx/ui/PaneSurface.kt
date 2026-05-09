@@ -581,6 +581,8 @@ internal fun PaneSurface(
                     onRetry = { dispatch(PaneIntent.Refresh) },
                     loadThumbnail = loadThumbnail,
                     loadArchiveThumbnail = loadArchiveThumbnail,
+                    isImageFileName = actions.isImageFileName,
+                    isArchiveFileName = actions.isArchiveFileName,
                 )
 
                 if (showContextMenu) {
@@ -693,6 +695,7 @@ internal fun PaneSurface(
                     entry = singleSelectedEntry,
                     state = state.inspectorState,
                     loadThumbnail = loadThumbnail,
+                    isImageFileName = actions.isImageFileName,
                 )
             }
         }

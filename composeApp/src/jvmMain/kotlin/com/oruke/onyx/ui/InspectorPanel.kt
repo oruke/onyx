@@ -29,7 +29,6 @@ import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
-import com.oruke.onyx.ui.theme.isImageFile
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_inspector_directory
 import onyx.composeapp.generated.resources.label_inspector_file
@@ -54,6 +53,7 @@ internal fun InspectorPanel(
     entry: VFile?,
     state: PaneInspectorState,
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    isImageFileName: (String) -> Boolean,
 ) {
     Column(
         modifier = Modifier
@@ -75,7 +75,7 @@ internal fun InspectorPanel(
         }
 
         if (state.previewVisible) {
-            val isImage = isImageFile(entry.name)
+            val isImage = isImageFileName(entry.name)
 
             Box(
                 modifier = Modifier

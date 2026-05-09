@@ -11,10 +11,10 @@ import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.delegate.SelectionHelper
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
-import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.FileWatcher
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.VfsPathService
@@ -58,7 +58,7 @@ class DefaultPaneComponent(
     private val externalOpenService: ExternalOpenService,
     private val pathService: VfsPathService,
     private val entryNameSuggestionService: EntryNameSuggestionService,
-    private val archiveFileTypeService: ArchiveFileTypeService,
+    private val fileTypeService: FileTypeService,
     private val archiveEntryOpenService: ArchiveEntryOpenService,
     private val initialViewMode: ViewMode = ViewMode.DETAILS,
     private val onOpenImageViewer: ((file: VFile, allImages: List<VFile>) -> Unit)? = null,
@@ -238,15 +238,15 @@ class DefaultPaneComponent(
             VFileKind.FILE -> {
                 val isInsideArchive = ArchiveService.isArchiveLocation(entry.location)
                 // 压缩包 → 以文件夹方式浏览
-                if (archiveFileTypeService.isArchiveFileName(entry.name)) {
+                if (fileTypeService.isArchiveFileName(entry.name)) {
                     if (isInsideArchive) {
                         // 嵌套压缩包：暂不支持，忽略
                     } else {
                         openDirectory(ArchiveService.archiveLocation(entry.location))
                     }
-                } else if (onOpenImageViewer != null && isImageFileName(entry.name)) {
+                } else if (onOpenImageViewer != null && fileTypeService.isImageFileName(entry.name)) {
                     val allImages = currentVisibleEntries()
-                        .filter { it.kind == VFileKind.FILE && isImageFileName(it.name) }
+                        .filter { it.kind == VFileKind.FILE && fileTypeService.isImageFileName(it.name) }
                     onOpenImageViewer.invoke(entry, allImages)
                 } else if (isInsideArchive) {
                     // archive:// 内的普通文件 → 先提取到临时目录再外部打开
@@ -1017,11 +1017,4 @@ class DefaultPaneComponent(
 
 
     private fun locationBaseName(location: String): String? = pathService.baseName(location)
-}
-
-private val imageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "tiff", "tif")
-
-private fun isImageFileName(fileName: String): Boolean {
-    val ext = fileName.substringAfterLast('.', "").lowercase()
-    return ext in imageExtensions
 }

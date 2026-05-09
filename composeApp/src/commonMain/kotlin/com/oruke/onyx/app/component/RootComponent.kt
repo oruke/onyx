@@ -391,6 +391,10 @@ interface RootComponent {
 
     fun isArchiveFileName(fileName: String): Boolean
 
+    fun isImageFileName(fileName: String): Boolean
+
+    fun isTextPreviewFileName(fileName: String): Boolean
+
     fun locationLabel(location: String): String
 
     fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>

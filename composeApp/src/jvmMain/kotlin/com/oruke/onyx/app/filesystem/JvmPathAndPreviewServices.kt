@@ -349,8 +349,23 @@ class JvmPreviewService : PreviewService {
     }
 }
 
-class JvmArchiveFileTypeService : ArchiveFileTypeService {
+class JvmFileTypeService : FileTypeService {
+    override fun isImageFileName(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in ImageExtensions
+    }
+
     override fun isArchiveFileName(fileName: String): Boolean = ArchiveService.isArchive(fileName)
+
+    override fun isTextPreviewFileName(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in TextPreviewExtensions
+    }
+
+    private companion object {
+        val ImageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "tiff", "tif")
+        val TextPreviewExtensions = setOf("txt", "md", "log", "xml", "json", "java", "kt", "js", "css", "csv", "html")
+    }
 }
 
 class JvmArchiveEntryOpenService(

@@ -130,7 +130,7 @@ ui
 - [x] Gradle 模块化：拆出 `:core`、`:vfs-api`、`:vfs-local`、`:vfs-archive`、`:app`、`:composeApp`，用模块依赖强制边界。
 - [x] 接口瘦身：`RootComponent`、`PaneComponent` 保留 `state`、`dispatch`、子组件入口，把常规命令迁移到 intent 扩展函数。
 - [ ] VFS 命令 provider 化：`copy`、`move`、`delete`、`rename`、`create` 已开始通过可路由命令服务收敛，本地与 SMB 已接入，WebDAV/S3 缺少写入命令时会返回明确不支持错误；`watch`、`openExternal`、`preview`、`thumbnail` 以及 WebDAV/S3 真实写入命令仍需继续 provider 化。
-- [ ] 文件类型能力下沉：图片、压缩包、可预览文本等识别仍部分在 UI helper 中，后续应由 `FileTypeService` 或 VFS metadata 提供。
+- [x] 文件类型能力下沉：新增统一 `FileTypeService`，图片、压缩包、可预览文本识别由组件层服务提供，画廊、预览、检查器和打开行为不再维护各自的扩展名判断 helper。
 - [ ] 大目录性能：当前目录列表会一次性读取并排序，超大目录需要分页、增量加载或后台索引策略。
 - [ ] 预览能力扩展：当前偏文本、图片、缩略图，缺少 PDF、音视频元数据、二进制摘要、编码选择和大文件取消策略。
 - [ ] 压缩包能力扩展：当前重点是浏览和解压，缺少压缩包内写入、删除、重命名、追加、加密格式能力差异提示。
@@ -182,7 +182,7 @@ ui
 - [ ] 在 Linux/KDE、Linux/GNOME、Windows、macOS 上验证窗口尺寸记忆、可调整边框、最大化、设置窗口和图片查看器窗口行为。
 - [ ] 验证面板分割器拖拽、跨面板标签拖拽、外部文件拖出、文件拖入和压缩包条目拖出。
 - [ ] 验证高 DPI、不同 `uiScale`、中英日三语言、长路径、长文件名、大目录下的布局稳定性。
-- [ ] 将关键运行时验证沉淀为脚本化检查或手工验收清单，避免只用编译通过判断桌面行为。
+- [x] 将关键运行时验证沉淀为脚本化检查或手工验收清单：已新增 `docs/runtime-ux-validation.md`，覆盖桌面窗口、面板拖拽、远程连接、外部平台能力、DPI/i18n/长文本和键盘流验收项。
 
 ## 验证要求
 

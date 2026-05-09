@@ -37,7 +37,6 @@ import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
-import com.oruke.onyx.ui.theme.isImageFile
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_inspector_directory
 import onyx.composeapp.generated.resources.label_inspector_file
@@ -71,6 +70,8 @@ internal fun PreviewPane(
     modifier: Modifier = Modifier,
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
     loadTextPreview: suspend (PreviewTextRequest) -> PreviewTextResult,
+    isImageFileName: (String) -> Boolean,
+    isTextPreviewFileName: (String) -> Boolean,
 ) {
     Box(
         modifier = modifier
@@ -97,7 +98,7 @@ internal fun PreviewPane(
                         .height(200.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val isImage = isImageFile(selectedEntry.name)
+                    val isImage = isImageFileName(selectedEntry.name)
                     if (isImage) {
                         val (thumbnail, _) = rememberAsyncBitmap(selectedEntry.location, 800, loadThumbnail)
                         if (thumbnail != null) {
@@ -168,9 +169,7 @@ internal fun PreviewPane(
 
                 // 3. 纯文本预览区域
                 // 针对常见的文本/代码类型进行安全读取
-                val isText = selectedEntry.name.lowercase().let {
-                    it.endsWith(".txt") || it.endsWith(".md") || it.endsWith(".log") || it.endsWith(".xml") || it.endsWith(".json") || it.endsWith(".java") || it.endsWith(".kt") || it.endsWith(".js") || it.endsWith(".css") || it.endsWith(".csv") || it.endsWith(".html")
-                }
+                val isText = isTextPreviewFileName(selectedEntry.name)
 
                 if (isText && selectedEntry.kind == VFileKind.FILE) {
                     val loadingText = stringResource(Res.string.label_preview_loading)

@@ -323,26 +323,6 @@ internal fun taskStatusLabel(status: BackgroundTaskStatus): String {
 internal fun String?.orEmpty(): String = this ?: ""
 
 /**
- * 判断文件名是否为图片类型。
- * 统一用于 GalleryView 缩略图渲染和其他图片判断场景。
- */
-internal fun isImageFile(fileName: String?): Boolean {
-    if (fileName == null) return false
-    val ext = fileName.substringAfterLast('.', "").lowercase()
-    return ext in setOf("png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "tiff", "tif")
-}
-
-/**
- * 判断文件名是否为压缩包类型。
- * 用于画廊视图压缩包缩略图渲染。
- */
-internal fun isArchiveFile(fileName: String?): Boolean {
-    if (fileName == null) return false
-    val ext = fileName.substringAfterLast('.', "").lowercase()
-    return ext in setOf("zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "lzma", "cab", "cbz", "cbr")
-}
-
-/**
  * 根据文件扩展名映射到合适的 Jewel 高清矢量图标 (SVG)。
  * 这是 Onyx 保持 IntelliJ IDEA 视觉风格和高性能滚动的核心手段。
  * 

@@ -72,8 +72,6 @@ import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
-import com.oruke.onyx.ui.theme.isArchiveFile
-import com.oruke.onyx.ui.theme.isImageFile
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.windowBounds
 import org.jetbrains.jewel.ui.component.Icon
@@ -120,6 +118,8 @@ internal fun GalleryItem(
     onBeginRename: () -> Unit = {},
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
     loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
+    isImageFileName: (String) -> Boolean,
+    isArchiveFileName: (String) -> Boolean,
 ) {
     var additiveSelection by remember { mutableStateOf(false) }
     val currentSelected by androidx.compose.runtime.rememberUpdatedState(selected)
@@ -289,8 +289,8 @@ internal fun GalleryItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
-        val isImage = isImageFile(entry?.name)
-        val isArchive = !isImage && isArchiveFile(entry?.name)
+        val isImage = entry?.name?.let(isImageFileName) == true
+        val isArchive = !isImage && entry?.name?.let(isArchiveFileName) == true
 
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(4.dp)),

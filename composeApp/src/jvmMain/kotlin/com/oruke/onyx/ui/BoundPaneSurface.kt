@@ -69,6 +69,7 @@ internal fun BoundPaneSurface(
         onOpenWithChooser = { entry -> dispatch(RootIntent.OpenWithChooser(entry)) },
         onOpenTerminal = { location -> dispatch(RootIntent.OpenTerminalAt(location)) },
         isArchiveFileName = rootComponent::isArchiveFileName,
+        isImageFileName = rootComponent::isImageFileName,
         onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
     )
 

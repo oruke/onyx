@@ -608,6 +608,8 @@ private fun AppContent(
                                 modifier = Modifier.width(300.dp).fillMaxHeight(),
                                 loadThumbnail = rootComponent::loadThumbnail,
                                 loadTextPreview = rootComponent::loadTextPreview,
+                                isImageFileName = rootComponent::isImageFileName,
+                                isTextPreviewFileName = rootComponent::isTextPreviewFileName,
                             )
                         }
                     }
