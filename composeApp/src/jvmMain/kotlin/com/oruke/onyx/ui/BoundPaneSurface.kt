@@ -8,6 +8,7 @@ import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
+import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.ui.theme.FileDropTarget
@@ -48,22 +49,25 @@ internal fun BoundPaneSurface(
         PaneId.PRIMARY -> rootComponent.primaryPane
         PaneId.SECONDARY -> rootComponent.secondaryPane
     }
+    fun dispatch(intent: RootIntent) {
+        rootComponent.dispatch(intent)
+    }
 
     val actions = PaneActions(
-        onDeleteSelection = { rootComponent.requestDeleteSelectedInPane(paneId) },
-        onExtractSelection = { rootComponent.extractSelectedInPane(paneId) },
-        onExtractToDirectory = { rootComponent.extractToDirectoryInPane(paneId) },
-        onExtractSmart = { rootComponent.extractSmartInPane(paneId) },
-        onBatchRename = { rootComponent.batchRenameInPane(paneId) },
-        onCopySelection = { rootComponent.stageCopySelectedInPane(paneId) },
-        onCutSelection = { rootComponent.stageCutSelectedInPane(paneId) },
-        onPaste = { rootComponent.requestPasteIntoPane(paneId) },
-        onBeginCreateDirectory = { rootComponent.beginCreateDirectoriesInPane(paneId) },
-        onToggleFavoriteLocation = rootComponent::toggleFavoriteLocation,
-        onOpenSettings = rootComponent::openSettings,
-        onOpenWith = { entry, app -> rootComponent.openWithApp(entry, app) },
-        onOpenWithChooser = { entry -> rootComponent.openWithChooser(entry) },
-        onOpenTerminal = rootComponent::openTerminalAt,
+        onDeleteSelection = { dispatch(RootIntent.RequestDeleteSelectedInPane(paneId)) },
+        onExtractSelection = { dispatch(RootIntent.ExtractSelectedInPane(paneId)) },
+        onExtractToDirectory = { dispatch(RootIntent.ExtractToDirectoryInPane(paneId)) },
+        onExtractSmart = { dispatch(RootIntent.ExtractSmartInPane(paneId)) },
+        onBatchRename = { dispatch(RootIntent.BatchRenameInPane(paneId)) },
+        onCopySelection = { dispatch(RootIntent.StageCopySelectedInPane(paneId)) },
+        onCutSelection = { dispatch(RootIntent.StageCutSelectedInPane(paneId)) },
+        onPaste = { dispatch(RootIntent.RequestPasteIntoPane(paneId)) },
+        onBeginCreateDirectory = { dispatch(RootIntent.BeginCreateDirectoriesInPane(paneId)) },
+        onToggleFavoriteLocation = { location -> dispatch(RootIntent.ToggleFavoriteLocation(location)) },
+        onOpenSettings = { dispatch(RootIntent.OpenSettings) },
+        onOpenWith = { entry, app -> dispatch(RootIntent.OpenWithApp(entry, app)) },
+        onOpenWithChooser = { entry -> dispatch(RootIntent.OpenWithChooser(entry)) },
+        onOpenTerminal = { location -> dispatch(RootIntent.OpenTerminalAt(location)) },
         isArchiveFileName = rootComponent::isArchiveFileName,
         onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
     )
@@ -74,7 +78,7 @@ internal fun BoundPaneSurface(
         component = paneComponent,
         actions = actions,
         modifier = modifier,
-        onActivate = { rootComponent.activatePane(paneId) },
+        onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
         canPaste = state.canPaste,
         favoriteLocations = state.settings.favoriteLocations,
         onDropTab = onTabDrop,
