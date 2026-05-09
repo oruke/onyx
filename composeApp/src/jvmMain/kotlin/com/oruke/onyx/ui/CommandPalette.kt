@@ -75,11 +75,11 @@ internal fun CommandPalettePopup(
     var query by remember { mutableStateOf("") }
     var selectedIndex by remember { mutableIntStateOf(0) }
     val filteredItems = remember(items, query) {
-        val normalizedQuery = query.trim().lowercase()
-        if (normalizedQuery.isEmpty()) {
+        val queryTokens = commandPaletteQueryTokens(query)
+        if (queryTokens.isEmpty()) {
             items
         } else {
-            items.filter { item -> item.label.lowercase().contains(normalizedQuery) }
+            items.filter { item -> item.matchesQuery(queryTokens) }
         }
     }
 
@@ -207,6 +207,24 @@ internal fun CommandPalettePopup(
             }
         }
     }
+}
+
+private fun commandPaletteQueryTokens(query: String): List<String> {
+    return query
+        .trim()
+        .lowercase()
+        .split(Regex("\\s+"))
+        .filter { token -> token.isNotBlank() }
+}
+
+private fun CommandPaletteItem.matchesQuery(tokens: List<String>): Boolean {
+    val searchableText = listOfNotNull(
+        label,
+        command.name,
+        shortcut,
+        shortcut?.replace("+", ""),
+    ).joinToString(" ").lowercase()
+    return tokens.all { token -> searchableText.contains(token) }
 }
 
 @Composable

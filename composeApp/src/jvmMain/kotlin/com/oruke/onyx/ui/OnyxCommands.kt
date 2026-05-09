@@ -52,7 +52,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
-internal enum class OnyxCommand(val shortcut: OnyxShortcut? = null) {
+internal enum class OnyxCommand(val defaultShortcut: OnyxShortcut? = null) {
     OpenSelection(OnyxShortcut(OnyxShortcutKey.ENTER)),
     RenameSelection(OnyxShortcut(OnyxShortcutKey.F2)),
     NewFile(OnyxShortcut(OnyxShortcutKey.N, setOf(OnyxShortcutModifier.PRIMARY))),
@@ -76,6 +76,26 @@ internal data class OnyxShortcut(
     val key: OnyxShortcutKey,
     val modifiers: Set<OnyxShortcutModifier> = emptySet(),
 )
+
+internal data class OnyxCommandShortcutMap(
+    private val overrides: Map<OnyxCommand, OnyxShortcut?> = emptyMap(),
+) {
+    fun shortcutFor(command: OnyxCommand): OnyxShortcut? {
+        return if (overrides.containsKey(command)) {
+            overrides[command]
+        } else {
+            command.defaultShortcut
+        }
+    }
+
+    fun withShortcut(command: OnyxCommand, shortcut: OnyxShortcut?): OnyxCommandShortcutMap {
+        return copy(overrides = overrides + (command to shortcut))
+    }
+
+    companion object {
+        val Default = OnyxCommandShortcutMap()
+    }
+}
 
 internal enum class OnyxShortcutModifier {
     PRIMARY,
@@ -107,6 +127,12 @@ internal data class OnyxCommandSpec(
     val iconKey: IconKey,
 )
 
+internal data class OnyxCommandState(
+    val spec: OnyxCommandSpec,
+    val shortcut: OnyxShortcut?,
+    val enabled: Boolean,
+)
+
 internal object OnyxCommandRegistry {
     val paneCommands: List<OnyxCommandSpec> = listOf(
         OnyxCommandSpec(OnyxCommand.OpenSelection, Res.string.action_open, AllIconsKeys.Actions.MenuOpen),
@@ -125,10 +151,26 @@ internal object OnyxCommandRegistry {
         OnyxCommandSpec(OnyxCommand.OpenSettings, Res.string.action_open_settings, AllIconsKeys.General.GearPlain),
         OnyxCommandSpec(OnyxCommand.CommandPalette, Res.string.action_command_palette, AllIconsKeys.Actions.Find),
     )
+
+    fun paneCommandStates(
+        shortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
+        isEnabled: (OnyxCommand) -> Boolean,
+    ): List<OnyxCommandState> {
+        return paneCommands.map { spec ->
+            OnyxCommandState(
+                spec = spec,
+                shortcut = shortcuts.shortcutFor(spec.command),
+                enabled = isEnabled(spec.command),
+            )
+        }
+    }
 }
 
-internal fun KeyEvent.matchesCommand(command: OnyxCommand): Boolean {
-    val shortcut = command.shortcut ?: return false
+internal fun KeyEvent.matchesCommand(
+    command: OnyxCommand,
+    shortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
+): Boolean {
+    val shortcut = shortcuts.shortcutFor(command) ?: return false
     if (type != KeyEventType.KeyDown || key != shortcut.key.composeKey) return false
     val expectsPrimary = OnyxShortcutModifier.PRIMARY in shortcut.modifiers
     val expectsShift = OnyxShortcutModifier.SHIFT in shortcut.modifiers
@@ -140,8 +182,16 @@ internal fun KeyEvent.matchesCommand(command: OnyxCommand): Boolean {
 }
 
 @Composable
-internal fun onyxCommandShortcutHint(command: OnyxCommand): String? {
-    val shortcut = command.shortcut ?: return null
+internal fun onyxCommandShortcutHint(
+    command: OnyxCommand,
+    shortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
+): String? {
+    return onyxShortcutHint(shortcuts.shortcutFor(command))
+}
+
+@Composable
+internal fun onyxShortcutHint(shortcut: OnyxShortcut?): String? {
+    if (shortcut == null) return null
     val separator = stringResource(Res.string.shortcut_separator)
     val primary = if (OnyxShortcutModifier.PRIMARY in shortcut.modifiers) {
         shortcutModifierLabel(OnyxShortcutModifier.PRIMARY)

@@ -123,6 +123,7 @@ internal fun PaneSurface(
     var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
+    val commandShortcuts = remember { OnyxCommandShortcutMap.Default }
     val tabStack by component.tabStack.subscribeAsState()
     val tabBarState = PaneTabBarState(
         activeTabId = state.activeTabId,
@@ -315,33 +316,35 @@ internal fun PaneSurface(
                 }
 
                 when {
-                    event.matchesCommand(OnyxCommand.CommandPalette) -> executePaneCommand(OnyxCommand.CommandPalette)
+                    event.matchesCommand(OnyxCommand.CommandPalette, commandShortcuts) -> {
+                        executePaneCommand(OnyxCommand.CommandPalette)
+                    }
 
-                    event.matchesCommand(OnyxCommand.OpenSelection) -> {
+                    event.matchesCommand(OnyxCommand.OpenSelection, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.OpenSelection)
                     }
 
-                    event.matchesCommand(OnyxCommand.RenameSelection) -> {
+                    event.matchesCommand(OnyxCommand.RenameSelection, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.RenameSelection)
                     }
 
-                    event.matchesCommand(OnyxCommand.NewDirectory) -> {
+                    event.matchesCommand(OnyxCommand.NewDirectory, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.NewDirectory)
                     }
 
-                    event.matchesCommand(OnyxCommand.NewFile) -> {
+                    event.matchesCommand(OnyxCommand.NewFile, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.NewFile)
                     }
 
-                    event.matchesCommand(OnyxCommand.CopySelection) -> {
+                    event.matchesCommand(OnyxCommand.CopySelection, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.CopySelection)
                     }
 
-                    event.matchesCommand(OnyxCommand.CutSelection) -> {
+                    event.matchesCommand(OnyxCommand.CutSelection, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.CutSelection)
                     }
 
-                    event.matchesCommand(OnyxCommand.Paste) -> {
+                    event.matchesCommand(OnyxCommand.Paste, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.Paste)
                     }
 
@@ -355,11 +358,11 @@ internal fun PaneSurface(
                         true
                     }
 
-                    event.matchesCommand(OnyxCommand.DeleteSelection) -> {
+                    event.matchesCommand(OnyxCommand.DeleteSelection, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.DeleteSelection)
                     }
 
-                    event.matchesCommand(OnyxCommand.SelectAll) -> {
+                    event.matchesCommand(OnyxCommand.SelectAll, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.SelectAll)
                     }
 
@@ -375,23 +378,23 @@ internal fun PaneSurface(
                         true
                     }
 
-                    event.matchesCommand(OnyxCommand.Filter) -> {
+                    event.matchesCommand(OnyxCommand.Filter, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.Filter)
                     }
 
-                    event.matchesCommand(OnyxCommand.ToggleFavorite) -> {
+                    event.matchesCommand(OnyxCommand.ToggleFavorite, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.ToggleFavorite)
                     }
 
-                    event.matchesCommand(OnyxCommand.Refresh) -> {
+                    event.matchesCommand(OnyxCommand.Refresh, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.Refresh)
                     }
 
-                    event.matchesCommand(OnyxCommand.GoUp) -> {
+                    event.matchesCommand(OnyxCommand.GoUp, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.GoUp)
                     }
 
-                    event.matchesCommand(OnyxCommand.OpenSettings) -> {
+                    event.matchesCommand(OnyxCommand.OpenSettings, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.OpenSettings)
                     }
 
@@ -411,15 +414,16 @@ internal fun PaneSurface(
         val singleSelectedEntry = selectedEntries.singleOrNull()
         val currentLocationFavorite = favoriteLocations.contains(state.location)
         if (showCommandPalette) {
-            val commandItems = OnyxCommandRegistry.paneCommands
-                .filterNot { spec -> spec.command == OnyxCommand.CommandPalette }
-                .map { spec ->
+            val commandItems = OnyxCommandRegistry
+                .paneCommandStates(commandShortcuts, ::isPaneCommandEnabled)
+                .filterNot { commandState -> commandState.spec.command == OnyxCommand.CommandPalette }
+                .map { commandState ->
                     CommandPaletteItem(
-                        command = spec.command,
-                        label = stringResource(spec.label),
-                        shortcut = onyxCommandShortcutHint(spec.command),
-                        iconKey = spec.iconKey,
-                        enabled = isPaneCommandEnabled(spec.command),
+                        command = commandState.spec.command,
+                        label = stringResource(commandState.spec.label),
+                        shortcut = onyxShortcutHint(commandState.shortcut),
+                        iconKey = commandState.spec.iconKey,
+                        enabled = commandState.enabled,
                     )
                 }
             CommandPalettePopup(
