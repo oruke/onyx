@@ -3,6 +3,8 @@ package com.oruke.onyx.app.filesystem
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
+import kotlinx.coroutines.flow.Flow
 
 interface FileRepository {
     suspend fun list(location: String): Result<List<VFile>>
@@ -45,11 +47,32 @@ interface RoutableFileCommandService : FileCommandService {
     fun supports(location: String): Boolean
 }
 
+data class VfsContentSource(
+    val name: String,
+    val sizeBytes: Long?,
+    val chunks: Flow<ByteArray>,
+)
+
+interface RoutableVfsContentService {
+    fun supports(location: String): Boolean
+
+    suspend fun readFile(entry: VFile): Result<VfsContentSource>
+
+    suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+    ): Result<VFile?>
+}
+
 class ProviderBackedFileCommandService(
     services: List<RoutableFileCommandService>,
+    contentServices: List<RoutableVfsContentService> = emptyList(),
     private val providerRegistry: VfsProviderRegistry? = null,
 ) : FileCommandService {
     private val services = services.toList()
+    private val contentServices = contentServices.toList()
 
     init {
         require(this.services.isNotEmpty()) {
@@ -66,11 +89,19 @@ class ProviderBackedFileCommandService(
         return runCatching {
             entries.groupByCommandService(VfsProviderCapability.COPY).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    throw crossProviderUnsupportedFor(
-                        sourceLocation = serviceEntries.firstOrNull()?.location,
-                        targetLocation = targetDirectoryLocation,
-                        capability = VfsProviderCapability.COPY,
-                    )
+                    val copied = copyAcrossProviders(
+                        entries = serviceEntries,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                        conflictStrategy = conflictStrategy,
+                    ).getOrThrow()
+                    if (!copied) {
+                        throw crossProviderUnsupportedFor(
+                            sourceLocation = serviceEntries.firstOrNull()?.location,
+                            targetLocation = targetDirectoryLocation,
+                            capability = VfsProviderCapability.COPY,
+                        )
+                    }
+                    return@forEach
                 }
                 service.copy(
                     entries = serviceEntries,
@@ -90,11 +121,20 @@ class ProviderBackedFileCommandService(
         return runCatching {
             entries.groupByCommandService(VfsProviderCapability.MOVE).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    throw crossProviderUnsupportedFor(
-                        sourceLocation = serviceEntries.firstOrNull()?.location,
-                        targetLocation = targetDirectoryLocation,
-                        capability = VfsProviderCapability.MOVE,
-                    )
+                    val moved = moveAcrossProviders(
+                        sourceCommandService = service,
+                        entries = serviceEntries,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                        conflictStrategy = conflictStrategy,
+                    ).getOrThrow()
+                    if (!moved) {
+                        throw crossProviderUnsupportedFor(
+                            sourceLocation = serviceEntries.firstOrNull()?.location,
+                            targetLocation = targetDirectoryLocation,
+                            capability = VfsProviderCapability.MOVE,
+                        )
+                    }
+                    return@forEach
                 }
                 service.move(
                     entries = serviceEntries,
@@ -155,6 +195,73 @@ class ProviderBackedFileCommandService(
         capability: VfsProviderCapability,
     ): Result<RoutableFileCommandService> {
         val service = services.firstOrNull { candidate -> candidate.supports(location) }
+        return if (service != null) {
+            Result.success(service)
+        } else {
+            Result.failure(unsupportedFor(location, capability))
+        }
+    }
+
+    private suspend fun copyAcrossProviders(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<Boolean> {
+        if (contentServices.isEmpty() || entries.any { entry -> entry.kind != VFileKind.FILE }) {
+            return Result.success(false)
+        }
+        return contentServiceFor(targetDirectoryLocation, VfsProviderCapability.WRITE_CONTENT).fold(
+            onSuccess = { targetContentService ->
+                runCatching {
+                    entries.forEach { entry ->
+                        val sourceContentService = contentServiceFor(
+                            location = entry.location,
+                            capability = VfsProviderCapability.READ_CONTENT,
+                        ).getOrThrow()
+                        val source = sourceContentService.readFile(entry).getOrThrow()
+                        targetContentService.writeFile(
+                            parentLocation = targetDirectoryLocation,
+                            name = source.name,
+                            chunks = source.chunks,
+                            conflictStrategy = conflictStrategy,
+                        ).getOrThrow()
+                    }
+                    true
+                }
+            },
+            onFailure = { failure ->
+                if (failure is VfsProviderNotFoundException) {
+                    Result.success(false)
+                } else {
+                    Result.failure(failure)
+                }
+            },
+        )
+    }
+
+    private suspend fun moveAcrossProviders(
+        sourceCommandService: RoutableFileCommandService,
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<Boolean> {
+        return copyAcrossProviders(
+            entries = entries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            conflictStrategy = conflictStrategy,
+        ).mapCatching { copied ->
+            if (copied) {
+                sourceCommandService.delete(entries).getOrThrow()
+            }
+            copied
+        }
+    }
+
+    private fun contentServiceFor(
+        location: String,
+        capability: VfsProviderCapability,
+    ): Result<RoutableVfsContentService> {
+        val service = contentServices.firstOrNull { candidate -> candidate.supports(location) }
         return if (service != null) {
             Result.success(service)
         } else {

@@ -36,6 +36,7 @@ import com.oruke.onyx.app.filesystem.RemoteAuthStoreS3AuthRepository
 import com.oruke.onyx.app.filesystem.RemoteAuthStoreSmbAuthRepository
 import com.oruke.onyx.app.filesystem.RemoteAuthStoreWebDavAuthRepository
 import com.oruke.onyx.app.filesystem.RoutableFileCommandService
+import com.oruke.onyx.app.filesystem.RoutableVfsContentService
 import com.oruke.onyx.app.filesystem.S3AuthRepository
 import com.oruke.onyx.app.filesystem.S3VfsProvider
 import com.oruke.onyx.app.filesystem.SessionRepository
@@ -117,6 +118,10 @@ val fileModule = module {
     single<FileCommandService> {
         ProviderBackedFileCommandService(
             listOf<RoutableFileCommandService>(
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+            ),
+            contentServices = listOf<RoutableVfsContentService>(
                 get<JvmLocalFileProvider>(),
                 get<SmbVfsProvider>(),
             ),

@@ -19,6 +19,8 @@ class LocalVfsProvider(
         VfsProviderCapability.TRASH,
         VfsProviderCapability.EXTERNAL_OPEN,
         VfsProviderCapability.READ_PREVIEW,
+        VfsProviderCapability.READ_CONTENT,
+        VfsProviderCapability.WRITE_CONTENT,
         VfsProviderCapability.THUMBNAIL,
         VfsProviderCapability.CREATE_FILE,
         VfsProviderCapability.CREATE_DIRECTORY,

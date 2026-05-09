@@ -11,6 +11,10 @@ import jcifs.smb.SmbAuthException
 import jcifs.smb.SmbException
 import jcifs.smb.SmbFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.net.MalformedURLException
 import java.net.UnknownHostException
@@ -35,12 +39,14 @@ class RemoteAuthStoreSmbAuthRepository(
 class SmbVfsProvider(
     private val authRepository: SmbAuthRepository = SmbAuthRepository.None,
     private val client: SmbClient = JcifsSmbClient(),
-) : VfsProvider, RoutableFileCommandService, VfsConnectionTester {
+) : VfsProvider, RoutableFileCommandService, RoutableVfsContentService, VfsConnectionTester {
     override val protocol: VfsProtocol = VfsProtocol.SMB
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
         VfsProviderCapability.CREATE_FILE,
         VfsProviderCapability.CREATE_DIRECTORY,
+        VfsProviderCapability.READ_CONTENT,
+        VfsProviderCapability.WRITE_CONTENT,
         VfsProviderCapability.RENAME,
         VfsProviderCapability.DELETE,
         VfsProviderCapability.COPY,
@@ -173,6 +179,38 @@ class SmbVfsProvider(
         }
     }
 
+    override suspend fun readFile(entry: VFile): Result<VfsContentSource> {
+        if (!supports(entry.location)) {
+            return Result.failure(VfsProviderNotFoundException(entry.location))
+        }
+        return runCatching {
+            client.readFile(
+                entry = entry,
+                authContext = authRepository.authContext(entry.location),
+            )
+        }
+    }
+
+    override suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<VFile?> {
+        if (!supports(parentLocation)) {
+            return Result.failure(VfsProviderNotFoundException(parentLocation))
+        }
+        return runCatching {
+            client.writeFile(
+                parentLocation = directoryLocation(parentLocation),
+                name = name,
+                chunks = chunks,
+                conflictStrategy = conflictStrategy,
+                authContext = authRepository.authContext(parentLocation),
+            )
+        }
+    }
+
     private suspend fun runTransferCommand(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -275,6 +313,19 @@ interface SmbClient {
         name: String,
         authContext: VfsAuthContext,
     ): VFile
+
+    suspend fun readFile(
+        entry: VFile,
+        authContext: VfsAuthContext,
+    ): VfsContentSource
+
+    suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): VFile?
 }
 
 class JcifsSmbClient : SmbClient {
@@ -436,10 +487,74 @@ class JcifsSmbClient : SmbClient {
         target.toVFile(parentLocation = parent.canonicalPath)
     }
 
+    override suspend fun readFile(
+        entry: VFile,
+        authContext: VfsAuthContext,
+    ): VfsContentSource = withSmbContext(entry.location, authContext) { context ->
+        val source = SmbFile(entry.location, context)
+        if (!source.exists()) {
+            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, entry.location))
+        }
+        if (source.isDirectory) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    location = entry.location,
+                    capability = VfsProviderCapability.READ_CONTENT,
+                )
+            )
+        }
+        VfsContentSource(
+            name = source.name.trimEnd('/'),
+            sizeBytes = source.length(),
+            chunks = flow {
+                source.inputStream.use { input ->
+                    val buffer = ByteArray(CONTENT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        emit(buffer.copyOf(read))
+                    }
+                }
+            }.flowOn(Dispatchers.IO),
+        )
+    }
+
+    override suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): VFile? = withSmbContext(parentLocation, authContext) { context ->
+        val parent = requireDirectory(parentLocation, context)
+        val target = resolveContentTarget(
+            name = name,
+            targetDirectory = parent,
+            conflictStrategy = conflictStrategy,
+        ) ?: return@withSmbContext null
+        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && target.exists()) {
+            if (target.isDirectory) {
+                throw VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.SMB,
+                        location = target.canonicalPath,
+                        capability = VfsProviderCapability.WRITE_CONTENT,
+                    )
+                )
+            }
+            target.delete()
+        }
+        target.outputStream.use { output ->
+            chunks.collect { chunk -> output.write(chunk) }
+        }
+        target.toVFile(parentLocation = parent.canonicalPath)
+    }
+
     private suspend fun <T> withSmbContext(
         location: String?,
         authContext: VfsAuthContext,
-        block: (CIFSContext) -> T,
+        block: suspend (CIFSContext) -> T,
     ): T = withContext(Dispatchers.IO) {
         val errorLocation = location
         try {
@@ -586,6 +701,46 @@ class JcifsSmbClient : SmbClient {
         return candidate
     }
 
+    private fun resolveContentTarget(
+        name: String,
+        targetDirectory: SmbFile,
+        conflictStrategy: TransferConflictStrategy,
+    ): SmbFile? {
+        val sanitizedName = name.trim()
+        validateTargetName(sanitizedName)
+        val directTarget = SmbFile(targetDirectory, sanitizedName)
+        return when {
+            !directTarget.exists() -> directTarget
+            conflictStrategy == TransferConflictStrategy.KEEP_BOTH -> availableContentTarget(
+                originalName = sanitizedName,
+                targetDirectory = targetDirectory,
+            )
+
+            conflictStrategy == TransferConflictStrategy.OVERWRITE -> directTarget
+            conflictStrategy == TransferConflictStrategy.SKIP -> null
+            else -> directTarget
+        }
+    }
+
+    private fun availableContentTarget(
+        originalName: String,
+        targetDirectory: SmbFile,
+    ): SmbFile {
+        val dotIndex = originalName.lastIndexOf('.')
+        val hasExtension = dotIndex > 0 && dotIndex < originalName.lastIndex
+        val baseName = if (hasExtension) originalName.substring(0, dotIndex) else originalName
+        val extension = if (hasExtension) originalName.substring(dotIndex) else ""
+
+        var copyIndex = 1
+        var candidate = SmbFile(targetDirectory, originalName)
+        while (candidate.exists()) {
+            val suffix = if (copyIndex == 1) " copy" else " copy $copyIndex"
+            candidate = SmbFile(targetDirectory, "$baseName$suffix$extension")
+            copyIndex += 1
+        }
+        return candidate
+    }
+
     private fun SmbFile.toVFile(parentLocation: String): VFile {
         val directory = isDirectory
         val canonicalLocation = canonicalPath
@@ -680,5 +835,9 @@ class JcifsSmbClient : SmbClient {
 
             else -> VfsProviderError.NetworkFailure(VfsProtocol.SMB, location, message)
         }
+    }
+
+    private companion object {
+        const val CONTENT_BUFFER_SIZE = 64 * 1024
     }
 }

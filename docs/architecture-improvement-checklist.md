@@ -119,7 +119,7 @@ ui
 - [ ] SMB、WebDAV、S3 仍未达到完整可用：基础 provider 已接入 registry，SMB 支持同认证上下文内基础命令，WebDAV/S3 支持只读列表；SMB/WebDAV 已有认证失败凭据弹窗，远程凭据已区分不保存/会话保存/系统钥匙串，Linux 通过 `secret-tool`、macOS 通过 `security` 存取系统钥匙串，Windows 仍明确不支持；SMB/WebDAV/S3 已有统一连接测试服务和连接管理 UI，但仍缺真实服务验收和 Windows Credential Manager 适配。
 - [ ] 搜索能力缺失：当前已有递归名称/扩展名搜索、大小过滤、修改时间过滤、文件/目录类型过滤、搜索结果面板、取消和扫描进度；仍缺内容搜索、索引策略和跨协议能力差异提示。
 - [ ] 命令体系不完整：基础文件操作已有 `OnyxCommandRegistry`、可替换快捷键映射、命令状态快照、事件匹配、命令面板和提示生成入口；命令面板已支持按标签、命令名和快捷键检索；但仍缺用户可编辑快捷键配置、完整菜单状态同步和跨 Root/Pane 的统一命令调度。
-- [ ] 跨 provider 文件命令不足：本地与 SMB 已能通过 `ProviderBackedFileCommandService` 分发同 provider 命令，WebDAV/S3 写入能力差异已有明确错误，跨 provider 传输会返回结构化错误并在任务中心显示明确提示；但远程协议之间、压缩包内部写入、远程到本地、本地到远程等场景仍缺统一读写流 API 和真实传输实现。
+- [ ] 跨 provider 文件命令不足：本地与 SMB 已能通过 `ProviderBackedFileCommandService` 分发同 provider 命令，并新增统一内容传输 API 支持本地与 SMB 之间的文件级跨 provider copy/move；WebDAV/S3 写入能力差异已有明确错误，目录递归、远程协议之间、压缩包内部写入、WebDAV/S3 写入和远程导出语义仍不完整。
 - [ ] 任务系统缺少持久化队列：任务中心可显示、暂停、取消、失败明细和失败任务重试，成功任务仍会自动清理；仍缺持久化队列、跨启动恢复、历史归档、限速和并发限制。
 - [ ] 错误可见性仍需加强：文件监听降级、批量重命名正则错误、远程连接测试、面板加载、搜索和常见文件任务已接入结构化错误消息，可区分认证、权限、网络、未找到、已存在和协议不支持；仍需继续收敛平台打开、缩略图、预览等局部静默降级。
 - [ ] 平台能力不均衡：终端打开已按 Windows、macOS、Linux 生成平台候选命令并保留 `TERMINAL` 环境变量优先；`OpenWithService` 已增加 JVM 平台分发，Linux 保留 `.desktop` 应用列表，Windows 使用系统 Open With 对话框，macOS 使用系统应用选择；但非 Linux 应用列表枚举、回收站 Desktop API 和跨平台行为仍需要真实系统验证。
@@ -129,7 +129,7 @@ ui
 
 - [x] Gradle 模块化：拆出 `:core`、`:vfs-api`、`:vfs-local`、`:vfs-archive`、`:app`、`:composeApp`，用模块依赖强制边界。
 - [x] 接口瘦身：`RootComponent`、`PaneComponent` 保留 `state`、`dispatch`、子组件入口，把常规命令迁移到 intent 扩展函数。
-- [ ] VFS 命令 provider 化：`copy`、`move`、`delete`、`rename`、`create` 已开始通过可路由命令服务收敛，本地与 SMB 已接入，WebDAV/S3 缺少写入命令时会返回明确不支持错误；`watch`、`openExternal`、`preview`、`thumbnail` 以及 WebDAV/S3 真实写入命令仍需继续 provider 化。
+- [ ] VFS 命令 provider 化：`copy`、`move`、`delete`、`rename`、`create` 已开始通过可路由命令服务收敛，本地与 SMB 已接入，同步新增文件级内容读写服务以承载本地/SMB 跨 provider 传输；WebDAV/S3 缺少写入命令时会返回明确不支持错误；`watch`、`openExternal`、`preview`、`thumbnail`、目录级跨 provider 传输以及 WebDAV/S3 真实写入命令仍需继续 provider 化。
 - [x] 文件类型能力下沉：新增统一 `FileTypeService`，图片、压缩包、可预览文本识别由组件层服务提供，画廊、预览、检查器和打开行为不再维护各自的扩展名判断 helper。
 - [ ] 大目录性能：当前目录列表会一次性读取并排序，超大目录需要分页、增量加载或后台索引策略。
 - [ ] 预览能力扩展：当前偏文本、图片、缩略图，缺少 PDF、音视频元数据、二进制摘要、编码选择和大文件取消策略。

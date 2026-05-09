@@ -15,6 +15,8 @@ enum class VfsProviderCapability {
     TRASH,
     EXTERNAL_OPEN,
     READ_PREVIEW,
+    READ_CONTENT,
+    WRITE_CONTENT,
     THUMBNAIL,
     CREATE_FILE,
     CREATE_DIRECTORY,

@@ -5,6 +5,9 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.nio.file.FileAlreadyExistsException
@@ -20,7 +23,7 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 import kotlin.io.path.pathString
 
-class JvmLocalFileProvider : FileRepository, RoutableFileCommandService {
+class JvmLocalFileProvider : FileRepository, RoutableFileCommandService, RoutableVfsContentService {
     override fun supports(location: String): Boolean {
         return !location.contains("://")
     }
@@ -137,6 +140,55 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService {
         }.mapVFileError()
     }
 
+    override suspend fun readFile(entry: VFile): Result<VfsContentSource> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = Path.of(entry.location).normalize().toAbsolutePath()
+            require(Files.exists(path)) {
+                throw NoSuchFileException(path.pathString)
+            }
+            require(!Files.isDirectory(path)) {
+                throw IllegalArgumentException("${entry.location} is not a file")
+            }
+            VfsContentSource(
+                name = path.fileName.toString(),
+                sizeBytes = Files.size(path),
+                chunks = flow {
+                    Files.newInputStream(path).use { input ->
+                        val buffer = ByteArray(CONTENT_BUFFER_SIZE)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            emit(buffer.copyOf(read))
+                        }
+                    }
+                }.flowOn(Dispatchers.IO),
+            )
+        }.mapContentSourceError()
+    }
+
+    override suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: kotlinx.coroutines.flow.Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<VFile?> = withContext(Dispatchers.IO) {
+        runCatching {
+            val parentDirectory = resolveTargetDirectory(parentLocation)
+            val target = buildContentTargetPath(
+                name = name,
+                targetDirectory = parentDirectory,
+                conflictStrategy = conflictStrategy,
+            ) ?: return@runCatching null
+            if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target)) {
+                deletePathRecursively(target)
+            }
+            Files.newOutputStream(target).use { output ->
+                chunks.collect { chunk -> output.write(chunk) }
+            }
+            target.toVFile(parentDirectory)
+        }.mapNullableVFileError()
+    }
+
     private fun Path.toVFile(parent: Path): VFile {
         val isDirectory = isDirectory()
         return VFile(
@@ -210,6 +262,18 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService {
     }
 
     private fun Result<VFile>.mapVFileError(): Result<VFile> {
+        return exceptionOrNull()?.let { throwable ->
+            Result.failure(throwable.toOnyxError().toException())
+        } ?: this
+    }
+
+    private fun Result<VFile?>.mapNullableVFileError(): Result<VFile?> {
+        return exceptionOrNull()?.let { throwable ->
+            Result.failure(throwable.toOnyxError().toException())
+        } ?: this
+    }
+
+    private fun Result<VfsContentSource>.mapContentSourceError(): Result<VfsContentSource> {
         return exceptionOrNull()?.let { throwable ->
             Result.failure(throwable.toOnyxError().toException())
         } ?: this
@@ -312,8 +376,18 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService {
         source: Path,
         targetDirectory: Path,
     ): Path {
-        val originalName = source.fileName.toString()
-        val isDirectory = Files.isDirectory(source)
+        return availableTargetPath(
+            originalName = source.fileName.toString(),
+            isDirectory = Files.isDirectory(source),
+            targetDirectory = targetDirectory,
+        )
+    }
+
+    private fun availableTargetPath(
+        originalName: String,
+        isDirectory: Boolean,
+        targetDirectory: Path,
+    ): Path {
         val dotIndex = originalName.lastIndexOf('.')
         val hasExtension = !isDirectory && dotIndex > 0 && dotIndex < originalName.lastIndex
         val baseName = if (hasExtension) originalName.substring(0, dotIndex) else originalName
@@ -327,6 +401,31 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService {
             copyIndex += 1
         }
         return candidate
+    }
+
+    private fun buildContentTargetPath(
+        name: String,
+        targetDirectory: Path,
+        conflictStrategy: TransferConflictStrategy,
+    ): Path? {
+        val sanitizedName = name.trim()
+        validateTargetName(sanitizedName)
+        val directTarget = targetDirectory.resolve(sanitizedName).normalize().toAbsolutePath()
+        require(directTarget.startsWith(targetDirectory)) {
+            throw IllegalArgumentException("Target path must stay inside the current location")
+        }
+        return when {
+            !Files.exists(directTarget) -> directTarget
+            conflictStrategy == TransferConflictStrategy.KEEP_BOTH -> availableTargetPath(
+                originalName = sanitizedName,
+                isDirectory = false,
+                targetDirectory = targetDirectory,
+            )
+
+            conflictStrategy == TransferConflictStrategy.OVERWRITE -> directTarget
+            conflictStrategy == TransferConflictStrategy.SKIP -> null
+            else -> directTarget
+        }
     }
 
     private fun copyPathRecursively(
@@ -430,4 +529,8 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService {
     }
 
     private fun OnyxError.toException(): IllegalStateException = IllegalStateException(message)
+
+    private companion object {
+        const val CONTENT_BUFFER_SIZE = 64 * 1024
+    }
 }
