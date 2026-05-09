@@ -7,9 +7,14 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.utils.io.readAvailable
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import org.w3c.dom.Element
 import org.xml.sax.InputSource
@@ -47,10 +52,10 @@ class RemoteAuthStoreS3AuthRepository(
 class S3VfsProvider(
     private val authRepository: S3AuthRepository = S3AuthRepository.None,
     private val client: S3Client = KtorS3Client(),
-) : VfsProvider, VfsConnectionTester {
+) : VfsProvider, RoutableVfsContentService, VfsConnectionTester {
     override val protocol: VfsProtocol = VfsProtocol.S3
 
-    override val capabilities: Set<VfsProviderCapability> = emptySet()
+    override val capabilities: Set<VfsProviderCapability> = setOf(VfsProviderCapability.READ_CONTENT)
 
     override fun supports(location: String): Boolean {
         return location.startsWith(S3_SCHEME, ignoreCase = true)
@@ -143,6 +148,63 @@ class S3VfsProvider(
         }
     }
 
+    override suspend fun readFile(entry: VFile): Result<VfsContentSource> {
+        if (!supports(entry.location)) {
+            return Result.failure(VfsProviderNotFoundException(entry.location))
+        }
+        if (entry.kind == VFileKind.DIRECTORY) {
+            return Result.failure(
+                VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.S3,
+                        location = entry.location,
+                        capability = VfsProviderCapability.READ_CONTENT,
+                    )
+                )
+            )
+        }
+        return when (val authContext = authRepository.authContext(entry.location)) {
+            VfsAuthContext.None -> Result.failure(
+                VfsProviderException(VfsProviderError.AuthenticationRequired(VfsProtocol.S3, entry.location))
+            )
+
+            is VfsAuthContext.AwsCredentials -> runCatching {
+                client.readFile(
+                    entry = entry,
+                    location = S3Location.parse(entry.location),
+                    authContext = authContext,
+                )
+            }
+
+            else -> Result.failure(
+                VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.S3,
+                        location = entry.location,
+                        capability = VfsProviderCapability.READ_CONTENT,
+                    )
+                )
+            )
+        }
+    }
+
+    override suspend fun writeFile(
+        parentLocation: String,
+        name: String,
+        chunks: Flow<ByteArray>,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<VFile?> {
+        return Result.failure(
+            VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.S3,
+                    location = parentLocation,
+                    capability = VfsProviderCapability.WRITE_CONTENT,
+                )
+            )
+        )
+    }
+
     private companion object {
         const val S3_SCHEME = "s3://"
     }
@@ -158,12 +220,28 @@ interface S3Client {
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
     ): List<VFile>
+
+    suspend fun readFile(
+        entry: VFile,
+        location: S3Location,
+        authContext: VfsAuthContext.AwsCredentials,
+    ): VfsContentSource {
+        throw VfsProviderException(
+            VfsProviderError.UnsupportedOperation(
+                protocol = VfsProtocol.S3,
+                location = entry.location,
+                capability = VfsProviderCapability.READ_CONTENT,
+            )
+        )
+    }
 }
 
 data class S3Location(
     val bucket: String,
     val prefix: String,
 ) {
+    val objectKey: String = prefix.trim('/')
+
     val directoryPrefix: String = prefix.trim('/').let { value ->
         if (value.isBlank()) "" else "$value/"
     }
@@ -278,6 +356,56 @@ class KtorS3Client(
         }
     }
 
+    override suspend fun readFile(
+        entry: VFile,
+        location: S3Location,
+        authContext: VfsAuthContext.AwsCredentials,
+    ): VfsContentSource = withContext(Dispatchers.IO) {
+        VfsContentSource(
+            name = entry.name,
+            sizeBytes = entry.sizeBytes,
+            chunks = flow {
+                try {
+                    val request = signer.signGetObject(
+                        location = location,
+                        authContext = authContext,
+                    )
+                    val response = httpClient.get(request.url) {
+                        request.headers.forEach { (name, value) -> header(name, value) }
+                    }
+                    response.requireObjectSuccess(entry.location)
+                    val channel = response.bodyAsChannel()
+                    val buffer = ByteArray(CONTENT_BUFFER_SIZE)
+                    while (true) {
+                        val read = channel.readAvailable(buffer, 0, buffer.size)
+                        if (read < 0) break
+                        if (read > 0) {
+                            emit(buffer.copyOf(read))
+                        }
+                    }
+                } catch (failure: VfsProviderException) {
+                    throw failure
+                } catch (failure: SSLException) {
+                    throw VfsProviderException(
+                        VfsProviderError.NetworkFailure(
+                            protocol = VfsProtocol.S3,
+                            location = entry.location,
+                            reason = failure.message,
+                        )
+                    )
+                } catch (failure: IOException) {
+                    throw VfsProviderException(
+                        VfsProviderError.NetworkFailure(
+                            protocol = VfsProtocol.S3,
+                            location = entry.location,
+                            reason = failure.message,
+                        )
+                    )
+                }
+            }.flowOn(Dispatchers.IO),
+        )
+    }
+
     private suspend fun HttpResponse.requireSuccess(location: String): String {
         val body = bodyAsText()
         when (status.value) {
@@ -311,6 +439,13 @@ class KtorS3Client(
         }
     }
 
+    private suspend fun HttpResponse.requireObjectSuccess(location: String) {
+        when (status.value) {
+            200, 206 -> Unit
+            else -> requireSuccess(location)
+        }
+    }
+
     private fun s3Error(
         xml: String,
         location: String,
@@ -330,6 +465,10 @@ class KtorS3Client(
 
             else -> VfsProviderError.NetworkFailure(VfsProtocol.S3, location, code)
         }
+    }
+
+    private companion object {
+        const val CONTENT_BUFFER_SIZE = 64 * 1024
     }
 }
 
@@ -400,6 +539,54 @@ class S3RequestSigner(
             "SignedHeaders=$signedHeaders, Signature=$signature"
         val requestHeaders = headers + ("Authorization" to authorization)
         val url = "https://$host$canonicalUri?$canonicalQuery"
+        return S3SignedRequest(url = url, headers = requestHeaders)
+    }
+
+    fun signGetObject(
+        location: S3Location,
+        authContext: VfsAuthContext.AwsCredentials,
+    ): S3SignedRequest {
+        val region = authContext.region ?: DEFAULT_REGION
+        val host = "s3.$region.amazonaws.com"
+        val canonicalUri = "/${awsEncode(location.bucket)}/${awsEncodePath(location.objectKey)}"
+        val now = clock.instant()
+        val amzDate = AMZ_DATE_FORMATTER.format(now)
+        val dateStamp = DATE_STAMP_FORMATTER.format(now)
+        val credentialScope = "$dateStamp/$region/s3/aws4_request"
+        val headers = buildMap {
+            put("host", host)
+            put("x-amz-content-sha256", UNSIGNED_PAYLOAD)
+            put("x-amz-date", amzDate)
+            authContext.sessionToken?.let { token -> put("x-amz-security-token", token) }
+        }.toSortedMap()
+        val canonicalHeaders = headers.entries.joinToString(separator = "") { (name, value) ->
+            "${name.lowercase()}:${value.trim()}\n"
+        }
+        val signedHeaders = headers.keys.joinToString(";") { key -> key.lowercase() }
+        val canonicalRequest = listOf(
+            "GET",
+            canonicalUri,
+            "",
+            canonicalHeaders,
+            signedHeaders,
+            UNSIGNED_PAYLOAD,
+        ).joinToString("\n")
+        val stringToSign = listOf(
+            ALGORITHM,
+            amzDate,
+            credentialScope,
+            canonicalRequest.sha256Hex(),
+        ).joinToString("\n")
+        val signingKey = signingKey(
+            secretAccessKey = authContext.secretAccessKey,
+            dateStamp = dateStamp,
+            region = region,
+        )
+        val signature = hmac(signingKey, stringToSign).toHex()
+        val authorization = "$ALGORITHM Credential=${authContext.accessKeyId}/$credentialScope, " +
+            "SignedHeaders=$signedHeaders, Signature=$signature"
+        val requestHeaders = headers + ("Authorization" to authorization)
+        val url = "https://$host$canonicalUri"
         return S3SignedRequest(url = url, headers = requestHeaders)
     }
 
@@ -530,6 +717,10 @@ private fun awsEncode(value: String): String {
         .replace("+", "%20")
         .replace("*", "%2A")
         .replace("%7E", "~")
+}
+
+private fun awsEncodePath(value: String): String {
+    return value.split('/').joinToString("/") { segment -> awsEncode(segment) }
 }
 
 private fun hmac(

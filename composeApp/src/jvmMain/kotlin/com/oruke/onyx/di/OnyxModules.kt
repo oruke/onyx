@@ -128,6 +128,7 @@ val fileModule = module {
                 get<JvmLocalFileProvider>(),
                 get<SmbVfsProvider>(),
                 get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
             ),
             providerRegistry = get(),
         )
