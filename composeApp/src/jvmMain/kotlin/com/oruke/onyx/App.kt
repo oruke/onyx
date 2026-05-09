@@ -49,6 +49,7 @@ import com.oruke.onyx.ui.PaneSidebar
 import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
 import com.oruke.onyx.ui.RemoteCredentialsDialog
+import com.oruke.onyx.ui.SearchPanel
 import com.oruke.onyx.ui.SettingsDialog
 import com.oruke.onyx.ui.StatusBar
 import com.oruke.onyx.ui.JobsBar
@@ -121,6 +122,16 @@ fun DecoratedWindowScope.WindowApp(rootComponent: RootComponent) {
                 },
                 showPreviewPane = state.showPreviewPane,
                 onTogglePreviewPane = { rootComponent.dispatch(RootIntent.TogglePreviewPane) },
+                searchPanelVisible = state.searchState.visible,
+                onToggleSearchPanel = {
+                    rootComponent.dispatch(
+                        if (state.searchState.visible) {
+                            RootIntent.CloseSearchPanel
+                        } else {
+                            RootIntent.ShowSearchPanel
+                        },
+                    )
+                },
             )
         }
 
@@ -612,6 +623,18 @@ private fun AppContent(
                                 isTextPreviewFileName = rootComponent::isTextPreviewFileName,
                             )
                         }
+                    }
+
+                    if (state.searchState.visible) {
+                        SearchPanel(
+                            state = state.searchState,
+                            locationLabel = rootComponent::locationLabel,
+                            onQueryChange = { query -> dispatch(RootIntent.UpdateSearchQuery(query)) },
+                            onSearch = { dispatch(RootIntent.ExecuteSearch) },
+                            onCancel = { dispatch(RootIntent.CancelSearch) },
+                            onClose = { dispatch(RootIntent.CloseSearchPanel) },
+                            onOpenResult = { entry -> dispatch(RootIntent.OpenSearchResult(entry)) },
+                        )
                     }
 
                     // ── Jobs Bar ─────────────────────────────────────────────

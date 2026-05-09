@@ -34,6 +34,9 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderError
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.app.filesystem.VfsProtocol
+import com.oruke.onyx.app.usecase.FileSearchEvent
+import com.oruke.onyx.app.usecase.FileSearchRequest
+import com.oruke.onyx.app.usecase.FileSearchUseCase
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.DeleteMode
@@ -53,8 +56,11 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -180,6 +186,12 @@ class DefaultRootComponent(
         onRefreshPane = { paneId -> paneComponent(paneId).refresh() },
         getPaneState = ::paneState,
     )
+    private val fileSearchUseCase = FileSearchUseCase(fileRepository)
+    private val searchState = MutableStateFlow(
+        SearchPanelState(rootLocation = fileRepository.defaultLocation()),
+    )
+    private var searchJob: Job? = null
+    private var searchRunId: String? = null
     private val mutableState = MutableStateFlow(
         RootState(
             layoutMode = layoutMode.value,
@@ -194,6 +206,7 @@ class DefaultRootComponent(
             canPaste = clipboardManager.canPaste,
             tasks = taskOrchestrator.tasks.value,
             showPreviewPane = showPreviewPane.value,
+            searchState = searchState.value,
         )
     )
 
@@ -215,16 +228,24 @@ class DefaultRootComponent(
                     sidebarDelegate.sidebarTreeState, settings, sessionRestoreState,
                 ) { sidebar, stgs, restore -> Triple(sidebar, stgs, restore) },
                 combine(
-                    dialogState, clipboardManager.clipboard, taskOrchestrator.tasks,
-                ) { dialog, clipboard, taskList -> Triple(dialog, clipboard, taskList) },
-            ) { (sidebar, stgs, restore), (dialog, clipboard, taskList) ->
+                    dialogState, clipboardManager.clipboard, taskOrchestrator.tasks, searchState,
+                ) { dialog, clipboard, taskList, search ->
+                    RuntimeContextSlice(
+                        dialogState = dialog,
+                        canPaste = clipboard != null,
+                        tasks = taskList,
+                        searchState = search,
+                    )
+                },
+            ) { (sidebar, stgs, restore), runtime ->
                 ContextSlice(
                     sidebarTreeState = sidebar,
                     settings = stgs,
                     sessionRestoreState = restore,
-                    dialogState = dialog,
-                    canPaste = clipboard != null,
-                    tasks = taskList,
+                    dialogState = runtime.dialogState,
+                    canPaste = runtime.canPaste,
+                    tasks = runtime.tasks,
+                    searchState = runtime.searchState,
                 )
             }
 
@@ -242,6 +263,7 @@ class DefaultRootComponent(
                     canPaste = context.canPaste,
                     tasks = context.tasks,
                     showPreviewPane = layout.showPreviewPane,
+                    searchState = context.searchState,
                 )
             }.collect { combinedState ->
                 mutableState.value = combinedState
@@ -327,6 +349,12 @@ class DefaultRootComponent(
             )
             RootIntent.RefreshActivePane -> refreshActivePane()
             RootIntent.TogglePreviewPane -> togglePreviewPane()
+            RootIntent.ShowSearchPanel -> showSearchPanel()
+            RootIntent.CloseSearchPanel -> closeSearchPanel()
+            is RootIntent.UpdateSearchQuery -> updateSearchQuery(intent.query)
+            RootIntent.ExecuteSearch -> executeSearch()
+            RootIntent.CancelSearch -> cancelSearch()
+            is RootIntent.OpenSearchResult -> openSearchResult(intent.entry)
             is RootIntent.StageCopySelectedInPane -> stageCopySelectedInPane(intent.paneId)
             is RootIntent.StageCutSelectedInPane -> stageCutSelectedInPane(intent.paneId)
             is RootIntent.RequestPasteIntoPane -> requestPasteIntoPane(intent.paneId)
@@ -653,6 +681,171 @@ class DefaultRootComponent(
 
     fun togglePreviewPane() {
         showPreviewPane.value = !showPreviewPane.value
+    }
+
+    fun showSearchPanel() {
+        val paneId = activePane.value
+        val location = paneState(paneId).location
+        searchState.value = searchState.value.copy(
+            visible = true,
+            paneId = paneId,
+            rootLocation = location,
+            status = if (searchState.value.status == SearchStatus.RUNNING) {
+                SearchStatus.RUNNING
+            } else {
+                SearchStatus.IDLE
+            },
+            error = null,
+        )
+    }
+
+    fun closeSearchPanel() {
+        val wasRunning = searchState.value.status == SearchStatus.RUNNING
+        if (wasRunning) {
+            searchRunId = null
+            searchJob?.cancel()
+            searchJob = null
+        }
+        searchState.value = searchState.value.copy(
+            visible = false,
+            status = if (wasRunning) SearchStatus.CANCELLED else searchState.value.status,
+        )
+    }
+
+    fun updateSearchQuery(query: String) {
+        if (query != searchState.value.query && searchState.value.status == SearchStatus.RUNNING) {
+            cancelSearch()
+        }
+        searchState.value = searchState.value.copy(
+            query = query,
+            status = SearchStatus.IDLE,
+            results = emptyList(),
+            scannedEntryCount = 0,
+            limitReached = false,
+            error = null,
+        )
+    }
+
+    fun executeSearch() {
+        val current = searchState.value
+        val query = current.query.trim()
+        val paneId = current.paneId
+        val rootLocation = current.rootLocation.ifBlank { paneState(paneId).location }
+        searchJob?.cancel()
+        searchJob = null
+
+        if (query.isBlank()) {
+            searchRunId = null
+            searchState.value = current.copy(
+                visible = true,
+                rootLocation = rootLocation,
+                status = SearchStatus.IDLE,
+                results = emptyList(),
+                scannedEntryCount = 0,
+                limitReached = false,
+                error = null,
+            )
+            return
+        }
+
+        val runId = UUID.randomUUID().toString()
+        searchRunId = runId
+        searchState.value = current.copy(
+            visible = true,
+            rootLocation = rootLocation,
+            status = SearchStatus.RUNNING,
+            results = emptyList(),
+            scannedEntryCount = 0,
+            limitReached = false,
+            error = null,
+        )
+
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                fileSearchUseCase.search(
+                    FileSearchRequest(
+                        rootLocation = rootLocation,
+                        query = query,
+                    )
+                ).collect { event ->
+                    if (searchRunId != runId) {
+                        return@collect
+                    }
+                    reduceSearchEvent(event)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Throwable) {
+                if (searchRunId == runId) {
+                    searchState.value = searchState.value.copy(
+                        status = SearchStatus.FAILED,
+                        error = failure.toSearchErrorMessage(),
+                    )
+                }
+            } finally {
+                if (searchRunId == runId) {
+                    searchJob = null
+                }
+            }
+        }
+        searchJob = job
+        job.start()
+    }
+
+    fun cancelSearch() {
+        val wasRunning = searchState.value.status == SearchStatus.RUNNING
+        searchRunId = null
+        searchJob?.cancel()
+        searchJob = null
+        if (wasRunning) {
+            searchState.value = searchState.value.copy(
+                status = SearchStatus.CANCELLED,
+                error = null,
+            )
+        }
+    }
+
+    fun openSearchResult(entry: VFile) {
+        val paneId = searchState.value.paneId
+        activatePane(paneId)
+        paneComponent(paneId).openEntry(entry)
+    }
+
+    private fun reduceSearchEvent(event: FileSearchEvent) {
+        when (event) {
+            is FileSearchEvent.Progress -> {
+                searchState.value = searchState.value.copy(
+                    scannedEntryCount = event.scannedEntryCount,
+                )
+            }
+
+            is FileSearchEvent.Results -> {
+                searchState.value = searchState.value.copy(
+                    status = SearchStatus.RUNNING,
+                    results = event.entries,
+                    scannedEntryCount = event.scannedEntryCount,
+                    limitReached = event.limitReached,
+                    error = null,
+                )
+            }
+
+            is FileSearchEvent.Completed -> {
+                searchState.value = searchState.value.copy(
+                    status = SearchStatus.COMPLETED,
+                    scannedEntryCount = event.scannedEntryCount,
+                    limitReached = event.limitReached,
+                    error = null,
+                )
+            }
+
+            is FileSearchEvent.Failed -> {
+                searchState.value = searchState.value.copy(
+                    status = SearchStatus.FAILED,
+                    scannedEntryCount = event.scannedEntryCount,
+                    error = event.failure.toSearchErrorMessage(),
+                )
+            }
+        }
     }
 
     fun stageCopySelectedInPane(paneId: PaneId) {
@@ -1217,6 +1410,15 @@ private fun VfsProviderError.toConnectionMessage(): String {
     }
 }
 
+private fun Throwable.toSearchErrorMessage(): I18nMessage {
+    val detail = message?.takeIf { it.isNotBlank() }
+    return if (detail != null) {
+        I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)
+    } else {
+        I18nMessage(MessageKey.MSG_UNKNOWN_ERROR)
+    }
+}
+
 private fun PaneComponent.toPaneSessionSnapshot(): PaneSessionSnapshot {
     return PaneSessionSnapshot(
         activeTabId = state.value.activeTabId,
@@ -1242,4 +1444,13 @@ private data class ContextSlice(
     val dialogState: RootDialogState?,
     val canPaste: Boolean,
     val tasks: List<BackgroundTask>,
+    val searchState: SearchPanelState,
+)
+
+/** combine 中间类型 — 运行时状态切片 */
+private data class RuntimeContextSlice(
+    val dialogState: RootDialogState?,
+    val canPaste: Boolean,
+    val tasks: List<BackgroundTask>,
+    val searchState: SearchPanelState,
 )

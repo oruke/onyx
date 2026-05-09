@@ -276,6 +276,18 @@
     <string name="action_image_rotate_ccw">↺</string>
 
     <string name="action_filter">Filter</string>
+    <string name="action_search">Search</string>
+    <string name="action_close_search_panel">Close Search</string>
+    <string name="label_search_title">Search</string>
+    <string name="label_search_scope">Scope: %1$s</string>
+    <string name="label_search_placeholder">Name or .extension</string>
+    <string name="label_search_idle">Enter a name or extension to search recursively.</string>
+    <string name="label_search_running_summary">Scanned %1$d item(s), %2$d match(es)</string>
+    <string name="label_search_completed_summary">%1$d result(s), %2$d item(s) scanned</string>
+    <string name="label_search_completed_limited_summary">%1$d result(s), %2$d item(s) scanned. Result limit reached.</string>
+    <string name="label_search_cancelled">Search cancelled. %1$d result(s) kept</string>
+    <string name="label_search_failed">Search failed: %1$s</string>
+    <string name="label_search_no_results">No results</string>
 
     <string name="action_batch_rename">Batch Rename</string>
     <string name="action_batch_rename_continue">Continue</string>

@@ -274,6 +274,18 @@
     <string name="action_image_rotate_ccw">↺</string>
 
     <string name="action_filter">筛选</string>
+    <string name="action_search">搜索</string>
+    <string name="action_close_search_panel">关闭搜索</string>
+    <string name="label_search_title">搜索</string>
+    <string name="label_search_scope">范围：%1$s</string>
+    <string name="label_search_placeholder">名称或 .扩展名</string>
+    <string name="label_search_idle">输入名称或扩展名后递归搜索。</string>
+    <string name="label_search_running_summary">已扫描 %1$d 项，匹配 %2$d 项</string>
+    <string name="label_search_completed_summary">找到 %1$d 项，已扫描 %2$d 项</string>
+    <string name="label_search_completed_limited_summary">找到 %1$d 项，已扫描 %2$d 项，已达到结果上限。</string>
+    <string name="label_search_cancelled">搜索已取消，保留 %1$d 个结果</string>
+    <string name="label_search_failed">搜索失败：%1$s</string>
+    <string name="label_search_no_results">没有结果</string>
 
     <string name="action_batch_rename">批量重命名</string>
     <string name="action_batch_rename_continue">继续</string>

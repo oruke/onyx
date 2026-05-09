@@ -34,6 +34,7 @@ import onyx.composeapp.generated.resources.action_layout_dual_horizontal
 import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
 import onyx.composeapp.generated.resources.action_open_settings
+import onyx.composeapp.generated.resources.action_search
 import onyx.composeapp.generated.resources.action_toggle_sidebar
 import onyx.composeapp.generated.resources.action_toggle_preview_pane
 import onyx.composeapp.generated.resources.app_name
@@ -116,6 +117,8 @@ internal fun TitleBarScope.TitleBarContent(
     onToggleSidebar: () -> Unit,
     showPreviewPane: Boolean,
     onTogglePreviewPane: () -> Unit,
+    searchPanelVisible: Boolean,
+    onToggleSearchPanel: () -> Unit,
 ) {
     fun dispatch(intent: RootIntent) {
         rootComponent.dispatch(intent)
@@ -213,6 +216,17 @@ internal fun TitleBarScope.TitleBarContent(
             Icon(
                 key = if (showPreviewPane) AllIconsKeys.Actions.Preview else AllIconsKeys.Actions.PreviewDetails,
                 contentDescription = stringResource(Res.string.action_toggle_preview_pane),
+            )
+        }
+
+        LayoutIconButton(
+            selected = searchPanelVisible,
+            onClick = onToggleSearchPanel,
+            tooltip = stringResource(Res.string.action_search),
+        ) {
+            Icon(
+                key = AllIconsKeys.Actions.Find,
+                contentDescription = stringResource(Res.string.action_search),
             )
         }
 

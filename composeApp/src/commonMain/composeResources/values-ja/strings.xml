@@ -276,6 +276,18 @@
     <string name="action_image_rotate_ccw">↺</string>
 
     <string name="action_filter">フィルター</string>
+    <string name="action_search">検索</string>
+    <string name="action_close_search_panel">検索を閉じる</string>
+    <string name="label_search_title">検索</string>
+    <string name="label_search_scope">範囲: %1$s</string>
+    <string name="label_search_placeholder">名前または .拡張子</string>
+    <string name="label_search_idle">名前または拡張子を入力して再帰検索します。</string>
+    <string name="label_search_running_summary">%1$d 件をスキャン、%2$d 件一致</string>
+    <string name="label_search_completed_summary">%1$d 件見つかりました、%2$d 件をスキャン</string>
+    <string name="label_search_completed_limited_summary">%1$d 件見つかりました、%2$d 件をスキャンしました。結果数の上限に達しました。</string>
+    <string name="label_search_cancelled">検索をキャンセルしました。%1$d 件の結果を保持</string>
+    <string name="label_search_failed">検索に失敗しました: %1$s</string>
+    <string name="label_search_no_results">結果はありません</string>
 
     <string name="action_batch_rename">一括リネーム</string>
     <string name="action_batch_rename_continue">続行</string>

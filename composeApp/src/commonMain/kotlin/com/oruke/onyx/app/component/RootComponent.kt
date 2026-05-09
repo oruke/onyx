@@ -38,7 +38,28 @@ data class RootState(
     val canPaste: Boolean,
     val tasks: List<BackgroundTask>,
     val showPreviewPane: Boolean = false,
+    val searchState: SearchPanelState = SearchPanelState(),
 )
+
+data class SearchPanelState(
+    val visible: Boolean = false,
+    val paneId: PaneId = PaneId.PRIMARY,
+    val rootLocation: String = "",
+    val query: String = "",
+    val status: SearchStatus = SearchStatus.IDLE,
+    val results: List<VFile> = emptyList(),
+    val scannedEntryCount: Int = 0,
+    val limitReached: Boolean = false,
+    val error: I18nMessage? = null,
+)
+
+enum class SearchStatus {
+    IDLE,
+    RUNNING,
+    COMPLETED,
+    FAILED,
+    CANCELLED,
+}
 
 data class SidebarTreeState(
     val roots: List<SidebarTreeNode>,
@@ -263,6 +284,22 @@ sealed interface RootIntent {
 
     data object TogglePreviewPane : RootIntent
 
+    data object ShowSearchPanel : RootIntent
+
+    data object CloseSearchPanel : RootIntent
+
+    data class UpdateSearchQuery(
+        val query: String,
+    ) : RootIntent
+
+    data object ExecuteSearch : RootIntent
+
+    data object CancelSearch : RootIntent
+
+    data class OpenSearchResult(
+        val entry: VFile,
+    ) : RootIntent
+
     data class StageCopySelectedInPane(
         val paneId: PaneId,
     ) : RootIntent
@@ -473,6 +510,18 @@ fun RootComponent.moveTab(
 fun RootComponent.refreshActivePane() = dispatch(RootIntent.RefreshActivePane)
 
 fun RootComponent.togglePreviewPane() = dispatch(RootIntent.TogglePreviewPane)
+
+fun RootComponent.showSearchPanel() = dispatch(RootIntent.ShowSearchPanel)
+
+fun RootComponent.closeSearchPanel() = dispatch(RootIntent.CloseSearchPanel)
+
+fun RootComponent.updateSearchQuery(query: String) = dispatch(RootIntent.UpdateSearchQuery(query))
+
+fun RootComponent.executeSearch() = dispatch(RootIntent.ExecuteSearch)
+
+fun RootComponent.cancelSearch() = dispatch(RootIntent.CancelSearch)
+
+fun RootComponent.openSearchResult(entry: VFile) = dispatch(RootIntent.OpenSearchResult(entry))
 
 fun RootComponent.stageCopySelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCopySelectedInPane(paneId))
 
