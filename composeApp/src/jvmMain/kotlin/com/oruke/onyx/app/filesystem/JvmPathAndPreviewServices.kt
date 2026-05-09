@@ -63,6 +63,16 @@ class JvmVfsPathService : VfsPathService {
             ?: location.trimEnd('/').substringAfterLast('/').ifBlank { location }
     }
 
+    override fun isLocationAvailable(location: String): Boolean {
+        val trimmedLocation = location.trim()
+        if (trimmedLocation.isBlank()) return false
+        if (ArchiveService.isArchiveLocation(trimmedLocation)) return true
+        if (remoteUri(trimmedLocation) != null) return true
+        return runCatching {
+            Files.exists(Path.of(trimmedLocation).normalize().toAbsolutePath())
+        }.getOrDefault(false)
+    }
+
     override fun directChildName(ancestor: String, descendant: String): String? {
         val ancestorRemote = remoteUri(ancestor)
         val descendantRemote = remoteUri(descendant)

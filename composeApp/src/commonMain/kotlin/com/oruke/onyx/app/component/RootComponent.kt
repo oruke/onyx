@@ -210,6 +210,8 @@ sealed interface RootIntent {
         val draft: OnyxSettings,
     ) : RootIntent
 
+    data object CleanupInvalidLocations : RootIntent
+
     data class UpdateRemoteConnectionDraft(
         val draft: RemoteConnectionDraft,
     ) : RootIntent

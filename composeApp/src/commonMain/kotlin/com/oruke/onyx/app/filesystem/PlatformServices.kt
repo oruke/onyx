@@ -42,6 +42,8 @@ interface VfsPathService {
         targetLocation: String,
     ): FileTransferOperation
 
+    fun isLocationAvailable(location: String): Boolean = true
+
     fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>
 }
 

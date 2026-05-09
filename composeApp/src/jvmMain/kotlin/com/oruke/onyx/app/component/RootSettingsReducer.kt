@@ -50,6 +50,15 @@ internal fun OnyxSettings.recordRecentLocations(
     return copy(recentLocations = nextRecentLocations).sanitizeRootSettings()
 }
 
+internal fun OnyxSettings.cleanupInvalidLocations(
+    isLocationAvailable: (String) -> Boolean,
+): OnyxSettings {
+    return copy(
+        favoriteLocations = favoriteLocations.filter(isLocationAvailable),
+        recentLocations = recentLocations.filter(isLocationAvailable),
+    ).sanitizeRootSettings()
+}
+
 private const val MaxFavoriteLocations = 12
 private const val MaxRecentLocations = 10
 private const val MaxRemoteConnections = 24

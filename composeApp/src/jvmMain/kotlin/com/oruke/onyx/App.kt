@@ -357,6 +357,7 @@ private fun AppContent(
             SettingsDialog(
                 state = dialogState,
                 onDraftChange = { draft -> dispatch(RootIntent.UpdateSettingsDraft(draft)) },
+                onCleanupInvalidLocations = { dispatch(RootIntent.CleanupInvalidLocations) },
                 onRemoteConnectionDraftChange = { draft -> dispatch(RootIntent.UpdateRemoteConnectionDraft(draft)) },
                 onNewRemoteConnection = { dispatch(RootIntent.NewRemoteConnection) },
                 onEditRemoteConnection = { profile -> dispatch(RootIntent.EditRemoteConnection(profile)) },

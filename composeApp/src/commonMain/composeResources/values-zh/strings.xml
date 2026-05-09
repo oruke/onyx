@@ -337,6 +337,8 @@
     <string name="label_setting_enabled">开启</string>
     <string name="label_setting_disabled">关闭</string>
     <string name="label_settings_shortcuts">快捷键</string>
+    <string name="label_location_history">位置历史</string>
+    <string name="action_cleanup_invalid_locations">移除不存在的本地位置</string>
     <string name="label_shortcut_capture">录制</string>
     <string name="label_shortcut_reset_default">默认</string>
     <string name="label_shortcut_disabled">禁用</string>

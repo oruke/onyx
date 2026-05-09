@@ -339,6 +339,8 @@
     <string name="label_setting_enabled">Enabled</string>
     <string name="label_setting_disabled">Disabled</string>
     <string name="label_settings_shortcuts">Shortcuts</string>
+    <string name="label_location_history">Location History</string>
+    <string name="action_cleanup_invalid_locations">Remove Missing Local Locations</string>
     <string name="label_shortcut_capture">Record</string>
     <string name="label_shortcut_reset_default">Default</string>
     <string name="label_shortcut_disabled">Disabled</string>

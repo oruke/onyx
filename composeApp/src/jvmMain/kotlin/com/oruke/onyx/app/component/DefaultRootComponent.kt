@@ -326,6 +326,7 @@ class DefaultRootComponent(
             is RootIntent.SetPaneSplitFraction -> setPaneSplitFraction(intent.fraction)
             RootIntent.OpenSettings -> openSettings()
             is RootIntent.UpdateSettingsDraft -> updateSettingsDraft(intent.draft)
+            RootIntent.CleanupInvalidLocations -> cleanupInvalidLocations()
             is RootIntent.UpdateRemoteConnectionDraft -> updateRemoteConnectionDraft(intent.draft)
             is RootIntent.EditRemoteConnection -> editRemoteConnection(intent.profile)
             RootIntent.NewRemoteConnection -> newRemoteConnection()
@@ -422,6 +423,13 @@ class DefaultRootComponent(
     fun updateSettingsDraft(draft: OnyxSettings) {
         val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
         dialogState.value = currentDialog.copy(draft = draft)
+    }
+
+    fun cleanupInvalidLocations() {
+        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
+        dialogState.value = currentDialog.copy(
+            draft = currentDialog.draft.cleanupInvalidLocations(pathService::isLocationAvailable),
+        )
     }
 
     fun updateRemoteConnectionDraft(draft: RemoteConnectionDraft) {

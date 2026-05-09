@@ -76,6 +76,7 @@ import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
 import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_cleanup_invalid_locations
 import onyx.composeapp.generated.resources.action_delete_connection
 import onyx.composeapp.generated.resources.action_edit_connection
 import onyx.composeapp.generated.resources.action_open
@@ -95,6 +96,7 @@ import onyx.composeapp.generated.resources.label_delete_mode
 import onyx.composeapp.generated.resources.label_delete_mode_move_to_trash
 import onyx.composeapp.generated.resources.label_delete_mode_permanent
 import onyx.composeapp.generated.resources.label_language
+import onyx.composeapp.generated.resources.label_location_history
 import onyx.composeapp.generated.resources.label_list_font_size
 import onyx.composeapp.generated.resources.label_list_row_height
 import onyx.composeapp.generated.resources.label_locale_chinese
@@ -159,6 +161,7 @@ private enum class SettingsCategory { GENERAL, CONNECTIONS, LAYOUT, APPEARANCE, 
 internal fun SettingsDialog(
     state: RootDialogState.Settings,
     onDraftChange: (OnyxSettings) -> Unit,
+    onCleanupInvalidLocations: () -> Unit,
     onRemoteConnectionDraftChange: (RemoteConnectionDraft) -> Unit,
     onNewRemoteConnection: () -> Unit,
     onEditRemoteConnection: (RemoteConnectionProfile) -> Unit,
@@ -263,6 +266,15 @@ internal fun SettingsDialog(
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         SettingsOption(draft.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED, stringResource(Res.string.label_delete_mode_move_to_trash), labelFs) { onDraftChange(draft.copy(deleteMode = DeleteMode.MOVE_TO_TRASH_PREFERRED)) }
                                         SettingsOption(draft.deleteMode == DeleteMode.PERMANENT, stringResource(Res.string.label_delete_mode_permanent), labelFs) { onDraftChange(draft.copy(deleteMode = DeleteMode.PERMANENT)) }
+                                    }
+                                }
+                                SettingsSection(stringResource(Res.string.label_location_history), labelFs) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        DialogTextButton(
+                                            text = stringResource(Res.string.action_cleanup_invalid_locations),
+                                            fontSize = bodyFs,
+                                            onClick = onCleanupInvalidLocations,
+                                        )
                                     }
                                 }
 

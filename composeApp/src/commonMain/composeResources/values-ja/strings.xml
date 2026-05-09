@@ -339,6 +339,8 @@
     <string name="label_setting_enabled">有効</string>
     <string name="label_setting_disabled">無効</string>
     <string name="label_settings_shortcuts">ショートカット</string>
+    <string name="label_location_history">場所の履歴</string>
+    <string name="action_cleanup_invalid_locations">存在しないローカル場所を削除</string>
     <string name="label_shortcut_capture">記録</string>
     <string name="label_shortcut_reset_default">既定</string>
     <string name="label_shortcut_disabled">無効</string>
