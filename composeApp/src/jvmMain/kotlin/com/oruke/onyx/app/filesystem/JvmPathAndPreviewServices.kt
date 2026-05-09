@@ -306,19 +306,14 @@ class JvmTerminalLauncherService : TerminalLauncherService {
         runCatching {
             val directory = File(location)
             check(directory.isDirectory) { "Location is not a directory: $location" }
-            val candidates = listOfNotNull(
-                System.getenv("TERMINAL"),
-                "x-terminal-emulator",
-                "gnome-terminal",
-                "konsole",
-                "kitty",
-                "alacritty",
-                "xterm",
-            )
             var lastFailure: Throwable? = null
-            for (command in candidates) {
+            for (candidate in terminalLaunchCandidates(directory)) {
                 try {
-                    ProcessBuilder(command).directory(directory).start()
+                    val processBuilder = ProcessBuilder(candidate.command)
+                    if (candidate.useWorkingDirectory) {
+                        processBuilder.directory(directory)
+                    }
+                    processBuilder.start()
                     return@runCatching
                 } catch (failure: Throwable) {
                     lastFailure = failure
@@ -326,6 +321,72 @@ class JvmTerminalLauncherService : TerminalLauncherService {
             }
             throw IllegalStateException("No terminal command could be started", lastFailure)
         }
+    }
+
+    private fun terminalLaunchCandidates(directory: File): List<TerminalLaunchCandidate> {
+        val configuredTerminal = System.getenv("TERMINAL")
+            ?.takeIf { value -> value.isNotBlank() }
+            ?.let { command -> TerminalLaunchCandidate(listOf(command), useWorkingDirectory = true) }
+        val platformCandidates = when (currentHostPlatform()) {
+            HostPlatform.WINDOWS -> listOf(
+                TerminalLaunchCandidate(listOf("wt.exe", "-d", directory.absolutePath), useWorkingDirectory = false),
+                TerminalLaunchCandidate(
+                    listOf(
+                        "powershell.exe",
+                        "-NoExit",
+                        "-Command",
+                        "Set-Location -LiteralPath '${directory.absolutePath.escapePowerShellSingleQuoted()}'",
+                    ),
+                    useWorkingDirectory = false,
+                ),
+                TerminalLaunchCandidate(
+                    listOf("cmd.exe", "/c", "start", "", "cmd.exe", "/K", "cd", "/d", directory.absolutePath),
+                    useWorkingDirectory = false,
+                ),
+            )
+
+            HostPlatform.MACOS -> listOf(
+                TerminalLaunchCandidate(listOf("open", "-a", "Terminal", directory.absolutePath), useWorkingDirectory = false),
+                TerminalLaunchCandidate(listOf("open", "-a", "iTerm", directory.absolutePath), useWorkingDirectory = false),
+            )
+
+            HostPlatform.LINUX,
+            HostPlatform.OTHER -> listOf(
+                TerminalLaunchCandidate(listOf("x-terminal-emulator"), useWorkingDirectory = true),
+                TerminalLaunchCandidate(listOf("gnome-terminal"), useWorkingDirectory = true),
+                TerminalLaunchCandidate(listOf("konsole"), useWorkingDirectory = true),
+                TerminalLaunchCandidate(listOf("kitty"), useWorkingDirectory = true),
+                TerminalLaunchCandidate(listOf("alacritty"), useWorkingDirectory = true),
+                TerminalLaunchCandidate(listOf("xterm"), useWorkingDirectory = true),
+            )
+        }
+        return listOfNotNull(configuredTerminal) + platformCandidates
+    }
+
+    private fun currentHostPlatform(): HostPlatform {
+        val osName = System.getProperty("os.name").lowercase()
+        return when {
+            osName.contains("mac") || osName.contains("darwin") -> HostPlatform.MACOS
+            osName.contains("win") -> HostPlatform.WINDOWS
+            osName.contains("nux") || osName.contains("nix") || osName.contains("linux") -> HostPlatform.LINUX
+            else -> HostPlatform.OTHER
+        }
+    }
+
+    private fun String.escapePowerShellSingleQuoted(): String {
+        return replace("'", "''")
+    }
+
+    private data class TerminalLaunchCandidate(
+        val command: List<String>,
+        val useWorkingDirectory: Boolean,
+    )
+
+    private enum class HostPlatform {
+        WINDOWS,
+        MACOS,
+        LINUX,
+        OTHER,
     }
 }
 
