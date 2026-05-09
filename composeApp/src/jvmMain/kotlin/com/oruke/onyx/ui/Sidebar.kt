@@ -1,6 +1,7 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -19,13 +20,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,8 +45,10 @@ import com.oruke.onyx.ui.theme.orEmpty
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.label_home
+import onyx.composeapp.generated.resources.label_sidebar_empty_filter
 import onyx.composeapp.generated.resources.label_sidebar_empty_favorites
 import onyx.composeapp.generated.resources.label_sidebar_empty_recent
+import onyx.composeapp.generated.resources.label_sidebar_filter_placeholder
 import onyx.composeapp.generated.resources.label_sidebar_section_favorites
 import onyx.composeapp.generated.resources.label_sidebar_section_connections
 import onyx.composeapp.generated.resources.label_sidebar_section_quick_access
@@ -69,6 +77,18 @@ internal fun PaneSidebar(
 ) {
     val homeLocation = System.getProperty("user.home")
     val scrollState = rememberScrollState()
+    var locationFilterQuery by remember { mutableStateOf("") }
+    val normalizedLocationFilterQuery = locationFilterQuery.trim().lowercase()
+
+    fun matchesLocationFilter(
+        label: String,
+        itemLocation: String,
+    ): Boolean {
+        if (normalizedLocationFilterQuery.isEmpty()) return true
+        return label.lowercase().contains(normalizedLocationFilterQuery) ||
+            itemLocation.lowercase().contains(normalizedLocationFilterQuery)
+    }
+
     Column(
         modifier = Modifier
             .width(184.dp)
@@ -78,6 +98,11 @@ internal fun PaneSidebar(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        SidebarLocationFilter(
+            query = locationFilterQuery,
+            onQueryChange = { locationFilterQuery = it },
+        )
+
         SidebarSection(
             title = stringResource(Res.string.label_sidebar_section_quick_access),
         ) {
@@ -97,12 +122,19 @@ internal fun PaneSidebar(
         SidebarSection(
             title = stringResource(Res.string.label_sidebar_section_favorites),
         ) {
+            val filteredFavoriteLocations = favoriteLocations.filter { favoriteLocation ->
+                matchesLocationFilter(locationLabel(favoriteLocation), favoriteLocation)
+            }
             if (favoriteLocations.isEmpty()) {
                 SidebarEmptyState(
                     text = stringResource(Res.string.label_sidebar_empty_favorites),
                 )
+            } else if (filteredFavoriteLocations.isEmpty()) {
+                SidebarEmptyState(
+                    text = stringResource(Res.string.label_sidebar_empty_filter),
+                )
             } else {
-                favoriteLocations.forEach { favoriteLocation ->
+                filteredFavoriteLocations.forEach { favoriteLocation ->
                     SidebarLocationItem(
                         label = locationLabel(favoriteLocation),
                         location = favoriteLocation,
@@ -122,18 +154,27 @@ internal fun PaneSidebar(
             SidebarSection(
                 title = stringResource(Res.string.label_sidebar_section_connections),
             ) {
-                remoteConnections.forEach { connection ->
-                    SidebarLocationItem(
-                        label = connection.name,
-                        location = connection.location,
-                        selected = location == connection.location,
-                        favorite = favoriteLocations.contains(connection.location),
-                        onOpen = {
-                            onActivate()
-                            onOpenLocation(connection.location)
-                        },
-                        onToggleFavorite = { onToggleFavoriteLocation(connection.location) },
+                val filteredConnections = remoteConnections.filter { connection ->
+                    matchesLocationFilter(connection.name, connection.location)
+                }
+                if (filteredConnections.isEmpty()) {
+                    SidebarEmptyState(
+                        text = stringResource(Res.string.label_sidebar_empty_filter),
                     )
+                } else {
+                    filteredConnections.forEach { connection ->
+                        SidebarLocationItem(
+                            label = connection.name,
+                            location = connection.location,
+                            selected = location == connection.location,
+                            favorite = favoriteLocations.contains(connection.location),
+                            onOpen = {
+                                onActivate()
+                                onOpenLocation(connection.location)
+                            },
+                            onToggleFavorite = { onToggleFavoriteLocation(connection.location) },
+                        )
+                    }
                 }
             }
         }
@@ -143,10 +184,16 @@ internal fun PaneSidebar(
         ) {
             val displayRecentLocations = recentLocations.filterNot { recentLocation ->
                 recentLocation == location
+            }.filter { recentLocation ->
+                matchesLocationFilter(locationLabel(recentLocation), recentLocation)
             }
-            if (displayRecentLocations.isEmpty()) {
+            if (recentLocations.isEmpty() || (displayRecentLocations.isEmpty() && normalizedLocationFilterQuery.isEmpty())) {
                 SidebarEmptyState(
                     text = stringResource(Res.string.label_sidebar_empty_recent),
+                )
+            } else if (displayRecentLocations.isEmpty()) {
+                SidebarEmptyState(
+                    text = stringResource(Res.string.label_sidebar_empty_filter),
                 )
             } else {
                 displayRecentLocations.forEach { recentLocation ->
@@ -182,6 +229,42 @@ internal fun PaneSidebar(
             }
         }
     }
+}
+
+@Composable
+internal fun SidebarLocationFilter(
+    query: String,
+    onQueryChange: (String) -> Unit,
+) {
+    BasicTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
+            .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
+            .padding(horizontal = 7.dp, vertical = 5.dp),
+        textStyle = TextStyle(
+            fontSize = 11.sp,
+            color = LocalOnyxPalette.current.foreground,
+        ),
+        singleLine = true,
+        cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (query.isEmpty()) {
+                    Text(
+                        text = stringResource(Res.string.label_sidebar_filter_placeholder),
+                        fontSize = 11.sp,
+                        color = LocalOnyxPalette.current.disabledForeground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                innerTextField()
+            }
+        },
+    )
 }
 
 @Composable

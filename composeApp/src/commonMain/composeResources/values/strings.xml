@@ -178,6 +178,8 @@
     <string name="label_sidebar_section_tree">Folders</string>
     <string name="label_sidebar_empty_favorites">No favorites yet</string>
     <string name="label_sidebar_empty_recent">No recent folders</string>
+    <string name="label_sidebar_empty_filter">No matching locations</string>
+    <string name="label_sidebar_filter_placeholder">Filter locations</string>
     <string name="label_error_prefix">Error</string>
     <string name="label_operation_copy">Copy</string>
     <string name="label_operation_move">Move</string>
