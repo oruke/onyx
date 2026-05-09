@@ -5,6 +5,7 @@ import com.oruke.onyx.app.component.delegate.SelectionHelper
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
+import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.PaneStatusInfo
@@ -227,7 +228,7 @@ internal fun PaneTabState.withLoadedEntries(
     }
 }
 
-internal fun PaneTabState.withLoadFailure(reason: String?): PaneTabState {
+internal fun PaneTabState.withLoadFailure(reason: I18nMessage?): PaneTabState {
     return withTabState { current ->
         current.copy(entriesState = PaneEntriesState.Failure(PaneEntriesError.loadingFailed(reason)))
     }

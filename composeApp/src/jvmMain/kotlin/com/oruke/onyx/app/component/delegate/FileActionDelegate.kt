@@ -10,6 +10,7 @@ import com.oruke.onyx.app.usecase.TaskProgress
 import com.oruke.onyx.app.usecase.buildTaskDetail
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.TrashService
+import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -112,8 +113,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                        ?: I18nMessage(MessageKey.MSG_DELETE_FAILED),
+                    detail = failure.toI18nMessage(MessageKey.MSG_DELETE_FAILED),
                     progress = null,
                 )
                 onRefreshAllPanes()
@@ -207,8 +207,7 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                        ?: I18nMessage(MessageKey.MSG_CREATE_FOLDER_FAILED),
+                    detail = failure.toI18nMessage(MessageKey.MSG_CREATE_FOLDER_FAILED),
                     progress = null,
                 )
                 onRefreshPane(paneId)
@@ -298,14 +297,12 @@ class FileActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                        ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
+                    detail = e.toI18nMessage(),
                 )
                 (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
                     dialogState.value = ds.copy(
                         executing = false,
-                        errorMessage = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                            ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
+                        errorMessage = e.toI18nMessage(),
                     )
                 }
                 onRefreshAllPanes()

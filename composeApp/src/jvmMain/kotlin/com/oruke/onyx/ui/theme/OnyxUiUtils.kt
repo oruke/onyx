@@ -53,6 +53,13 @@ import onyx.composeapp.generated.resources.msg_moved_items
 import onyx.composeapp.generated.resources.msg_restore_session_failed
 import onyx.composeapp.generated.resources.msg_string_literal
 import onyx.composeapp.generated.resources.msg_unknown_error
+import onyx.composeapp.generated.resources.msg_vfs_already_exists
+import onyx.composeapp.generated.resources.msg_vfs_authentication_rejected
+import onyx.composeapp.generated.resources.msg_vfs_authentication_required
+import onyx.composeapp.generated.resources.msg_vfs_network_failure
+import onyx.composeapp.generated.resources.msg_vfs_not_found
+import onyx.composeapp.generated.resources.msg_vfs_permission_denied
+import onyx.composeapp.generated.resources.msg_vfs_unsupported_operation
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import java.awt.Cursor
@@ -101,6 +108,13 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_MOVE_ITEMS -> Res.string.msg_move_items
         MessageKey.MSG_MOVED_ITEMS -> Res.string.msg_moved_items
         MessageKey.MSG_RESTORE_SESSION_FAILED -> Res.string.msg_restore_session_failed
+        MessageKey.MSG_VFS_AUTHENTICATION_REQUIRED -> Res.string.msg_vfs_authentication_required
+        MessageKey.MSG_VFS_AUTHENTICATION_REJECTED -> Res.string.msg_vfs_authentication_rejected
+        MessageKey.MSG_VFS_PERMISSION_DENIED -> Res.string.msg_vfs_permission_denied
+        MessageKey.MSG_VFS_NOT_FOUND -> Res.string.msg_vfs_not_found
+        MessageKey.MSG_VFS_ALREADY_EXISTS -> Res.string.msg_vfs_already_exists
+        MessageKey.MSG_VFS_NETWORK_FAILURE -> Res.string.msg_vfs_network_failure
+        MessageKey.MSG_VFS_UNSUPPORTED_OPERATION -> Res.string.msg_vfs_unsupported_operation
         MessageKey.MSG_STRING_LITERAL -> Res.string.msg_string_literal
         MessageKey.MSG_UNKNOWN_ERROR -> Res.string.msg_unknown_error
         MessageKey.MSG_ARCHIVE_PASSWORD_INVALID -> Res.string.msg_archive_password_invalid

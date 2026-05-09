@@ -256,6 +256,13 @@
     <string name="msg_unknown_error">Unknown error</string>
     <string name="msg_load_settings_failed">Failed to load settings</string>
     <string name="msg_restore_session_failed">Failed to restore session</string>
+    <string name="msg_vfs_authentication_required">%1$s requires authentication: %2$s</string>
+    <string name="msg_vfs_authentication_rejected">%1$s authentication rejected: %2$s</string>
+    <string name="msg_vfs_permission_denied">%1$s permission denied: %2$s</string>
+    <string name="msg_vfs_not_found">%1$s location not found: %2$s</string>
+    <string name="msg_vfs_already_exists">%1$s target already exists: %2$s</string>
+    <string name="msg_vfs_network_failure">%1$s network failure: %2$s</string>
+    <string name="msg_vfs_unsupported_operation">%1$s capability is not supported: %2$s</string>
     <string name="msg_batch_rename_files">%1$d files</string>
     <string name="msg_batch_rename_starting">Starting…</string>
     <string name="msg_batch_renamed_files">%1$d files renamed</string>

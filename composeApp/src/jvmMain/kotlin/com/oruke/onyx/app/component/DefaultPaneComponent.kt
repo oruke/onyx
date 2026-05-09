@@ -21,6 +21,7 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderError
 import com.oruke.onyx.app.filesystem.VfsProviderException
 import com.oruke.onyx.app.filesystem.VfsProtocol
+import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.I18nMessage
@@ -258,15 +259,14 @@ class DefaultPaneComponent(
                                     updateFailure(
                                         tabId = tab.id,
                                         kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                        detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+                                        detail = failure.toI18nMessage(),
                                     )
                                 }
                         } catch (e: Exception) {
                             updateFailure(
                                 tabId = tab.id,
                                 kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                detail = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                                    ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
+                                detail = e.toI18nMessage(),
                             )
                         }
                     }
@@ -280,7 +280,7 @@ class DefaultPaneComponent(
                                 updateFailure(
                                     tabId = tab.id,
                                     kind = PaneOperationFeedbackKind.OPEN_FAILED,
-                                    detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+                                    detail = failure.toI18nMessage(),
                                 )
                             }
                     }
@@ -358,7 +358,7 @@ class DefaultPaneComponent(
                     updateFailure(
                         tabId = tab.id,
                         kind = PaneOperationFeedbackKind.COPY_PATH_FAILED,
-                        detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+                        detail = failure.toI18nMessage(),
                     )
                 }
         }
@@ -395,7 +395,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.RENAME_FAILED,
-                            detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+                            detail = failure.toI18nMessage(),
                         )
                     }
                 }
@@ -413,7 +413,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.CREATE_FILE_FAILED,
-                            detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+                            detail = failure.toI18nMessage(),
                         )
                     }
                 }
@@ -431,7 +431,7 @@ class DefaultPaneComponent(
                         updateFailure(
                             tabId = tab.id,
                             kind = PaneOperationFeedbackKind.CREATE_DIRECTORY_FAILED,
-                            detail = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+                            detail = failure.toI18nMessage(),
                         )
                     }
                 }
@@ -762,7 +762,7 @@ class DefaultPaneComponent(
                         requestRemoteCredentialsIfSupported(failure)
                         pendingFocusEntryName.remove(tabId)
                         updateTab(tabId) { tab ->
-                            tab.withLoadFailure(failure.message)
+                            tab.withLoadFailure(failure.toI18nMessage())
                         }
                     },
                 )
@@ -774,7 +774,7 @@ class DefaultPaneComponent(
                 requestRemoteCredentialsIfSupported(e)
                 pendingFocusEntryName.remove(tabId)
                 updateTab(tabId) { tab ->
-                    tab.withLoadFailure(e.message)
+                    tab.withLoadFailure(e.toI18nMessage())
                 }
             } finally {
                 tabLoadJobs.remove(tabId)
@@ -838,9 +838,7 @@ class DefaultPaneComponent(
                     updateFailure(
                         tabId = tab.id,
                         kind = PaneOperationFeedbackKind.WATCH_DEGRADED,
-                        detail = failure.message?.let { message ->
-                            I18nMessage(MessageKey.MSG_STRING_LITERAL, message)
-                        },
+                        detail = failure.toI18nMessage(),
                     )
                 }
             }

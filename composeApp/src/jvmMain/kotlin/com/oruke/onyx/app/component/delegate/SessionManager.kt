@@ -3,6 +3,7 @@ package com.oruke.onyx.app.component.delegate
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
@@ -46,8 +47,7 @@ class SessionManager(
                 settings = loadedSettings
             },
             onFailure = { failure ->
-                error = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                    ?: I18nMessage(MessageKey.MSG_LOAD_SETTINGS_FAILED)
+                error = failure.toI18nMessage(MessageKey.MSG_LOAD_SETTINGS_FAILED)
                 OnyxLogger.warn("SessionManager", "设置加载失败", failure)
             },
         )
@@ -57,8 +57,7 @@ class SessionManager(
                 session = loadedSession
             },
             onFailure = { failure ->
-                error = error ?: failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                    ?: I18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
+                error = error ?: failure.toI18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
                 OnyxLogger.warn("SessionManager", "会话恢复失败", failure)
             },
         )

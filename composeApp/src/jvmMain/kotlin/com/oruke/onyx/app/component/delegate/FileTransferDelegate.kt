@@ -10,6 +10,7 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderError
 import com.oruke.onyx.app.filesystem.VfsProviderException
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
+import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.app.usecase.FileTransferUseCase
 import com.oruke.onyx.app.usecase.TaskProgress
 import com.oruke.onyx.app.usecase.buildTransferTaskDetail
@@ -388,11 +389,10 @@ class FileTransferDelegate(
     private fun Throwable.toTransferFailureMessage(operation: FileTransferOperation): I18nMessage {
         val providerError = (this as? VfsProviderException)?.error
         if (providerError is VfsProviderError.CrossProviderTransferUnsupported) {
-            return I18nMessage(
-                MessageKey.MSG_CROSS_PROVIDER_TRANSFER_UNSUPPORTED,
-                providerError.sourceProtocol.name,
-                providerError.protocol.name,
-            )
+            return providerError.toI18nMessage()
+        }
+        if (providerError != null) {
+            return providerError.toI18nMessage()
         }
         return message?.takeIf { it.isNotBlank() }?.let { detail ->
             I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)

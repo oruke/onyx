@@ -34,6 +34,7 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderError
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.app.filesystem.VfsProtocol
+import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.app.usecase.FileSearchEvent
 import com.oruke.onyx.app.usecase.FileSearchRequest
 import com.oruke.onyx.app.usecase.FileSearchUseCase
@@ -530,7 +531,7 @@ class DefaultRootComponent(
                 )
 
                 is VfsConnectionTestResult.Failed -> RemoteConnectionTestState.Failed(
-                    reason = I18nMessage(MessageKey.MSG_STRING_LITERAL, result.error.toConnectionMessage()),
+                    reason = result.error.toI18nMessage(),
                 )
             }
             val latestDialog = dialogState.value as? RootDialogState.Settings ?: return@launch
@@ -1125,8 +1126,7 @@ class DefaultRootComponent(
                 }
             },
             onFailure = { failure ->
-                restoreError = failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                    ?: I18nMessage(MessageKey.MSG_LOAD_SETTINGS_FAILED)
+                restoreError = failure.toI18nMessage(MessageKey.MSG_LOAD_SETTINGS_FAILED)
             },
         )
 
@@ -1140,8 +1140,7 @@ class DefaultRootComponent(
                 }
             },
             onFailure = { failure ->
-                restoreError = restoreError ?: failure.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                    ?: I18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
+                restoreError = restoreError ?: failure.toI18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
                 layoutMode.value = settings.value.defaultLayoutMode
                 applyDefaultViewMode()
             },
@@ -1401,26 +1400,8 @@ private fun RemoteConnectionSavePolicy.toRemoteCredentialSavePolicy(): RemoteCre
     }
 }
 
-private fun VfsProviderError.toConnectionMessage(): String {
-    return when (this) {
-        is VfsProviderError.AuthenticationRequired -> "Authentication required"
-        is VfsProviderError.AuthenticationRejected -> reason ?: "Authentication rejected"
-        is VfsProviderError.PermissionDenied -> reason ?: "Permission denied"
-        is VfsProviderError.NotFound -> "Location not found"
-        is VfsProviderError.AlreadyExists -> "Location already exists"
-        is VfsProviderError.NetworkFailure -> reason ?: "Network failure"
-        is VfsProviderError.UnsupportedOperation -> "Protocol or capability is not supported"
-        is VfsProviderError.CrossProviderTransferUnsupported -> "Cross-provider transfer is not supported"
-    }
-}
-
 private fun Throwable.toSearchErrorMessage(): I18nMessage {
-    val detail = message?.takeIf { it.isNotBlank() }
-    return if (detail != null) {
-        I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)
-    } else {
-        I18nMessage(MessageKey.MSG_UNKNOWN_ERROR)
-    }
+    return toI18nMessage()
 }
 
 private fun PaneComponent.toPaneSessionSnapshot(): PaneSessionSnapshot {

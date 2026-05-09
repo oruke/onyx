@@ -129,10 +129,10 @@ data class PaneEntriesError(
     val detail: I18nMessage? = null,
 ) {
     companion object {
-        fun loadingFailed(detail: String?): PaneEntriesError {
+        fun loadingFailed(detail: I18nMessage?): PaneEntriesError {
             return PaneEntriesError(
                 kind = PaneEntriesErrorKind.LOAD_FAILED,
-                detail = detail?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) },
+                detail = detail,
             )
         }
 

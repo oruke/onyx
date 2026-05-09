@@ -6,6 +6,7 @@ import com.oruke.onyx.app.usecase.ArchiveExtractionUseCase
 import com.oruke.onyx.app.usecase.TaskProgress
 import com.oruke.onyx.app.usecase.buildTaskDetail
 import com.oruke.onyx.app.filesystem.ArchiveService
+import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -111,11 +112,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = if (e.message != null) {
-                        I18nMessage(MessageKey.MSG_STRING_LITERAL, e.message!!)
-                    } else {
-                        I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
-                    },
+                    detail = e.toI18nMessage(MessageKey.MSG_EXTRACT_FAILED),
                     progress = 0f,
                 )
             }
@@ -205,8 +202,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
-                    detail = e.message?.let { I18nMessage(MessageKey.MSG_STRING_LITERAL, it) }
-                        ?: I18nMessage(MessageKey.MSG_UNKNOWN_ERROR),
+                    detail = e.toI18nMessage(MessageKey.MSG_EXTRACT_FAILED),
                 )
             }
         }
