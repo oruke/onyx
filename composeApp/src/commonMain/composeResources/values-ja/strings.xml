@@ -53,6 +53,14 @@
     <string name="action_extract_smart">スマート解凍</string>
     <string name="label_archive_password">アーカイブパスワード</string>
     <string name="label_archive_password_hint">暗号化アーカイブのパスワードを入力</string>
+    <string name="label_remote_credentials_title">リモート認証情報</string>
+    <string name="label_remote_credentials_hint">%1$s の認証情報を入力してください。</string>
+    <string name="label_remote_credentials_username">ユーザー名</string>
+    <string name="label_remote_credentials_password">パスワード</string>
+    <string name="label_remote_credentials_domain">ドメイン</string>
+    <string name="label_remote_credentials_session_only">認証情報はこのセッションのメモリにのみ保持されます。</string>
+    <string name="label_remote_credentials_rejected">認証に失敗しました。ユーザー名、パスワード、ドメインを確認してください。</string>
+    <string name="label_remote_credentials_error_username_required">ユーザー名を入力してください。</string>
 
     <string name="action_layout_single">単一</string>
     <string name="action_layout_dual_vertical">左右分割</string>

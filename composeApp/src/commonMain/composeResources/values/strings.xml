@@ -53,6 +53,14 @@
     <string name="action_extract_smart">Smart Extract</string>
     <string name="label_archive_password">Archive Password</string>
     <string name="label_archive_password_hint">Enter password for encrypted archive</string>
+    <string name="label_remote_credentials_title">Remote Credentials</string>
+    <string name="label_remote_credentials_hint">Enter credentials for %1$s.</string>
+    <string name="label_remote_credentials_username">Username</string>
+    <string name="label_remote_credentials_password">Password</string>
+    <string name="label_remote_credentials_domain">Domain</string>
+    <string name="label_remote_credentials_session_only">Credentials are kept in memory for this session only.</string>
+    <string name="label_remote_credentials_rejected">Authentication failed. Check the username, password, or domain.</string>
+    <string name="label_remote_credentials_error_username_required">Username is required.</string>
 
     <string name="action_layout_single">Single</string>
     <string name="action_layout_dual_vertical">Dual Vertical</string>

@@ -2,7 +2,7 @@ package com.oruke.onyx.app.filesystem
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
-import com.oruke.onyx.app.component.FileTransferOperation
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.VFile
 
 data class VfsBreadcrumb(

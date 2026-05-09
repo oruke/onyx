@@ -6,12 +6,20 @@ Onyx 的长期目标是桌面端专业文件管理器，不是示例应用。后
 
 本清单按优先级推进，要求每一阶段都能编译、能回退、能通过基础测试。
 
+## 当前状态
+
+P0-P3 已完成，P4 已完成首轮 Gradle 模块拆分与边界测试。P5 已补入 SMB、WebDAV、S3 的基础 provider 模块，`smb://`、`webdav://` / `webdavs://`、`s3://` 已进入统一 `VfsProviderRegistry`。`smb://host` 地址规范化、远程路径面包屑/父子关系判断、SMB/WebDAV 认证失败后的会话级凭据弹窗、远程连接测试服务已经接入。UI 直接文件系统依赖、Tab 状态模型、任务 UseCase、业务层资源依赖等首轮问题已经收敛。当前主要风险不再是单点边界泄漏，而是连接管理、完整凭据保存策略、跨 provider 命令、任务持久化和运行时验证矩阵。
+
 ## 当前主要风险
 
-- UI 层仍有直接 `java.io` / `java.nio` / `ProcessBuilder` 调用，导致文件系统细节泄漏到 Composable。
-- `RootComponent` 和 `PaneComponent` 接口过宽，新增功能容易继续堆方法。
-- VFS API 只覆盖 `list` 和基础命令，预览、缩略图、路径运算、同卷判断、监听等能力散落在 UI 和组件实现中。
-- core/app 层存在 Compose Resources 依赖，业务消息和 UI 资源尚未完全解耦。
+- 项目已拆出 `:core`、`:vfs-api`、`:vfs-local`、`:vfs-archive`、`:vfs-smb`、`:vfs-webdav`、`:vfs-s3`、`:app`、`:composeApp`，但组件接口和部分平台服务仍留在 `composeApp`，后续还需要继续缩窄 UI 模块职责。
+- `RootComponent` 和 `PaneComponent` 已有 `dispatch` 入口，常规命令已迁移为 intent 扩展函数；后续功能如果继续直接挂接口，会再次膨胀。
+- `VfsProviderRegistry` 已能路由本地、压缩包、SMB、WebDAV、S3 provider；远程 provider 目前有会话级临时凭据恢复入口，但仍缺连接配置 UI、系统钥匙串/密钥环持久化策略和真实服务运行时验证。
+- `FileCommandService` 已增加按 location 路由的 `ProviderBackedFileCommandService`，本地与 SMB 基础命令可分发；跨 provider 复制/移动、WebDAV/S3 写入命令、远程到本地导出语义仍不完整。
+- 错误模型仍偏粗：`OnyxError` 只有少量类型，业务进度和异常详情仍大量使用 `MessageKey.MSG_STRING_LITERAL` 承载原始字符串。
+- 后台任务仍是内存态队列，暂停、恢复、取消已具备基础能力，但没有任务持久化、失败重试、跨启动恢复和可审计错误列表。
+- 桌面窗口、拖拽、外部打开、回收站、终端等平台行为需要实际运行时验证；编译和单元测试不能证明窗口装饰、尺寸记忆、拖拽命中区域可用。
+- 大文件仍集中在 UI 和组件入口，例如 `DetailsView`、`DefaultPaneComponent`、`DefaultRootComponent`、`Dialogs`，后续维护成本会继续上升。
 
 ## 目标分层
 
@@ -24,8 +32,8 @@ vfs-api
   FileRepository、FileCommandService、FileContentService、VfsPathService
   PreviewService、ThumbnailService、FileTypeService
 
-vfs-local / vfs-archive
-  本地文件和压缩包协议实现
+vfs-local / vfs-archive / vfs-smb / vfs-webdav / vfs-s3
+  本地文件、压缩包和远程协议实现
 
 app/component
   RootComponent、PaneComponent、UseCase、TaskOrchestrator、Reducer
@@ -95,8 +103,90 @@ ui
 - [x] `PaneEntriesState.Failure(reason: String?)` 改为结构化错误。
 - [x] 清理业务层裸字符串错误。
 
+## 当前结构扫描（2026-05-09）
+
+- Gradle 结构：`settings.gradle.kts` 已包含 `:core`、`:vfs-api`、`:vfs-local`、`:vfs-archive`、`:vfs-smb`、`:vfs-webdav`、`:vfs-s3`、`:app`、`:composeApp`，核心模型、VFS API、本地 provider、压缩包 provider、远程 provider、任务 UseCase 已具备构建级边界。
+- Source set 结构：`composeApp` 仍承载 UI、DI、组件接口、组件默认实现和部分平台服务；`RootComponent` 仍暴露 `ImageBitmap` / `IntSize`，因此组件接口暂未整体迁入 `:app`。
+- 包密度：`jvmMain/ui` 文件数量最多，`jvmMain/app/component` 和 `jvmMain/app/filesystem` 次之；核心模型数量较少，说明业务规则仍有不少留在 JVM app/UI 层。
+- 大文件热点：`DetailsView`、`DefaultPaneComponent`、`DefaultRootComponent`、`Dialogs`、`PaneSurface`、`BatchRenameDialog`、`ArchiveService`、`TaskCenter` 都超过 500 行，适合后续按子组件、控制器或状态 reducer 拆分。
+- 测试覆盖：已有 UI、core、app、vfs-api、vfs-local、vfs-archive 边界测试，以及 `VfsProviderRegistryTest`、`JvmLocalFileProviderTest`、任务详情 helper 测试、`TaskOrchestratorTest`、`ClipboardManagerTest`、`ImageViewerControllerTest`；还缺少完整文件任务 UseCase 流程测试、跨 provider 假实现测试和 UI 状态 reducer 测试。
+- 代码债信号：未发现 TODO/FIXME，但存在局部静默 `catch`，例如文件监听异常被忽略；这类问题应该进入错误模型或日志策略。
+
+## 应用可用度扫描
+
+### P1：影响专业文件管理器可用性的缺口
+
+- [ ] SMB、WebDAV、S3 仍未达到完整可用：基础 provider 已接入 registry，SMB 支持同认证上下文内基础命令，WebDAV/S3 支持只读列表；SMB/WebDAV 已有认证失败凭据弹窗和会话内凭据存储，SMB/WebDAV/S3 已有统一连接测试服务，但仍缺连接配置 UI、完整凭据存储策略和真实服务验收。
+- [ ] 搜索能力缺失：当前有面板过滤和批量重命名查找替换，但没有递归搜索、内容搜索、搜索结果面板、取消和进度。
+- [ ] 命令体系不完整：快捷键散落在 UI 事件处理里，缺少统一 Command Registry、快捷键配置、命令面板和菜单状态同步。
+- [ ] 跨 provider 文件命令不足：本地与 SMB 已能通过 `ProviderBackedFileCommandService` 分发同 provider 命令，但远程协议之间、压缩包内部写入、远程到本地、本地到远程等场景仍无法统一表达。
+- [ ] 任务系统缺少持久化队列：任务中心可显示、暂停、取消和自动清理，但没有重试、恢复、历史记录、失败明细聚合和跨启动恢复。
+- [ ] 错误可见性仍需加强：部分异常仍转成原始字符串或静默忽略，用户难以区分权限、认证、网络、文件冲突、路径非法和协议不支持。
+- [ ] 平台能力不均衡：`OpenWithService` 当前是 Linux `.desktop` 实现，回收站依赖 Desktop API，终端打开也需要按 Windows、macOS、Linux 分别验证。
+- [ ] 运行时窗口行为需要验证矩阵：设置窗口、图片查看器窗口、批量重命名窗口已经有尺寸字段，但窗口可调整、最大化、尺寸缓存和窗口管理器装饰必须实际运行验证。
+
+### P2：影响可维护性和扩展性的缺口
+
+- [x] Gradle 模块化：拆出 `:core`、`:vfs-api`、`:vfs-local`、`:vfs-archive`、`:app`、`:composeApp`，用模块依赖强制边界。
+- [x] 接口瘦身：`RootComponent`、`PaneComponent` 保留 `state`、`dispatch`、子组件入口，把常规命令迁移到 intent 扩展函数。
+- [ ] VFS 命令 provider 化：`copy`、`move`、`delete`、`rename`、`create` 已开始通过可路由命令服务收敛，本地与 SMB 已接入；`watch`、`openExternal`、`preview`、`thumbnail` 以及 WebDAV/S3 写入命令仍需继续 provider 化。
+- [ ] 文件类型能力下沉：图片、压缩包、可预览文本等识别仍部分在 UI helper 中，后续应由 `FileTypeService` 或 VFS metadata 提供。
+- [ ] 大目录性能：当前目录列表会一次性读取并排序，超大目录需要分页、增量加载或后台索引策略。
+- [ ] 预览能力扩展：当前偏文本、图片、缩略图，缺少 PDF、音视频元数据、二进制摘要、编码选择和大文件取消策略。
+- [ ] 压缩包能力扩展：当前重点是浏览和解压，缺少压缩包内写入、删除、重命名、追加、加密格式能力差异提示。
+- [ ] 外部拖拽抽象：当前已有 `ExternalDragHelper` 平台化，但压缩包条目导出、本地临时文件生命周期、远程文件导出都应沉淀为 provider export API。
+
+### P3：体验和质量补强
+
+- [ ] 快捷键提示国际化：菜单里的 `Enter`、`Ctrl+C`、`F5` 等提示目前是硬编码展示文本，应统一由命令体系生成。
+- [ ] 文件监听错误处理：`FileWatcher` 已接入自动刷新，但监听异常不应静默，应至少记录日志并在需要时提示刷新已降级。
+- [ ] Undo/Redo：删除、移动、重命名、批量重命名等破坏性操作缺少撤销模型。
+- [ ] 收藏与历史增强：已有收藏和最近位置字段，但还缺少书签管理、固定位置、历史搜索、无效路径清理。
+- [ ] 可访问性和键盘流：已有基础快捷键，但焦点顺序、屏幕阅读标签、无鼠标完整操作还未系统验证。
+
+## 后续阶段建议
+
+以下阶段作为 P0-P3 完成后的新增改进队列，优先级从边界硬化到运行时验收逐步推进。
+
+## P4：模块化与边界硬化
+
+- [x] 拆分 Gradle 模块，先迁出 `core` 与 `vfs-api`，再迁出 `vfs-local`、`vfs-archive` 和 `app`。
+- [x] 新增架构测试，禁止 `core` 依赖 Compose/Jewel/Decompose，禁止 `vfs-api` 依赖 JVM 平台 API，禁止 UI 依赖 provider 具体实现。
+- [x] 将 `app/component/usecase` 移到更明确的 `app/usecase` 或独立模块，组件只负责状态协调和 intent 派发。
+- [x] 将 Root 设置归一化与最近位置更新拆成 `RootSettingsReducer`，并补 reducer 测试。
+- [x] 将 `RootComponent` / `PaneComponent` 常规命令从接口契约中移除，改为 `RootIntent` / `PaneIntent` 扩展函数转发，并补架构测试。
+- [ ] 将 `DefaultRootComponent`、`DefaultPaneComponent` 继续拆成 controller、delegate、reducer，并以测试覆盖更多关键 reducer。
+
+## P5：远程协议与认证
+
+- [x] 实现 SMB provider：`smb://` 已接入 registry，覆盖 list、同认证上下文内基础命令、认证失败、权限失败、网络失败映射和基础单元测试。
+- [x] 实现 WebDAV provider：`webdav://` / `webdavs://` 已接入 registry，复用 Ktor Client，支持 Basic/Bearer 认证、TLS/网络错误映射、路径编码和 PROPFIND XML 解析测试。
+- [x] 实现 S3 provider：`s3://bucket/prefix` 已接入 registry，支持 region、访问密钥、session token、ListObjectsV2 分页、bucket/prefix 解析、对象列表解析和基础错误映射。
+- [x] 修复远程 URI 地址栏导航：`smb://host` 自动规范化为 `smb://host/`，远程路径父级、标题、面包屑、同级判断不再误走本地 `Path`。
+- [x] 补 SMB/WebDAV 认证失败恢复入口：provider 返回 `AuthenticationRequired` / `AuthenticationRejected` 后，Pane 上报 Root，Root 弹出凭据输入框并写入会话级 `RemoteAuthStore` 后刷新当前面板。
+- [x] 补远程协议连接测试入口：新增 `VfsConnectionTestService`、`VfsConnectionTestRequest`、`VfsConnectionTestResult` 和 provider 级 `VfsConnectionTester`，SMB/WebDAV/S3 不再只能用 `list` 失败表示连接测试结果。
+- [ ] 补远程协议凭据保存策略：当前只有会话内内存保存；后续至少区分不保存、会话内保存、系统钥匙串/密钥环保存，禁止默认明文持久化密码和密钥。
+- [ ] 补 WebDAV/S3 写入命令或明确能力差异提示。
+- [ ] 新增连接管理 UI：新建连接、编辑连接、测试连接、删除连接、凭据保存策略。
+
+## P6：专业文件管理可用性
+
+- [ ] 建立统一命令系统和快捷键配置，并接入菜单、上下文菜单、标题栏按钮和快捷键提示。
+- [ ] 实现递归搜索和搜索结果面板，支持按名称、扩展名、大小、修改时间、内容和协议能力过滤。
+- [ ] 完善任务队列：持久化、重试、失败明细、速度估算、剩余时间、限速、并发限制。
+- [ ] 增加 Undo/Redo 操作日志，至少覆盖移动、重命名、批量重命名和删除到回收站。
+- [ ] 增强预览和检查器：PDF、音视频、二进制摘要、编码选择、权限、哈希、EXIF。
+
+## P7：运行时 UX 验证矩阵
+
+- [ ] 在 Linux/KDE、Linux/GNOME、Windows、macOS 上验证窗口尺寸记忆、可调整边框、最大化、设置窗口和图片查看器窗口行为。
+- [ ] 验证面板分割器拖拽、跨面板标签拖拽、外部文件拖出、文件拖入和压缩包条目拖出。
+- [ ] 验证高 DPI、不同 `uiScale`、中英日三语言、长路径、长文件名、大目录下的布局稳定性。
+- [ ] 将关键运行时验证沉淀为脚本化检查或手工验收清单，避免只用编译通过判断桌面行为。
+
 ## 验证要求
 
 - 每个阶段至少运行 `./gradlew :composeApp:jvmTest`。
 - P0 后新增边界测试应能防止 UI 重新引入直接 I/O。
 - 涉及 VFS 或任务行为的改动必须补单元测试。
+- 涉及窗口、拖拽、外部打开、系统回收站、终端启动等桌面集成行为时，必须补运行时验证记录。

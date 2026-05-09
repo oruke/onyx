@@ -413,8 +413,9 @@ private fun TaskDetailRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // 当前文件名或详情
+            val currentFileName = task.currentFileName
             val detailText = when {
-                task.currentFileName != null && isActive -> task.currentFileName
+                currentFileName != null && isActive -> currentFileName
                 else -> task.detail.resolve()
             }
             Text(

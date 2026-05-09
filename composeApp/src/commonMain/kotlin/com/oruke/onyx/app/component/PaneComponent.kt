@@ -281,86 +281,6 @@ interface PaneComponent {
 
     fun dispatch(intent: PaneIntent)
 
-    fun refresh()
-
-    fun goBack()
-
-    fun goForward()
-
-    fun goUp()
-
-    fun openDirectory(location: String)
-
-    fun openEntry(entry: VFile)
-
-    fun setViewMode(mode: ViewMode)
-
-    fun setFilterQuery(query: String)
-
-    fun toggleSort(column: DetailsColumn)
-
-    fun toggleHiddenItems()
-
-    fun toggleColumnVisibility(column: DetailsColumn)
-
-    fun setGalleryItemSize(sizeDp: Int)
-
-    fun resizeDetailsColumn(
-        column: DetailsColumn,
-        nextColumn: DetailsColumn,
-        deltaWeight: Float,
-    )
-
-    fun selectEntry(
-        entryId: String,
-        additive: Boolean = false,
-        range: Boolean = false,
-    )
-
-    /** 批量设置选中项（用于框选等场景） */
-    fun selectEntries(entryIds: Set<String>)
-
-    fun moveSelection(
-        offset: Int,
-        extendSelection: Boolean = false,
-    )
-
-    fun openSelectedEntry()
-
-    fun beginRename()
-
-    fun beginCreateFile()
-
-    fun beginCreateDirectory()
-
-    fun openSelectedInNewTab()
-
-    fun copySelectedPaths()
-
-    fun updateInlineEditDraft(draft: String)
-
-    fun confirmInlineEdit()
-
-    fun cancelInlineEdit()
-
-    fun dismissOperationFeedback()
-
-
-    fun selectAll()
-
-    fun clearSelection()
-
-    fun createTab(location: String = state.value.location)
-
-    fun selectTab(tabId: String)
-
-    fun closeTab(tabId: String)
-
-    fun moveTab(
-        tabId: String,
-        targetIndex: Int,
-    )
-
     fun detachTab(tabId: String): TabSnapshot?
 
     fun attachTab(
@@ -369,14 +289,90 @@ interface PaneComponent {
     )
 
     fun restoreSession(snapshot: PaneSessionSnapshot)
-
-    // ── 内联展开 ────────────────────────────────────────────────────────
-
-    fun toggleInlineExpand(directoryLocation: String)
-
-    /** UI 滚动到 pendingScrollToEntryId 后调用，清除待滚动标记 */
-    fun consumePendingScroll()
 }
+
+fun PaneComponent.refresh() = dispatch(PaneIntent.Refresh)
+
+fun PaneComponent.goBack() = dispatch(PaneIntent.GoBack)
+
+fun PaneComponent.goForward() = dispatch(PaneIntent.GoForward)
+
+fun PaneComponent.goUp() = dispatch(PaneIntent.GoUp)
+
+fun PaneComponent.openDirectory(location: String) = dispatch(PaneIntent.OpenDirectory(location))
+
+fun PaneComponent.openEntry(entry: VFile) = dispatch(PaneIntent.OpenEntry(entry))
+
+fun PaneComponent.setViewMode(mode: ViewMode) = dispatch(PaneIntent.SetViewMode(mode))
+
+fun PaneComponent.setFilterQuery(query: String) = dispatch(PaneIntent.SetFilterQuery(query))
+
+fun PaneComponent.toggleSort(column: DetailsColumn) = dispatch(PaneIntent.ToggleSort(column))
+
+fun PaneComponent.toggleHiddenItems() = dispatch(PaneIntent.ToggleHiddenItems)
+
+fun PaneComponent.toggleColumnVisibility(column: DetailsColumn) = dispatch(PaneIntent.ToggleColumnVisibility(column))
+
+fun PaneComponent.setGalleryItemSize(sizeDp: Int) = dispatch(PaneIntent.SetGalleryItemSize(sizeDp))
+
+fun PaneComponent.resizeDetailsColumn(
+    column: DetailsColumn,
+    nextColumn: DetailsColumn,
+    deltaWeight: Float,
+) = dispatch(PaneIntent.ResizeDetailsColumn(column, nextColumn, deltaWeight))
+
+fun PaneComponent.selectEntry(
+    entryId: String,
+    additive: Boolean = false,
+    range: Boolean = false,
+) = dispatch(PaneIntent.SelectEntry(entryId, additive, range))
+
+fun PaneComponent.selectEntries(entryIds: Set<String>) = dispatch(PaneIntent.SelectEntries(entryIds))
+
+fun PaneComponent.moveSelection(
+    offset: Int,
+    extendSelection: Boolean = false,
+) = dispatch(PaneIntent.MoveSelection(offset, extendSelection))
+
+fun PaneComponent.openSelectedEntry() = dispatch(PaneIntent.OpenSelectedEntry)
+
+fun PaneComponent.beginRename() = dispatch(PaneIntent.BeginRename)
+
+fun PaneComponent.beginCreateFile() = dispatch(PaneIntent.BeginCreateFile)
+
+fun PaneComponent.beginCreateDirectory() = dispatch(PaneIntent.BeginCreateDirectory)
+
+fun PaneComponent.openSelectedInNewTab() = dispatch(PaneIntent.OpenSelectedInNewTab)
+
+fun PaneComponent.copySelectedPaths() = dispatch(PaneIntent.CopySelectedPaths)
+
+fun PaneComponent.updateInlineEditDraft(draft: String) = dispatch(PaneIntent.UpdateInlineEditDraft(draft))
+
+fun PaneComponent.confirmInlineEdit() = dispatch(PaneIntent.ConfirmInlineEdit)
+
+fun PaneComponent.cancelInlineEdit() = dispatch(PaneIntent.CancelInlineEdit)
+
+fun PaneComponent.dismissOperationFeedback() = dispatch(PaneIntent.DismissOperationFeedback)
+
+fun PaneComponent.selectAll() = dispatch(PaneIntent.SelectAll)
+
+fun PaneComponent.clearSelection() = dispatch(PaneIntent.ClearSelection)
+
+fun PaneComponent.createTab(location: String = state.value.location) = dispatch(PaneIntent.CreateTab(location))
+
+fun PaneComponent.selectTab(tabId: String) = dispatch(PaneIntent.SelectTab(tabId))
+
+fun PaneComponent.closeTab(tabId: String) = dispatch(PaneIntent.CloseTab(tabId))
+
+fun PaneComponent.moveTab(
+    tabId: String,
+    targetIndex: Int,
+) = dispatch(PaneIntent.MoveTab(tabId, targetIndex))
+
+fun PaneComponent.toggleInlineExpand(directoryLocation: String) =
+    dispatch(PaneIntent.ToggleInlineExpand(directoryLocation))
+
+fun PaneComponent.consumePendingScroll() = dispatch(PaneIntent.ConsumePendingScroll)
 
 interface EntryNameSuggestionService {
     suspend fun newFileName(): String

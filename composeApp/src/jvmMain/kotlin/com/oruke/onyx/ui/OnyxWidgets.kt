@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oruke.onyx.app.component.FileTransferOperation
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.LocalTooltipController
 import com.oruke.onyx.ui.theme.PaneDividerHitSlop

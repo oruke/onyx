@@ -1,12 +1,13 @@
 package com.oruke.onyx.app.filesystem
 
 import androidx.compose.ui.unit.IntSize
-import com.oruke.onyx.app.component.FileTransferOperation
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.io.File
+import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
@@ -14,13 +15,20 @@ import kotlin.io.path.pathString
 
 class JvmVfsPathService : VfsPathService {
     override fun normalizeLocation(location: String): String {
-        if (ArchiveService.isArchiveLocation(location)) return location
-        return Path.of(location).normalize().toAbsolutePath().pathString
+        val trimmedLocation = location.trim()
+        if (ArchiveService.isArchiveLocation(trimmedLocation)) return trimmedLocation
+        remoteUri(trimmedLocation)?.let { uri ->
+            return uri.toRemoteLocation(directory = true)
+        }
+        return Path.of(trimmedLocation).normalize().toAbsolutePath().pathString
     }
 
     override fun parentLocation(location: String): String? {
         if (ArchiveService.isArchiveLocation(location)) {
             return ArchiveService.archiveParentLocation(location)
+        }
+        remoteUri(location)?.let { uri ->
+            return uri.remoteParentLocation()
         }
         return runCatching { Path.of(location).parent?.pathString }.getOrNull()
     }
@@ -28,6 +36,9 @@ class JvmVfsPathService : VfsPathService {
     override fun title(location: String): String {
         if (ArchiveService.isArchiveLocation(location)) {
             return ArchiveService.archiveLocationTitle(location)
+        }
+        remoteUri(location)?.let { uri ->
+            return uri.remoteBaseName() ?: uri.host.orEmpty()
         }
         return runCatching {
             val path = Path.of(location)
@@ -38,6 +49,9 @@ class JvmVfsPathService : VfsPathService {
     override fun baseName(location: String): String? {
         if (ArchiveService.isArchiveLocation(location)) {
             return ArchiveService.archiveLocationTitle(location).takeIf { it.isNotBlank() }
+        }
+        remoteUri(location)?.let { uri ->
+            return uri.remoteBaseName() ?: uri.host
         }
         return runCatching {
             Path.of(location).fileName?.pathString?.takeIf { it.isNotBlank() }
@@ -50,6 +64,15 @@ class JvmVfsPathService : VfsPathService {
     }
 
     override fun directChildName(ancestor: String, descendant: String): String? {
+        val ancestorRemote = remoteUri(ancestor)
+        val descendantRemote = remoteUri(descendant)
+        if (ancestorRemote != null || descendantRemote != null) {
+            return if (ancestorRemote != null && descendantRemote != null) {
+                ancestorRemote.remoteDirectChildName(descendantRemote)
+            } else {
+                null
+            }
+        }
         return runCatching {
             val ancestorPath = Path.of(ancestor).toAbsolutePath().normalize()
             val descendantPath = Path.of(descendant).toAbsolutePath().normalize()
@@ -61,6 +84,12 @@ class JvmVfsPathService : VfsPathService {
     }
 
     override fun isDirectParent(parent: String, child: String): Boolean {
+        val parentRemote = remoteUri(parent)
+        val childRemote = remoteUri(child)
+        if (parentRemote != null || childRemote != null) {
+            return parentRemote?.remoteDirectChildName(childRemote ?: return false) != null &&
+                childRemote.remoteParentLocation() == parentRemote.toRemoteLocation(directory = true)
+        }
         return runCatching {
             val parentPath = Path.of(parent).toAbsolutePath().normalize()
             val childPath = Path.of(child).toAbsolutePath().normalize()
@@ -69,6 +98,15 @@ class JvmVfsPathService : VfsPathService {
     }
 
     override fun isSameOrChildOf(location: String, parentLocation: String): Boolean {
+        val locationRemote = remoteUri(location)
+        val parentRemote = remoteUri(parentLocation)
+        if (locationRemote != null || parentRemote != null) {
+            return if (locationRemote != null && parentRemote != null) {
+                locationRemote.isSameOrChildOfRemote(parentRemote)
+            } else {
+                false
+            }
+        }
         return runCatching {
             val target = Path.of(location).normalize().toAbsolutePath()
             val parent = Path.of(parentLocation).normalize().toAbsolutePath()
@@ -77,6 +115,15 @@ class JvmVfsPathService : VfsPathService {
     }
 
     override fun resolveTransferOperation(sourceLocation: String, targetLocation: String): FileTransferOperation {
+        val sourceRemote = remoteUri(sourceLocation)
+        val targetRemote = remoteUri(targetLocation)
+        if (sourceRemote != null || targetRemote != null) {
+            return if (sourceRemote != null && targetRemote != null && sourceRemote.hasSameRemoteRoot(targetRemote)) {
+                FileTransferOperation.MOVE
+            } else {
+                FileTransferOperation.COPY
+            }
+        }
         return runCatching {
             val sourceStore = Files.getFileStore(Path.of(sourceLocation))
             val targetStore = Files.getFileStore(Path.of(targetLocation))
@@ -121,6 +168,10 @@ class JvmVfsPathService : VfsPathService {
             return breadcrumbs.distinctBy { it.location }
         }
 
+        remoteUri(location)?.let { uri ->
+            return uri.remoteBreadcrumbs()
+        }
+
         val path = Path.of(location).normalize().toAbsolutePath()
         val breadcrumbs = mutableListOf<VfsBreadcrumb>()
         var current = path.root ?: path
@@ -136,6 +187,117 @@ class JvmVfsPathService : VfsPathService {
             )
         }
         return breadcrumbs.distinctBy { it.location }
+    }
+
+    private fun remoteUri(location: String): URI? {
+        if (!location.contains("://")) return null
+        return runCatching {
+            val uri = URI(location.encodeSpaces())
+            val scheme = uri.scheme?.lowercase()
+            if (scheme in REMOTE_SCHEMES && !uri.host.isNullOrBlank()) uri else null
+        }.getOrNull()
+    }
+
+    private fun URI.toRemoteLocation(directory: Boolean): String {
+        val normalizedPath = remotePathSegments()
+            .joinToString(separator = "/", prefix = "/")
+            .let { path ->
+                when {
+                    path == "/" -> path
+                    directory -> path.withTrailingSlash()
+                    else -> path
+                }
+            }
+        return URI(scheme.lowercase(), null, host, port, normalizedPath, null, null).toASCIIString()
+    }
+
+    private fun URI.remoteParentLocation(): String? {
+        val segments = remotePathSegments()
+        if (segments.isEmpty()) return null
+        val parentPath = segments.dropLast(1)
+            .joinToString(separator = "/", prefix = "/")
+            .let { path -> if (path == "/") path else path.withTrailingSlash() }
+        return URI(scheme.lowercase(), null, host, port, parentPath, null, null).toASCIIString()
+    }
+
+    private fun URI.remoteBaseName(): String? {
+        return remotePathSegments()
+            .lastOrNull()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun URI.remoteBreadcrumbs(): List<VfsBreadcrumb> {
+        val breadcrumbs = mutableListOf(
+            VfsBreadcrumb(
+                label = host,
+                location = URI(scheme.lowercase(), null, host, port, "/", null, null).toASCIIString(),
+            )
+        )
+        val segments = remotePathSegments()
+        var currentPath = ""
+        segments.forEach { segment ->
+            currentPath = "$currentPath/$segment"
+            val location = URI(
+                scheme.lowercase(),
+                null,
+                host,
+                port,
+                currentPath.withTrailingSlash(),
+                null,
+                null,
+            ).toASCIIString()
+            breadcrumbs += VfsBreadcrumb(
+                label = segment,
+                location = location,
+            )
+        }
+        return breadcrumbs.distinctBy { it.location }
+    }
+
+    private fun URI.remoteDirectChildName(descendant: URI): String? {
+        if (!hasSameRemoteRoot(descendant)) return null
+        val ancestorSegments = remotePathSegments()
+        val descendantSegments = descendant.remotePathSegments()
+        if (descendantSegments.size <= ancestorSegments.size) return null
+        if (descendantSegments.take(ancestorSegments.size) != ancestorSegments) return null
+        return descendantSegments[ancestorSegments.size]
+    }
+
+    private fun URI.isSameOrChildOfRemote(parent: URI): Boolean {
+        if (!hasSameRemoteRoot(parent)) return false
+        val segments = remotePathSegments()
+        val parentSegments = parent.remotePathSegments()
+        return segments == parentSegments || segments.take(parentSegments.size) == parentSegments
+    }
+
+    private fun URI.hasSameRemoteRoot(other: URI): Boolean {
+        return scheme.equals(other.scheme, ignoreCase = true) &&
+            host.equals(other.host, ignoreCase = true) &&
+            effectivePort() == other.effectivePort()
+    }
+
+    private fun URI.effectivePort(): Int {
+        return if (port >= 0) port else -1
+    }
+
+    private fun URI.remotePathSegments(): List<String> {
+        return path
+            ?.trim('/')
+            ?.split('/')
+            ?.filter { segment -> segment.isNotBlank() }
+            .orEmpty()
+    }
+
+    private fun String.withTrailingSlash(): String {
+        return if (endsWith('/')) this else "$this/"
+    }
+
+    private fun String.encodeSpaces(): String {
+        return replace(" ", "%20")
+    }
+
+    private companion object {
+        val REMOTE_SCHEMES = setOf("smb", "webdav", "webdavs", "s3")
     }
 }
 

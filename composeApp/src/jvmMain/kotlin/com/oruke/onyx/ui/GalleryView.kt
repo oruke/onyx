@@ -64,7 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
-import com.oruke.onyx.app.component.FileTransferOperation
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind

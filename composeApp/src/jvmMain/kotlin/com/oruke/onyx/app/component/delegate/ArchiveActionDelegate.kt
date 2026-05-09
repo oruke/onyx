@@ -2,8 +2,9 @@ package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.RootDialogState
-import com.oruke.onyx.app.component.usecase.ArchiveExtractionUseCase
-import com.oruke.onyx.app.component.usecase.TaskProgress
+import com.oruke.onyx.app.usecase.ArchiveExtractionUseCase
+import com.oruke.onyx.app.usecase.TaskProgress
+import com.oruke.onyx.app.usecase.buildTaskDetail
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind

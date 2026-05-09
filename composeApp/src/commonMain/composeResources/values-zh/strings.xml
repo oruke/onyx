@@ -53,6 +53,14 @@
     <string name="action_extract_smart">智能解压</string>
     <string name="label_archive_password">压缩包密码</string>
     <string name="label_archive_password_hint">请输入加密压缩包的密码</string>
+    <string name="label_remote_credentials_title">远程连接凭据</string>
+    <string name="label_remote_credentials_hint">请输入 %1$s 的访问凭据。</string>
+    <string name="label_remote_credentials_username">用户名</string>
+    <string name="label_remote_credentials_password">密码</string>
+    <string name="label_remote_credentials_domain">域</string>
+    <string name="label_remote_credentials_session_only">凭据仅保存在当前会话的内存中。</string>
+    <string name="label_remote_credentials_rejected">认证失败，请检查用户名、密码或域。</string>
+    <string name="label_remote_credentials_error_username_required">请输入用户名。</string>
 
     <string name="action_layout_single">单栏</string>
     <string name="action_layout_dual_vertical">左右双栏</string>

@@ -21,12 +21,14 @@ import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.ImageMetadataService
 import com.oruke.onyx.app.filesystem.OpenWithService
 import com.oruke.onyx.app.filesystem.PreviewService
+import com.oruke.onyx.app.filesystem.RemoteAuthStore
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TrashService
+import com.oruke.onyx.app.filesystem.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import kotlinx.coroutines.CoroutineScope
@@ -76,6 +78,8 @@ fun rememberRootComponent(): RootComponent {
             previewService = koin.get<PreviewService>(),
             thumbnailService = koin.get<ThumbnailService>(),
             imageMetadataService = koin.get<ImageMetadataService>(),
+            connectionTestService = koin.get<VfsConnectionTestService>(),
+            remoteAuthStore = koin.get<RemoteAuthStore>(),
             taskOrchestrator = taskOrchestrator,
             clipboardManager = clipboardManager,
             imageViewerController = imageViewerController,

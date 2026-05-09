@@ -2,6 +2,7 @@ package com.oruke.onyx.di
 
 import com.oruke.onyx.app.component.EntryNameSuggestionService
 import com.oruke.onyx.app.filesystem.ArchiveService
+import com.oruke.onyx.app.filesystem.ArchiveServiceLogger
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ArchiveFileTypeService
 import com.oruke.onyx.app.filesystem.ArchiveVfsProvider
@@ -24,17 +25,32 @@ import com.oruke.onyx.app.filesystem.JvmThumbnailService
 import com.oruke.onyx.app.filesystem.JvmVfsPathService
 import com.oruke.onyx.app.filesystem.LocalVfsProvider
 import com.oruke.onyx.app.filesystem.ImageMetadataService
+import com.oruke.onyx.app.filesystem.InMemoryRemoteAuthStore
 import com.oruke.onyx.app.filesystem.OpenWithService
+import com.oruke.onyx.app.filesystem.ProviderBackedVfsConnectionTestService
+import com.oruke.onyx.app.filesystem.ProviderBackedFileCommandService
 import com.oruke.onyx.app.filesystem.ProviderBackedFileRepository
 import com.oruke.onyx.app.filesystem.PreviewService
+import com.oruke.onyx.app.filesystem.RemoteAuthStore
+import com.oruke.onyx.app.filesystem.RemoteAuthStoreS3AuthRepository
+import com.oruke.onyx.app.filesystem.RemoteAuthStoreSmbAuthRepository
+import com.oruke.onyx.app.filesystem.RemoteAuthStoreWebDavAuthRepository
+import com.oruke.onyx.app.filesystem.RoutableFileCommandService
+import com.oruke.onyx.app.filesystem.S3AuthRepository
+import com.oruke.onyx.app.filesystem.S3VfsProvider
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.SmbAuthRepository
+import com.oruke.onyx.app.filesystem.SmbVfsProvider
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TrashService
+import com.oruke.onyx.app.filesystem.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
+import com.oruke.onyx.app.filesystem.WebDavAuthRepository
+import com.oruke.onyx.app.filesystem.WebDavVfsProvider
 import com.oruke.onyx.ui.ResourceEntryNameSuggestionService
 import org.koin.dsl.module
 
@@ -47,19 +63,65 @@ import org.koin.dsl.module
  */
 val fileModule = module {
     single { JvmLocalFileProvider() }
-    single { ArchiveService() }
+    single {
+        ArchiveService(
+            logger = object : ArchiveServiceLogger {
+                override fun warn(
+                    tag: String,
+                    message: String,
+                    throwable: Throwable,
+                ) {
+                    com.oruke.onyx.app.OnyxLogger.warn(tag, message, throwable)
+                }
+
+                override fun error(
+                    tag: String,
+                    message: String,
+                    throwable: Throwable,
+                ) {
+                    com.oruke.onyx.app.OnyxLogger.error(tag, message, throwable)
+                }
+            }
+        )
+    }
     single { LocalVfsProvider(get()) }
     single { ArchiveVfsProvider(get()) }
+    single<RemoteAuthStore> { InMemoryRemoteAuthStore() }
+    single<SmbAuthRepository> { RemoteAuthStoreSmbAuthRepository(get()) }
+    single<WebDavAuthRepository> { RemoteAuthStoreWebDavAuthRepository(get()) }
+    single<S3AuthRepository> { RemoteAuthStoreS3AuthRepository(get()) }
+    single { SmbVfsProvider(authRepository = get()) }
+    single { WebDavVfsProvider(authRepository = get()) }
+    single { S3VfsProvider(authRepository = get()) }
     single {
         VfsProviderRegistry(
             listOf(
                 get<ArchiveVfsProvider>(),
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
                 get<LocalVfsProvider>(),
             )
         )
     }
     single<FileRepository> { ProviderBackedFileRepository(get()) }
-    single<FileCommandService> { get<JvmLocalFileProvider>() }
+    single<VfsConnectionTestService> {
+        ProviderBackedVfsConnectionTestService(
+            listOf(
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
+            )
+        )
+    }
+    single<FileCommandService> {
+        ProviderBackedFileCommandService(
+            listOf<RoutableFileCommandService>(
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+            )
+        )
+    }
     single<ExternalOpenService> { JvmDesktopExternalOpenService() }
     single<TrashService> { JvmDesktopTrashService() }
     single<TextClipboardService> { JvmTextClipboardService() }

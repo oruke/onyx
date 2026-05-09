@@ -1,0 +1,684 @@
+package com.oruke.onyx.app.filesystem
+
+import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileCapability
+import com.oruke.onyx.core.model.VFileKind
+import jcifs.CIFSContext
+import jcifs.config.PropertyConfiguration
+import jcifs.context.BaseContext
+import jcifs.smb.NtlmPasswordAuthenticator
+import jcifs.smb.SmbAuthException
+import jcifs.smb.SmbException
+import jcifs.smb.SmbFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.MalformedURLException
+import java.net.UnknownHostException
+import java.util.Properties
+
+interface SmbAuthRepository {
+    fun authContext(location: String): VfsAuthContext
+
+    data object None : SmbAuthRepository {
+        override fun authContext(location: String): VfsAuthContext = VfsAuthContext.None
+    }
+}
+
+class RemoteAuthStoreSmbAuthRepository(
+    private val remoteAuthStore: RemoteAuthStore,
+) : SmbAuthRepository {
+    override fun authContext(location: String): VfsAuthContext {
+        return remoteAuthStore.authContext(VfsProtocol.SMB, location)
+    }
+}
+
+class SmbVfsProvider(
+    private val authRepository: SmbAuthRepository = SmbAuthRepository.None,
+    private val client: SmbClient = JcifsSmbClient(),
+) : VfsProvider, RoutableFileCommandService, VfsConnectionTester {
+    override val protocol: VfsProtocol = VfsProtocol.SMB
+
+    override val capabilities: Set<VfsProviderCapability> = setOf(
+        VfsProviderCapability.CREATE_FILE,
+        VfsProviderCapability.CREATE_DIRECTORY,
+        VfsProviderCapability.RENAME,
+        VfsProviderCapability.DELETE,
+        VfsProviderCapability.COPY,
+        VfsProviderCapability.MOVE,
+    )
+
+    override fun supports(location: String): Boolean {
+        return location.startsWith(SMB_SCHEME, ignoreCase = true)
+    }
+
+    override suspend fun list(location: String): Result<List<VFile>> {
+        if (!supports(location)) {
+            return Result.failure(VfsProviderNotFoundException(location))
+        }
+        return runCatching {
+            client.list(
+                location = directoryLocation(location),
+                authContext = authRepository.authContext(location),
+            )
+        }
+    }
+
+    override suspend fun testConnection(request: VfsConnectionTestRequest): VfsConnectionTestResult {
+        val testLocation = directoryLocation(request.location)
+        if (request.protocol != VfsProtocol.SMB || !supports(request.location)) {
+            return VfsConnectionTestResult.Failed(
+                protocol = VfsProtocol.SMB,
+                location = request.location,
+                error = VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    location = request.location,
+                    capability = null,
+                )
+            )
+        }
+        val authContext = request.authContext.takeIf { it != VfsAuthContext.None }
+            ?: authRepository.authContext(request.location)
+        return runCatching {
+            client.testConnection(
+                location = testLocation,
+                authContext = authContext,
+            )
+            VfsConnectionTestResult.Reachable(
+                protocol = VfsProtocol.SMB,
+                location = testLocation,
+                capabilities = capabilities,
+            )
+        }.getOrElse { failure ->
+            failure.toVfsConnectionTestResult(
+                protocol = VfsProtocol.SMB,
+                location = testLocation,
+            )
+        }
+    }
+
+    override suspend fun copy(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<Unit> {
+        return runTransferCommand(
+            entries = entries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            capability = VfsProviderCapability.COPY,
+        ) { authContext ->
+            client.copy(entries, directoryLocation(targetDirectoryLocation), conflictStrategy, authContext)
+        }
+    }
+
+    override suspend fun move(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+    ): Result<Unit> {
+        return runTransferCommand(
+            entries = entries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            capability = VfsProviderCapability.MOVE,
+        ) { authContext ->
+            client.move(entries, directoryLocation(targetDirectoryLocation), conflictStrategy, authContext)
+        }
+    }
+
+    override suspend fun delete(entries: List<VFile>): Result<Unit> {
+        if (entries.isEmpty()) return Result.success(Unit)
+        val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
+        if (unsupported != null) {
+            return Result.failure(VfsProviderNotFoundException(unsupported.location))
+        }
+        return runCatching {
+            entries
+                .groupBy { entry -> authRepository.authContext(entry.location) }
+                .forEach { (authContext, groupedEntries) ->
+                    client.delete(groupedEntries, authContext)
+                }
+        }
+    }
+
+    override suspend fun rename(
+        entry: VFile,
+        targetName: String,
+    ): Result<VFile> {
+        if (!supports(entry.location)) {
+            return Result.failure(VfsProviderNotFoundException(entry.location))
+        }
+        return runCatching {
+            client.rename(
+                entry = entry,
+                targetName = targetName,
+                authContext = authRepository.authContext(entry.location),
+            )
+        }
+    }
+
+    override suspend fun createFile(
+        parentLocation: String,
+        name: String,
+    ): Result<VFile> {
+        return runCreateCommand(parentLocation) { authContext ->
+            client.createFile(directoryLocation(parentLocation), name, authContext)
+        }
+    }
+
+    override suspend fun createDirectory(
+        parentLocation: String,
+        name: String,
+    ): Result<VFile> {
+        return runCreateCommand(parentLocation) { authContext ->
+            client.createDirectory(directoryLocation(parentLocation), name, authContext)
+        }
+    }
+
+    private suspend fun runTransferCommand(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        capability: VfsProviderCapability,
+        block: suspend (VfsAuthContext) -> Unit,
+    ): Result<Unit> {
+        if (entries.isEmpty()) return Result.success(Unit)
+        if (!supports(targetDirectoryLocation)) {
+            return Result.failure(VfsProviderNotFoundException(targetDirectoryLocation))
+        }
+        val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
+        if (unsupported != null) {
+            return Result.failure(VfsProviderNotFoundException(unsupported.location))
+        }
+
+        val targetAuthContext = authRepository.authContext(targetDirectoryLocation)
+        val hasDifferentSourceAuth = entries.any { entry -> authRepository.authContext(entry.location) != targetAuthContext }
+        if (hasDifferentSourceAuth) {
+            return Result.failure(
+                VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.SMB,
+                        location = targetDirectoryLocation,
+                        capability = capability,
+                    )
+                )
+            )
+        }
+
+        return runCatching {
+            block(targetAuthContext)
+        }
+    }
+
+    private suspend fun runCreateCommand(
+        parentLocation: String,
+        block: suspend (VfsAuthContext) -> VFile,
+    ): Result<VFile> {
+        if (!supports(parentLocation)) {
+            return Result.failure(VfsProviderNotFoundException(parentLocation))
+        }
+        return runCatching {
+            block(authRepository.authContext(parentLocation))
+        }
+    }
+
+    private fun directoryLocation(location: String): String {
+        return if (location.endsWith('/')) location else "$location/"
+    }
+
+    private companion object {
+        const val SMB_SCHEME = "smb://"
+    }
+}
+
+interface SmbClient {
+    suspend fun testConnection(
+        location: String,
+        authContext: VfsAuthContext,
+    )
+
+    suspend fun list(
+        location: String,
+        authContext: VfsAuthContext,
+    ): List<VFile>
+
+    suspend fun copy(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    )
+
+    suspend fun move(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    )
+
+    suspend fun delete(
+        entries: List<VFile>,
+        authContext: VfsAuthContext,
+    )
+
+    suspend fun rename(
+        entry: VFile,
+        targetName: String,
+        authContext: VfsAuthContext,
+    ): VFile
+
+    suspend fun createFile(
+        parentLocation: String,
+        name: String,
+        authContext: VfsAuthContext,
+    ): VFile
+
+    suspend fun createDirectory(
+        parentLocation: String,
+        name: String,
+        authContext: VfsAuthContext,
+    ): VFile
+}
+
+class JcifsSmbClient : SmbClient {
+    override suspend fun testConnection(
+        location: String,
+        authContext: VfsAuthContext,
+    ) = withSmbContext(location, authContext) { context ->
+        val directory = SmbFile(location, context)
+        if (!directory.exists()) {
+            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, location))
+        }
+        if (!directory.isDirectory) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    location = location,
+                    capability = null,
+                )
+            )
+        }
+    }
+
+    override suspend fun list(
+        location: String,
+        authContext: VfsAuthContext,
+    ): List<VFile> = withSmbContext(location, authContext) { context ->
+            val directory = SmbFile(location, context)
+            if (!directory.exists()) {
+                throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, location))
+            }
+            if (!directory.isDirectory) {
+                throw VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.SMB,
+                        location = location,
+                        capability = null,
+                    )
+                )
+            }
+            directory.listFiles()
+                .map { child -> child.toVFile(parentLocation = directory.canonicalPath) }
+                .sortedWith(
+                    compareByDescending<VFile> { entry -> entry.kind == VFileKind.DIRECTORY }
+                        .thenBy { entry -> entry.name.lowercase() }
+                )
+    }
+
+    override suspend fun copy(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ) = withSmbContext(targetDirectoryLocation, authContext) { context ->
+        val targetDirectory = requireDirectory(targetDirectoryLocation, context)
+        entries.forEach { entry ->
+            val source = SmbFile(entry.location, context)
+            val target = resolveTransferTarget(
+                source = source,
+                targetDirectory = targetDirectory,
+                conflictStrategy = conflictStrategy,
+            ) ?: return@forEach
+
+            if (conflictStrategy == TransferConflictStrategy.OVERWRITE && target.exists()) {
+                target.delete()
+            }
+            source.copyTo(target)
+        }
+    }
+
+    override suspend fun move(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ) = withSmbContext(targetDirectoryLocation, authContext) { context ->
+        val targetDirectory = requireDirectory(targetDirectoryLocation, context)
+        entries.forEach { entry ->
+            val source = SmbFile(entry.location, context)
+            val target = resolveTransferTarget(
+                source = source,
+                targetDirectory = targetDirectory,
+                conflictStrategy = conflictStrategy,
+            ) ?: return@forEach
+
+            if (conflictStrategy == TransferConflictStrategy.OVERWRITE && target.exists()) {
+                target.delete()
+            }
+            try {
+                source.renameTo(target)
+            } catch (_: SmbException) {
+                source.copyTo(target)
+                source.delete()
+            }
+        }
+    }
+
+    override suspend fun delete(
+        entries: List<VFile>,
+        authContext: VfsAuthContext,
+    ) = withSmbContext(entries.firstOrNull()?.location, authContext) { context ->
+        entries.forEach { entry ->
+            SmbFile(entry.location, context).delete()
+        }
+    }
+
+    override suspend fun rename(
+        entry: VFile,
+        targetName: String,
+        authContext: VfsAuthContext,
+    ): VFile = withSmbContext(entry.location, authContext) { context ->
+        val source = SmbFile(entry.location, context)
+        if (!source.exists()) {
+            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, entry.location))
+        }
+        val directory = source.isDirectory
+        val sanitizedTargetName = targetName.trim()
+        validateTargetName(sanitizedTargetName)
+        val parentLocation = source.parent
+        val parent = SmbFile(parentLocation, context)
+        val target = SmbFile(parent, sanitizedTargetName.withDirectoryMarker(directory))
+        if (target.canonicalPath == source.canonicalPath) {
+            return@withSmbContext source.toVFile(parentLocation = parent.canonicalPath)
+        }
+        if (target.exists()) {
+            throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.SMB, target.canonicalPath))
+        }
+        source.renameTo(target)
+        target.toVFile(parentLocation = parent.canonicalPath)
+    }
+
+    override suspend fun createFile(
+        parentLocation: String,
+        name: String,
+        authContext: VfsAuthContext,
+    ): VFile = withSmbContext(parentLocation, authContext) { context ->
+        val parent = requireDirectory(parentLocation, context)
+        val sanitizedName = name.trim()
+        validateTargetName(sanitizedName)
+        val target = SmbFile(parent, sanitizedName)
+        if (target.exists()) {
+            throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.SMB, target.canonicalPath))
+        }
+        target.createNewFile()
+        target.toVFile(parentLocation = parent.canonicalPath)
+    }
+
+    override suspend fun createDirectory(
+        parentLocation: String,
+        name: String,
+        authContext: VfsAuthContext,
+    ): VFile = withSmbContext(parentLocation, authContext) { context ->
+        val parent = requireDirectory(parentLocation, context)
+        val relativePath = normalizeRelativeDirectoryPath(name)
+        val target = SmbFile(parent, "$relativePath/")
+        if (target.exists()) {
+            throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.SMB, target.canonicalPath))
+        }
+        target.mkdirs()
+        target.toVFile(parentLocation = parent.canonicalPath)
+    }
+
+    private suspend fun <T> withSmbContext(
+        location: String?,
+        authContext: VfsAuthContext,
+        block: (CIFSContext) -> T,
+    ): T = withContext(Dispatchers.IO) {
+        val errorLocation = location
+        try {
+            block(baseContext(authContext))
+        } catch (failure: VfsProviderException) {
+            throw failure
+        } catch (failure: SmbAuthException) {
+            throw VfsProviderException(
+                if (authContext == VfsAuthContext.None) {
+                    VfsProviderError.AuthenticationRequired(VfsProtocol.SMB, errorLocation)
+                } else {
+                    VfsProviderError.AuthenticationRejected(
+                        protocol = VfsProtocol.SMB,
+                        location = errorLocation,
+                        reason = failure.message,
+                    )
+                }
+            )
+        } catch (failure: SmbException) {
+            throw VfsProviderException(failure.toProviderError(errorLocation))
+        } catch (failure: UnknownHostException) {
+            throw VfsProviderException(
+                VfsProviderError.NetworkFailure(
+                    protocol = VfsProtocol.SMB,
+                    location = errorLocation,
+                    reason = failure.message,
+                )
+            )
+        } catch (failure: MalformedURLException) {
+            throw VfsProviderException(
+                VfsProviderError.NotFound(
+                    protocol = VfsProtocol.SMB,
+                    location = errorLocation,
+                )
+            )
+        }
+    }
+
+    private fun baseContext(authContext: VfsAuthContext): CIFSContext {
+        val properties = Properties()
+        val base = BaseContext(PropertyConfiguration(properties))
+        return when (authContext) {
+            VfsAuthContext.None -> base.withAnonymousCredentials()
+            is VfsAuthContext.UsernamePassword -> base.withCredentials(
+                NtlmPasswordAuthenticator(
+                    authContext.domain.orEmpty(),
+                    authContext.username,
+                    authContext.password,
+                )
+            )
+
+            else -> throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    capability = null,
+                )
+            )
+        }
+    }
+
+    private fun requireDirectory(
+        location: String,
+        context: CIFSContext,
+    ): SmbFile {
+        val directory = SmbFile(location.withTrailingSlash(), context)
+        if (!directory.exists()) {
+            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, location))
+        }
+        if (!directory.isDirectory) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    location = location,
+                    capability = null,
+                )
+            )
+        }
+        return directory
+    }
+
+    private fun resolveTransferTarget(
+        source: SmbFile,
+        targetDirectory: SmbFile,
+        conflictStrategy: TransferConflictStrategy,
+    ): SmbFile? {
+        if (!source.exists()) {
+            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, source.canonicalPath))
+        }
+
+        val sourceName = source.name.trimEnd('/')
+        val directTarget = SmbFile(targetDirectory, sourceName.withDirectoryMarker(source.isDirectory))
+        if (directTarget.canonicalPath == source.canonicalPath) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    location = source.canonicalPath,
+                    capability = null,
+                )
+            )
+        }
+        if (source.isDirectory && targetDirectory.canonicalPath.withTrailingSlash()
+                .startsWith(source.canonicalPath.withTrailingSlash())
+        ) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    location = targetDirectory.canonicalPath,
+                    capability = null,
+                )
+            )
+        }
+
+        return when {
+            !directTarget.exists() -> directTarget
+            conflictStrategy == TransferConflictStrategy.KEEP_BOTH -> availableTarget(
+                source = source,
+                targetDirectory = targetDirectory,
+            )
+
+            conflictStrategy == TransferConflictStrategy.OVERWRITE -> directTarget
+            conflictStrategy == TransferConflictStrategy.SKIP -> null
+            else -> directTarget
+        }
+    }
+
+    private fun availableTarget(
+        source: SmbFile,
+        targetDirectory: SmbFile,
+    ): SmbFile {
+        val originalName = source.name.trimEnd('/')
+        val directory = source.isDirectory
+        val dotIndex = originalName.lastIndexOf('.')
+        val hasExtension = !directory && dotIndex > 0 && dotIndex < originalName.lastIndex
+        val baseName = if (hasExtension) originalName.substring(0, dotIndex) else originalName
+        val extension = if (hasExtension) originalName.substring(dotIndex) else ""
+
+        var copyIndex = 1
+        var candidate = SmbFile(targetDirectory, originalName.withDirectoryMarker(directory))
+        while (candidate.exists()) {
+            val suffix = if (copyIndex == 1) " copy" else " copy $copyIndex"
+            candidate = SmbFile(targetDirectory, "$baseName$suffix$extension".withDirectoryMarker(directory))
+            copyIndex += 1
+        }
+        return candidate
+    }
+
+    private fun SmbFile.toVFile(parentLocation: String): VFile {
+        val directory = isDirectory
+        val canonicalLocation = canonicalPath
+        return VFile(
+            id = canonicalLocation,
+            name = name.trimEnd('/').ifBlank { canonicalLocation.trimEnd('/').substringAfterLast('/') },
+            location = canonicalLocation,
+            parentLocation = parentLocation,
+            kind = if (directory) VFileKind.DIRECTORY else VFileKind.FILE,
+            sizeBytes = if (directory) null else length(),
+            modifiedAtEpochMillis = runCatching { lastModified() }.getOrNull(),
+            hidden = runCatching { isHidden }.getOrDefault(false),
+            capabilities = buildSet {
+                add(VFileCapability.READ_METADATA)
+                add(VFileCapability.RENAME)
+                add(VFileCapability.DELETE)
+                if (directory) {
+                    add(VFileCapability.LIST_CHILDREN)
+                } else {
+                    add(VFileCapability.READ_CONTENT)
+                    add(VFileCapability.WRITE_CONTENT)
+                }
+            },
+        )
+    }
+
+    private fun validateTargetName(targetName: String) {
+        if (targetName.isBlank()) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    capability = null,
+                )
+            )
+        }
+        if ('/' in targetName || '\\' in targetName) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    capability = null,
+                )
+            )
+        }
+    }
+
+    private fun normalizeRelativeDirectoryPath(rawPath: String): String {
+        val normalized = rawPath
+            .trim()
+            .replace('\\', '/')
+            .trim('/')
+        if (normalized.isBlank()) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    capability = null,
+                )
+            )
+        }
+        val segments = normalized.split('/')
+        if (segments.any { segment -> segment.isBlank() || segment == "." || segment == ".." }) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    capability = null,
+                )
+            )
+        }
+        return segments.joinToString("/")
+    }
+
+    private fun String.withDirectoryMarker(directory: Boolean): String {
+        return if (directory) "${trimEnd('/')}/" else trimEnd('/')
+    }
+
+    private fun String.withTrailingSlash(): String {
+        return if (endsWith('/')) this else "$this/"
+    }
+
+    private fun SmbException.toProviderError(location: String?): VfsProviderError {
+        val message = message
+        return when {
+            this is SmbAuthException -> VfsProviderError.AuthenticationRejected(VfsProtocol.SMB, location, message)
+            message?.contains("access", ignoreCase = true) == true ->
+                VfsProviderError.PermissionDenied(VfsProtocol.SMB, location, message)
+
+            message?.contains("not found", ignoreCase = true) == true ->
+                VfsProviderError.NotFound(VfsProtocol.SMB, location)
+
+            message?.contains("already exists", ignoreCase = true) == true ||
+                message?.contains("object name collision", ignoreCase = true) == true ->
+                VfsProviderError.AlreadyExists(VfsProtocol.SMB, location)
+
+            else -> VfsProviderError.NetworkFailure(VfsProtocol.SMB, location, message)
+        }
+    }
+}

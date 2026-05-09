@@ -18,6 +18,9 @@ import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileWatcher
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.app.filesystem.VfsProviderError
+import com.oruke.onyx.app.filesystem.VfsProviderException
+import com.oruke.onyx.app.filesystem.VfsProtocol
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.I18nMessage
@@ -59,6 +62,7 @@ class DefaultPaneComponent(
     private val archiveEntryOpenService: ArchiveEntryOpenService,
     private val initialViewMode: ViewMode = ViewMode.DETAILS,
     private val onOpenImageViewer: ((file: VFile, allImages: List<VFile>) -> Unit)? = null,
+    private val onRemoteAuthenticationRequired: (PaneId, VfsProviderError) -> Unit = { _, _ -> },
 ) : PaneComponent, ComponentContext by componentContext {
 
     // 生命周期绑定的 CoroutineScope — lifecycle.onDestroy 时自动取消
@@ -164,7 +168,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun refresh() {
+    fun refresh() {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.prepareForRefresh()
@@ -172,7 +176,7 @@ class DefaultPaneComponent(
         loadTab(tabId = tab.id, location = tab.location)
     }
 
-    override fun goBack() {
+    fun goBack() {
         val tab = activeTab() ?: return
         val previousLocation = tab.backStack.lastOrNull() ?: return
         // If going back to a parent, pre-set focus to current dir name
@@ -186,7 +190,7 @@ class DefaultPaneComponent(
         loadTab(tabId = tab.id, location = previousLocation)
     }
 
-    override fun goForward() {
+    fun goForward() {
         val tab = activeTab() ?: return
         val nextLocation = tab.forwardStack.lastOrNull() ?: return
         updateTab(tab.id) { currentTab ->
@@ -195,7 +199,7 @@ class DefaultPaneComponent(
         loadTab(tabId = tab.id, location = nextLocation)
     }
 
-    override fun goUp() {
+    fun goUp() {
         val tab = activeTab() ?: return
         val currentLocation = tab.location
         val parentLocation = pathService.parentLocation(currentLocation) ?: return
@@ -209,7 +213,7 @@ class DefaultPaneComponent(
         )
     }
 
-    override fun openDirectory(location: String) {
+    fun openDirectory(location: String) {
         val tab = activeTab()
         if (tab != null) {
             val childName = pathService.directChildName(ancestor = location, descendant = tab.location)
@@ -223,7 +227,7 @@ class DefaultPaneComponent(
         )
     }
 
-    override fun openEntry(entry: VFile) {
+    fun openEntry(entry: VFile) {
         val tab = activeTab() ?: return
         clearInlineEdit(tab.id)
         when (entry.kind) {
@@ -285,7 +289,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun beginRename() {
+    fun beginRename() {
         val tab = activeTab() ?: return
         if (tab.inlineEditState != null) {
             return
@@ -298,7 +302,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun beginCreateFile() {
+    fun beginCreateFile() {
         val tab = activeTab() ?: return
         if (tab.inlineEditState != null) {
             return
@@ -312,7 +316,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun beginCreateDirectory() {
+    fun beginCreateDirectory() {
         val tab = activeTab() ?: return
         if (tab.inlineEditState != null) {
             return
@@ -326,7 +330,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun openSelectedInNewTab() {
+    fun openSelectedInNewTab() {
         val tab = activeTab() ?: return
         val entries = currentVisibleEntries()
         val targetEntryId = SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
@@ -338,7 +342,7 @@ class DefaultPaneComponent(
         createTab(targetEntry.location)
     }
 
-    override fun copySelectedPaths() {
+    fun copySelectedPaths() {
         val tab = activeTab() ?: return
         val entries = currentVisibleEntries()
             .filter { entry -> tab.selectedEntryIds.contains(entry.id) }
@@ -360,7 +364,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun updateInlineEditDraft(draft: String) {
+    fun updateInlineEditDraft(draft: String) {
         val tab = activeTab() ?: return
         val inlineEditState = tab.inlineEditState
         if (inlineEditState == null || draft == inlineEditState.draftName) {
@@ -371,7 +375,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun confirmInlineEdit() {
+    fun confirmInlineEdit() {
         val tab = activeTab() ?: return
         val result = tab.confirmInlineEditState(currentTabEntries(tab))
         if (result.tab != tab) {
@@ -437,57 +441,57 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun cancelInlineEdit() {
+    fun cancelInlineEdit() {
         clearInlineEdit(activeTab()?.id ?: return)
     }
 
-    override fun dismissOperationFeedback() {
+    fun dismissOperationFeedback() {
         clearOperationFeedback(activeTab()?.id ?: return)
     }
 
-    override fun setViewMode(mode: ViewMode) {
+    fun setViewMode(mode: ViewMode) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withViewModeState(mode)
         }
     }
 
-    override fun setFilterQuery(query: String) {
+    fun setFilterQuery(query: String) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withFilterQueryState(query)
         }
     }
 
-    override fun toggleSort(column: DetailsColumn) {
+    fun toggleSort(column: DetailsColumn) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withToggledSortState(column)
         }
     }
 
-    override fun toggleHiddenItems() {
+    fun toggleHiddenItems() {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withToggledHiddenItemsState()
         }
     }
 
-    override fun toggleColumnVisibility(column: DetailsColumn) {
+    fun toggleColumnVisibility(column: DetailsColumn) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withToggledColumnVisibilityState(column)
         }
     }
 
-    override fun setGalleryItemSize(sizeDp: Int) {
+    fun setGalleryItemSize(sizeDp: Int) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withGalleryItemSizeState(sizeDp)
         }
     }
 
-    override fun resizeDetailsColumn(
+    fun resizeDetailsColumn(
         column: DetailsColumn,
         nextColumn: DetailsColumn,
         deltaWeight: Float,
@@ -501,7 +505,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun selectEntry(
+    fun selectEntry(
         entryId: String,
         additive: Boolean,
         range: Boolean,
@@ -519,14 +523,14 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun selectEntries(entryIds: Set<String>) {
+    fun selectEntries(entryIds: Set<String>) {
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withSelectedEntryIds(entryIds)
         }
     }
 
-    override fun moveSelection(
+    fun moveSelection(
         offset: Int,
         extendSelection: Boolean,
     ) {
@@ -542,14 +546,14 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun openSelectedEntry() {
+    fun openSelectedEntry() {
         val tab = activeTab() ?: return
         val selectedEntry = tab.resolveSelectionFocusEntry(currentVisibleEntries()) ?: return
         clearInlineEdit(tab.id)
         openEntry(selectedEntry)
     }
 
-    override fun selectAll() {
+    fun selectAll() {
         val tab = activeTab() ?: return
         clearInlineEdit(tab.id)
         val entries = currentVisibleEntries()
@@ -558,7 +562,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun clearSelection() {
+    fun clearSelection() {
         val tab = activeTab() ?: return
         clearInlineEdit(tab.id)
         updateTab(tab.id) { currentTab ->
@@ -566,14 +570,14 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun createTab(location: String) {
+    fun createTab(location: String) {
         val tab = createTabState(pathService.normalizeLocation(location))
         val update = tabs().withCreatedTab(tab = tab)
         applyTabStackUpdate(update)
         loadTab(tabId = update.activeTab.id, location = update.activeTab.location)
     }
 
-    override fun selectTab(tabId: String) {
+    fun selectTab(tabId: String) {
         val update = tabs().withSelectedTab(tabId = tabId) ?: return
         applyTabStackUpdate(update)
         if (update.activeTab.entriesState == PaneEntriesState.Idle) {
@@ -581,7 +585,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun closeTab(tabId: String) {
+    fun closeTab(tabId: String) {
         val update = tabs().withClosedTab(
             activeTabId = mutableState.value.activeTabId,
             tabId = tabId,
@@ -592,7 +596,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun moveTab(
+    fun moveTab(
         tabId: String,
         targetIndex: Int,
     ) {
@@ -665,7 +669,7 @@ class DefaultPaneComponent(
 
     // ── 内联展开（文件列表树状展开） ──────────────────────────────────────
 
-    override fun toggleInlineExpand(directoryLocation: String) {
+    fun toggleInlineExpand(directoryLocation: String) {
         val result = mutableState.value.toggleInlineExpandState(directoryLocation)
         mutableState.value = result.state
         result.loadRequest?.let { request ->
@@ -673,7 +677,7 @@ class DefaultPaneComponent(
         }
     }
 
-    override fun consumePendingScroll() {
+    fun consumePendingScroll() {
         val tab = activeTab() ?: return
         if (tab.pendingScrollToEntryId != null) {
             updateTab(tab.id) { currentTab ->
@@ -755,6 +759,7 @@ class DefaultPaneComponent(
                     },
                     onFailure = { failure ->
                         OnyxLogger.error("PaneComponent", "目录加载失败: $location", failure)
+                        requestRemoteCredentialsIfSupported(failure)
                         pendingFocusEntryName.remove(tabId)
                         updateTab(tabId) { tab ->
                             tab.withLoadFailure(failure.message)
@@ -766,6 +771,7 @@ class DefaultPaneComponent(
             } catch (e: Exception) {
                 // 非预期异常 → 也要转为 Failure，不能让状态卡在 Loading
                 OnyxLogger.error("PaneComponent", "目录加载异常: $location", e)
+                requestRemoteCredentialsIfSupported(e)
                 pendingFocusEntryName.remove(tabId)
                 updateTab(tabId) { tab ->
                     tab.withLoadFailure(e.message)
@@ -790,6 +796,19 @@ class DefaultPaneComponent(
         }
     }
 
+    private fun requestRemoteCredentialsIfSupported(failure: Throwable) {
+        val error = (failure as? VfsProviderException)?.error ?: return
+        val authError = when (error) {
+            is VfsProviderError.AuthenticationRejected -> error
+            is VfsProviderError.AuthenticationRequired -> error
+            else -> return
+        }
+        if (authError.protocol != VfsProtocol.SMB && authError.protocol != VfsProtocol.WEBDAV) {
+            return
+        }
+        onRemoteAuthenticationRequired(paneId, authError)
+    }
+
     /**
      * 开始监听指定目录的文件变更，有变更时自动刷新。
      * 每次调用会取消前一个监听。
@@ -798,6 +817,7 @@ class DefaultPaneComponent(
         fileWatcherJob?.cancel()
         // 压缩包内部无文件系统事件，跳过监听
         if (ArchiveService.isArchiveLocation(location)) return
+        if (location.contains("://")) return
         val path = try {
             Path.of(location)
         } catch (_: Exception) {

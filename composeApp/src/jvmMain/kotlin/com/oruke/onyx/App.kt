@@ -25,7 +25,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import com.oruke.onyx.app.component.FileTransferOperation
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.RootComponent
@@ -48,6 +48,7 @@ import com.oruke.onyx.ui.OnyxTooltipOverlay
 import com.oruke.onyx.ui.PaneSidebar
 import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
+import com.oruke.onyx.ui.RemoteCredentialsDialog
 import com.oruke.onyx.ui.SettingsDialog
 import com.oruke.onyx.ui.StatusBar
 import com.oruke.onyx.ui.JobsBar
@@ -383,6 +384,15 @@ private fun AppContent(
                 archiveName = dialogState.archiveName,
                 error = dialogState.error,
                 onConfirm = { password -> dispatch(RootIntent.SubmitArchivePassword(password)) },
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
+            )
+        }
+
+        is RootDialogState.RemoteCredentials -> {
+            RemoteCredentialsDialog(
+                state = dialogState,
+                onDraftChange = { draft -> dispatch(RootIntent.UpdateRemoteCredentialsDraft(draft)) },
+                onConfirm = { dispatch(RootIntent.SubmitRemoteCredentials) },
                 onDismiss = { dispatch(RootIntent.DismissDialog) },
             )
         }

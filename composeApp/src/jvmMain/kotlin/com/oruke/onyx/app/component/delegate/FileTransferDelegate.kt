@@ -1,15 +1,16 @@
 package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.component.FileTransferOperation
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
-import com.oruke.onyx.app.component.usecase.FileTransferUseCase
-import com.oruke.onyx.app.component.usecase.TaskProgress
+import com.oruke.onyx.app.usecase.FileTransferUseCase
+import com.oruke.onyx.app.usecase.TaskProgress
+import com.oruke.onyx.app.usecase.buildTransferTaskDetail
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -375,16 +376,4 @@ class FileTransferDelegate(
         val resolvedStrategies: Map<String, TransferConflictStrategy>,
         val nextConflictIndex: Int,
     )
-}
-
-internal fun buildTransferTaskDetail(
-    entries: List<VFile>,
-    targetLocation: String,
-): String {
-    return "${buildTaskDetail(entries)} -> $targetLocation"
-}
-
-internal fun buildTaskDetail(entries: List<VFile>): String {
-    val preview = entries.take(3).joinToString { it.name }
-    return if (entries.size <= 3) preview else "$preview ..."
 }

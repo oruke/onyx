@@ -15,6 +15,7 @@ import com.oruke.onyx.app.filesystem.OpenWithService
 import com.oruke.onyx.app.filesystem.PreviewService
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
+import com.oruke.onyx.app.filesystem.RemoteAuthStore
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
@@ -22,12 +23,19 @@ import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.TrashService
+import com.oruke.onyx.app.filesystem.VfsAuthContext
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
+import com.oruke.onyx.app.filesystem.VfsConnectionTestRequest
+import com.oruke.onyx.app.filesystem.VfsConnectionTestResult
+import com.oruke.onyx.app.filesystem.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.app.filesystem.VfsProviderError
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
+import com.oruke.onyx.app.filesystem.VfsProtocol
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.DeleteMode
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.ImageFitMode
@@ -81,6 +89,8 @@ class DefaultRootComponent(
     private val previewService: PreviewService,
     private val thumbnailService: ThumbnailService,
     private val imageMetadataService: ImageMetadataService,
+    private val connectionTestService: VfsConnectionTestService,
+    private val remoteAuthStore: RemoteAuthStore,
     // ── Delegate ──────────────────────────────────────────────────────────
     private val taskOrchestrator: TaskOrchestrator,
     private val clipboardManager: ClipboardManager,
@@ -106,6 +116,7 @@ class DefaultRootComponent(
         archiveFileTypeService = archiveFileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
+        onRemoteAuthenticationRequired = ::requestRemoteCredentials,
     )
     override val secondaryPane: PaneComponent = DefaultPaneComponent(
         componentContext = childContext("secondaryPane"),
@@ -120,6 +131,7 @@ class DefaultRootComponent(
         archiveFileTypeService = archiveFileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
+        onRemoteAuthenticationRequired = ::requestRemoteCredentials,
     )
 
     private val layoutMode = MutableStateFlow(PaneLayoutMode.DUAL_VERTICAL)
@@ -315,6 +327,8 @@ class DefaultRootComponent(
             is RootIntent.ExtractToDirectoryInPane -> extractToDirectoryInPane(intent.paneId)
             is RootIntent.ExtractSmartInPane -> extractSmartInPane(intent.paneId)
             is RootIntent.SubmitArchivePassword -> submitArchivePassword(intent.password)
+            is RootIntent.UpdateRemoteCredentialsDraft -> updateRemoteCredentialsDraft(intent.draft)
+            RootIntent.SubmitRemoteCredentials -> submitRemoteCredentials()
             is RootIntent.BatchRenameInPane -> batchRenameInPane(intent.paneId)
             is RootIntent.ExecuteBatchRename -> executeBatchRename(
                 paneId = intent.paneId,
@@ -345,39 +359,39 @@ class DefaultRootComponent(
         }
     }
 
-    override fun setLayoutMode(mode: PaneLayoutMode) {
+    fun setLayoutMode(mode: PaneLayoutMode) {
         layoutMode.value = mode
     }
 
-    override fun setPaneSplitFraction(fraction: Float) {
+    fun setPaneSplitFraction(fraction: Float) {
         paneSplitFraction.value = fraction.coerceIn(0.18f, 0.82f)
     }
 
-    override fun openSettings() {
+    fun openSettings() {
         dialogState.value = RootDialogState.Settings(draft = settings.value)
     }
 
-    override fun updateSettingsDraft(draft: OnyxSettings) {
+    fun updateSettingsDraft(draft: OnyxSettings) {
         val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
         dialogState.value = currentDialog.copy(draft = draft)
     }
 
-    override fun activatePane(paneId: PaneId) {
+    fun activatePane(paneId: PaneId) {
         activePane.value = paneId
     }
 
-    override fun updateSettings(settings: OnyxSettings) {
-        this.settings.value = settings.sanitized()
+    fun updateSettings(settings: OnyxSettings) {
+        this.settings.value = settings.sanitizeRootSettings()
     }
 
-    override fun openLocationInActivePane(location: String) {
+    fun openLocationInActivePane(location: String) {
         when (activePane.value) {
             PaneId.PRIMARY -> primaryPane.openDirectory(location)
             PaneId.SECONDARY -> secondaryPane.openDirectory(location)
         }
     }
 
-    override fun toggleFavoriteLocation(location: String) {
+    fun toggleFavoriteLocation(location: String) {
         val currentFavorites = settings.value.favoriteLocations
         updateSettings(
             settings.value.copy(
@@ -390,11 +404,11 @@ class DefaultRootComponent(
         )
     }
 
-    override fun toggleSidebarTreeNode(location: String) = sidebarDelegate.toggleNode(location)
+    fun toggleSidebarTreeNode(location: String) = sidebarDelegate.toggleNode(location)
 
-    override fun retrySidebarTreeNode(location: String) = sidebarDelegate.retryNode(location)
+    fun retrySidebarTreeNode(location: String) = sidebarDelegate.retryNode(location)
 
-    override fun beginCreateDirectoriesInPane(paneId: PaneId) {
+    fun beginCreateDirectoriesInPane(paneId: PaneId) {
         dialogState.value = RootDialogState.CreateDirectories(
             paneId = paneId,
             location = paneState(paneId).location,
@@ -402,7 +416,7 @@ class DefaultRootComponent(
         )
     }
 
-    override fun updateCreateDirectoriesDraft(draft: String) {
+    fun updateCreateDirectoriesDraft(draft: String) {
         val currentDialog = dialogState.value as? RootDialogState.CreateDirectories ?: return
         dialogState.value = currentDialog.copy(
             draft = draft,
@@ -410,7 +424,7 @@ class DefaultRootComponent(
         )
     }
 
-    override fun confirmDialog() {
+    fun confirmDialog() {
         when (val currentDialog = dialogState.value) {
             is RootDialogState.DeleteSelectionConfirmation -> {
                 dialogState.value = null
@@ -442,19 +456,19 @@ class DefaultRootComponent(
         }
     }
 
-    override fun dismissDialog() {
+    fun dismissDialog() {
         fileActionDelegate.clearPending()
         fileTransferDelegate.clearPending()
         archiveActionDelegate.clearPending()
         dialogState.value = null
     }
 
-    override fun resolveConflict(
+    fun resolveConflict(
         strategy: TransferConflictStrategy,
         applyToAll: Boolean,
     ) = fileTransferDelegate.resolveConflict(strategy, applyToAll)
 
-    override fun moveTab(
+    fun moveTab(
         sourcePaneId: PaneId,
         tabId: String,
         targetPaneId: PaneId,
@@ -477,26 +491,26 @@ class DefaultRootComponent(
         activatePane(targetPaneId)
     }
 
-    override fun refreshActivePane() {
+    fun refreshActivePane() {
         when (activePane.value) {
             PaneId.PRIMARY -> primaryPane.refresh()
             PaneId.SECONDARY -> secondaryPane.refresh()
         }
     }
 
-    override fun togglePreviewPane() {
+    fun togglePreviewPane() {
         showPreviewPane.value = !showPreviewPane.value
     }
 
-    override fun stageCopySelectedInPane(paneId: PaneId) {
+    fun stageCopySelectedInPane(paneId: PaneId) {
         clipboardManager.stageCopy(selectedEntriesInPane(paneId))
     }
 
-    override fun stageCutSelectedInPane(paneId: PaneId) {
+    fun stageCutSelectedInPane(paneId: PaneId) {
         clipboardManager.stageCut(selectedEntriesInPane(paneId))
     }
 
-    override fun requestPasteIntoPane(paneId: PaneId) {
+    fun requestPasteIntoPane(paneId: PaneId) {
         val payload = clipboardManager.consume() ?: return
         val targetLocation = paneState(paneId).location
         fileTransferDelegate.requestTransferEntriesToDirectory(
@@ -510,7 +524,7 @@ class DefaultRootComponent(
         )
     }
 
-    override fun requestTransferSelectedToDirectory(
+    fun requestTransferSelectedToDirectory(
         sourcePaneId: PaneId,
         targetDirectoryLocation: String,
         operation: FileTransferOperation,
@@ -535,7 +549,7 @@ class DefaultRootComponent(
         }
     }
 
-    override fun requestDeleteSelectedInPane(paneId: PaneId) {
+    fun requestDeleteSelectedInPane(paneId: PaneId) {
         val selectedEntries = selectedEntriesInPane(paneId)
         if (selectedEntries.isEmpty()) {
             return
@@ -557,7 +571,7 @@ class DefaultRootComponent(
         )
     }
 
-    override fun extractSelectedInPane(paneId: PaneId) {
+    fun extractSelectedInPane(paneId: PaneId) {
         archiveActionDelegate.launchArchiveExtraction(
             selectedEntries = selectedEntriesInPane(paneId),
             currentLocation = paneState(paneId).location,
@@ -571,7 +585,7 @@ class DefaultRootComponent(
         }
     }
 
-    override fun extractToDirectoryInPane(paneId: PaneId) {
+    fun extractToDirectoryInPane(paneId: PaneId) {
         archiveActionDelegate.launchArchiveExtraction(
             selectedEntries = selectedEntriesInPane(paneId),
             currentLocation = paneState(paneId).location,
@@ -585,7 +599,7 @@ class DefaultRootComponent(
         }
     }
 
-    override fun extractSmartInPane(paneId: PaneId) {
+    fun extractSmartInPane(paneId: PaneId) {
         archiveActionDelegate.launchArchiveExtraction(
             selectedEntries = selectedEntriesInPane(paneId),
             currentLocation = paneState(paneId).location,
@@ -599,9 +613,39 @@ class DefaultRootComponent(
         }
     }
 
-    override fun submitArchivePassword(password: String) = archiveActionDelegate.submitArchivePassword(password)
+    fun submitArchivePassword(password: String) = archiveActionDelegate.submitArchivePassword(password)
 
-    override fun batchRenameInPane(paneId: PaneId) {
+    fun updateRemoteCredentialsDraft(draft: RemoteCredentialsDraft) {
+        val currentDialog = dialogState.value as? RootDialogState.RemoteCredentials ?: return
+        dialogState.value = currentDialog.copy(
+            draft = draft,
+            rejected = false,
+            error = null,
+        )
+    }
+
+    fun submitRemoteCredentials() {
+        val currentDialog = dialogState.value as? RootDialogState.RemoteCredentials ?: return
+        val username = currentDialog.draft.username.trim()
+        if (username.isEmpty()) {
+            dialogState.value = currentDialog.copy(error = RemoteCredentialsDialogError.USERNAME_EMPTY)
+            return
+        }
+
+        remoteAuthStore.put(
+            protocol = currentDialog.protocol,
+            location = currentDialog.location,
+            authContext = VfsAuthContext.UsernamePassword(
+                username = username,
+                password = currentDialog.draft.password,
+                domain = currentDialog.draft.domain.trim().ifBlank { null },
+            ),
+        )
+        dialogState.value = null
+        paneComponent(currentDialog.paneId).refresh()
+    }
+
+    fun batchRenameInPane(paneId: PaneId) {
         val selectedEntries = selectedEntriesInPane(paneId)
         if (selectedEntries.size < 2) return
         dialogState.value = RootDialogState.BatchRename(
@@ -610,37 +654,37 @@ class DefaultRootComponent(
         )
     }
 
-    override fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>) =
+    fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>) =
         fileActionDelegate.executeBatchRename(paneId, renameMap)
 
-    override fun resetBatchRenameForContinue(paneId: PaneId) =
+    fun resetBatchRenameForContinue(paneId: PaneId) =
         fileActionDelegate.resetBatchRenameForContinue(paneId)
 
-    override fun dismissTask(taskId: String) = taskOrchestrator.dismissTask(taskId)
+    fun dismissTask(taskId: String) = taskOrchestrator.dismissTask(taskId)
 
-    override fun cancelTask(taskId: String) = taskOrchestrator.cancelTask(taskId)
+    fun cancelTask(taskId: String) = taskOrchestrator.cancelTask(taskId)
 
-    override fun pauseTask(taskId: String) = taskOrchestrator.pauseTask(taskId)
+    fun pauseTask(taskId: String) = taskOrchestrator.pauseTask(taskId)
 
-    override fun resumeTask(taskId: String) = taskOrchestrator.resumeTask(taskId)
+    fun resumeTask(taskId: String) = taskOrchestrator.resumeTask(taskId)
 
-    override fun clearAllTasks() = taskOrchestrator.clearAllTasks()
+    fun clearAllTasks() = taskOrchestrator.clearAllTasks()
 
     // ── 图片查看器 ────────────────────────────────────────────────────────────
 
-    override fun openImageViewer(file: VFile, allImages: List<VFile>) = imageViewerController.open(file, allImages)
+    fun openImageViewer(file: VFile, allImages: List<VFile>) = imageViewerController.open(file, allImages)
 
-    override fun closeImageViewer() = imageViewerController.close()
+    fun closeImageViewer() = imageViewerController.close()
 
-    override fun imageViewerNext() = imageViewerController.next()
+    fun imageViewerNext() = imageViewerController.next()
 
-    override fun imageViewerPrevious() = imageViewerController.previous()
+    fun imageViewerPrevious() = imageViewerController.previous()
 
-    override fun imageViewerSetZoom(factor: Float) = imageViewerController.setZoom(factor)
+    fun imageViewerSetZoom(factor: Float) = imageViewerController.setZoom(factor)
 
-    override fun imageViewerSetFitMode(mode: ImageFitMode) = imageViewerController.setFitMode(mode)
+    fun imageViewerSetFitMode(mode: ImageFitMode) = imageViewerController.setFitMode(mode)
 
-    override fun imageViewerRotate(clockwise: Boolean) = imageViewerController.rotate(clockwise)
+    fun imageViewerRotate(clockwise: Boolean) = imageViewerController.rotate(clockwise)
 
     // ── 打开方式 ──────────────────────────────────────────────────────────
 
@@ -648,13 +692,13 @@ class DefaultRootComponent(
         return openWithService.listApps(entry)
     }
 
-    override fun openWithApp(entry: VFile, app: OpenWithApp) {
+    fun openWithApp(entry: VFile, app: OpenWithApp) {
         scope.launch {
             openWithService.openWith(entry, app)
         }
     }
 
-    override fun openWithChooser(entry: VFile) {
+    fun openWithChooser(entry: VFile) {
         scope.launch {
             openWithService.openWithChooser(entry)
         }
@@ -676,7 +720,7 @@ class DefaultRootComponent(
         return pathService.buildBreadcrumbs(location)
     }
 
-    override fun openTerminalAt(location: String) {
+    fun openTerminalAt(location: String) {
         scope.launch {
             terminalLauncherService.openTerminal(location)
         }
@@ -684,6 +728,10 @@ class DefaultRootComponent(
 
     override fun resolveTransferOperation(sourceLocation: String, targetLocation: String): FileTransferOperation {
         return pathService.resolveTransferOperation(sourceLocation, targetLocation)
+    }
+
+    override suspend fun testRemoteConnection(request: VfsConnectionTestRequest): VfsConnectionTestResult {
+        return connectionTestService.testConnection(request)
     }
 
     override suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult {
@@ -787,19 +835,43 @@ class DefaultRootComponent(
     }
 
     private fun recordRecentLocations(vararg locations: String) {
-        val normalizedLocations = locations
-            .map { location -> location.trim() }
-            .filter { location -> location.isNotEmpty() && !ArchiveService.isArchiveLocation(location) }
-        if (normalizedLocations.isEmpty()) {
+        val nextSettings = settings.value.recordRecentLocations(
+            locations = locations.toList(),
+            isArchiveLocation = ArchiveService::isArchiveLocation,
+        )
+        if (nextSettings != settings.value) {
+            settings.value = nextSettings
+        }
+    }
+
+    private fun requestRemoteCredentials(
+        paneId: PaneId,
+        error: VfsProviderError,
+    ) {
+        val protocol = error.protocol
+        if (protocol != VfsProtocol.SMB && protocol != VfsProtocol.WEBDAV) {
             return
         }
-        val nextRecentLocations = buildList {
-            addAll(normalizedLocations)
-            addAll(settings.value.recentLocations)
-        }.distinct().take(MaxRecentLocations)
-        if (nextRecentLocations != settings.value.recentLocations) {
-            settings.value = settings.value.copy(recentLocations = nextRecentLocations).sanitized()
+        val location = error.location ?: paneState(paneId).location
+        val rejected = error is VfsProviderError.AuthenticationRejected
+        val currentDialog = dialogState.value as? RootDialogState.RemoteCredentials
+        if (currentDialog != null &&
+            currentDialog.paneId == paneId &&
+            currentDialog.protocol == protocol &&
+            currentDialog.location == location
+        ) {
+            if (rejected && !currentDialog.rejected) {
+                dialogState.value = currentDialog.copy(rejected = true)
+            }
+            return
         }
+
+        dialogState.value = RootDialogState.RemoteCredentials(
+            paneId = paneId,
+            protocol = protocol,
+            location = location,
+            rejected = rejected,
+        )
     }
 
 
@@ -884,19 +956,6 @@ private fun PaneComponent.toPaneSessionSnapshot(): PaneSessionSnapshot {
         },
     )
 }
-
-private fun OnyxSettings.sanitized(): OnyxSettings {
-    return copy(
-        uiScale = uiScale.coerceIn(75, 200),
-        favoriteLocations = favoriteLocations.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            .take(MaxFavoriteLocations),
-        recentLocations = recentLocations.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-            .take(MaxRecentLocations),
-    )
-}
-
-private const val MaxFavoriteLocations = 12
-private const val MaxRecentLocations = 10
 
 /** combine 中间类型 — 布局相关状态切片 */
 private data class LayoutSlice(

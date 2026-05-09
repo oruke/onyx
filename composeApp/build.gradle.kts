@@ -12,6 +12,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":core"))
+            implementation(project(":vfs-api"))
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.ui)
@@ -23,19 +25,22 @@ kotlin {
             implementation(libs.decompose.compose)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
-            implementation(libs.ktor.client.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
         jvmMain.dependencies {
+            implementation(project(":app"))
+            implementation(project(":vfs-archive"))
+            implementation(project(":vfs-local"))
+            implementation(project(":vfs-smb"))
+            implementation(project(":vfs-webdav"))
+            implementation(project(":vfs-s3"))
             implementation(compose.desktop.currentOs) {
                 exclude(group = "org.jetbrains.compose.material")
             }
             implementation(libs.kotlinx.coroutinesSwing)
-            implementation(libs.ktor.client.cio)
             implementation(libs.coil.compose)
-            implementation(libs.jcifs.ng)
             implementation(libs.sevenzipjbinding)
             implementation(libs.sevenzipjbinding.all.platforms)
             implementation(libs.jewel.ui)

@@ -5,7 +5,11 @@ import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
+import com.oruke.onyx.app.filesystem.VfsConnectionTestRequest
+import com.oruke.onyx.app.filesystem.VfsConnectionTestResult
+import com.oruke.onyx.app.filesystem.VfsProtocol
 import com.oruke.onyx.core.model.BackgroundTask
+import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.ImageFitMode
 import com.oruke.onyx.core.model.ImageViewerState
@@ -104,16 +108,29 @@ sealed interface RootDialogState {
         val archiveName: String,
         val error: I18nMessage? = null,
     ) : RootDialogState
+
+    data class RemoteCredentials(
+        val paneId: PaneId,
+        val protocol: VfsProtocol,
+        val location: String,
+        val draft: RemoteCredentialsDraft = RemoteCredentialsDraft(),
+        val rejected: Boolean = false,
+        val error: RemoteCredentialsDialogError? = null,
+    ) : RootDialogState
 }
 
 enum class CreateDirectoriesDialogError {
     EMPTY_INPUT,
 }
 
-enum class FileTransferOperation {
-    COPY,
-    MOVE,
-    EXTRACT,
+data class RemoteCredentialsDraft(
+    val username: String = "",
+    val password: String = "",
+    val domain: String = "",
+)
+
+enum class RemoteCredentialsDialogError {
+    USERNAME_EMPTY,
 }
 
 sealed interface RootIntent {
@@ -221,6 +238,12 @@ sealed interface RootIntent {
         val password: String,
     ) : RootIntent
 
+    data class UpdateRemoteCredentialsDraft(
+        val draft: RemoteCredentialsDraft,
+    ) : RootIntent
+
+    data object SubmitRemoteCredentials : RootIntent
+
     data class BatchRenameInPane(
         val paneId: PaneId,
     ) : RootIntent
@@ -297,111 +320,9 @@ interface RootComponent {
 
     fun dispatch(intent: RootIntent)
 
-    fun setLayoutMode(mode: PaneLayoutMode)
-
-    fun setPaneSplitFraction(fraction: Float)
-
-    fun openSettings()
-
-    fun updateSettingsDraft(draft: OnyxSettings)
-
-    fun activatePane(paneId: PaneId)
-
-    fun updateSettings(settings: OnyxSettings)
-
-    fun openLocationInActivePane(location: String)
-
-    fun toggleFavoriteLocation(location: String)
-
-    fun toggleSidebarTreeNode(location: String)
-
-    fun retrySidebarTreeNode(location: String)
-
-    fun beginCreateDirectoriesInPane(paneId: PaneId)
-
-    fun updateCreateDirectoriesDraft(draft: String)
-
-    fun confirmDialog()
-
-    fun dismissDialog()
-
-    fun resolveConflict(
-        strategy: TransferConflictStrategy,
-        applyToAll: Boolean,
-    )
-
-    fun moveTab(
-        sourcePaneId: PaneId,
-        tabId: String,
-        targetPaneId: PaneId,
-        targetIndex: Int,
-    )
-
-    fun refreshActivePane()
-
-    fun togglePreviewPane()
-
-    fun stageCopySelectedInPane(paneId: PaneId)
-
-    fun stageCutSelectedInPane(paneId: PaneId)
-
-    fun requestPasteIntoPane(paneId: PaneId)
-
-    fun requestTransferSelectedToDirectory(
-        sourcePaneId: PaneId,
-        targetDirectoryLocation: String,
-        operation: FileTransferOperation,
-    )
-
-    fun requestDeleteSelectedInPane(paneId: PaneId)
-
-    fun extractSelectedInPane(paneId: PaneId)
-
-    fun extractToDirectoryInPane(paneId: PaneId)
-
-    fun extractSmartInPane(paneId: PaneId)
-
-    fun submitArchivePassword(password: String)
-
-    fun batchRenameInPane(paneId: PaneId)
-
-    fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>)
-
-    fun resetBatchRenameForContinue(paneId: PaneId)
-
-    fun dismissTask(taskId: String)
-
-    fun cancelTask(taskId: String)
-
-    fun pauseTask(taskId: String)
-
-    fun resumeTask(taskId: String)
-
-    fun clearAllTasks()
-
-    // ── 图片查看器 ────────────────────────────────────────────────────
-
-    fun openImageViewer(file: VFile, allImages: List<VFile>)
-
-    fun closeImageViewer()
-
-    fun imageViewerNext()
-
-    fun imageViewerPrevious()
-
-    fun imageViewerSetZoom(factor: Float)
-
-    fun imageViewerSetFitMode(mode: ImageFitMode)
-
-    fun imageViewerRotate(clockwise: Boolean)
-
     // ── 打开方式 ──────────────────────────────────────────────────────────
 
     suspend fun listOpenWithApps(entry: VFile): List<OpenWithApp>
-
-    fun openWithApp(entry: VFile, app: OpenWithApp)
-
-    fun openWithChooser(entry: VFile)
 
     fun prepareExternalDrag(entries: List<VFile>): Boolean
 
@@ -411,9 +332,9 @@ interface RootComponent {
 
     fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>
 
-    fun openTerminalAt(location: String)
-
     fun resolveTransferOperation(sourceLocation: String, targetLocation: String): FileTransferOperation
+
+    suspend fun testRemoteConnection(request: VfsConnectionTestRequest): VfsConnectionTestResult
 
     suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult
 
@@ -423,3 +344,122 @@ interface RootComponent {
 
     suspend fun readImageSize(entry: VFile): IntSize?
 }
+
+fun RootComponent.setLayoutMode(mode: PaneLayoutMode) = dispatch(RootIntent.SetLayoutMode(mode))
+
+fun RootComponent.setPaneSplitFraction(fraction: Float) = dispatch(RootIntent.SetPaneSplitFraction(fraction))
+
+fun RootComponent.openSettings() = dispatch(RootIntent.OpenSettings)
+
+fun RootComponent.updateSettingsDraft(draft: OnyxSettings) = dispatch(RootIntent.UpdateSettingsDraft(draft))
+
+fun RootComponent.activatePane(paneId: PaneId) = dispatch(RootIntent.ActivatePane(paneId))
+
+fun RootComponent.updateSettings(settings: OnyxSettings) = dispatch(RootIntent.UpdateSettings(settings))
+
+fun RootComponent.openLocationInActivePane(location: String) = dispatch(RootIntent.OpenLocationInActivePane(location))
+
+fun RootComponent.toggleFavoriteLocation(location: String) = dispatch(RootIntent.ToggleFavoriteLocation(location))
+
+fun RootComponent.toggleSidebarTreeNode(location: String) = dispatch(RootIntent.ToggleSidebarTreeNode(location))
+
+fun RootComponent.retrySidebarTreeNode(location: String) = dispatch(RootIntent.RetrySidebarTreeNode(location))
+
+fun RootComponent.beginCreateDirectoriesInPane(paneId: PaneId) =
+    dispatch(RootIntent.BeginCreateDirectoriesInPane(paneId))
+
+fun RootComponent.updateCreateDirectoriesDraft(draft: String) =
+    dispatch(RootIntent.UpdateCreateDirectoriesDraft(draft))
+
+fun RootComponent.confirmDialog() = dispatch(RootIntent.ConfirmDialog)
+
+fun RootComponent.dismissDialog() = dispatch(RootIntent.DismissDialog)
+
+fun RootComponent.resolveConflict(
+    strategy: TransferConflictStrategy,
+    applyToAll: Boolean,
+) = dispatch(RootIntent.ResolveConflict(strategy, applyToAll))
+
+fun RootComponent.moveTab(
+    sourcePaneId: PaneId,
+    tabId: String,
+    targetPaneId: PaneId,
+    targetIndex: Int,
+) = dispatch(RootIntent.MoveTab(sourcePaneId, tabId, targetPaneId, targetIndex))
+
+fun RootComponent.refreshActivePane() = dispatch(RootIntent.RefreshActivePane)
+
+fun RootComponent.togglePreviewPane() = dispatch(RootIntent.TogglePreviewPane)
+
+fun RootComponent.stageCopySelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCopySelectedInPane(paneId))
+
+fun RootComponent.stageCutSelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCutSelectedInPane(paneId))
+
+fun RootComponent.requestPasteIntoPane(paneId: PaneId) = dispatch(RootIntent.RequestPasteIntoPane(paneId))
+
+fun RootComponent.requestTransferSelectedToDirectory(
+    sourcePaneId: PaneId,
+    targetDirectoryLocation: String,
+    operation: FileTransferOperation,
+) = dispatch(RootIntent.RequestTransferSelectedToDirectory(sourcePaneId, targetDirectoryLocation, operation))
+
+fun RootComponent.requestDeleteSelectedInPane(paneId: PaneId) = dispatch(RootIntent.RequestDeleteSelectedInPane(paneId))
+
+fun RootComponent.extractSelectedInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSelectedInPane(paneId))
+
+fun RootComponent.extractToDirectoryInPane(paneId: PaneId) = dispatch(RootIntent.ExtractToDirectoryInPane(paneId))
+
+fun RootComponent.extractSmartInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSmartInPane(paneId))
+
+fun RootComponent.submitArchivePassword(password: String) = dispatch(RootIntent.SubmitArchivePassword(password))
+
+fun RootComponent.updateRemoteCredentialsDraft(draft: RemoteCredentialsDraft) =
+    dispatch(RootIntent.UpdateRemoteCredentialsDraft(draft))
+
+fun RootComponent.submitRemoteCredentials() = dispatch(RootIntent.SubmitRemoteCredentials)
+
+fun RootComponent.batchRenameInPane(paneId: PaneId) = dispatch(RootIntent.BatchRenameInPane(paneId))
+
+fun RootComponent.executeBatchRename(
+    paneId: PaneId,
+    renameMap: List<Pair<VFile, String>>,
+) = dispatch(RootIntent.ExecuteBatchRename(paneId, renameMap))
+
+fun RootComponent.resetBatchRenameForContinue(paneId: PaneId) =
+    dispatch(RootIntent.ResetBatchRenameForContinue(paneId))
+
+fun RootComponent.dismissTask(taskId: String) = dispatch(RootIntent.DismissTask(taskId))
+
+fun RootComponent.cancelTask(taskId: String) = dispatch(RootIntent.CancelTask(taskId))
+
+fun RootComponent.pauseTask(taskId: String) = dispatch(RootIntent.PauseTask(taskId))
+
+fun RootComponent.resumeTask(taskId: String) = dispatch(RootIntent.ResumeTask(taskId))
+
+fun RootComponent.clearAllTasks() = dispatch(RootIntent.ClearAllTasks)
+
+fun RootComponent.openImageViewer(
+    file: VFile,
+    allImages: List<VFile>,
+) = dispatch(RootIntent.OpenImageViewer(file, allImages))
+
+fun RootComponent.closeImageViewer() = dispatch(RootIntent.CloseImageViewer)
+
+fun RootComponent.imageViewerNext() = dispatch(RootIntent.ImageViewerNext)
+
+fun RootComponent.imageViewerPrevious() = dispatch(RootIntent.ImageViewerPrevious)
+
+fun RootComponent.imageViewerSetZoom(factor: Float) = dispatch(RootIntent.ImageViewerSetZoom(factor))
+
+fun RootComponent.imageViewerSetFitMode(mode: ImageFitMode) = dispatch(RootIntent.ImageViewerSetFitMode(mode))
+
+fun RootComponent.imageViewerRotate(clockwise: Boolean) = dispatch(RootIntent.ImageViewerRotate(clockwise))
+
+fun RootComponent.openWithApp(
+    entry: VFile,
+    app: OpenWithApp,
+) = dispatch(RootIntent.OpenWithApp(entry, app))
+
+fun RootComponent.openWithChooser(entry: VFile) = dispatch(RootIntent.OpenWithChooser(entry))
+
+fun RootComponent.openTerminalAt(location: String) = dispatch(RootIntent.OpenTerminalAt(location))

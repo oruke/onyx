@@ -4,9 +4,10 @@ import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootDialogState
-import com.oruke.onyx.app.component.usecase.BatchRenameUseCase
-import com.oruke.onyx.app.component.usecase.DeleteEntriesUseCase
-import com.oruke.onyx.app.component.usecase.TaskProgress
+import com.oruke.onyx.app.usecase.BatchRenameUseCase
+import com.oruke.onyx.app.usecase.DeleteEntriesUseCase
+import com.oruke.onyx.app.usecase.TaskProgress
+import com.oruke.onyx.app.usecase.buildTaskDetail
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.core.model.BackgroundTask
