@@ -70,7 +70,7 @@ ui
 
 ## P1：Tab 改为 Decompose ChildStack
 
-- [ ] 每个 Tab 建立 `TabComponent`。
+- [x] 每个 Tab 建立 `TabComponent`。
 - [ ] `PaneComponent` 只管理 `ChildStack<TabConfig, TabComponent>`。
 - [x] 跨面板标签拖拽传递 `TabConfig` / `TabSessionSnapshot`。
 - [x] Session 持久化改为 `TabSnapshot` 映射。
