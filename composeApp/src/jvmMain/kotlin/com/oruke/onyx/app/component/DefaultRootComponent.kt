@@ -7,6 +7,9 @@ import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileHashRequest
+import com.oruke.onyx.app.filesystem.FileHashResult
+import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.ImageMetadataService
@@ -102,6 +105,7 @@ class DefaultRootComponent(
     private val archiveEntryOpenService: ArchiveEntryOpenService,
     private val terminalLauncherService: TerminalLauncherService,
     private val previewService: PreviewService,
+    private val fileHashService: FileHashService,
     private val thumbnailService: ThumbnailService,
     private val imageMetadataService: ImageMetadataService,
     private val connectionTestService: VfsConnectionTestService,
@@ -1135,6 +1139,10 @@ class DefaultRootComponent(
 
     override suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult {
         return previewService.loadTextPreview(request)
+    }
+
+    override suspend fun readFileHash(request: FileHashRequest): FileHashResult {
+        return fileHashService.readHash(request)
     }
 
     override suspend fun loadThumbnail(location: String, maxDimension: Int): ImageBitmap? {

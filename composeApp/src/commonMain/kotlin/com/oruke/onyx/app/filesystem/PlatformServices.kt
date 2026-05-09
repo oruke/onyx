@@ -75,6 +75,30 @@ interface PreviewService {
     suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult
 }
 
+data class FileHashRequest(
+    val entry: VFile,
+    val maxBytes: Long,
+)
+
+sealed interface FileHashResult {
+    data class Hash(
+        val algorithm: String,
+        val value: String,
+    ) : FileHashResult
+
+    data object TooLarge : FileHashResult
+
+    data object Unavailable : FileHashResult
+
+    data class Failed(
+        val reason: I18nMessage,
+    ) : FileHashResult
+}
+
+interface FileHashService {
+    suspend fun readHash(request: FileHashRequest): FileHashResult
+}
+
 interface FileTypeService {
     fun isImageFileName(fileName: String): Boolean
 

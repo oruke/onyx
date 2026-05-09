@@ -3,6 +3,7 @@ package com.oruke.onyx.app.filesystem
 import androidx.compose.ui.unit.IntSize
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
@@ -10,8 +11,10 @@ import java.io.File
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import javax.imageio.ImageIO
 import kotlin.io.path.pathString
+import kotlin.coroutines.cancellation.CancellationException
 
 class JvmVfsPathService : VfsPathService {
     override fun normalizeLocation(location: String): String {
@@ -419,6 +422,65 @@ class JvmPreviewService : PreviewService {
         } catch (failure: Throwable) {
             PreviewTextResult.Failed(failure.toI18nMessage())
         }
+    }
+}
+
+class JvmFileHashService(
+    private val archiveService: ArchiveService,
+) : FileHashService {
+    override suspend fun readHash(request: FileHashRequest): FileHashResult = withContext(Dispatchers.IO) {
+        try {
+            if (request.entry.kind != VFileKind.FILE) {
+                return@withContext FileHashResult.Unavailable
+            }
+            if ((request.entry.sizeBytes ?: 0L) > request.maxBytes) {
+                return@withContext FileHashResult.TooLarge
+            }
+            val digest = MessageDigest.getInstance(SHA_256)
+            if (ArchiveService.isArchiveLocation(request.entry.location)) {
+                val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(request.entry.location)
+                    ?: return@withContext FileHashResult.Unavailable
+                if (innerPath.isBlank()) return@withContext FileHashResult.Unavailable
+                val bytes = archiveService.extractToBytes(archivePath, innerPath).getOrNull()
+                    ?: return@withContext FileHashResult.Unavailable
+                if (bytes.size.toLong() > request.maxBytes) {
+                    return@withContext FileHashResult.TooLarge
+                }
+                digest.update(bytes)
+            } else {
+                if (request.entry.location.contains("://")) {
+                    return@withContext FileHashResult.Unavailable
+                }
+                val path = Path.of(request.entry.location)
+                if (!Files.exists(path) || Files.isDirectory(path)) {
+                    return@withContext FileHashResult.Unavailable
+                }
+                if (Files.size(path) > request.maxBytes) {
+                    return@withContext FileHashResult.TooLarge
+                }
+                Files.newInputStream(path).use { input ->
+                    val buffer = ByteArray(HASH_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        digest.update(buffer, 0, read)
+                    }
+                }
+            }
+            FileHashResult.Hash(
+                algorithm = SHA_256,
+                value = digest.digest().joinToString("") { byte -> "%02x".format(byte) },
+            )
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Throwable) {
+            FileHashResult.Failed(failure.toI18nMessage())
+        }
+    }
+
+    private companion object {
+        const val SHA_256 = "SHA-256"
+        const val HASH_BUFFER_SIZE = 64 * 1024
     }
 }
 

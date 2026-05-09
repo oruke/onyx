@@ -277,6 +277,7 @@
     <string name="label_inspector_size">Size</string>
     <string name="label_inspector_modified">Modified</string>
     <string name="label_inspector_location">Location</string>
+    <string name="label_inspector_sha256">SHA-256</string>
     <string name="label_inspector_unknown">Unknown</string>
     <string name="label_inspector_directory">Directory</string>
     <string name="label_inspector_file">File</string>

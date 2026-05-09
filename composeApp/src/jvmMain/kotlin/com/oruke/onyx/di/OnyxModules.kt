@@ -7,6 +7,7 @@ import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ArchiveVfsProvider
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.JsonSessionRepository
@@ -15,6 +16,7 @@ import com.oruke.onyx.app.filesystem.JsonTaskPersistenceRepository
 import com.oruke.onyx.app.filesystem.JvmDesktopExternalOpenService
 import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
 import com.oruke.onyx.app.filesystem.JvmArchiveEntryOpenService
+import com.oruke.onyx.app.filesystem.JvmFileHashService
 import com.oruke.onyx.app.filesystem.JvmFileTypeService
 import com.oruke.onyx.app.filesystem.JvmImageMetadataService
 import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
@@ -143,6 +145,7 @@ val fileModule = module {
     single<ArchiveEntryOpenService> { JvmArchiveEntryOpenService(get(), get()) }
     single<TerminalLauncherService> { JvmTerminalLauncherService() }
     single<PreviewService> { JvmPreviewService() }
+    single<FileHashService> { JvmFileHashService(get()) }
     single<ThumbnailService> { JvmThumbnailService() }
     single<ImageMetadataService> { JvmImageMetadataService(get()) }
     single<SettingsRepository> { JsonSettingsRepository() }

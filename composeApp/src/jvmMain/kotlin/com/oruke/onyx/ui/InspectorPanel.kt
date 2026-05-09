@@ -14,6 +14,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -23,20 +28,27 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import com.oruke.onyx.app.filesystem.FileHashRequest
+import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.core.model.PaneInspectorState
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
+import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_inspector_directory
 import onyx.composeapp.generated.resources.label_inspector_file
 import onyx.composeapp.generated.resources.label_inspector_location
 import onyx.composeapp.generated.resources.label_inspector_modified
+import onyx.composeapp.generated.resources.label_inspector_sha256
 import onyx.composeapp.generated.resources.label_inspector_size
 import onyx.composeapp.generated.resources.label_inspector_type
 import onyx.composeapp.generated.resources.label_inspector_unknown
+import onyx.composeapp.generated.resources.label_preview_loading
+import onyx.composeapp.generated.resources.label_preview_too_large
+import onyx.composeapp.generated.resources.label_preview_unavailable
 import onyx.composeapp.generated.resources.label_preview_no_selection
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.Orientation
@@ -53,6 +65,7 @@ internal fun InspectorPanel(
     entry: VFile?,
     state: PaneInspectorState,
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    readFileHash: suspend (FileHashRequest) -> FileHashResult,
     isImageFileName: (String) -> Boolean,
 ) {
     Column(
@@ -143,6 +156,28 @@ internal fun InspectorPanel(
                     label = stringResource(Res.string.label_inspector_location),
                     value = entry.parentLocation ?: stringResource(Res.string.label_inspector_unknown),
                 )
+                if (entry.kind == VFileKind.FILE) {
+                    var hashResult by remember(entry.location) { mutableStateOf<FileHashResult?>(null) }
+                    LaunchedEffect(entry.location) {
+                        hashResult = readFileHash(
+                            FileHashRequest(
+                                entry = entry,
+                                maxBytes = 64L * 1024L * 1024L,
+                            )
+                        )
+                    }
+                    val hashValue = when (val result = hashResult) {
+                        null -> stringResource(Res.string.label_preview_loading)
+                        is FileHashResult.Hash -> result.value
+                        FileHashResult.TooLarge -> stringResource(Res.string.label_preview_too_large)
+                        FileHashResult.Unavailable -> stringResource(Res.string.label_preview_unavailable)
+                        is FileHashResult.Failed -> result.reason.resolve()
+                    }
+                    InspectorDetailRow(
+                        label = stringResource(Res.string.label_inspector_sha256),
+                        value = hashValue,
+                    )
+                }
             }
         }
     }

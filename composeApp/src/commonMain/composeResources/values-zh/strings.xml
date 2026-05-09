@@ -275,6 +275,7 @@
     <string name="label_inspector_size">大小</string>
     <string name="label_inspector_modified">修改时间</string>
     <string name="label_inspector_location">位置</string>
+    <string name="label_inspector_sha256">SHA-256</string>
     <string name="label_inspector_unknown">未知</string>
     <string name="label_inspector_directory">文件夹</string>
     <string name="label_inspector_file">文件</string>

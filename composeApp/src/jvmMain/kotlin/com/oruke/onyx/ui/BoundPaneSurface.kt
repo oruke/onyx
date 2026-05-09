@@ -99,6 +99,7 @@ internal fun BoundPaneSurface(
         fileDropTarget = fileDropTarget,
         loadThumbnail = rootComponent::loadThumbnail,
         loadArchiveThumbnail = rootComponent::loadArchiveThumbnail,
+        readFileHash = rootComponent::readFileHash,
         buildBreadcrumbs = rootComponent::buildBreadcrumbs,
     )
 }

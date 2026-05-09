@@ -16,6 +16,7 @@ import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.ImageMetadataService
@@ -80,6 +81,7 @@ fun rememberRootComponent(): RootComponent {
             archiveEntryOpenService = koin.get<ArchiveEntryOpenService>(),
             terminalLauncherService = koin.get<TerminalLauncherService>(),
             previewService = koin.get<PreviewService>(),
+            fileHashService = koin.get<FileHashService>(),
             thumbnailService = koin.get<ThumbnailService>(),
             imageMetadataService = koin.get<ImageMetadataService>(),
             connectionTestService = koin.get<VfsConnectionTestService>(),
