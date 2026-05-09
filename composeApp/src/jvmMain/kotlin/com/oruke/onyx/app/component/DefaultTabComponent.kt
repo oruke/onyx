@@ -14,4 +14,8 @@ class DefaultTabComponent(
     private val mutableState = MutableStateFlow(config.snapshot.toPaneTabState(pathService))
 
     override val state: StateFlow<PaneTabState> = mutableState.asStateFlow()
+
+    override fun updateState(state: PaneTabState) {
+        mutableState.value = state
+    }
 }

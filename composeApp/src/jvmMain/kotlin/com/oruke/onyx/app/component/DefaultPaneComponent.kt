@@ -913,6 +913,7 @@ class DefaultPaneComponent(
             inlineExpandedLocations = state.inlineExpandedLocations,
             inlineExpandedEntries = state.inlineExpandedEntries,
         )
+        nextTabs.firstOrNull { tab -> tab.id == tabId }?.let(::updateTabComponentState)
     }
 
     private fun syncTabStack() {
@@ -928,7 +929,15 @@ class DefaultPaneComponent(
         }
         if (orderedConfigs.isNotEmpty()) {
             tabNavigation.navigate { orderedConfigs }
+            state.tabs.forEach(::updateTabComponentState)
         }
+    }
+
+    private fun updateTabComponentState(tab: PaneTabState) {
+        tabStack.value.items
+            .firstOrNull { child -> child.configuration.id == tab.id }
+            ?.instance
+            ?.updateState(tab)
     }
 
     private fun activeTab(): PaneTabState? {

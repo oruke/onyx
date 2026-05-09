@@ -31,4 +31,6 @@ fun TabSnapshot.toTabConfig(): TabConfig {
 
 interface TabComponent {
     val state: StateFlow<PaneTabState>
+
+    fun updateState(state: PaneTabState)
 }
