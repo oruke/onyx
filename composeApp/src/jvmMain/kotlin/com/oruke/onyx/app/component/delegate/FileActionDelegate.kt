@@ -4,6 +4,9 @@ import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootDialogState
+import com.oruke.onyx.app.component.usecase.BatchRenameUseCase
+import com.oruke.onyx.app.component.usecase.DeleteEntriesUseCase
+import com.oruke.onyx.app.component.usecase.TaskProgress
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.core.model.BackgroundTask
@@ -16,6 +19,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
@@ -47,6 +51,8 @@ class FileActionDelegate(
 ) {
     var pendingDeleteRequest: PendingDeleteRequest? = null
         private set
+    private val deleteEntriesUseCase = DeleteEntriesUseCase(fileCommandService, trashService)
+    private val batchRenameUseCase = BatchRenameUseCase(fileCommandService)
 
     /**
      * 执行删除请求（确认对话框后调用）。
@@ -80,22 +86,16 @@ class FileActionDelegate(
                     progress = 0f,
                 )
 
-                selectedEntries.forEachIndexed { index, entry ->
-                    ensureActive()
-                    if (request.moveToTrash) {
-                        trashService.moveToTrash(listOf(entry)).getOrThrow()
-                    } else {
-                        fileCommandService.delete(listOf(entry)).getOrThrow()
-                    }
-                    taskOrchestrator.updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(Res.string.msg_string_literal, entry.name),
-                        progress = (index + 1).toFloat() / selectedEntries.size,
+                deleteEntriesUseCase.execute(
+                    DeleteEntriesUseCase.DeleteEntriesRequest(
+                        entries = selectedEntries,
+                        moveToTrash = request.moveToTrash,
                     )
+                ).collect { progress ->
+                    applyTaskProgress(taskId, progress)
                 }
 
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
@@ -106,7 +106,7 @@ class FileActionDelegate(
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -116,7 +116,7 @@ class FileActionDelegate(
                 onRefreshAllPanes()
             } catch (failure: Throwable) {
                 OnyxLogger.error("FileActionDelegate", "删除失败", failure)
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -190,7 +190,7 @@ class FileActionDelegate(
                         progress = (index + 1).toFloat() / paths.size,
                     )
                 }
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
@@ -201,7 +201,7 @@ class FileActionDelegate(
                 onRefreshPane(paneId)
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -211,7 +211,7 @@ class FileActionDelegate(
                 onRefreshPane(paneId)
             } catch (failure: Throwable) {
                 OnyxLogger.error("FileActionDelegate", "创建目录失败", failure)
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -251,34 +251,21 @@ class FileActionDelegate(
 
         val job = scope.launch {
             try {
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(Res.string.msg_string_literal, "Starting..."),
-                    progress = 0f,
-                )
-                renameMap.forEachIndexed { index, (entry, newName) ->
-                    ensureActive()
-                    val detailText = "${entry.name} → $newName"
-                    val prog = (index + 1).toFloat() / renameMap.size
-                    taskOrchestrator.updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(Res.string.msg_string_literal, detailText),
-                        progress = prog,
-                    )
+                batchRenameUseCase.execute(
+                    BatchRenameUseCase.BatchRenameRequest(renameMap = renameMap)
+                ).collect { progress ->
+                    applyTaskProgress(taskId, progress)
                     // 同步更新对话框进度
                     (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
                         dialogState.value = ds.copy(
-                            progress = prog,
-                            processedCount = index + 1,
-                            currentDetail = detailText,
+                            progress = progress.progress ?: ds.progress,
+                            processedCount = progress.processedCount ?: ds.processedCount,
+                            currentDetail = progress.detailText(),
                         )
                     }
-                    fileCommandService.rename(entry, newName).getOrThrow()
                 }
 
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
@@ -301,7 +288,7 @@ class FileActionDelegate(
                 delay(600)
                 resetBatchRenameForContinue(paneId)
             } catch (_: CancellationException) {
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -312,7 +299,7 @@ class FileActionDelegate(
                 }
             } catch (e: Throwable) {
                 OnyxLogger.error("FileActionDelegate", "批量重命名失败", e)
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -348,4 +335,28 @@ class FileActionDelegate(
         val entries: List<VFile>,
         val moveToTrash: Boolean,
     )
+
+    private fun applyTaskProgress(
+        taskId: String,
+        progress: TaskProgress,
+    ) {
+        taskOrchestrator.updateTask(
+            taskId = taskId,
+            status = progress.status,
+            detail = progress.detail,
+            progress = progress.progress,
+            processedCount = progress.processedCount,
+            processedBytes = progress.processedBytes,
+            totalBytes = progress.totalBytes,
+        )
+        progress.currentFileName?.let { fileName ->
+            taskOrchestrator.updateTaskFields(taskId) { task ->
+                task.copy(currentFileName = fileName)
+            }
+        }
+    }
+
+    private fun TaskProgress.detailText(): String {
+        return detail.args.firstOrNull()?.toString().orEmpty()
+    }
 }

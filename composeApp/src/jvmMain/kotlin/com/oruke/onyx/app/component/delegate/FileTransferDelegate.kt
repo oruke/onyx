@@ -7,6 +7,9 @@ import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.app.filesystem.VfsProviderRegistry
+import com.oruke.onyx.app.component.usecase.FileTransferUseCase
+import com.oruke.onyx.app.component.usecase.TaskProgress
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -16,6 +19,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
@@ -46,10 +50,12 @@ class FileTransferDelegate(
     private val clipboardManager: ClipboardManager,
     private val dialogState: MutableStateFlow<RootDialogState?>,
     private val pathService: VfsPathService,
+    private val providerRegistry: VfsProviderRegistry,
     private val onRefreshAllPanes: () -> Unit,
 ) {
     var pendingTransferRequest: PendingTransferRequest? = null
         private set
+    private val transferUseCase = FileTransferUseCase(fileCommandService, providerRegistry)
 
     /**
      * 请求文件传输 — 检测冲突后决定直接执行或弹出冲突对话框。
@@ -67,10 +73,21 @@ class FileTransferDelegate(
             return
         }
         scope.launch {
-            val conflictingEntries = detectConflictingEntries(
-                entries = entries,
-                targetDirectoryLocation = targetDirectoryLocation,
-            )
+            val conflictingEntries = try {
+                detectConflictingEntries(
+                    entries = entries,
+                    targetDirectoryLocation = targetDirectoryLocation,
+                )
+            } catch (failure: Throwable) {
+                OnyxLogger.error("FileTransferDelegate", "冲突检测失败 (${operation.name})", failure)
+                appendFailedTransferTask(
+                    entries = entries,
+                    targetDirectoryLocation = targetDirectoryLocation,
+                    operation = operation,
+                    failure = failure,
+                )
+                return@launch
+            }
             if (conflictingEntries.isNotEmpty()) {
                 pendingTransferRequest = PendingTransferRequest(
                     entries = entries,
@@ -180,100 +197,52 @@ class FileTransferDelegate(
         clearClipboardOnSuccess: Boolean,
         conflictStrategies: Map<String, TransferConflictStrategy>,
     ) {
+        if (entries.isEmpty()) return
+
         val taskId = UUID.randomUUID().toString()
-        val taskKind = when (operation) {
-            FileTransferOperation.COPY -> BackgroundTaskKind.COPY
-            FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
-            FileTransferOperation.EXTRACT -> BackgroundTaskKind.EXTRACT
-        }
+        val taskKind = taskKindFor(operation)
         val pauseFlag = taskOrchestrator.getOrCreatePauseFlag(taskId)
         val startTime = System.currentTimeMillis()
-        // 预计算总字节（目录递归统计由 sizeBytes 提供，若为 0 则回退到文件计数进度）
-        val totalBytes = entries.sumOf { it.sizeBytes ?: 0L }
+        val initialTotalBytes = entries.sumOf { it.sizeBytes ?: 0L }
 
         taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
                 kind = taskKind,
-                title = when (operation) {
-                    FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_items, entries.size)
-                    FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_items, entries.size)
-                    FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_items, entries.size)
-                },
+                title = taskTitleFor(operation, entries.size),
                 status = BackgroundTaskStatus.QUEUED,
                 detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
                 progress = 0f,
                 totalCount = entries.size,
-                totalBytes = totalBytes,
+                totalBytes = initialTotalBytes,
                 startTimeMillis = startTime,
             )
         )
 
         val job = scope.launch {
             try {
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(
-                        Res.string.msg_string_literal,
-                        buildTransferTaskDetail(
-                            entries = entries,
-                            targetLocation = targetDirectoryLocation,
-                        )
+                transferUseCase.execute(
+                    request = FileTransferUseCase.FileTransferRequest(
+                        entries = entries,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                        operation = operation,
+                        conflictStrategies = conflictStrategies,
                     ),
-                    progress = 0f,
-                )
-
-                var accumulatedBytes = 0L
-                entries.forEachIndexed { index, entry ->
-                    ensureActive()
-                    // 文件级暂停检测
-                    while (pauseFlag.value) {
-                        ensureActive()
-                        delay(200)
-                    }
-                    taskOrchestrator.updateTaskFields(taskId) { task ->
-                        task.copy(currentFileName = entry.name)
-                    }
-                    val conflictStrategy = conflictStrategies[entry.id] ?: TransferConflictStrategy.KEEP_BOTH
-                    val result = when (operation) {
-                        FileTransferOperation.COPY, FileTransferOperation.EXTRACT -> {
-                            fileCommandService.copy(
-                                entries = listOf(entry),
-                                targetDirectoryLocation = targetDirectoryLocation,
-                                conflictStrategy = conflictStrategy,
-                            )
+                    awaitReady = {
+                        while (pauseFlag.value) {
+                            ensureActive()
+                            delay(200)
                         }
-
-                        FileTransferOperation.MOVE -> {
-                            fileCommandService.move(
-                                entries = listOf(entry),
-                                targetDirectoryLocation = targetDirectoryLocation,
-                                conflictStrategy = conflictStrategy,
-                            )
-                        }
-                    }
-                    result.getOrThrow()
-                    accumulatedBytes += entry.sizeBytes ?: 0L
-                    val byteProgress = if (totalBytes > 0L) {
-                        accumulatedBytes.toFloat() / totalBytes
-                    } else {
-                        (index + 1).toFloat() / entries.size
-                    }
-                    taskOrchestrator.updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(
-                            Res.string.msg_string_literal,
-                            "${entry.name} → $targetDirectoryLocation"
-                        ),
-                        progress = byteProgress,
-                        processedCount = index + 1,
-                        processedBytes = accumulatedBytes,
-                    )
+                    },
+                ).collect { progress ->
+                    applyTaskProgress(taskId, progress)
                 }
 
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
+                val completedBytes = taskOrchestrator.tasks.value
+                    .firstOrNull { task -> task.id == taskId }
+                    ?.totalBytes
+                    ?: entries.sumOf { entry -> entry.sizeBytes ?: 0L }
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
@@ -289,7 +258,7 @@ class FileTransferDelegate(
                     },
                     progress = 1f,
                     processedCount = entries.size,
-                    processedBytes = totalBytes,
+                    processedBytes = completedBytes,
                 )
                 if (clearClipboardOnSuccess) {
                     clipboardManager.clear()
@@ -297,7 +266,7 @@ class FileTransferDelegate(
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -307,7 +276,7 @@ class FileTransferDelegate(
                 onRefreshAllPanes()
             } catch (failure: Throwable) {
                 OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -333,9 +302,79 @@ class FileTransferDelegate(
         targetDirectoryLocation: String,
     ): List<VFile> {
         val existingNames = fileRepository.list(targetDirectoryLocation)
-            .getOrDefault(emptyList())
+            .getOrThrow()
             .mapTo(mutableSetOf()) { entry -> entry.name }
         return entries.filter { entry -> existingNames.contains(entry.name) }
+    }
+
+    private fun applyTaskProgress(
+        taskId: String,
+        progress: TaskProgress,
+    ) {
+        taskOrchestrator.updateTask(
+            taskId = taskId,
+            status = progress.status,
+            detail = progress.detail,
+            progress = progress.progress,
+            processedCount = progress.processedCount,
+            processedBytes = progress.processedBytes,
+            totalBytes = progress.totalBytes,
+        )
+        progress.currentFileName?.let { fileName ->
+            taskOrchestrator.updateTaskFields(taskId) { task ->
+                task.copy(currentFileName = fileName)
+            }
+        }
+    }
+
+    private fun appendFailedTransferTask(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        operation: FileTransferOperation,
+        failure: Throwable,
+    ) {
+        val taskId = UUID.randomUUID().toString()
+        taskOrchestrator.appendTask(
+            BackgroundTask(
+                id = taskId,
+                kind = taskKindFor(operation),
+                title = taskTitleFor(operation, entries.size),
+                status = BackgroundTaskStatus.FAILED,
+                detail = failure.message?.let { I18nMessage(Res.string.msg_string_literal, it) }
+                    ?: failureMessageFor(operation),
+                progress = null,
+                totalCount = entries.size,
+                startTimeMillis = System.currentTimeMillis(),
+            )
+        )
+        taskOrchestrator.scheduleAutoCleanup(taskId)
+    }
+
+    private fun taskKindFor(operation: FileTransferOperation): BackgroundTaskKind {
+        return when (operation) {
+            FileTransferOperation.COPY -> BackgroundTaskKind.COPY
+            FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
+            FileTransferOperation.EXTRACT -> BackgroundTaskKind.EXTRACT
+        }
+    }
+
+    private fun taskTitleFor(
+        operation: FileTransferOperation,
+        entryCount: Int,
+    ): I18nMessage {
+        return when (operation) {
+            FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_items, entryCount)
+            FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_items, entryCount)
+            FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_items, entryCount)
+        }
+    }
+
+    private fun failureMessageFor(operation: FileTransferOperation): I18nMessage {
+        return when (operation) {
+            FileTransferOperation.COPY -> I18nMessage(Res.string.msg_copy_failed)
+            FileTransferOperation.MOVE -> I18nMessage(Res.string.msg_move_failed)
+            FileTransferOperation.EXTRACT -> I18nMessage(Res.string.msg_extract_failed)
+        }
     }
 
     data class PendingTransferRequest(

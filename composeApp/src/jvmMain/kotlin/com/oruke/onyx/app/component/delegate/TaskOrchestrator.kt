@@ -68,6 +68,11 @@ class TaskOrchestrator(
         taskJobs[taskId] = job
     }
 
+    fun unregisterJob(taskId: String) {
+        taskJobs.remove(taskId)
+        taskPauseFlags.remove(taskId)
+    }
+
     fun getOrCreatePauseFlag(taskId: String): MutableStateFlow<Boolean> {
         return taskPauseFlags.getOrPut(taskId) { MutableStateFlow(false) }
     }

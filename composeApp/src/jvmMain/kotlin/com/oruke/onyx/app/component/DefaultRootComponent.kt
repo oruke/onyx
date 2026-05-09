@@ -24,6 +24,7 @@ import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.DeleteMode
@@ -76,6 +77,7 @@ class DefaultRootComponent(
     private val archiveService: ArchiveService,
     private val openWithService: OpenWithService,
     private val pathService: VfsPathService,
+    private val providerRegistry: VfsProviderRegistry,
     private val archiveFileTypeService: ArchiveFileTypeService,
     private val archiveEntryOpenService: ArchiveEntryOpenService,
     private val terminalLauncherService: TerminalLauncherService,
@@ -141,6 +143,7 @@ class DefaultRootComponent(
         clipboardManager = clipboardManager,
         dialogState = dialogState,
         pathService = pathService,
+        providerRegistry = providerRegistry,
         onRefreshAllPanes = ::refreshAllPanes,
     )
     private val archiveActionDelegate = ArchiveActionDelegate(

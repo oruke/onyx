@@ -76,17 +76,17 @@ ui
 
 ## P2：VFS provider 化
 
-- [ ] `LocalVfsProvider` 和 `ArchiveVfsProvider` 通过统一 provider registry 路由。
-- [ ] `VFile.location` 不再被 UI 当成本地路径解析。
-- [ ] 增加 provider capability：`WATCH`、`TRASH`、`EXTERNAL_OPEN`、`READ_PREVIEW`、`THUMBNAIL`。
-- [ ] 为 SMB、WebDAV、S3 预留协议级错误模型和认证上下文。
+- [x] `LocalVfsProvider` 和 `ArchiveVfsProvider` 通过统一 provider registry 路由。
+- [x] `VFile.location` 不再被 UI 当成本地路径解析。
+- [x] 增加 provider capability：`WATCH`、`TRASH`、`EXTERNAL_OPEN`、`READ_PREVIEW`、`THUMBNAIL`。
+- [x] 为 SMB、WebDAV、S3 预留协议级错误模型和认证上下文。
 
 ## P2：任务系统解耦
 
-- [ ] `TaskOrchestrator` 只保留任务状态和 Job 管理。
-- [ ] 复制、移动、删除、解压、批量重命名改为 UseCase，输出 `Flow<TaskProgress>`。
-- [ ] 冲突检测失败不能静默吞掉。
-- [ ] 目录复制进度通过递归统计或 provider 回调提供真实进度。
+- [x] `TaskOrchestrator` 只保留任务状态和 Job 管理。
+- [x] 复制、移动、删除、解压、批量重命名改为 UseCase，输出 `Flow<TaskProgress>`。
+- [x] 冲突检测失败不能静默吞掉。
+- [x] 目录复制进度通过递归统计或 provider 回调提供真实进度。
 
 ## P3：国际化与错误模型清理
 

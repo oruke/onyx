@@ -2,6 +2,8 @@ package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.RootDialogState
+import com.oruke.onyx.app.component.usecase.ArchiveExtractionUseCase
+import com.oruke.onyx.app.component.usecase.TaskProgress
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
@@ -13,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
@@ -37,6 +40,7 @@ class ArchiveActionDelegate(
 ) {
     var pendingArchiveExtraction: PendingArchiveExtraction? = null
         private set
+    private val archiveExtractionUseCase = ArchiveExtractionUseCase(archiveService)
 
     /**
      * 将压缩包内的选中条目解压到目标本地目录。
@@ -68,51 +72,26 @@ class ArchiveActionDelegate(
                     detail = I18nMessage(Res.string.msg_string_literal, targetDirectoryLocation),
                     progress = 0f,
                 )
-                // 按 archivePath 分组，减少压缩包打开次数
-                val grouped = entries.mapNotNull { entry ->
-                    ArchiveService.parseArchiveLocation(entry.location)?.let { (archivePath, innerPath) ->
-                        Triple(archivePath, innerPath, entry)
-                    }
-                }.groupBy { it.first }
-
-                var processedCount = 0
-                for ((archivePath, group) in grouped) {
-                    ensureActive()
-                    val innerPaths = group.map { it.second }.filter { it.isNotBlank() }
-                    if (innerPaths.isEmpty()) continue
-
-                    taskOrchestrator.updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(Res.string.msg_string_literal, group.first().third.name),
-                        progress = processedCount.toFloat() / entries.size,
-                    )
-
-                    // 检测是否加密，如需密码则弹出对话框并验证
-                    var password: String? = null
-                    val encrypted = archiveService.isEncrypted(archivePath)
-                    if (encrypted) {
-                        password = requestArchivePassword(
-                            archivePath = archivePath,
-                            archiveName = java.io.File(archivePath).name,
+                archiveExtractionUseCase.extractEntriesToDirectory(
+                    request = ArchiveExtractionUseCase.ArchiveEntryExtractionRequest(
+                        entries = entries,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                    ),
+                    resolvePassword = { request ->
+                        requestArchivePassword(
+                            archivePath = request.archivePath,
+                            archiveName = request.archiveName,
                             entries = entries,
                             targetLocation = targetDirectoryLocation,
                             taskId = taskId,
                             taskTitle = I18nMessage(Res.string.msg_extract_items, entries.size),
                         )
-                    }
-
-                    archiveService.extractEntriesToTemp(
-                        archivePath = archivePath,
-                        entryPaths = innerPaths,
-                        targetDir = targetDirectoryLocation,
-                        password = password,
-                    ).getOrThrow()
-
-                    processedCount += group.size
+                    },
+                ).collect { progress ->
+                    applyTaskProgress(taskId, progress)
                 }
 
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
@@ -121,8 +100,9 @@ class ArchiveActionDelegate(
                 )
                 // 刷新目标目录所在面板
                 onRefreshAllPanes()
+                taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (e: CancellationException) {
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -131,7 +111,7 @@ class ArchiveActionDelegate(
                 )
             } catch (e: Exception) {
                 OnyxLogger.error("ArchiveActionDelegate", "解压失败", e)
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -183,34 +163,28 @@ class ArchiveActionDelegate(
                     detail = I18nMessage(Res.string.msg_string_literal, buildTaskDetail(archiveEntries)),
                     progress = 0f,
                 )
-                archiveEntries.forEachIndexed { index, entry ->
-                    ensureActive()
-                    taskOrchestrator.updateTask(
-                        taskId = taskId,
-                        status = BackgroundTaskStatus.RUNNING,
-                        detail = I18nMessage(Res.string.msg_string_literal, entry.name),
-                        progress = index.toFloat() / archiveEntries.size,
-                    )
-
-                    // 检测是否加密，如需密码则弹出对话框并验证
-                    var password: String? = null
-                    val encrypted = archiveService.isEncrypted(entry.location)
-                    if (encrypted) {
-                        password = requestArchivePassword(
-                            archivePath = entry.location,
-                            archiveName = entry.name,
+                archiveExtractionUseCase.extractArchiveFiles(
+                    request = ArchiveExtractionUseCase.ArchiveFileExtractionRequest(
+                        archiveEntries = archiveEntries,
+                        currentLocation = currentLocation,
+                        extractAction = extractAction,
+                    ),
+                    resolvePassword = { request ->
+                        requestArchivePassword(
+                            archivePath = request.archivePath,
+                            archiveName = request.archiveName,
                             entries = archiveEntries,
                             targetLocation = currentLocation,
                             taskId = taskId,
                             taskTitle = taskTitle,
                             extractAction = extractAction,
                         )
-                    }
-
-                    extractAction(entry, currentLocation, password).getOrThrow()
+                    },
+                ).collect { progress ->
+                    applyTaskProgress(taskId, progress)
                 }
 
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
@@ -222,7 +196,7 @@ class ArchiveActionDelegate(
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
                 pendingArchiveExtraction = null
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -231,7 +205,7 @@ class ArchiveActionDelegate(
             } catch (e: Throwable) {
                 OnyxLogger.error("ArchiveActionDelegate", "拖拽解压失败", e)
                 pendingArchiveExtraction = null
-                taskOrchestrator.dismissTask(taskId)
+                taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -306,4 +280,24 @@ class ArchiveActionDelegate(
         val extractAction: suspend (VFile, String, String?) -> Result<Unit>,
         val passwordDeferred: CompletableDeferred<String>,
     )
+
+    private fun applyTaskProgress(
+        taskId: String,
+        progress: TaskProgress,
+    ) {
+        taskOrchestrator.updateTask(
+            taskId = taskId,
+            status = progress.status,
+            detail = progress.detail,
+            progress = progress.progress,
+            processedCount = progress.processedCount,
+            processedBytes = progress.processedBytes,
+            totalBytes = progress.totalBytes,
+        )
+        progress.currentFileName?.let { fileName ->
+            taskOrchestrator.updateTaskFields(taskId) { task ->
+                task.copy(currentFileName = fileName)
+            }
+        }
+    }
 }

@@ -28,6 +28,7 @@ import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -67,6 +68,7 @@ fun rememberRootComponent(): RootComponent {
             archiveService = koin.get<ArchiveService>(),
             openWithService = koin.get<OpenWithService>(),
             pathService = koin.get<VfsPathService>(),
+            providerRegistry = koin.get<VfsProviderRegistry>(),
             archiveFileTypeService = koin.get<ArchiveFileTypeService>(),
             archiveEntryOpenService = koin.get<ArchiveEntryOpenService>(),
             terminalLauncherService = koin.get<TerminalLauncherService>(),
