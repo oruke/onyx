@@ -18,6 +18,7 @@ import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
+import com.oruke.onyx.core.model.TaskError
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -210,6 +211,15 @@ class FileTransferDelegate(
                 startTimeMillis = startTime,
             )
         )
+        taskOrchestrator.registerRetryHandler(taskId) {
+            launchTransferTask(
+                entries = entries,
+                targetDirectoryLocation = targetDirectoryLocation,
+                operation = operation,
+                clearClipboardOnSuccess = clearClipboardOnSuccess,
+                conflictStrategies = conflictStrategies,
+            )
+        }
 
         val job = scope.launch {
             try {
@@ -252,6 +262,7 @@ class FileTransferDelegate(
                     processedCount = entries.size,
                     processedBytes = completedBytes,
                 )
+                taskOrchestrator.updateTaskFields(taskId) { task -> task.copy(errors = emptyList()) }
                 if (clearClipboardOnSuccess) {
                     clipboardManager.clear()
                 }
@@ -275,6 +286,9 @@ class FileTransferDelegate(
                     detail = failure.toTransferFailureMessage(operation),
                     progress = null,
                 )
+                taskOrchestrator.updateTaskFields(taskId) { task ->
+                    task.copy(errors = failure.toTaskErrors(entries, targetDirectoryLocation))
+                }
                 onRefreshAllPanes()
             }
         }
@@ -331,9 +345,17 @@ class FileTransferDelegate(
                 progress = null,
                 totalCount = entries.size,
                 startTimeMillis = System.currentTimeMillis(),
+                errors = failure.toTaskErrors(entries, targetDirectoryLocation),
             )
         )
-        taskOrchestrator.scheduleAutoCleanup(taskId)
+        taskOrchestrator.registerRetryHandler(taskId) {
+            requestTransferEntriesToDirectory(
+                entries = entries,
+                targetDirectoryLocation = targetDirectoryLocation,
+                operation = operation,
+                clearClipboardOnSuccess = false,
+            )
+        }
     }
 
     private fun taskKindFor(operation: FileTransferOperation): BackgroundTaskKind {
@@ -375,6 +397,22 @@ class FileTransferDelegate(
         return message?.takeIf { it.isNotBlank() }?.let { detail ->
             I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)
         } ?: failureMessageFor(operation)
+    }
+
+    private fun Throwable.toTaskErrors(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+    ): List<TaskError> {
+        val message = message?.takeIf { it.isNotBlank() } ?: this::class.simpleName.orEmpty()
+        if (entries.isEmpty()) {
+            return listOf(TaskError(fileName = targetDirectoryLocation, message = message))
+        }
+        return entries.map { entry ->
+            TaskError(
+                fileName = entry.name,
+                message = message,
+            )
+        }
     }
 
     data class PendingTransferRequest(

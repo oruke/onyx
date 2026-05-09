@@ -373,6 +373,10 @@ sealed interface RootIntent {
         val taskId: String,
     ) : RootIntent
 
+    data class RetryTask(
+        val taskId: String,
+    ) : RootIntent
+
     data object ClearAllTasks : RootIntent
 
     data class OpenImageViewer(
@@ -567,6 +571,8 @@ fun RootComponent.cancelTask(taskId: String) = dispatch(RootIntent.CancelTask(ta
 fun RootComponent.pauseTask(taskId: String) = dispatch(RootIntent.PauseTask(taskId))
 
 fun RootComponent.resumeTask(taskId: String) = dispatch(RootIntent.ResumeTask(taskId))
+
+fun RootComponent.retryTask(taskId: String) = dispatch(RootIntent.RetryTask(taskId))
 
 fun RootComponent.clearAllTasks() = dispatch(RootIntent.ClearAllTasks)
 

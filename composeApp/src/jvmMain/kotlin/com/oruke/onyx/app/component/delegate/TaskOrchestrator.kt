@@ -29,6 +29,9 @@ class TaskOrchestrator(
     /** 每个任务的暂停标志 — 任务协程应周期性检查此标志来实现暂停功能。 */
     private val taskPauseFlags = mutableMapOf<String, MutableStateFlow<Boolean>>()
 
+    /** 失败任务的重试入口。重试会清理旧任务并重新发起同一业务请求。 */
+    private val taskRetryHandlers = mutableMapOf<String, () -> Unit>()
+
     fun appendTask(task: BackgroundTask) {
         _tasks.value = listOf(task) + _tasks.value
     }
@@ -73,6 +76,10 @@ class TaskOrchestrator(
         taskPauseFlags.remove(taskId)
     }
 
+    fun registerRetryHandler(taskId: String, retry: () -> Unit) {
+        taskRetryHandlers[taskId] = retry
+    }
+
     fun getOrCreatePauseFlag(taskId: String): MutableStateFlow<Boolean> {
         return taskPauseFlags.getOrPut(taskId) { MutableStateFlow(false) }
     }
@@ -80,6 +87,7 @@ class TaskOrchestrator(
     fun dismissTask(taskId: String) {
         taskJobs.remove(taskId)?.cancel()
         taskPauseFlags.remove(taskId)
+        taskRetryHandlers.remove(taskId)
         _tasks.value = _tasks.value.filterNot { task -> task.id == taskId }
     }
 
@@ -101,10 +109,17 @@ class TaskOrchestrator(
         }
     }
 
+    fun retryTask(taskId: String) {
+        val retry = taskRetryHandlers[taskId] ?: return
+        dismissTask(taskId)
+        retry()
+    }
+
     fun clearAllTasks() {
         taskJobs.values.forEach { job -> job.cancel() }
         taskJobs.clear()
         taskPauseFlags.clear()
+        taskRetryHandlers.clear()
         _tasks.value = emptyList()
     }
 
@@ -114,6 +129,7 @@ class TaskOrchestrator(
     fun scheduleAutoCleanup(taskId: String) {
         scope.launch {
             delay(5000)
+            taskRetryHandlers.remove(taskId)
             _tasks.value = _tasks.value.filterNot { task -> task.id == taskId }
         }
     }

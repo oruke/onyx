@@ -46,6 +46,7 @@ import onyx.composeapp.generated.resources.action_cancel_task
 import onyx.composeapp.generated.resources.action_clear_all_tasks
 import onyx.composeapp.generated.resources.action_pause_task
 import onyx.composeapp.generated.resources.action_resume_task
+import onyx.composeapp.generated.resources.action_retry_task
 import onyx.composeapp.generated.resources.label_task_center
 import onyx.composeapp.generated.resources.label_task_errors_count
 import org.jetbrains.compose.resources.stringResource
@@ -63,6 +64,7 @@ internal fun JobsBar(
     tasks: List<BackgroundTask>,
     onPauseTask: (String) -> Unit,
     onResumeTask: (String) -> Unit,
+    onRetryTask: (String) -> Unit,
     onCancelTask: (String) -> Unit,
     onDismissTask: (String) -> Unit,
     onClearAllTasks: () -> Unit,
@@ -110,6 +112,7 @@ internal fun JobsBar(
                     task = task,
                     onPause = { onPauseTask(task.id) },
                     onResume = { onResumeTask(task.id) },
+                    onRetry = { onRetryTask(task.id) },
                     onCancel = { onCancelTask(task.id) },
                     onDismiss = { onDismissTask(task.id) },
                 )
@@ -142,6 +145,7 @@ internal fun JobsBar(
                 tasks = tasks,
                 onPauseTask = onPauseTask,
                 onResumeTask = onResumeTask,
+                onRetryTask = onRetryTask,
                 onCancelTask = onCancelTask,
                 onDismissTask = onDismissTask,
             )
@@ -156,6 +160,7 @@ private fun JobChip(
     task: BackgroundTask,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onRetry: () -> Unit,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -241,6 +246,16 @@ private fun JobChip(
             }
         }
 
+        if (task.status == BackgroundTaskStatus.FAILED) {
+            IconButton(onClick = onRetry, modifier = Modifier.size(14.dp)) {
+                Icon(
+                    key = AllIconsKeys.Actions.Refresh,
+                    contentDescription = stringResource(Res.string.action_retry_task),
+                    modifier = Modifier.size(10.dp),
+                )
+            }
+        }
+
         // 取消/关闭
         IconButton(
             onClick = { if (isActive) onCancel() else onDismiss() },
@@ -299,6 +314,7 @@ private fun TaskDetailPanel(
     tasks: List<BackgroundTask>,
     onPauseTask: (String) -> Unit,
     onResumeTask: (String) -> Unit,
+    onRetryTask: (String) -> Unit,
     onCancelTask: (String) -> Unit,
     onDismissTask: (String) -> Unit,
 ) {
@@ -318,6 +334,7 @@ private fun TaskDetailPanel(
                 task = task,
                 onPause = { onPauseTask(task.id) },
                 onResume = { onResumeTask(task.id) },
+                onRetry = { onRetryTask(task.id) },
                 onCancel = { onCancelTask(task.id) },
                 onDismiss = { onDismissTask(task.id) },
             )
@@ -332,6 +349,7 @@ private fun TaskDetailRow(
     task: BackgroundTask,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onRetry: () -> Unit,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -387,6 +405,15 @@ private fun TaskDetailRow(
                         Icon(
                             key = AllIconsKeys.RunConfigurations.TestState.Run,
                             contentDescription = stringResource(Res.string.action_resume_task),
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                }
+                if (task.status == BackgroundTaskStatus.FAILED) {
+                    IconButton(onClick = onRetry, modifier = Modifier.size(18.dp)) {
+                        Icon(
+                            key = AllIconsKeys.Actions.Refresh,
+                            contentDescription = stringResource(Res.string.action_retry_task),
                             modifier = Modifier.size(12.dp),
                         )
                     }

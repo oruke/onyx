@@ -380,6 +380,7 @@ class DefaultRootComponent(
             is RootIntent.CancelTask -> cancelTask(intent.taskId)
             is RootIntent.PauseTask -> pauseTask(intent.taskId)
             is RootIntent.ResumeTask -> resumeTask(intent.taskId)
+            is RootIntent.RetryTask -> retryTask(intent.taskId)
             RootIntent.ClearAllTasks -> clearAllTasks()
             is RootIntent.OpenImageViewer -> openImageViewer(
                 file = intent.file,
@@ -1020,6 +1021,8 @@ class DefaultRootComponent(
     fun pauseTask(taskId: String) = taskOrchestrator.pauseTask(taskId)
 
     fun resumeTask(taskId: String) = taskOrchestrator.resumeTask(taskId)
+
+    fun retryTask(taskId: String) = taskOrchestrator.retryTask(taskId)
 
     fun clearAllTasks() = taskOrchestrator.clearAllTasks()
 

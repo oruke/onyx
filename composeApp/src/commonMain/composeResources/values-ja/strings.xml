@@ -217,6 +217,7 @@
     <string name="label_task_errors_count">%1$d 件エラー</string>
     <string name="action_pause_task">一時停止</string>
     <string name="action_resume_task">再開</string>
+    <string name="action_retry_task">再試行</string>
 
     <string name="label_directory_badge">フォルダー</string>
     <string name="label_file_badge">ファイル</string>

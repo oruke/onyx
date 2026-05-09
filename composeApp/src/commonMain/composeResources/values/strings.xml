@@ -217,6 +217,7 @@
     <string name="label_task_errors_count">%1$d error(s)</string>
     <string name="action_pause_task">Pause</string>
     <string name="action_resume_task">Resume</string>
+    <string name="action_retry_task">Retry</string>
 
     <string name="label_directory_badge">Folder</string>
     <string name="label_file_badge">File</string>

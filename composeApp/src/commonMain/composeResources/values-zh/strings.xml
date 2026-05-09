@@ -215,6 +215,7 @@
     <string name="label_task_errors_count">%1$d 个错误</string>
     <string name="action_pause_task">暂停</string>
     <string name="action_resume_task">恢复</string>
+    <string name="action_retry_task">重试</string>
 
     <string name="label_directory_badge">文件夹</string>
     <string name="label_file_badge">文件</string>

@@ -643,6 +643,7 @@ private fun AppContent(
                             tasks = state.tasks,
                             onPauseTask = { taskId -> dispatch(RootIntent.PauseTask(taskId)) },
                             onResumeTask = { taskId -> dispatch(RootIntent.ResumeTask(taskId)) },
+                            onRetryTask = { taskId -> dispatch(RootIntent.RetryTask(taskId)) },
                             onCancelTask = { taskId -> dispatch(RootIntent.CancelTask(taskId)) },
                             onDismissTask = { taskId -> dispatch(RootIntent.DismissTask(taskId)) },
                             onClearAllTasks = { dispatch(RootIntent.ClearAllTasks) },
