@@ -67,6 +67,8 @@ class WebDavVfsProvider(
         VfsProviderCapability.CREATE_DIRECTORY,
         VfsProviderCapability.RENAME,
         VfsProviderCapability.DELETE,
+        VfsProviderCapability.COPY,
+        VfsProviderCapability.MOVE,
     )
 
     override fun supports(location: String): Boolean {
@@ -126,7 +128,13 @@ class WebDavVfsProvider(
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
     ): Result<Unit> {
-        return Result.failure(unsupported(targetDirectoryLocation, VfsProviderCapability.COPY))
+        return runTransferCommand(
+            entries = entries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            capability = VfsProviderCapability.COPY,
+        ) { authContext ->
+            client.copy(entries, targetDirectoryLocation.withTrailingSlash(), conflictStrategy, authContext)
+        }
     }
 
     override suspend fun move(
@@ -134,7 +142,13 @@ class WebDavVfsProvider(
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
     ): Result<Unit> {
-        return Result.failure(unsupported(targetDirectoryLocation, VfsProviderCapability.MOVE))
+        return runTransferCommand(
+            entries = entries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            capability = VfsProviderCapability.MOVE,
+        ) { authContext ->
+            client.move(entries, targetDirectoryLocation.withTrailingSlash(), conflictStrategy, authContext)
+        }
     }
 
     override suspend fun delete(entries: List<VFile>): Result<Unit> {
@@ -211,6 +225,53 @@ class WebDavVfsProvider(
         }
     }
 
+    private suspend fun runTransferCommand(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        capability: VfsProviderCapability,
+        block: suspend (VfsAuthContext) -> Unit,
+    ): Result<Unit> {
+        if (entries.isEmpty()) return Result.success(Unit)
+        if (!supports(targetDirectoryLocation)) {
+            return Result.failure(VfsProviderNotFoundException(targetDirectoryLocation))
+        }
+        val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
+        if (unsupported != null) {
+            return Result.failure(VfsProviderNotFoundException(unsupported.location))
+        }
+
+        val targetEndpoint = webDavEndpointKey(targetDirectoryLocation)
+        val hasDifferentEndpoint = targetEndpoint == null ||
+            entries.any { entry -> webDavEndpointKey(entry.location) != targetEndpoint }
+        if (hasDifferentEndpoint) {
+            return Result.failure(unsupported(targetDirectoryLocation, capability))
+        }
+
+        val targetAuthContext = authRepository.authContext(targetDirectoryLocation)
+        val hasDifferentSourceAuth = entries.any { entry -> authRepository.authContext(entry.location) != targetAuthContext }
+        if (hasDifferentSourceAuth) {
+            return Result.failure(unsupported(targetDirectoryLocation, capability))
+        }
+
+        return runCatching {
+            block(targetAuthContext)
+        }
+    }
+
+    private fun webDavEndpointKey(location: String): String? {
+        return runCatching {
+            val uri = URI(location.encodeSpaces())
+            val scheme = uri.scheme?.lowercase() ?: return@runCatching null
+            val host = uri.host?.lowercase() ?: return@runCatching null
+            val port = when {
+                uri.port >= 0 -> uri.port
+                scheme == WEBDAVS_SCHEME -> 443
+                else -> 80
+            }
+            "$scheme://$host:$port"
+        }.getOrNull()
+    }
+
     private fun unsupported(
         location: String,
         capability: VfsProviderCapability,
@@ -245,6 +306,36 @@ interface WebDavClient {
         entries: List<VFile>,
         authContext: VfsAuthContext,
     )
+
+    suspend fun copy(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ) {
+        throw VfsProviderException(
+            VfsProviderError.UnsupportedOperation(
+                protocol = VfsProtocol.WEBDAV,
+                location = targetDirectoryLocation,
+                capability = VfsProviderCapability.COPY,
+            )
+        )
+    }
+
+    suspend fun move(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ) {
+        throw VfsProviderException(
+            VfsProviderError.UnsupportedOperation(
+                protocol = VfsProtocol.WEBDAV,
+                location = targetDirectoryLocation,
+                capability = VfsProviderCapability.MOVE,
+            )
+        )
+    }
 
     suspend fun rename(
         entry: VFile,
@@ -377,6 +468,32 @@ class KtorWebDavClient(
             }
         }
     }
+
+    override suspend fun copy(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): Unit = transfer(
+        entries = entries,
+        targetDirectoryLocation = targetDirectoryLocation,
+        conflictStrategy = conflictStrategy,
+        authContext = authContext,
+        method = HttpMethod("COPY"),
+    )
+
+    override suspend fun move(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): Unit = transfer(
+        entries = entries,
+        targetDirectoryLocation = targetDirectoryLocation,
+        conflictStrategy = conflictStrategy,
+        authContext = authContext,
+        method = HttpMethod("MOVE"),
+    )
 
     override suspend fun rename(
         entry: VFile,
@@ -545,6 +662,70 @@ class KtorWebDavClient(
         }
     }
 
+    private suspend fun transfer(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+        method: HttpMethod,
+    ): Unit = withContext(Dispatchers.IO) {
+        val normalizedTargetDirectory = targetDirectoryLocation.withTrailingSlash()
+        if (!resourceExists(normalizedTargetDirectory, authContext)) {
+            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.WEBDAV, normalizedTargetDirectory))
+        }
+        entries.forEach { entry ->
+            val targetLocation = resolveTransferTargetLocation(
+                targetDirectoryLocation = normalizedTargetDirectory,
+                entry = entry,
+                conflictStrategy = conflictStrategy,
+                authContext = authContext,
+            ) ?: return@forEach
+            try {
+                val response = httpClient.request(entry.location.toHttpWebDavUrl()) {
+                    this.method = method
+                    header(HttpHeaders.Destination, targetLocation.toHttpWebDavUrl())
+                    header("Overwrite", if (conflictStrategy == TransferConflictStrategy.OVERWRITE) "T" else "F")
+                    applyAuth(authContext, entry.location)
+                }
+                response.requireSuccess(targetLocation, authContext, acceptedStatuses = MutationSuccessStatuses)
+            } catch (failure: VfsProviderException) {
+                throw failure
+            } catch (failure: SSLException) {
+                throw failure.toNetworkFailure(entry.location)
+            } catch (failure: IOException) {
+                throw failure.toNetworkFailure(entry.location)
+            }
+        }
+    }
+
+    private suspend fun resolveTransferTargetLocation(
+        targetDirectoryLocation: String,
+        entry: VFile,
+        conflictStrategy: TransferConflictStrategy,
+        authContext: VfsAuthContext,
+    ): String? {
+        val isDirectory = entry.kind == VFileKind.DIRECTORY
+        val targetLocation = webDavChildLocation(targetDirectoryLocation, entry.name, directory = isDirectory)
+        return when (conflictStrategy) {
+            TransferConflictStrategy.OVERWRITE -> targetLocation
+            TransferConflictStrategy.SKIP -> {
+                if (resourceExists(targetLocation, authContext)) null else targetLocation
+            }
+
+            TransferConflictStrategy.KEEP_BOTH -> {
+                var candidateName = entry.name
+                repeat(MAX_KEEP_BOTH_ATTEMPTS) { index ->
+                    val candidateLocation = webDavChildLocation(targetDirectoryLocation, candidateName, directory = isDirectory)
+                    if (!resourceExists(candidateLocation, authContext)) {
+                        return candidateLocation
+                    }
+                    candidateName = entry.name.withCopySuffix(index + 1, directory = isDirectory)
+                }
+                throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
+            }
+        }
+    }
+
     private suspend fun resolveContentTargetLocation(
         parentLocation: String,
         name: String,
@@ -696,7 +877,11 @@ class KtorWebDavClient(
         return URI(encodeSpaces()).path.trimEnd('/').substringAfterLast('/').urlDecode()
     }
 
-    private fun String.withCopySuffix(index: Int): String {
+    private fun String.withCopySuffix(
+        index: Int,
+        directory: Boolean = false,
+    ): String {
+        if (directory) return "$this ($index)"
         val dotIndex = lastIndexOf('.').takeIf { dot -> dot > 0 }
         return if (dotIndex == null) {
             "$this ($index)"
