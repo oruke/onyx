@@ -21,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.RootComponent
+import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
@@ -112,6 +113,10 @@ internal fun TitleBarScope.TitleBarContent(
     showPreviewPane: Boolean,
     onTogglePreviewPane: () -> Unit,
 ) {
+    fun dispatch(intent: RootIntent) {
+        rootComponent.dispatch(intent)
+    }
+
     // 左侧：应用名称 — 使用 TitleBarScope.align(Start) 自动避让系统控件
     Row(
         modifier = Modifier.align(Alignment.Start)
@@ -155,7 +160,7 @@ internal fun TitleBarScope.TitleBarContent(
     ) {
         LayoutIconButton(
             selected = layoutMode == PaneLayoutMode.SINGLE,
-            onClick = { rootComponent.setLayoutMode(PaneLayoutMode.SINGLE) },
+            onClick = { dispatch(RootIntent.SetLayoutMode(PaneLayoutMode.SINGLE)) },
             tooltip = stringResource(Res.string.action_layout_single),
         ) {
             Icon(
@@ -165,7 +170,7 @@ internal fun TitleBarScope.TitleBarContent(
         }
         LayoutIconButton(
             selected = layoutMode == PaneLayoutMode.DUAL_VERTICAL,
-            onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_VERTICAL) },
+            onClick = { dispatch(RootIntent.SetLayoutMode(PaneLayoutMode.DUAL_VERTICAL)) },
             tooltip = stringResource(Res.string.action_layout_dual_vertical),
         ) {
             Icon(
@@ -175,7 +180,7 @@ internal fun TitleBarScope.TitleBarContent(
         }
         LayoutIconButton(
             selected = layoutMode == PaneLayoutMode.DUAL_HORIZONTAL,
-            onClick = { rootComponent.setLayoutMode(PaneLayoutMode.DUAL_HORIZONTAL) },
+            onClick = { dispatch(RootIntent.SetLayoutMode(PaneLayoutMode.DUAL_HORIZONTAL)) },
             tooltip = stringResource(Res.string.action_layout_dual_horizontal),
         ) {
             Icon(
@@ -208,7 +213,7 @@ internal fun TitleBarScope.TitleBarContent(
         }
 
         TitleBarIconButton(
-            onClick = rootComponent::openSettings,
+            onClick = { dispatch(RootIntent.OpenSettings) },
             tooltip = stringResource(Res.string.action_open_settings),
         ) {
             Icon(
@@ -218,4 +223,3 @@ internal fun TitleBarScope.TitleBarContent(
         }
     }
 }
-
