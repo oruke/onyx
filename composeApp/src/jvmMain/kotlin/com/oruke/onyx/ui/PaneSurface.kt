@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import com.oruke.onyx.app.component.FileTransferOperation
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
@@ -123,6 +124,16 @@ internal fun PaneSurface(
     var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
+    val tabStack by component.tabStack.subscribeAsState()
+    val tabBarState = PaneTabBarState(
+        activeTabId = state.activeTabId,
+        tabs = tabStack.items.map { child ->
+            PaneTabItemState(
+                id = child.configuration.id,
+                title = child.instance.state.value.title,
+            )
+        },
+    )
     fun dispatch(intent: PaneIntent) {
         component.dispatch(intent)
     }
@@ -294,7 +305,7 @@ internal fun PaneSurface(
         val singleSelectedEntry = selectedEntries.singleOrNull()
         val currentLocationFavorite = favoriteLocations.contains(state.location)
         PaneTabBar(
-            state = state,
+            state = tabBarState,
             active = active,
             onActivate = onActivate,
             onSelectTab = { tabId -> dispatch(PaneIntent.SelectTab(tabId)) },

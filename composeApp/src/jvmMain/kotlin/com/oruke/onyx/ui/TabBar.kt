@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.TabDropZone
@@ -56,9 +55,19 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+internal data class PaneTabBarState(
+    val activeTabId: String,
+    val tabs: List<PaneTabItemState>,
+)
+
+internal data class PaneTabItemState(
+    val id: String,
+    val title: String,
+)
+
 @Composable
 internal fun PaneTabBar(
-    state: PaneState,
+    state: PaneTabBarState,
     active: Boolean,
     onActivate: () -> Unit,
     onSelectTab: (String) -> Unit,
@@ -289,4 +298,3 @@ internal fun PaneTabChip(
         }
     }
 }
-
