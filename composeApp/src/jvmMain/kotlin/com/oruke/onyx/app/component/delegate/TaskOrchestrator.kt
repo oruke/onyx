@@ -97,9 +97,11 @@ class TaskOrchestrator(
     }
 
     fun dismissTask(taskId: String) {
+        val removedTask = _tasks.value.firstOrNull { task -> task.id == taskId }?.withArchivedStatus()
         taskJobs.remove(taskId)?.cancel()
         taskPauseFlags.remove(taskId)
         taskRetryHandlers.remove(taskId)
+        archiveTasks(listOfNotNull(removedTask))
         replaceTasks(_tasks.value.filterNot { task -> task.id == taskId })
     }
 
@@ -128,10 +130,12 @@ class TaskOrchestrator(
     }
 
     fun clearAllTasks() {
+        val removedTasks = _tasks.value.map { task -> task.withArchivedStatus() }
         taskJobs.values.forEach { job -> job.cancel() }
         taskJobs.clear()
         taskPauseFlags.clear()
         taskRetryHandlers.clear()
+        archiveTasks(removedTasks)
         replaceTasks(emptyList())
     }
 
@@ -142,7 +146,11 @@ class TaskOrchestrator(
         scope.launch {
             delay(5000)
             taskRetryHandlers.remove(taskId)
-            replaceTasks(_tasks.value.filterNot { task -> task.id == taskId })
+            val task = _tasks.value.firstOrNull { current -> current.id == taskId }
+            if (task != null) {
+                archiveTasks(listOf(task.withArchivedStatus()))
+                replaceTasks(_tasks.value.filterNot { current -> current.id == taskId })
+            }
         }
     }
 
@@ -184,6 +192,19 @@ class TaskOrchestrator(
         }
     }
 
+    private fun archiveTasks(tasks: List<BackgroundTask>) {
+        val repository = taskRepository ?: return
+        val terminalTasks = tasks.filter { task -> task.status.isTerminal() }
+        if (terminalTasks.isEmpty()) return
+        scope.launch {
+            persistenceMutex.withLock {
+                repository.archiveTasks(terminalTasks).onFailure { failure ->
+                    OnyxLogger.warn("TaskOrchestrator", "任务历史归档失败", failure)
+                }
+            }
+        }
+    }
+
     private fun BackgroundTask.withRestoredStatus(): BackgroundTask {
         return when (status) {
             BackgroundTaskStatus.QUEUED,
@@ -196,6 +217,28 @@ class TaskOrchestrator(
 
             else -> this
         }
+    }
+
+    private fun BackgroundTask.withArchivedStatus(): BackgroundTask {
+        return if (status.isActive()) {
+            copy(
+                status = BackgroundTaskStatus.CANCELLED,
+                detail = I18nMessage(MessageKey.MSG_CANCELLED),
+                progress = null,
+            )
+        } else {
+            this
+        }
+    }
+
+    private fun BackgroundTaskStatus.isActive(): Boolean {
+        return this == BackgroundTaskStatus.QUEUED ||
+            this == BackgroundTaskStatus.RUNNING ||
+            this == BackgroundTaskStatus.PAUSED
+    }
+
+    private fun BackgroundTaskStatus.isTerminal(): Boolean {
+        return !isActive()
     }
 
     private companion object {

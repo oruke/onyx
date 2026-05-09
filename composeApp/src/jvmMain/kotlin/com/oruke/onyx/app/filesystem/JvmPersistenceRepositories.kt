@@ -23,6 +23,10 @@ private val PersistenceJson = Json {
     ignoreUnknownKeys = true
 }
 
+private val PersistenceLineJson = Json {
+    ignoreUnknownKeys = true
+}
+
 class JsonSettingsRepository(
     private val filePath: Path = onyxConfigDirectory().resolve("settings.json"),
 ) : SettingsRepository {
@@ -77,6 +81,8 @@ class JsonSessionRepository(
 
 class JsonTaskPersistenceRepository(
     private val filePath: Path = onyxStateDirectory().resolve("tasks.json"),
+    private val archivePath: Path = onyxStateDirectory().resolve("tasks-archive.jsonl"),
+    private val maxArchiveEntries: Int = 1_000,
 ) : TaskPersistenceRepository {
     override suspend fun loadTasks(): Result<List<BackgroundTask>> = withContext(Dispatchers.IO) {
         runCatching {
@@ -102,6 +108,33 @@ class JsonTaskPersistenceRepository(
             filePath.writeText(PersistenceJson.encodeToString(snapshot))
         }
     }
+
+    override suspend fun archiveTasks(tasks: List<BackgroundTask>): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (tasks.isEmpty()) return@runCatching
+            ensureParentDirectory(archivePath)
+            val archivedAt = System.currentTimeMillis()
+            val archivedLines = tasks.map { task ->
+                PersistenceLineJson.encodeToString(
+                    PersistedTaskArchiveEntry(
+                        archivedAtMillis = archivedAt,
+                        task = task.toPersistedTask(),
+                    )
+                )
+            }
+            val existingLines = if (archivePath.exists()) {
+                archivePath.readText()
+                    .lineSequence()
+                    .map { line -> line.trim() }
+                    .filter { line -> line.isNotEmpty() }
+                    .toList()
+            } else {
+                emptyList()
+            }
+            val nextLines = (existingLines + archivedLines).takeLast(maxArchiveEntries.coerceAtLeast(1))
+            archivePath.writeText(nextLines.joinToString(separator = "\n", postfix = "\n"))
+        }
+    }
 }
 
 private fun ensureParentDirectory(filePath: Path) {
@@ -112,6 +145,13 @@ private fun ensureParentDirectory(filePath: Path) {
 private data class PersistedTaskList(
     val version: Int = 1,
     val tasks: List<PersistedTask> = emptyList(),
+)
+
+@Serializable
+private data class PersistedTaskArchiveEntry(
+    val version: Int = 1,
+    val archivedAtMillis: Long,
+    val task: PersistedTask,
 )
 
 @Serializable

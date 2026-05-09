@@ -381,4 +381,6 @@ interface TaskPersistenceRepository {
     suspend fun loadTasks(): Result<List<BackgroundTask>>
 
     suspend fun saveTasks(tasks: List<BackgroundTask>): Result<Unit>
+
+    suspend fun archiveTasks(tasks: List<BackgroundTask>): Result<Unit> = Result.success(Unit)
 }
