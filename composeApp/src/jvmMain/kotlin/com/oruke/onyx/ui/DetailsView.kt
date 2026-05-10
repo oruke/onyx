@@ -122,7 +122,6 @@ import onyx.composeapp.generated.resources.label_empty_directory_hint
 import onyx.composeapp.generated.resources.label_error_prefix
 import onyx.composeapp.generated.resources.label_column_visibility
 import onyx.composeapp.generated.resources.label_loading_entries
-import onyx.composeapp.generated.resources.action_refresh_active
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -172,7 +171,6 @@ internal fun PaneEntriesContent(
     pendingScrollToEntryId: String? = null,
     onConsumeScroll: () -> Unit = {},
     onBlankAreaContextMenu: (IntOffset) -> Unit = {},
-    onRetry: () -> Unit = {},
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
     loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
     isImageFileName: (String) -> Boolean,
@@ -197,21 +195,11 @@ internal fun PaneEntriesContent(
                 modifier = Modifier.fillMaxSize().padding(12.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "${stringResource(Res.string.label_error_prefix)} ${state.error.detail?.resolve().orEmpty()}".trim(),
-                        color = LocalOnyxPalette.current.foreground,
-                        fontSize = 12.sp,
-                    )
-                    Text(
-                        text = stringResource(Res.string.action_refresh_active),
-                        color = LocalOnyxPalette.current.accent,
-                        fontSize = 12.sp,
-                        modifier = Modifier
-                            .clickable { onRetry() }
-                            .padding(vertical = 4.dp),
-                    )
-                }
+                Text(
+                    text = "${stringResource(Res.string.label_error_prefix)} ${state.error.detail?.resolve().orEmpty()}".trim(),
+                    color = LocalOnyxPalette.current.foreground,
+                    fontSize = 12.sp,
+                )
             }
         }
 

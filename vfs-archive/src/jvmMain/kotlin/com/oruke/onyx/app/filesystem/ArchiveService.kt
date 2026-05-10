@@ -64,9 +64,20 @@ class ArchiveService(
         fun parseArchiveLocation(location: String): Pair<String, String>? {
             if (!location.startsWith(ARCHIVE_SCHEME)) return null
             val rest = location.removePrefix(ARCHIVE_SCHEME)
-            val bangSlash = rest.indexOf("!/")
+            val bangSlash = archiveDelimiterIndex(rest)
             if (bangSlash < 0) return null
             return rest.substring(0, bangSlash) to rest.substring(bangSlash + 2)
+        }
+
+        private fun archiveDelimiterIndex(locationBody: String): Int {
+            var start = 0
+            while (true) {
+                val index = locationBody.indexOf("!/", start)
+                if (index < 0) return -1
+                val archivePath = locationBody.substring(0, index)
+                if (isArchive(archivePath)) return index
+                start = index + 2
+            }
         }
 
         /**

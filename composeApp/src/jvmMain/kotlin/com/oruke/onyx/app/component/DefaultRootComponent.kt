@@ -1458,9 +1458,7 @@ private fun Throwable.toSearchErrorMessage(): I18nMessage {
 private fun PaneComponent.toPaneSessionSnapshot(): PaneSessionSnapshot {
     return PaneSessionSnapshot(
         activeTabId = state.value.activeTabId,
-        tabs = tabStack.value.items.map { child ->
-            child.instance.state.value.toTabSnapshot()
-        },
+        tabs = tabStatesInDisplayOrder().map { tab -> tab.toTabSnapshot() },
     )
 }
 

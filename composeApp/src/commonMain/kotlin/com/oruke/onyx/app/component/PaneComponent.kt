@@ -283,6 +283,8 @@ sealed interface PaneIntent {
 
 interface PaneComponent {
     val state: StateFlow<PaneState>
+    /** 视觉标签顺序；ChildStack 是导航栈顺序，active child 会被放到栈顶。 */
+    val tabOrder: StateFlow<List<String>>
     val tabStack: Value<ChildStack<TabConfig, TabComponent>>
 
     fun dispatch(intent: PaneIntent)
@@ -295,6 +297,17 @@ interface PaneComponent {
     )
 
     fun restoreSession(snapshot: PaneSessionSnapshot)
+}
+
+fun PaneComponent.tabStatesInDisplayOrder(): List<PaneTabState> {
+    val children = tabStack.value.items
+    val childrenById = children.associateBy { child -> child.configuration.id }
+    val orderedIds = tabOrder.value.toSet()
+    return tabOrder.value.mapNotNull { tabId ->
+        childrenById[tabId]?.instance?.state?.value
+    } + children
+        .filterNot { child -> child.configuration.id in orderedIds }
+        .map { child -> child.instance.state.value }
 }
 
 fun PaneComponent.refresh() = dispatch(PaneIntent.Refresh)

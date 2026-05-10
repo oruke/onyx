@@ -84,6 +84,8 @@ class DefaultPaneComponent(
     )
 
     override val state: StateFlow<PaneState> = mutableState.asStateFlow()
+    private val mutableTabOrder = MutableStateFlow(listOf(initialTab.id))
+    override val tabOrder: StateFlow<List<String>> = mutableTabOrder.asStateFlow()
     private val tabNavigation = StackNavigation<TabConfig>()
     override val tabStack: Value<ChildStack<TabConfig, TabComponent>> = childStack(
         source = tabNavigation,
@@ -954,6 +956,7 @@ class DefaultPaneComponent(
         tabs: List<PaneTabState>,
         activeTabId: String,
     ) {
+        mutableTabOrder.value = tabs.map { tab -> tab.id }
         val configs = tabs.map { tab -> tab.toTabSnapshot().toTabConfig() }
         val activeIndex = configs.indexOfFirst { config -> config.id == activeTabId }
         val orderedConfigs = if (activeIndex in configs.indices && activeIndex != configs.lastIndex) {
@@ -1003,7 +1006,7 @@ class DefaultPaneComponent(
     }
 
     private fun tabs(): List<PaneTabState> {
-        return tabStack.value.items.map { child -> child.instance.state.value }
+        return tabStatesInDisplayOrder()
     }
 
     private fun currentVisibleEntries(): List<VFile> {

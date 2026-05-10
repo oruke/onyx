@@ -60,6 +60,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
@@ -659,6 +660,7 @@ internal fun RemoteCredentialsDialog(
     onDismiss: () -> Unit,
 ) {
     val focusRequester = remember { FocusRequester() }
+    val scrollState = rememberScrollState()
     val title = stringResource(Res.string.label_remote_credentials_title)
 
     LaunchedEffect(Unit) {
@@ -668,23 +670,24 @@ internal fun RemoteCredentialsDialog(
     DialogWindow(
         onCloseRequest = onDismiss,
         title = title,
-        state = rememberDialogState(width = 500.dp, height = 390.dp),
-        resizable = false,
+        state = rememberDialogState(width = 540.dp, height = 460.dp),
+        resizable = true,
     ) {
+        window.minimumSize = java.awt.Dimension(480, 360)
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             DialogFrame(
                 title = title,
                 body = {
-                    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                        Text(
-                            text = state.location,
-                            fontSize = 11.sp,
-                            color = LocalOnyxPalette.current.mutedForeground,
-                        )
-                        Text(
-                            text = stringResource(Res.string.label_remote_credentials_hint, state.protocol.name),
-                            fontSize = 12.sp,
-                            color = LocalOnyxPalette.current.foreground,
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(end = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        RemoteCredentialHeader(
+                            location = state.location,
+                            hint = stringResource(Res.string.label_remote_credentials_hint, state.protocol.name),
                         )
                         CredentialInputField(
                             label = stringResource(Res.string.label_remote_credentials_username),
@@ -769,6 +772,35 @@ internal fun RemoteCredentialsDialog(
 }
 
 @Composable
+private fun RemoteCredentialHeader(
+    location: String,
+    hint: String,
+) {
+    val palette = LocalOnyxPalette.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(palette.surfaceVariant, RoundedCornerShape(6.dp))
+            .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            text = location,
+            fontSize = 11.sp,
+            color = palette.accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = hint,
+            fontSize = 12.sp,
+            color = palette.foreground,
+        )
+    }
+}
+
+@Composable
 private fun CredentialSavePolicySelector(
     selected: RemoteCredentialSavePolicy,
     onSelected: (RemoteCredentialSavePolicy) -> Unit,
@@ -801,7 +833,7 @@ private fun CredentialSavePolicySelector(
                         .height(28.dp)
                         .background(
                             if (active) {
-                                LocalOnyxPalette.current.accent
+                                LocalOnyxPalette.current.accent.copy(alpha = 0.14f)
                             } else {
                                 LocalOnyxPalette.current.surfaceVariant
                             },
@@ -819,7 +851,7 @@ private fun CredentialSavePolicySelector(
                     Text(
                         text = text,
                         fontSize = 11.sp,
-                        color = if (active) Color.White else LocalOnyxPalette.current.foreground,
+                        color = if (active) LocalOnyxPalette.current.accent else LocalOnyxPalette.current.foreground,
                         maxLines = 1,
                     )
                 }
@@ -850,10 +882,9 @@ private fun CredentialInputField(
             color = LocalOnyxPalette.current.mutedForeground,
         )
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            BasicTextField(
+            OnyxTextInput(
                 value = value,
                 onValueChange = onValueChange,
-                singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(focusModifier)
@@ -874,37 +905,10 @@ private fun CredentialInputField(
 
                             else -> false
                         }
-                    },
-                textStyle = TextStyle(
-                    fontSize = 12.sp,
-                    color = LocalOnyxPalette.current.foreground,
-                ),
-                cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
-                visualTransformation = if (password) {
-                    PasswordVisualTransformation()
-                } else {
-                    VisualTransformation.None
                 },
-                decorationBox = { innerTextField ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(30.dp)
-                            .background(
-                                LocalOnyxPalette.current.inputBackground,
-                                RoundedCornerShape(6.dp),
-                            )
-                            .border(
-                                1.dp,
-                                LocalOnyxPalette.current.outlineVariant,
-                                RoundedCornerShape(6.dp),
-                            )
-                            .padding(horizontal = 9.dp, vertical = 6.dp),
-                        contentAlignment = Alignment.CenterStart,
-                    ) {
-                        innerTextField()
-                    }
-                },
+                fontSize = 12.sp,
+                height = 30.dp,
+                password = password,
             )
         }
     }

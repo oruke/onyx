@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +55,7 @@ import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.PaneState
+import com.oruke.onyx.app.component.tabStatesInDisplayOrder
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
@@ -126,17 +128,22 @@ internal fun PaneSurface(
     var showFilterBar by remember { mutableStateOf(false) }
     var showCommandPalette by remember { mutableStateOf(false) }
     var showContextMenu by remember { mutableStateOf(false) }
+    var addressBarEditing by remember { mutableStateOf(false) }
+    var filterFocused by remember { mutableStateOf(false) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
     var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
     val tabStack by component.tabStack.subscribeAsState()
+    val tabOrder by component.tabOrder.collectAsState()
+    val orderedTabs = component.tabStatesInDisplayOrder()
+    val textInputOwnsKeyboard = addressBarEditing || filterFocused || showCommandPalette
     val tabBarState = PaneTabBarState(
         activeTabId = state.activeTabId,
-        tabs = tabStack.items.map { child ->
+        tabs = orderedTabs.map { tab ->
             PaneTabItemState(
-                id = child.configuration.id,
-                title = child.instance.state.value.title,
+                id = tab.id,
+                title = tab.title,
             )
         },
     )
@@ -304,6 +311,9 @@ internal fun PaneSurface(
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (!active || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                if (textInputOwnsKeyboard) {
+                    return@onPreviewKeyEvent false
+                }
                 if (inlineEditState != null) {
                     return@onPreviewKeyEvent when (event.key) {
                         Key.Enter -> {
@@ -525,6 +535,7 @@ internal fun PaneSurface(
                     onActivate = onActivate,
                     onOpenLocation = { location -> dispatch(PaneIntent.OpenDirectory(location)) },
                     buildBreadcrumbs = buildBreadcrumbs,
+                    onEditingChange = { editing -> addressBarEditing = editing },
                 )
             }
 
@@ -535,7 +546,10 @@ internal fun PaneSurface(
                 onClick = {
                     onActivate()
                     showFilterBar = !showFilterBar
-                    if (!showFilterBar) dispatch(PaneIntent.SetFilterQuery(""))
+                    if (!showFilterBar) {
+                        filterFocused = false
+                        dispatch(PaneIntent.SetFilterQuery(""))
+                    }
                 },
                 tooltip = onyxCommandTooltip(
                     label = stringResource(Res.string.action_filter),
@@ -567,6 +581,7 @@ internal fun PaneSurface(
                             .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp)
                             .onFocusChanged { focusState ->
+                                filterFocused = focusState.isFocused
                                 if (focusState.isFocused) {
                                     onActivate()
                                 }
@@ -574,6 +589,7 @@ internal fun PaneSurface(
                             .onPreviewKeyEvent { event ->
                                 if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
                                     showFilterBar = false
+                                    filterFocused = false
                                     dispatch(PaneIntent.SetFilterQuery(""))
                                     focusRequester.requestFocus()
                                     true
@@ -644,7 +660,6 @@ internal fun PaneSurface(
 
         // ── File list & Inspector ─────────────────────────────────
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -720,7 +735,6 @@ internal fun PaneSurface(
                         contextMenuOffset = pointerPosition
                         showContextMenu = true
                     },
-                    onRetry = { dispatch(PaneIntent.Refresh) },
                     loadThumbnail = loadThumbnail,
                     loadArchiveThumbnail = loadArchiveThumbnail,
                     isImageFileName = actions.isImageFileName,

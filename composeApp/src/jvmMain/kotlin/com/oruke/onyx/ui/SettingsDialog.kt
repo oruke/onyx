@@ -20,13 +20,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,11 +44,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -152,7 +148,6 @@ import onyx.composeapp.generated.resources.label_verbose_logging_hint
 import onyx.composeapp.generated.resources.label_zebra_stripe
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
-import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
 
 private enum class SettingsCategory { GENERAL, CONNECTIONS, LAYOUT, APPEARANCE, COLUMNS, SHORTCUTS }
@@ -203,6 +198,8 @@ internal fun SettingsDialog(
             val appearance = LocalOnyxAppearance.current
             val bodyFs = appearance.listFontSize
             val labelFs = appearance.headerFontSize
+            val navScrollState = rememberScrollState()
+            val contentScrollState = rememberScrollState()
 
             Column(
                 modifier = Modifier.fillMaxSize().background(palette.appBackground).padding(14.dp),
@@ -210,10 +207,19 @@ internal fun SettingsDialog(
             ) {
                 Text(title, fontSize = (bodyFs.value + 1).sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = palette.foreground)
 
-                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     // ── 左侧分类导航 ──
                     Column(
-                        modifier = Modifier.width(120.dp).fillMaxHeight().padding(end = 8.dp),
+                        modifier = Modifier
+                            .width(138.dp)
+                            .fillMaxHeight()
+                            .background(palette.surfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                            .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+                            .padding(6.dp)
+                            .verticalScroll(navScrollState),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         SettingsCategory.entries.forEach { cat ->
@@ -235,15 +241,22 @@ internal fun SettingsDialog(
                         }
                     }
 
-                    Divider(org.jetbrains.jewel.ui.Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
-
                     // ── 右侧内容区 ──
-                    Column(
-                        modifier = Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp)
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(palette.surface, RoundedCornerShape(6.dp))
+                            .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+                            .padding(12.dp),
                     ) {
-                        when (category) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(contentScrollState),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                        ) {
+                            when (category) {
                             SettingsCategory.GENERAL -> {
                                 SettingsSection(stringResource(Res.string.label_language), labelFs) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -405,6 +418,7 @@ internal fun SettingsDialog(
                             }
                         }
                     }
+                }
                 }
 
                 // ── 底部按钮 ──
@@ -592,41 +606,68 @@ private fun RemoteConnectionsSettings(
     fontSize: TextUnit,
     labelFontSize: TextUnit,
 ) {
+    val palette = LocalOnyxPalette.current
+    val listScrollState = rememberScrollState()
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 360.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(
-            modifier = Modifier.width(240.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .width(260.dp)
+                .background(palette.surfaceVariant.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (connections.isEmpty()) {
-                Text(
-                    text = stringResource(Res.string.label_remote_connection_empty),
-                    fontSize = fontSize,
-                    color = LocalOnyxPalette.current.disabledForeground,
-                )
-            } else {
-                connections.forEach { connection ->
-                    RemoteConnectionRow(
-                        connection = connection,
-                        selected = connection.id == editingConnectionId,
-                        onOpen = { onOpen(connection.location) },
-                        onEdit = { onEdit(connection) },
-                        onDelete = { onDelete(connection.id) },
-                        fontSize = fontSize,
-                    )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp, max = 280.dp)
+                    .verticalScroll(listScrollState),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (connections.isEmpty()) {
+                        Text(
+                            text = stringResource(Res.string.label_remote_connection_empty),
+                            fontSize = fontSize,
+                            color = palette.disabledForeground,
+                        )
+                    } else {
+                        connections.forEach { connection ->
+                            RemoteConnectionRow(
+                                connection = connection,
+                                selected = connection.id == editingConnectionId,
+                                onOpen = { onOpen(connection.location) },
+                                onEdit = { onEdit(connection) },
+                                onDelete = { onDelete(connection.id) },
+                                fontSize = fontSize,
+                            )
+                        }
+                    }
                 }
             }
-            DialogTextButton(
-                text = stringResource(Res.string.action_new_connection),
-                fontSize = fontSize,
-                onClick = onNew,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_new_connection),
+                    fontSize = fontSize,
+                    onClick = onNew,
+                )
+            }
         }
 
         Column(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .background(palette.appBackground, RoundedCornerShape(6.dp))
+                .border(1.dp, palette.outlineVariant, RoundedCornerShape(6.dp))
+                .padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             SettingsSection(stringResource(Res.string.label_remote_connection_protocol), labelFontSize) {
@@ -763,29 +804,12 @@ private fun SettingsTextField(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, fontSize = 11.sp, color = LocalOnyxPalette.current.mutedForeground)
-        BasicTextField(
+        OnyxTextInput(
             value = value,
             onValueChange = onValueChange,
-            singleLine = true,
-            textStyle = TextStyle(
-                fontSize = fontSize,
-                color = LocalOnyxPalette.current.foreground,
-            ),
-            cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
-            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-            decorationBox = { innerTextField ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(28.dp)
-                        .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
-                        .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    innerTextField()
-                }
-            },
+            modifier = Modifier.fillMaxWidth(),
+            fontSize = fontSize,
+            password = password,
         )
     }
 }

@@ -49,10 +49,15 @@ internal fun HybridAddressBar(
     onActivate: () -> Unit,
     onOpenLocation: (String) -> Unit,
     buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
+    onEditingChange: (Boolean) -> Unit = {},
 ) {
     var editing by remember { mutableStateOf(false) }
     var draftValue by remember(location) {
         mutableStateOf(TextFieldValue(location, TextRange(location.length)))
+    }
+
+    LaunchedEffect(editing) {
+        onEditingChange(editing)
     }
 
     LaunchedEffect(location) {
@@ -87,9 +92,10 @@ internal fun HybridAddressBar(
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when (event.key) {
                         Key.Enter -> {
-                            onActivate()
+                            val submittedLocation = draftValue.text
                             editing = false
-                            onOpenLocation(draftValue.text)
+                            onActivate()
+                            onOpenLocation(submittedLocation)
                             true
                         }
 
