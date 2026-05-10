@@ -68,10 +68,13 @@ internal fun BoundPaneSurface(
         onOpenSettings = { dispatch(RootIntent.OpenSettings) },
         onOpenWith = { entry, app -> dispatch(RootIntent.OpenWithApp(entry, app)) },
         onOpenWithChooser = { entry -> dispatch(RootIntent.OpenWithChooser(entry)) },
+        supportsOpenWith = rootComponent::supportsOpenWith,
+        onSystemMenuAction = { action, entries -> dispatch(RootIntent.ExecuteSystemMenuAction(action, entries)) },
         onOpenTerminal = { location -> dispatch(RootIntent.OpenTerminalAt(location)) },
         isArchiveFileName = rootComponent::isArchiveFileName,
         isImageFileName = rootComponent::isImageFileName,
         onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
+        onQuerySystemMenuActions = { entries -> rootComponent.listSystemMenuActions(entries) },
     )
     val commandShortcuts = remember(state.settings.commandShortcutOverrides) {
         commandShortcutMapFromSettings(state.settings.commandShortcutOverrides)

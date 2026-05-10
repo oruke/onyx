@@ -8,6 +8,7 @@ import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.app.filesystem.RemoteCredentialSavePolicy
+import com.oruke.onyx.app.filesystem.SystemMenuAction
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.app.filesystem.VfsConnectionTestRequest
@@ -417,6 +418,11 @@ sealed interface RootIntent {
         val entry: VFile,
     ) : RootIntent
 
+    data class ExecuteSystemMenuAction(
+        val action: SystemMenuAction,
+        val entries: List<VFile>,
+    ) : RootIntent
+
     data class OpenTerminalAt(
         val location: String,
     ) : RootIntent
@@ -433,6 +439,10 @@ interface RootComponent {
     // ── 打开方式 ──────────────────────────────────────────────────────────
 
     suspend fun listOpenWithApps(entry: VFile): List<OpenWithApp>
+
+    fun supportsOpenWith(entry: VFile): Boolean
+
+    suspend fun listSystemMenuActions(entries: List<VFile>): List<SystemMenuAction>
 
     fun prepareExternalDrag(entries: List<VFile>): Boolean
 
@@ -609,5 +619,10 @@ fun RootComponent.openWithApp(
 ) = dispatch(RootIntent.OpenWithApp(entry, app))
 
 fun RootComponent.openWithChooser(entry: VFile) = dispatch(RootIntent.OpenWithChooser(entry))
+
+fun RootComponent.executeSystemMenuAction(
+    action: SystemMenuAction,
+    entries: List<VFile>,
+) = dispatch(RootIntent.ExecuteSystemMenuAction(action, entries))
 
 fun RootComponent.openTerminalAt(location: String) = dispatch(RootIntent.OpenTerminalAt(location))

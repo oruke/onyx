@@ -26,6 +26,8 @@ import com.oruke.onyx.app.filesystem.RemoteCredentialSavePolicy
 import com.oruke.onyx.app.filesystem.RemoteCredentialSaveResult
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.SystemMenuAction
+import com.oruke.onyx.app.filesystem.SystemMenuService
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
@@ -101,6 +103,7 @@ class DefaultRootComponent(
     private val sessionRepository: SessionRepository,
     private val archiveService: ArchiveService,
     private val openWithService: OpenWithService,
+    private val systemMenuService: SystemMenuService,
     private val pathService: VfsPathService,
     private val entryNameSuggestionService: EntryNameSuggestionService,
     private val providerRegistry: VfsProviderRegistry,
@@ -413,6 +416,10 @@ class DefaultRootComponent(
                 app = intent.app,
             )
             is RootIntent.OpenWithChooser -> openWithChooser(intent.entry)
+            is RootIntent.ExecuteSystemMenuAction -> executeSystemMenuAction(
+                action = intent.action,
+                entries = intent.entries,
+            )
             is RootIntent.OpenTerminalAt -> openTerminalAt(intent.location)
         }
     }
@@ -1071,6 +1078,10 @@ class DefaultRootComponent(
         return openWithService.listApps(entry)
     }
 
+    override fun supportsOpenWith(entry: VFile) = openWithService.supports(entry)
+
+    override suspend fun listSystemMenuActions(entries: List<VFile>) = systemMenuService.listActions(entries)
+
     fun openWithApp(entry: VFile, app: OpenWithApp) {
         scope.launch {
             openWithService.openWith(entry, app)
@@ -1086,6 +1097,21 @@ class DefaultRootComponent(
     fun openWithChooser(entry: VFile) {
         scope.launch {
             openWithService.openWithChooser(entry)
+                .onSuccess {
+                    paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
+                }
+                .onFailure { failure ->
+                    showActivePaneOpenFailure(failure)
+                }
+        }
+    }
+
+    fun executeSystemMenuAction(
+        action: SystemMenuAction,
+        entries: List<VFile>,
+    ) {
+        scope.launch {
+            systemMenuService.execute(action, entries)
                 .onSuccess {
                     paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
                 }

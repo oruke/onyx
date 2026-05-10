@@ -1,6 +1,7 @@
 package com.oruke.onyx.ui
 
 import com.oruke.onyx.app.filesystem.OpenWithApp
+import com.oruke.onyx.app.filesystem.SystemMenuAction
 import com.oruke.onyx.core.model.VFile
 
 /**
@@ -26,8 +27,11 @@ data class PaneActions(
     val onOpenSettings: () -> Unit,
     val onOpenWith: (VFile, OpenWithApp) -> Unit,
     val onOpenWithChooser: (VFile) -> Unit,
+    val supportsOpenWith: (VFile) -> Boolean,
+    val onSystemMenuAction: (SystemMenuAction, List<VFile>) -> Unit,
     val onOpenTerminal: (String) -> Unit,
     val isArchiveFileName: (String) -> Boolean,
     val isImageFileName: (String) -> Boolean,
     val onQueryOpenWithApps: (suspend (VFile) -> List<OpenWithApp>)? = null,
+    val onQuerySystemMenuActions: (suspend (List<VFile>) -> List<SystemMenuAction>)? = null,
 )

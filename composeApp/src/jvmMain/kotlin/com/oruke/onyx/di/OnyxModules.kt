@@ -25,6 +25,8 @@ import com.oruke.onyx.app.filesystem.JvmLocalFileProvider
 import com.oruke.onyx.app.filesystem.JvmPreviewService
 import com.oruke.onyx.app.filesystem.JvmPlatformOpenWithService
 import com.oruke.onyx.app.filesystem.JvmRemoteAuthStore
+import com.oruke.onyx.app.filesystem.JvmSystemFileMaterializer
+import com.oruke.onyx.app.filesystem.JvmSystemMenuService
 import com.oruke.onyx.app.filesystem.JvmTerminalLauncherService
 import com.oruke.onyx.app.filesystem.JvmTextClipboardService
 import com.oruke.onyx.app.filesystem.JvmThumbnailService
@@ -46,6 +48,8 @@ import com.oruke.onyx.app.filesystem.S3AuthRepository
 import com.oruke.onyx.app.filesystem.S3VfsProvider
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.SystemFileMaterializer
+import com.oruke.onyx.app.filesystem.SystemMenuService
 import com.oruke.onyx.app.filesystem.SmbAuthRepository
 import com.oruke.onyx.app.filesystem.SmbVfsProvider
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
@@ -141,7 +145,20 @@ val fileModule = module {
     single<ExternalOpenService> { JvmDesktopExternalOpenService() }
     single<TrashService> { JvmDesktopTrashService() }
     single<TextClipboardService> { JvmTextClipboardService() }
-    single<OpenWithService> { JvmPlatformOpenWithService() }
+    single<SystemFileMaterializer> {
+        JvmSystemFileMaterializer(
+            archiveService = get(),
+            listOf<RoutableVfsContentService>(
+                get<ArchiveVfsProvider>(),
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
+            )
+        )
+    }
+    single<OpenWithService> { JvmPlatformOpenWithService(get()) }
+    single<SystemMenuService> { JvmSystemMenuService(get()) }
     single<VfsPathService> { JvmVfsPathService() }
     single<EntryNameSuggestionService> { ResourceEntryNameSuggestionService() }
     single<FileTypeService> { JvmFileTypeService() }

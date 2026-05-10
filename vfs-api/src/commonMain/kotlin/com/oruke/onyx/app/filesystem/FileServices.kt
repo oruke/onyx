@@ -339,16 +339,37 @@ data class OpenWithApp(
     val id: String,
     /** 显示名称 */
     val displayName: String,
-    /** 启动命令 */
+    /** 平台启动标识 */
     val command: String,
     /** 应用图标路径（可选） */
     val iconPath: String? = null,
 )
 
 /**
+ * 系统已注册的右键菜单动作。
+ */
+data class SystemMenuAction(
+    val id: String,
+    val displayName: String,
+    val command: String,
+    val iconPath: String? = null,
+)
+
+interface SystemFileMaterializer {
+    fun supports(entry: VFile): Boolean
+
+    suspend fun materialize(entry: VFile): Result<VFile>
+}
+
+/**
  * "打开方式"服务 — 查询和启动关联应用。
  */
 interface OpenWithService {
+    /**
+     * 当前条目是否能交给系统打开方式处理。
+     */
+    fun supports(entry: VFile): Boolean
+
     /**
      * 查询指定文件的可用打开方式应用列表。
      */
@@ -363,6 +384,12 @@ interface OpenWithService {
      * 打开系统"选择应用"对话框。
      */
     suspend fun openWithChooser(entry: VFile): Result<Unit>
+}
+
+interface SystemMenuService {
+    suspend fun listActions(entries: List<VFile>): List<SystemMenuAction>
+
+    suspend fun execute(action: SystemMenuAction, entries: List<VFile>): Result<Unit>
 }
 
 interface SettingsRepository {

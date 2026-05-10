@@ -65,6 +65,7 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.app.filesystem.OpenWithApp
+import com.oruke.onyx.app.filesystem.SystemMenuAction
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
@@ -132,6 +133,7 @@ internal fun PaneSurface(
     var filterFocused by remember { mutableStateOf(false) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
     var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
+    var contextMenuSystemActions by remember { mutableStateOf<List<SystemMenuAction>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
     val tabStack by component.tabStack.subscribeAsState()
@@ -743,22 +745,32 @@ internal fun PaneSurface(
 
                 if (showContextMenu) {
                     val selectedCount = state.selectedEntryIds.size
-                    // 异步查询"打开方式"应用列表
                     val singleEntry = singleSelectedEntry
-                    LaunchedEffect(showContextMenu, singleEntry?.id) {
-                        val queryFn = actions.onQueryOpenWithApps
-                        if (singleEntry != null && singleEntry.kind == VFileKind.FILE && queryFn != null) {
+                    val canOpenWithSelection = singleEntry?.let(actions.supportsOpenWith) == true
+                    val selectedEntriesKey = selectedEntries.joinToString("|") { entry -> entry.id }
+                    LaunchedEffect(showContextMenu, singleEntry?.id, selectedEntriesKey) {
+                        val openWithQuery = actions.onQueryOpenWithApps
+                        val systemActionQuery = actions.onQuerySystemMenuActions
+                        if (singleEntry != null && canOpenWithSelection && openWithQuery != null) {
                             contextMenuOpenWithApps = withContext(Dispatchers.IO) {
-                                queryFn.invoke(singleEntry)
+                                openWithQuery.invoke(singleEntry)
                             }
                         } else {
                             contextMenuOpenWithApps = emptyList()
+                        }
+                        contextMenuSystemActions = if (selectedEntries.isNotEmpty() && systemActionQuery != null) {
+                            withContext(Dispatchers.IO) {
+                                systemActionQuery.invoke(selectedEntries)
+                            }
+                        } else {
+                            emptyList()
                         }
                     }
                     PaneContextMenu(
                         anchorOffset = contextMenuOffset,
                         canOperateOnSelection = selectedCount > 0,
                         canOpenSelection = selectedCount == 1,
+                        canOpenWithSelection = canOpenWithSelection,
                         canOpenSelectionInNewTab = singleSelectedEntry?.kind == VFileKind.DIRECTORY,
                         canRenameSelection = selectedCount == 1,
                         canCopyPath = selectedCount > 0,
@@ -824,12 +836,17 @@ internal fun PaneSurface(
                             showContextMenu = false
                         },
                         openWithApps = contextMenuOpenWithApps,
+                        systemMenuActions = contextMenuSystemActions,
                         onOpenWith = { app ->
                             singleSelectedEntry?.let { actions.onOpenWith(it, app) }
                             showContextMenu = false
                         },
                         onOpenWithChooser = {
                             singleSelectedEntry?.let { actions.onOpenWithChooser(it) }
+                            showContextMenu = false
+                        },
+                        onSystemMenuAction = { action ->
+                            actions.onSystemMenuAction(action, selectedEntries)
                             showContextMenu = false
                         },
                         onRefresh = {

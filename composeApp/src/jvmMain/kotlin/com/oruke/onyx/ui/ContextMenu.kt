@@ -35,6 +35,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import com.oruke.onyx.app.filesystem.OpenWithApp
+import com.oruke.onyx.app.filesystem.SystemMenuAction
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
@@ -70,6 +71,7 @@ internal fun BoxScope.PaneContextMenu(
     anchorOffset: IntOffset,
     canOperateOnSelection: Boolean,
     canOpenSelection: Boolean,
+    canOpenWithSelection: Boolean,
     canOpenSelectionInNewTab: Boolean,
     canRenameSelection: Boolean,
     canCopyPath: Boolean,
@@ -91,8 +93,10 @@ internal fun BoxScope.PaneContextMenu(
     onCutSelection: () -> Unit,
     onPaste: () -> Unit,
     openWithApps: List<OpenWithApp>,
+    systemMenuActions: List<SystemMenuAction>,
     onOpenWith: (OpenWithApp) -> Unit,
     onOpenWithChooser: () -> Unit,
+    onSystemMenuAction: (SystemMenuAction) -> Unit,
     onRefresh: () -> Unit,
     onOpenTerminal: () -> Unit,
     commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
@@ -141,7 +145,7 @@ internal fun BoxScope.PaneContextMenu(
                 onClick = onOpenSelectionInNewTab,
             )
             // "打开方式" 子菜单
-            if (canOpenSelection && openWithApps.isNotEmpty()) {
+            if (canOpenWithSelection && openWithApps.isNotEmpty()) {
                 var openWithExpanded by remember { mutableStateOf(false) }
                 ContextMenuItem(
                     text = stringResource(Res.string.action_open_with) + if (openWithExpanded) " ▾" else " ▸",
@@ -165,7 +169,7 @@ internal fun BoxScope.PaneContextMenu(
                         onClick = onOpenWithChooser,
                     )
                 }
-            } else if (canOpenSelection) {
+            } else if (canOpenWithSelection) {
                 // 无关联应用时只显示「其他应用…」
                 ContextMenuItem(
                     text = stringResource(Res.string.action_open_with),
@@ -173,6 +177,17 @@ internal fun BoxScope.PaneContextMenu(
                     iconKey = AllIconsKeys.Actions.MenuOpen,
                     onClick = onOpenWithChooser,
                 )
+            }
+            if (systemMenuActions.isNotEmpty()) {
+                Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+                systemMenuActions.forEach { action ->
+                    ContextMenuItem(
+                        text = action.displayName,
+                        enabled = true,
+                        iconKey = AllIconsKeys.Actions.Execute,
+                        onClick = { onSystemMenuAction(action) },
+                    )
+                }
             }
             ContextMenuItem(
                 text = stringResource(Res.string.action_rename),
