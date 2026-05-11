@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -27,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -61,18 +63,21 @@ import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
-import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileKind
-import com.oruke.onyx.app.filesystem.OpenWithApp
-import com.oruke.onyx.app.filesystem.SystemMenuAction
+import com.oruke.onyx.app.filesystem.FileContextMenuRequest
+import com.oruke.onyx.app.filesystem.FileContextMenuSection
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.windowBounds
+import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_filter
 import onyx.composeapp.generated.resources.action_go_back
@@ -127,19 +132,23 @@ internal fun PaneSurface(
     val focusRequester = remember { FocusRequester() }
     val filterFocusRequester = remember { FocusRequester() }
     var showFilterBar by remember { mutableStateOf(false) }
+    var filterFocusRequestId by remember { mutableStateOf(0) }
     var showCommandPalette by remember { mutableStateOf(false) }
     var showContextMenu by remember { mutableStateOf(false) }
     var addressBarEditing by remember { mutableStateOf(false) }
     var filterFocused by remember { mutableStateOf(false) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
-    var contextMenuOpenWithApps by remember { mutableStateOf<List<OpenWithApp>>(emptyList()) }
-    var contextMenuSystemActions by remember { mutableStateOf<List<SystemMenuAction>>(emptyList()) }
+    var contextMenuEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var contextMenuQueryToken by remember { mutableStateOf(0) }
+    var contextMenuSections by remember { mutableStateOf<List<FileContextMenuSection>>(emptyList()) }
     var paneBounds by remember { mutableStateOf<IntRect?>(null) }
     var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
     val tabStack by component.tabStack.subscribeAsState()
     val tabOrder by component.tabOrder.collectAsState()
     val orderedTabs = component.tabStatesInDisplayOrder()
+    val filterOverlayVisible = showFilterBar || filterQuery.isNotEmpty()
     val textInputOwnsKeyboard = addressBarEditing || filterFocused || showCommandPalette
+    val coroutineScope = rememberCoroutineScope()
     val tabBarState = PaneTabBarState(
         activeTabId = state.activeTabId,
         tabs = orderedTabs.map { tab ->
@@ -151,6 +160,16 @@ internal fun PaneSurface(
     )
     fun dispatch(intent: PaneIntent) {
         component.dispatch(intent)
+    }
+    fun openFilterInput() {
+        showFilterBar = true
+        filterFocusRequestId += 1
+    }
+    fun closeFilterInput() {
+        showFilterBar = false
+        filterFocused = false
+        dispatch(PaneIntent.SetFilterQuery(""))
+        focusRequester.requestFocus()
     }
     fun isPaneCommandEnabled(command: OnyxCommand): Boolean {
         val selectedCount = state.selectedEntryIds.size
@@ -236,7 +255,7 @@ internal fun PaneSurface(
             }
 
             OnyxCommand.Filter -> {
-                showFilterBar = true
+                openFilterInput()
                 true
             }
 
@@ -272,6 +291,31 @@ internal fun PaneSurface(
 
             OnyxCommand.CloseMenu,
             OnyxCommand.CreateDirectories -> false
+        }
+    }
+    fun loadContextMenuPlatformActions(
+        targetEntries: List<VFile>,
+        token: Int,
+    ) {
+        val contextMenuQuery = actions.onQueryContextMenuSections
+        if (targetEntries.isEmpty() || contextMenuQuery == null) {
+            showContextMenu = true
+            return
+        }
+        val sectionsDeferred: Deferred<List<FileContextMenuSection>> = coroutineScope.async(Dispatchers.IO) {
+            runCatching {
+                contextMenuQuery.invoke(FileContextMenuRequest(targetEntries))
+            }.getOrDefault(emptyList())
+        }
+
+        coroutineScope.launch {
+            val sections = withTimeoutOrNull(CONTEXT_MENU_PLATFORM_ACTION_TIMEOUT_MS) {
+                sectionsDeferred.await()
+            }.orEmpty()
+            if (contextMenuQueryToken == token) {
+                contextMenuSections = sections
+                showContextMenu = true
+            }
         }
     }
     val paneDropBackground by animateColorAsState(
@@ -387,9 +431,8 @@ internal fun PaneSurface(
                     event.key == Key.Escape -> {
                         if (showContextMenu) {
                             showContextMenu = false
-                        } else if (showFilterBar) {
-                            showFilterBar = false
-                            dispatch(PaneIntent.SetFilterQuery(""))
+                        } else if (filterOverlayVisible) {
+                            closeFilterInput()
                         } else {
                             dispatch(PaneIntent.ClearSelection)
                         }
@@ -425,10 +468,11 @@ internal fun PaneSurface(
                 onClick = onActivate
             ),
     ) {
-        val selectedEntries = (state.entriesState as? PaneEntriesState.Ready)
+        val readyEntries = (state.entriesState as? PaneEntriesState.Ready)
             ?.entries
-            ?.filter { entry -> state.selectedEntryIds.contains(entry.id) }
             .orEmpty()
+        val selectedEntries = readyEntries.filter { entry -> state.selectedEntryIds.contains(entry.id) }
+        val contextMenuEntries = readyEntries.filter { entry -> contextMenuEntryIds.contains(entry.id) }
         val singleSelectedEntry = selectedEntries.singleOrNull()
         val currentLocationFavorite = favoriteLocations.contains(state.location)
         if (showCommandPalette) {
@@ -547,10 +591,10 @@ internal fun PaneSurface(
                 enabled = true,
                 onClick = {
                     onActivate()
-                    showFilterBar = !showFilterBar
-                    if (!showFilterBar) {
-                        filterFocused = false
-                        dispatch(PaneIntent.SetFilterQuery(""))
+                    if (filterOverlayVisible) {
+                        closeFilterInput()
+                    } else {
+                        openFilterInput()
                     }
                 },
                 tooltip = onyxCommandTooltip(
@@ -558,66 +602,12 @@ internal fun PaneSurface(
                     command = OnyxCommand.Filter,
                     shortcuts = commandShortcuts,
                 ),
-                selected = showFilterBar || filterQuery.isNotEmpty(),
+                selected = filterOverlayVisible,
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.Find,
                     contentDescription = stringResource(Res.string.action_filter),
                 )
-            }
-
-            if (showFilterBar) {
-                LaunchedEffect(showFilterBar) {
-                    filterFocusRequester.requestFocus()
-                }
-                Box(
-                    modifier = Modifier.width(190.dp).height(22.dp)
-                ) {
-                    BasicTextField(
-                        value = filterQuery,
-                        onValueChange = { dispatch(PaneIntent.SetFilterQuery(it)) },
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .focusRequester(filterFocusRequester)
-                            .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
-                            .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp)
-                            .onFocusChanged { focusState ->
-                                filterFocused = focusState.isFocused
-                                if (focusState.isFocused) {
-                                    onActivate()
-                                }
-                            }
-                            .onPreviewKeyEvent { event ->
-                                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                                    showFilterBar = false
-                                    filterFocused = false
-                                    dispatch(PaneIntent.SetFilterQuery(""))
-                                    focusRequester.requestFocus()
-                                    true
-                                } else false
-                            },
-                        textStyle = TextStyle(
-                            fontSize = 11.sp,
-                            lineHeight = 16.sp,
-                            color = LocalOnyxPalette.current.foreground,
-                        ),
-                        singleLine = true,
-                        cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
-                        decorationBox = { innerTextField ->
-                            Box(contentAlignment = Alignment.CenterStart) {
-                                if (filterQuery.isEmpty()) {
-                                    Text(
-                                        text = stringResource(Res.string.label_filter_placeholder),
-                                        fontSize = 11.sp,
-                                        color = LocalOnyxPalette.current.disabledForeground,
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        },
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.width(4.dp))
@@ -717,9 +707,22 @@ internal fun PaneSurface(
                     onCancelInlineEdit = { dispatch(PaneIntent.CancelInlineEdit) },
                     onShowContextMenu = { entryId, entrySelected, pointerPosition ->
                         onActivate()
+                        showContextMenu = false
                         contextMenuOffset = pointerPosition
+                        val targetEntryIds = if (entrySelected && state.selectedEntryIds.isNotEmpty()) {
+                            state.selectedEntryIds
+                        } else {
+                            setOf(entryId)
+                        }
+                        contextMenuEntryIds = targetEntryIds
+                        contextMenuSections = emptyList()
+                        val nextToken = contextMenuQueryToken + 1
+                        contextMenuQueryToken = nextToken
+                        loadContextMenuPlatformActions(
+                            targetEntries = readyEntries.filter { entry -> targetEntryIds.contains(entry.id) },
+                            token = nextToken,
+                        )
                         if (!entrySelected) dispatch(PaneIntent.SelectEntry(entryId))
-                        showContextMenu = true
                     },
                     onDismissContextMenu = { showContextMenu = false },
                     onBeginRename = { dispatch(PaneIntent.BeginRename) },
@@ -734,7 +737,11 @@ internal fun PaneSurface(
                     pendingScrollToEntryId = state.pendingScrollToEntryId,
                     onConsumeScroll = { dispatch(PaneIntent.ConsumePendingScroll) },
                     onBlankAreaContextMenu = { pointerPosition ->
+                        showContextMenu = false
                         contextMenuOffset = pointerPosition
+                        contextMenuEntryIds = emptySet()
+                        contextMenuSections = emptyList()
+                        contextMenuQueryToken += 1
                         showContextMenu = true
                     },
                     loadThumbnail = loadThumbnail,
@@ -743,39 +750,37 @@ internal fun PaneSurface(
                     isArchiveFileName = actions.isArchiveFileName,
                 )
 
+                if (filterOverlayVisible) {
+                    FloatingFilterInput(
+                        query = filterQuery,
+                        focusRequester = filterFocusRequester,
+                        focusRequestId = filterFocusRequestId,
+                        onQueryChange = { dispatch(PaneIntent.SetFilterQuery(it)) },
+                        onFocusChanged = { focused ->
+                            filterFocused = focused
+                            if (focused) {
+                                onActivate()
+                            }
+                        },
+                        onClose = { closeFilterInput() },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 8.dp, end = 8.dp),
+                    )
+                }
+
                 if (showContextMenu) {
-                    val selectedCount = state.selectedEntryIds.size
-                    val singleEntry = singleSelectedEntry
-                    val canOpenWithSelection = singleEntry?.let(actions.supportsOpenWith) == true
-                    val selectedEntriesKey = selectedEntries.joinToString("|") { entry -> entry.id }
-                    LaunchedEffect(showContextMenu, singleEntry?.id, selectedEntriesKey) {
-                        val openWithQuery = actions.onQueryOpenWithApps
-                        val systemActionQuery = actions.onQuerySystemMenuActions
-                        if (singleEntry != null && canOpenWithSelection && openWithQuery != null) {
-                            contextMenuOpenWithApps = withContext(Dispatchers.IO) {
-                                openWithQuery.invoke(singleEntry)
-                            }
-                        } else {
-                            contextMenuOpenWithApps = emptyList()
-                        }
-                        contextMenuSystemActions = if (selectedEntries.isNotEmpty() && systemActionQuery != null) {
-                            withContext(Dispatchers.IO) {
-                                systemActionQuery.invoke(selectedEntries)
-                            }
-                        } else {
-                            emptyList()
-                        }
-                    }
+                    val selectedCount = contextMenuEntries.size
+                    val singleEntry = contextMenuEntries.singleOrNull()
                     PaneContextMenu(
                         anchorOffset = contextMenuOffset,
                         canOperateOnSelection = selectedCount > 0,
                         canOpenSelection = selectedCount == 1,
-                        canOpenWithSelection = canOpenWithSelection,
-                        canOpenSelectionInNewTab = singleSelectedEntry?.kind == VFileKind.DIRECTORY,
+                        canOpenSelectionInNewTab = singleEntry?.kind == VFileKind.DIRECTORY,
                         canRenameSelection = selectedCount == 1,
                         canCopyPath = selectedCount > 0,
                         canPaste = canPaste,
-                        canExtractSelection = selectedCount > 0 && selectedEntries.any { entry ->
+                        canExtractSelection = selectedCount > 0 && contextMenuEntries.any { entry ->
                             entry.kind == VFileKind.FILE && actions.isArchiveFileName(entry.name)
                         },
                         canBatchRename = selectedCount >= 2,
@@ -835,18 +840,9 @@ internal fun PaneSurface(
                             actions.onPaste()
                             showContextMenu = false
                         },
-                        openWithApps = contextMenuOpenWithApps,
-                        systemMenuActions = contextMenuSystemActions,
-                        onOpenWith = { app ->
-                            singleSelectedEntry?.let { actions.onOpenWith(it, app) }
-                            showContextMenu = false
-                        },
-                        onOpenWithChooser = {
-                            singleSelectedEntry?.let { actions.onOpenWithChooser(it) }
-                            showContextMenu = false
-                        },
-                        onSystemMenuAction = { action ->
-                            actions.onSystemMenuAction(action, selectedEntries)
+                        contextMenuSections = contextMenuSections,
+                        onFileContextMenuCommand = { command ->
+                            actions.onFileContextMenuCommand(command, contextMenuEntries)
                             showContextMenu = false
                         },
                         onRefresh = {
@@ -876,5 +872,75 @@ internal fun PaneSurface(
                 )
             }
         }
+    }
+}
+
+private const val CONTEXT_MENU_PLATFORM_ACTION_TIMEOUT_MS = 260L
+
+@Composable
+private fun FloatingFilterInput(
+    query: String,
+    focusRequester: FocusRequester,
+    focusRequestId: Int,
+    onQueryChange: (String) -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LaunchedEffect(focusRequestId) {
+        if (focusRequestId > 0) {
+            focusRequester.requestFocus()
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .widthIn(min = 190.dp, max = 280.dp)
+            .height(28.dp)
+            .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
+            .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            key = AllIconsKeys.Actions.Find,
+            contentDescription = null,
+        )
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester)
+                .onFocusChanged { focusState -> onFocusChanged(focusState.isFocused) }
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                        onClose()
+                        true
+                    } else {
+                        false
+                    }
+                },
+            textStyle = TextStyle(
+                fontSize = 11.sp,
+                lineHeight = 16.sp,
+                color = LocalOnyxPalette.current.foreground,
+            ),
+            singleLine = true,
+            cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
+            decorationBox = { innerTextField ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = stringResource(Res.string.label_filter_placeholder),
+                            fontSize = 11.sp,
+                            color = LocalOnyxPalette.current.disabledForeground,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
     }
 }

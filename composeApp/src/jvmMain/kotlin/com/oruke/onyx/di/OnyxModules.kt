@@ -8,6 +8,7 @@ import com.oruke.onyx.app.filesystem.ArchiveInfoService
 import com.oruke.onyx.app.filesystem.ArchiveVfsProvider
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileContextMenuService
 import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileTypeService
@@ -18,6 +19,7 @@ import com.oruke.onyx.app.filesystem.JvmDesktopExternalOpenService
 import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
 import com.oruke.onyx.app.filesystem.JvmArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.JvmArchiveInfoService
+import com.oruke.onyx.app.filesystem.JvmFileContextMenuService
 import com.oruke.onyx.app.filesystem.JvmFileHashService
 import com.oruke.onyx.app.filesystem.JvmFileTypeService
 import com.oruke.onyx.app.filesystem.JvmImageMetadataService
@@ -159,6 +161,7 @@ val fileModule = module {
     }
     single<OpenWithService> { JvmPlatformOpenWithService(get()) }
     single<SystemMenuService> { JvmSystemMenuService(get()) }
+    single<FileContextMenuService> { JvmFileContextMenuService(get(), get()) }
     single<VfsPathService> { JvmVfsPathService() }
     single<EntryNameSuggestionService> { ResourceEntryNameSuggestionService() }
     single<FileTypeService> { JvmFileTypeService() }

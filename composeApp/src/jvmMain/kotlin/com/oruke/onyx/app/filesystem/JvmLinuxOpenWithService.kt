@@ -64,7 +64,7 @@ class JvmLinuxOpenWithService(
             )
                 .directory(target.parent?.toFile() ?: File("."))
                 .start()
-            val output = process.inputStream.bufferedReader().readText().trim()
+            val output = process.inputStream.readBytes().decodePlatformProcessOutput().trim()
             check(process.waitFor() == 0) {
                 output.ifBlank { "System open-with chooser failed" }
             }
@@ -128,7 +128,7 @@ class JvmLinuxOpenWithService(
                 .redirectErrorStream(true)
                 .apply { environment()["LC_ALL"] = "C" }
                 .start()
-            val output = process.inputStream.bufferedReader().readText().trim()
+            val output = process.inputStream.readBytes().decodePlatformProcessOutput().trim()
             if (process.waitFor() == 0) output else null
         }.getOrNull()
     }
@@ -248,7 +248,7 @@ class JvmPlatformOpenWithService(
             ?.let { value -> ".$value" }
             ?: return@withContext emptyList()
         val progIds = linkedSetOf<String>()
-        queryRegistryDefault("HKCR\\$extension")?.takeIf { value -> value.isNotBlank() }?.let { progIds += it }
+        queryRegistryDefault("HKCR\\$extension")?.let { progIds += it }
         progIds += queryRegistryValueNames("HKCR\\$extension\\OpenWithProgids")
         progIds += queryRegistryValueNames(
             "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$extension\\OpenWithProgids"
@@ -257,18 +257,18 @@ class JvmPlatformOpenWithService(
         progIds
             .asSequence()
             .mapNotNull { progId -> progId.toWindowsOpenWithApp() }
-            .distinctBy { app -> app.command.lowercase(Locale.getDefault()) }
+            .distinctBy { app -> app.command.lowercase(Locale.ROOT) }
             .sortedBy { app -> app.displayName.lowercase(Locale.getDefault()) }
             .take(MAX_WINDOWS_APPLICATIONS)
             .toList()
     }
 
     private fun String.toWindowsOpenWithApp(): OpenWithApp? {
+        if (isWindowsRegistryUnsetValue() || isWindowsRegistryDefaultName()) return null
         val command = queryRegistryDefault("HKCR\\$this\\shell\\open\\command")
-            ?.takeIf { value -> value.isNotBlank() }
             ?: return null
         val displayName = queryRegistryDefault("HKCR\\$this")
-            ?.takeIf { value -> value.isNotBlank() }
+            ?.toWindowsMenuLabel()
             ?: this
         return OpenWithApp(
             id = this,
@@ -283,7 +283,7 @@ class JvmPlatformOpenWithService(
         return output
             .lineSequence()
             .mapNotNull { line -> line.toRegistryValue()?.data }
-            .firstOrNull { value -> value.isNotBlank() }
+            .firstOrNull { value -> !value.isWindowsRegistryUnsetValue() }
     }
 
     private fun queryRegistryValueNames(key: String): List<String> {
@@ -291,7 +291,7 @@ class JvmPlatformOpenWithService(
         return output
             .lineSequence()
             .mapNotNull { line -> line.toRegistryValue()?.name }
-            .filter { name -> name.isNotBlank() && !name.equals("(Default)", ignoreCase = true) }
+            .filter { name -> !name.isWindowsRegistryUnsetValue() && !name.isWindowsRegistryDefaultName() }
             .distinct()
             .toList()
     }
@@ -301,7 +301,7 @@ class JvmPlatformOpenWithService(
             val process = ProcessBuilder(listOf("reg", "query") + args.toList())
                 .redirectErrorStream(true)
                 .start()
-            val output = process.inputStream.bufferedReader().readText()
+            val output = process.inputStream.readBytes().decodePlatformProcessOutput()
             if (process.waitFor() == 0) output else null
         }.getOrNull()
     }
@@ -319,7 +319,7 @@ class JvmPlatformOpenWithService(
     }
 
     private fun String.toWindowsCommandFor(location: String): String {
-        val target = "\"${location.replace("\"", "\\\"")}\""
+        val target = "\"${location.replace("\"", "")}\""
         val hadPlaceholder = WINDOWS_TARGET_PLACEHOLDERS.any { placeholder -> contains(placeholder) }
         val command = WINDOWS_TARGET_PLACEHOLDERS.fold(this) { current, placeholder ->
             current.replace(placeholder, target)
@@ -327,8 +327,28 @@ class JvmPlatformOpenWithService(
         return if (hadPlaceholder) command else "$command $target"
     }
 
+    private fun String?.toWindowsMenuLabel(): String? {
+        val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (value.isWindowsRegistryUnsetValue()) return null
+        if (value.startsWith("@")) return null
+        return value.replace("&", "").takeIf { it.isNotBlank() }
+    }
+
+    private fun String.isWindowsRegistryUnsetValue(): Boolean {
+        return isBlank() ||
+            contains("not set", ignoreCase = true) ||
+            contains("未设置") ||
+            contains("未設定")
+    }
+
+    private fun String.isWindowsRegistryDefaultName(): Boolean {
+        return equals("(Default)", ignoreCase = true) ||
+            equals("(默认)", ignoreCase = true) ||
+            equals("(預設)", ignoreCase = true)
+    }
+
     private fun currentHostPlatform(): HostPlatform {
-        val osName = System.getProperty("os.name").lowercase(Locale.getDefault())
+        val osName = System.getProperty("os.name").lowercase(Locale.ROOT)
         return when {
             osName.contains("mac") || osName.contains("darwin") -> HostPlatform.MACOS
             osName.contains("win") -> HostPlatform.WINDOWS

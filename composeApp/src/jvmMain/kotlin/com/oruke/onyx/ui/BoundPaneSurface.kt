@@ -11,6 +11,7 @@ import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
+import com.oruke.onyx.app.filesystem.FileContextMenuRequest
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
@@ -66,15 +67,16 @@ internal fun BoundPaneSurface(
         onBeginCreateDirectory = { dispatch(RootIntent.BeginCreateDirectoriesInPane(paneId)) },
         onToggleFavoriteLocation = { location -> dispatch(RootIntent.ToggleFavoriteLocation(location)) },
         onOpenSettings = { dispatch(RootIntent.OpenSettings) },
-        onOpenWith = { entry, app -> dispatch(RootIntent.OpenWithApp(entry, app)) },
-        onOpenWithChooser = { entry -> dispatch(RootIntent.OpenWithChooser(entry)) },
-        supportsOpenWith = rootComponent::supportsOpenWith,
-        onSystemMenuAction = { action, entries -> dispatch(RootIntent.ExecuteSystemMenuAction(action, entries)) },
+        supportsContextMenuOpenWith = rootComponent::supportsContextMenuOpenWith,
+        onFileContextMenuCommand = { command, entries ->
+            dispatch(RootIntent.ExecuteFileContextMenuCommand(command, entries))
+        },
         onOpenTerminal = { location -> dispatch(RootIntent.OpenTerminalAt(location)) },
         isArchiveFileName = rootComponent::isArchiveFileName,
         isImageFileName = rootComponent::isImageFileName,
-        onQueryOpenWithApps = { entry -> rootComponent.listOpenWithApps(entry) },
-        onQuerySystemMenuActions = { entries -> rootComponent.listSystemMenuActions(entries) },
+        onQueryContextMenuSections = { request: FileContextMenuRequest ->
+            rootComponent.listContextMenuSections(request)
+        },
     )
     val commandShortcuts = remember(state.settings.commandShortcutOverrides) {
         commandShortcutMapFromSettings(state.settings.commandShortcutOverrides)

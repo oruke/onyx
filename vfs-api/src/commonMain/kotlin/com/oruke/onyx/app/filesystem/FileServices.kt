@@ -353,7 +353,47 @@ data class SystemMenuAction(
     val displayName: String,
     val command: String,
     val iconPath: String? = null,
+    val children: List<SystemMenuAction> = emptyList(),
 )
+
+enum class FileContextMenuSectionKind {
+    OPEN_WITH,
+    SYSTEM,
+}
+
+enum class FileContextMenuLabel {
+    OPEN_WITH_OTHER,
+}
+
+data class FileContextMenuRequest(
+    val entries: List<VFile>,
+)
+
+data class FileContextMenuSection(
+    val kind: FileContextMenuSectionKind,
+    val items: List<FileContextMenuItem>,
+)
+
+data class FileContextMenuItem(
+    val id: String,
+    val displayName: String,
+    val label: FileContextMenuLabel? = null,
+    val iconPath: String? = null,
+    val command: FileContextMenuCommand? = null,
+    val children: List<FileContextMenuItem> = emptyList(),
+)
+
+sealed interface FileContextMenuCommand {
+    data class OpenWith(
+        val app: OpenWithApp,
+    ) : FileContextMenuCommand
+
+    data object OpenWithChooser : FileContextMenuCommand
+
+    data class SystemAction(
+        val action: SystemMenuAction,
+    ) : FileContextMenuCommand
+}
 
 interface SystemFileMaterializer {
     fun supports(entry: VFile): Boolean
@@ -390,6 +430,14 @@ interface SystemMenuService {
     suspend fun listActions(entries: List<VFile>): List<SystemMenuAction>
 
     suspend fun execute(action: SystemMenuAction, entries: List<VFile>): Result<Unit>
+}
+
+interface FileContextMenuService {
+    fun supportsOpenWith(entry: VFile): Boolean
+
+    suspend fun listSections(request: FileContextMenuRequest): List<FileContextMenuSection>
+
+    suspend fun execute(command: FileContextMenuCommand, entries: List<VFile>): Result<Unit>
 }
 
 interface SettingsRepository {

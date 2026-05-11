@@ -17,6 +17,7 @@ import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ArchiveInfoService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileContextMenuService
 import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileTypeService
@@ -77,6 +78,7 @@ fun rememberRootComponent(): RootComponent {
             archiveService = koin.get<ArchiveService>(),
             openWithService = koin.get<OpenWithService>(),
             systemMenuService = koin.get<SystemMenuService>(),
+            fileContextMenuService = koin.get<FileContextMenuService>(),
             pathService = koin.get<VfsPathService>(),
             entryNameSuggestionService = koin.get<EntryNameSuggestionService>(),
             providerRegistry = koin.get<VfsProviderRegistry>(),

@@ -5,6 +5,7 @@ import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
@@ -31,6 +32,9 @@ class JvmSystemMenuService(
             val targetEntries = entries.materializeEntries()
                 ?: throw IllegalStateException("System menu action requires materializable files")
             when {
+                action.children.isNotEmpty() -> throw UnsupportedOperationException(
+                    "System menu group cannot be executed directly: ${action.id}"
+                )
                 action.id.startsWith(LINUX_ACTION_PREFIX) -> runLinuxServiceAction(action, targetEntries)
                 action.id.startsWith(WINDOWS_ACTION_PREFIX) -> runWindowsShellAction(action, targetEntries)
                 else -> throw UnsupportedOperationException("Unsupported system menu action: ${action.id}")
@@ -109,10 +113,11 @@ class JvmSystemMenuService(
         if (entries.size != 1) return emptyList()
         val entry = entries.single()
         val keys = windowsShellKeys(entry)
-        return keys
+        val shellActions = keys
             .asSequence()
             .flatMap { key -> windowsShellVerbKeys(key).asSequence() }
             .mapNotNull { key -> key.toWindowsShellAction() }
+        return shellActions
             .distinctBy { action -> action.displayName to action.command }
             .toList()
     }
@@ -150,13 +155,25 @@ class JvmSystemMenuService(
             .toList()
     }
 
-    private fun String.toWindowsShellAction(): SystemMenuAction? {
+    private fun String.toWindowsShellAction(depth: Int = 0): SystemMenuAction? {
+        val values = queryRegistryValues(this)
+        if (!values.shouldIncludeWindowsShellVerb()) return null
+        val rawDisplayName = values.namedData("MUIVerb") ?: values.defaultValue()?.data
+        val displayName = rawDisplayName.toWindowsMenuLabel() ?: return null
+        val children = if (depth < MAX_SYSTEM_MENU_DEPTH) {
+            values.toWindowsShellChildActions(depth + 1)
+        } else {
+            emptyList()
+        }
+        if (children.isNotEmpty()) {
+            return SystemMenuAction(
+                id = "$WINDOWS_ACTION_PREFIX$this",
+                displayName = displayName,
+                command = "",
+                children = children,
+            )
+        }
         val command = queryRegistryDefault("$this\\command")?.takeIf { value -> value.isNotBlank() } ?: return null
-        val verb = substringAfterLast("\\")
-        val displayName = queryRegistryDefault(this)
-            ?.takeIf { value -> value.isNotBlank() }
-            ?.removePrefix("&")
-            ?: verb
         return SystemMenuAction(
             id = "$WINDOWS_ACTION_PREFIX$this",
             displayName = displayName,
@@ -169,28 +186,141 @@ class JvmSystemMenuService(
         entries: List<VFile>,
     ) {
         val target = entries.single().requireSystemLocalPath("system menu actions").toString()
-        val hasTargetPlaceholder = WINDOWS_TARGET_PLACEHOLDERS.any { placeholder -> action.command.contains(placeholder) }
-        val command = WINDOWS_TARGET_PLACEHOLDERS.fold(action.command) { current, placeholder ->
-            current.replace(placeholder, "\"${target.replace("\"", "\\\"")}\"")
-        }
-        val commandLine = if (hasTargetPlaceholder) command else "$command \"${target.replace("\"", "\\\"")}\""
-        ProcessBuilder("cmd", "/c", commandLine)
+        val commandLine = action.command.toWindowsCommandLine(target)
+        val script = Files.createTempFile("onyx-shell-action-", ".cmd")
+        Files.writeString(script, "@echo off\r\n$commandLine\r\n", StandardCharsets.UTF_8)
+        script.toFile().deleteOnExit()
+        ProcessBuilder("cmd.exe", "/d", "/c", "call \"${script}\"")
             .directory(File(target).parentFile ?: File("."))
             .start()
     }
 
     private fun queryRegistryDefault(key: String): String? {
-        val output = commandOutput("reg", "query", key, "/ve") ?: return null
-        return output
-            .lineSequence()
-            .mapNotNull { line -> line.toRegistryData() }
-            .firstOrNull { value -> value.isNotBlank() }
+        return queryRegistryValues(key, "/ve").defaultData()
     }
 
-    private fun String.toRegistryData(): String? {
+    private fun queryRegistryValues(key: String, vararg args: String): List<RegistryValue> {
+        val output = commandOutput("reg", "query", key, *args) ?: return emptyList()
+        return output
+            .lineSequence()
+            .mapNotNull { line -> line.toRegistryValue() }
+            .toList()
+    }
+
+    private fun String.toRegistryValue(): RegistryValue? {
         val parts = trim().split(Regex("\\s{2,}"), limit = 3)
-        if (parts.size < 3 || !parts[1].startsWith("REG_", ignoreCase = true)) return null
-        return parts[2].trim()
+        if (parts.size < 2 || !parts[1].startsWith("REG_", ignoreCase = true)) return null
+        return RegistryValue(
+            name = parts[0].trim(),
+            type = parts[1].trim(),
+            data = parts.getOrNull(2)?.trim().orEmpty(),
+        )
+    }
+
+    private fun List<RegistryValue>.shouldIncludeWindowsShellVerb(): Boolean {
+        if (hasRegistryValue("Extended")) return false
+        if (hasRegistryValue("LegacyDisable")) return false
+        if (hasRegistryValue("OnlyInBrowserWindow")) return false
+        if (hasRegistryValue("ProgrammaticAccessOnly")) return false
+        if (hasRegistryValue("NeverDefault")) return false
+        return true
+    }
+
+    private fun List<RegistryValue>.hasRegistryValue(name: String): Boolean {
+        return any { value -> value.name.equals(name, ignoreCase = true) }
+    }
+
+    private fun List<RegistryValue>.namedData(name: String): String? {
+        return firstOrNull { value -> value.name.equals(name, ignoreCase = true) }
+            ?.data
+            ?.takeUnless { value -> value.isWindowsRegistryUnsetValue() }
+    }
+
+    private fun List<RegistryValue>.defaultData(): String? {
+        return defaultValue()
+            ?.data
+            ?.takeUnless { value -> value.isWindowsRegistryUnsetValue() }
+    }
+
+    private fun List<RegistryValue>.defaultValue(): RegistryValue? {
+        return firstOrNull { value -> value.isDefault }
+    }
+
+    private fun List<RegistryValue>.toWindowsShellChildActions(depth: Int): List<SystemMenuAction> {
+        val subCommandActions = namedData("SubCommands")
+            ?.split(";")
+            .orEmpty()
+            .map { value -> value.trim() }
+            .filter { value -> value.isNotBlank() }
+            .mapNotNull { commandId -> commandId.toWindowsCommandStoreAction(depth) }
+        val extendedSubCommandActions = namedData("ExtendedSubCommandsKey")
+            ?.let { key -> windowsExtendedSubCommandKeys(key) }
+            .orEmpty()
+            .asSequence()
+            .flatMap { key -> windowsShellVerbKeys(key).asSequence() }
+            .mapNotNull { key -> key.toWindowsShellAction(depth) }
+            .toList()
+        return (subCommandActions + extendedSubCommandActions)
+            .distinctBy { action -> action.displayName to action.command }
+    }
+
+    private fun String.toWindowsCommandStoreAction(depth: Int): SystemMenuAction? {
+        return windowsCommandStoreKeys(this)
+            .firstNotNullOfOrNull { key ->
+                if (queryRegistryValues(key).isEmpty()) null else key.toWindowsShellAction(depth)
+            }
+    }
+
+    private fun windowsCommandStoreKeys(commandId: String): List<String> {
+        return listOf(
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\CommandStore\\shell\\$commandId",
+            "HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\CommandStore\\shell\\$commandId",
+        )
+    }
+
+    private fun windowsExtendedSubCommandKeys(key: String): List<String> {
+        val trimmedKey = key.trim().trim('\\')
+        if (trimmedKey.isBlank()) return emptyList()
+        return if (trimmedKey.startsWith("HK", ignoreCase = true)) {
+            listOf(trimmedKey)
+        } else {
+            listOf(
+                "HKCU\\Software\\Classes\\$trimmedKey",
+                "HKCR\\$trimmedKey",
+            )
+        }
+    }
+
+    private fun String?.toWindowsMenuLabel(): String? {
+        val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+        if (value.isWindowsRegistryUnsetValue()) return null
+        if (value.startsWith("@")) return null
+        return value.replace("&", "").takeIf { it.isNotBlank() }
+    }
+
+    private fun String.isWindowsRegistryUnsetValue(): Boolean {
+        return isBlank() ||
+            contains("not set", ignoreCase = true) ||
+            contains("未设置") ||
+            contains("未設定")
+    }
+
+    private fun String.toWindowsCommandLine(target: String): String {
+        val quotedTarget = "\"${target.replace("\"", "")}\""
+        var commandLine = this
+        var hasTargetPlaceholder = false
+        WINDOWS_TARGET_PLACEHOLDERS.forEach { placeholder ->
+            val quotedPlaceholder = "\"$placeholder\""
+            if (commandLine.contains(quotedPlaceholder)) {
+                commandLine = commandLine.replace(quotedPlaceholder, quotedTarget)
+                hasTargetPlaceholder = true
+            }
+            if (commandLine.contains(placeholder)) {
+                commandLine = commandLine.replace(placeholder, quotedTarget)
+                hasTargetPlaceholder = true
+            }
+        }
+        return if (hasTargetPlaceholder) commandLine else "$commandLine $quotedTarget"
     }
 
     private fun Map<String, String>.mimeList(): List<String> {
@@ -328,7 +458,7 @@ class JvmSystemMenuService(
     }
 
     private fun currentHostPlatform(): HostPlatform {
-        val osName = System.getProperty("os.name").lowercase(Locale.getDefault())
+        val osName = System.getProperty("os.name").lowercase(Locale.ROOT)
         return when {
             osName.contains("mac") || osName.contains("darwin") -> HostPlatform.MACOS
             osName.contains("win") -> HostPlatform.WINDOWS
@@ -344,10 +474,22 @@ class JvmSystemMenuService(
         OTHER,
     }
 
+    private data class RegistryValue(
+        val name: String,
+        val type: String,
+        val data: String,
+    ) {
+        val isDefault: Boolean
+            get() = name.equals("(Default)", ignoreCase = true) ||
+                name.equals("(默认)", ignoreCase = true) ||
+                name.equals("(預設)", ignoreCase = true)
+    }
+
     private companion object {
         const val LINUX_ACTION_PREFIX = "linux:"
         const val WINDOWS_ACTION_PREFIX = "windows:"
-        val WINDOWS_TARGET_PLACEHOLDERS = listOf("%1", "%L", "%l")
+        const val MAX_SYSTEM_MENU_DEPTH = 4
+        val WINDOWS_TARGET_PLACEHOLDERS = listOf("%1", "%L", "%l", "%V", "%v", "%I", "%i")
     }
 }
 
@@ -421,7 +563,7 @@ private fun commandOutput(vararg command: String): String? {
             .redirectErrorStream(true)
             .apply { environment()["LC_ALL"] = "C" }
             .start()
-        val output = process.inputStream.bufferedReader().readText().trim()
+        val output = process.inputStream.readBytes().decodePlatformProcessOutput().trim()
         if (process.waitFor() == 0) output else null
     }.getOrNull()
 }

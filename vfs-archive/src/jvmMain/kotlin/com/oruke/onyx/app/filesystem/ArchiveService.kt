@@ -42,7 +42,7 @@ class ArchiveService(
         )
         // tar.xx 双扩展名
         private val ARCHIVE_COMPOUND_EXTENSIONS = setOf(
-            "tar.gz", "tar.bz2", "tar.xz", "tar.lzma", "tar.zst",
+            "tar.gz", "tar.bz2", "tar.xz", "tar.lzma",
         )
 
         fun isArchive(fileName: String): Boolean {

@@ -1,7 +1,8 @@
 package com.oruke.onyx.ui
 
-import com.oruke.onyx.app.filesystem.OpenWithApp
-import com.oruke.onyx.app.filesystem.SystemMenuAction
+import com.oruke.onyx.app.filesystem.FileContextMenuCommand
+import com.oruke.onyx.app.filesystem.FileContextMenuRequest
+import com.oruke.onyx.app.filesystem.FileContextMenuSection
 import com.oruke.onyx.core.model.VFile
 
 /**
@@ -25,13 +26,10 @@ data class PaneActions(
     val onBeginCreateDirectory: () -> Unit,
     val onToggleFavoriteLocation: (String) -> Unit,
     val onOpenSettings: () -> Unit,
-    val onOpenWith: (VFile, OpenWithApp) -> Unit,
-    val onOpenWithChooser: (VFile) -> Unit,
-    val supportsOpenWith: (VFile) -> Boolean,
-    val onSystemMenuAction: (SystemMenuAction, List<VFile>) -> Unit,
+    val supportsContextMenuOpenWith: (VFile) -> Boolean,
+    val onFileContextMenuCommand: (FileContextMenuCommand, List<VFile>) -> Unit,
     val onOpenTerminal: (String) -> Unit,
     val isArchiveFileName: (String) -> Boolean,
     val isImageFileName: (String) -> Boolean,
-    val onQueryOpenWithApps: (suspend (VFile) -> List<OpenWithApp>)? = null,
-    val onQuerySystemMenuActions: (suspend (List<VFile>) -> List<SystemMenuAction>)? = null,
+    val onQueryContextMenuSections: (suspend (FileContextMenuRequest) -> List<FileContextMenuSection>)? = null,
 )

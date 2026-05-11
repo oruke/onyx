@@ -225,13 +225,13 @@ class JvmRemoteAuthStore(
             }
             ProcessResult(
                 exitCode = process.exitValue(),
-                output = process.inputStream.bufferedReader().readText(),
+                output = process.inputStream.readBytes().decodePlatformProcessOutput(),
             )
         }.getOrDefault(ProcessResult(exitCode = -1, output = ""))
     }
 
     private fun detectHostPlatform(): HostPlatform {
-        val osName = System.getProperty("os.name").lowercase(Locale.getDefault())
+        val osName = System.getProperty("os.name").lowercase(Locale.ROOT)
         return when {
             osName.contains("mac") || osName.contains("darwin") -> HostPlatform.MACOS
             osName.contains("win") -> HostPlatform.WINDOWS

@@ -3,6 +3,9 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.app.filesystem.OpenWithApp
 import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
+import com.oruke.onyx.app.filesystem.FileContextMenuCommand
+import com.oruke.onyx.app.filesystem.FileContextMenuRequest
+import com.oruke.onyx.app.filesystem.FileContextMenuSection
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
@@ -423,6 +426,11 @@ sealed interface RootIntent {
         val entries: List<VFile>,
     ) : RootIntent
 
+    data class ExecuteFileContextMenuCommand(
+        val command: FileContextMenuCommand,
+        val entries: List<VFile>,
+    ) : RootIntent
+
     data class OpenTerminalAt(
         val location: String,
     ) : RootIntent
@@ -443,6 +451,10 @@ interface RootComponent {
     fun supportsOpenWith(entry: VFile): Boolean
 
     suspend fun listSystemMenuActions(entries: List<VFile>): List<SystemMenuAction>
+
+    fun supportsContextMenuOpenWith(entry: VFile): Boolean
+
+    suspend fun listContextMenuSections(request: FileContextMenuRequest): List<FileContextMenuSection>
 
     fun prepareExternalDrag(entries: List<VFile>): Boolean
 
@@ -624,5 +636,10 @@ fun RootComponent.executeSystemMenuAction(
     action: SystemMenuAction,
     entries: List<VFile>,
 ) = dispatch(RootIntent.ExecuteSystemMenuAction(action, entries))
+
+fun RootComponent.executeFileContextMenuCommand(
+    command: FileContextMenuCommand,
+    entries: List<VFile>,
+) = dispatch(RootIntent.ExecuteFileContextMenuCommand(command, entries))
 
 fun RootComponent.openTerminalAt(location: String) = dispatch(RootIntent.OpenTerminalAt(location))

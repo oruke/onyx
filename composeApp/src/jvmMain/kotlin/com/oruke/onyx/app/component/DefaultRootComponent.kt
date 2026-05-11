@@ -10,6 +10,9 @@ import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.ArchiveInfoService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileContextMenuCommand
+import com.oruke.onyx.app.filesystem.FileContextMenuRequest
+import com.oruke.onyx.app.filesystem.FileContextMenuService
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.app.filesystem.FileHashService
@@ -104,6 +107,7 @@ class DefaultRootComponent(
     private val archiveService: ArchiveService,
     private val openWithService: OpenWithService,
     private val systemMenuService: SystemMenuService,
+    private val fileContextMenuService: FileContextMenuService,
     private val pathService: VfsPathService,
     private val entryNameSuggestionService: EntryNameSuggestionService,
     private val providerRegistry: VfsProviderRegistry,
@@ -418,6 +422,10 @@ class DefaultRootComponent(
             is RootIntent.OpenWithChooser -> openWithChooser(intent.entry)
             is RootIntent.ExecuteSystemMenuAction -> executeSystemMenuAction(
                 action = intent.action,
+                entries = intent.entries,
+            )
+            is RootIntent.ExecuteFileContextMenuCommand -> executeFileContextMenuCommand(
+                command = intent.command,
                 entries = intent.entries,
             )
             is RootIntent.OpenTerminalAt -> openTerminalAt(intent.location)
@@ -1082,6 +1090,12 @@ class DefaultRootComponent(
 
     override suspend fun listSystemMenuActions(entries: List<VFile>) = systemMenuService.listActions(entries)
 
+    override fun supportsContextMenuOpenWith(entry: VFile) = fileContextMenuService.supportsOpenWith(entry)
+
+    override suspend fun listContextMenuSections(
+        request: FileContextMenuRequest,
+    ) = fileContextMenuService.listSections(request)
+
     fun openWithApp(entry: VFile, app: OpenWithApp) {
         scope.launch {
             openWithService.openWith(entry, app)
@@ -1112,6 +1126,21 @@ class DefaultRootComponent(
     ) {
         scope.launch {
             systemMenuService.execute(action, entries)
+                .onSuccess {
+                    paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
+                }
+                .onFailure { failure ->
+                    showActivePaneOpenFailure(failure)
+                }
+        }
+    }
+
+    fun executeFileContextMenuCommand(
+        command: FileContextMenuCommand,
+        entries: List<VFile>,
+    ) {
+        scope.launch {
+            fileContextMenuService.execute(command, entries)
                 .onSuccess {
                     paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
                 }
