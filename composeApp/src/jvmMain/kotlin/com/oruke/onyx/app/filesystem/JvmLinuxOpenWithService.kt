@@ -253,10 +253,20 @@ class JvmPlatformOpenWithService(
         progIds += queryRegistryValueNames(
             "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$extension\\OpenWithProgids"
         )
+        val applicationExecutables = linkedSetOf<String>()
+        applicationExecutables += queryRegistryOpenWithExecutables("HKCR\\$extension\\OpenWithList")
+        applicationExecutables += queryRegistryOpenWithExecutables(
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$extension\\OpenWithList"
+        )
 
-        progIds
+        val progIdApps = progIds
             .asSequence()
             .mapNotNull { progId -> progId.toWindowsOpenWithApp() }
+        val applicationApps = applicationExecutables
+            .asSequence()
+            .mapNotNull { executableName -> executableName.toWindowsApplicationOpenWithApp() }
+
+        (progIdApps + applicationApps)
             .distinctBy { app -> app.command.lowercase(Locale.ROOT) }
             .sortedBy { app -> app.displayName.lowercase(Locale.getDefault()) }
             .take(MAX_WINDOWS_APPLICATIONS)
@@ -265,16 +275,41 @@ class JvmPlatformOpenWithService(
 
     private fun String.toWindowsOpenWithApp(): OpenWithApp? {
         if (isWindowsRegistryUnsetValue() || isWindowsRegistryDefaultName()) return null
-        val command = queryRegistryDefault("HKCR\\$this\\shell\\open\\command")
+        val command = windowsProgIdCommandKeys(this)
+            .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
             ?: return null
-        val displayName = queryRegistryDefault("HKCR\\$this")
-            ?.toWindowsMenuLabel()
+        val displayName = windowsProgIdDisplayKeys(this)
+            .firstNotNullOfOrNull { key -> queryRegistryDefault(key)?.toWindowsMenuLabel() }
             ?: this
         return OpenWithApp(
             id = this,
             displayName = displayName,
             command = command,
-            iconPath = queryRegistryDefault("HKCR\\$this\\DefaultIcon"),
+            iconPath = windowsProgIdIconKeys(this).firstNotNullOfOrNull { key -> queryRegistryDefault(key) },
+        )
+    }
+
+    /**
+     * 将 Windows `Applications\<exe>` 注册表项转换为“打开方式”应用。
+     *
+     * @return 注册了 open command 的应用；无命令时返回 `null`。
+     */
+    private fun String.toWindowsApplicationOpenWithApp(): OpenWithApp? {
+        val executableName = trim().takeIf { value -> value.endsWith(".exe", ignoreCase = true) } ?: return null
+        val command = windowsApplicationCommandKeys(executableName)
+            .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
+            ?: return null
+        val displayName = windowsApplicationDisplayKeys(executableName)
+            .firstNotNullOfOrNull { key -> queryRegistryNamedData(key, "FriendlyAppName")?.toWindowsMenuLabel() }
+            ?: executableName.removeSuffix(".exe").replaceFirstChar { char ->
+                if (char.isLowerCase()) char.titlecase(Locale.getDefault()) else char.toString()
+            }
+        return OpenWithApp(
+            id = "application:$executableName",
+            displayName = displayName,
+            command = command,
+            iconPath = windowsApplicationIconKeys(executableName)
+                .firstNotNullOfOrNull { key -> queryRegistryDefault(key) },
         )
     }
 
@@ -286,6 +321,26 @@ class JvmPlatformOpenWithService(
             .firstOrNull { value -> !value.isWindowsRegistryUnsetValue() }
     }
 
+    /**
+     * 查询指定注册表值的数据。
+     *
+     * @param key 注册表路径。
+     * @param name 值名称。
+     * @return 非空且非系统占位的数据。
+     */
+    private fun queryRegistryNamedData(
+        key: String,
+        name: String,
+    ): String? {
+        val output = runWindowsRegistryQuery(key, "/v", name) ?: return null
+        return output
+            .lineSequence()
+            .mapNotNull { line -> line.toRegistryValue() }
+            .firstOrNull { value -> value.name.equals(name, ignoreCase = true) }
+            ?.data
+            ?.takeUnless { value -> value.isWindowsRegistryUnsetValue() }
+    }
+
     private fun queryRegistryValueNames(key: String): List<String> {
         val output = runWindowsRegistryQuery(key) ?: return emptyList()
         return output
@@ -293,6 +348,24 @@ class JvmPlatformOpenWithService(
             .mapNotNull { line -> line.toRegistryValue()?.name }
             .filter { name -> !name.isWindowsRegistryUnsetValue() && !name.isWindowsRegistryDefaultName() }
             .distinct()
+            .toList()
+    }
+
+    /**
+     * 查询 Windows `OpenWithList` 中记录的可执行文件名。
+     *
+     * @param key `OpenWithList` 注册表路径。
+     * @return 去重后的 exe 名称列表。
+     */
+    private fun queryRegistryOpenWithExecutables(key: String): List<String> {
+        val output = runWindowsRegistryQuery(key) ?: return emptyList()
+        return output
+            .lineSequence()
+            .mapNotNull { line -> line.toRegistryValue() }
+            .filterNot { value -> value.name.equals("MRUList", ignoreCase = true) }
+            .map { value -> value.data.trim() }
+            .filter { value -> value.endsWith(".exe", ignoreCase = true) && !value.isWindowsRegistryUnsetValue() }
+            .distinctBy { value -> value.lowercase(Locale.ROOT) }
             .toList()
     }
 
@@ -336,15 +409,96 @@ class JvmPlatformOpenWithService(
 
     private fun String.isWindowsRegistryUnsetValue(): Boolean {
         return isBlank() ||
+            contains("value not set", ignoreCase = true) ||
             contains("not set", ignoreCase = true) ||
             contains("未设置") ||
-            contains("未設定")
+            contains("数值未设置") ||
+            contains("未設定") ||
+            contains("値が設定されていません")
     }
 
     private fun String.isWindowsRegistryDefaultName(): Boolean {
         return equals("(Default)", ignoreCase = true) ||
             equals("(默认)", ignoreCase = true) ||
             equals("(預設)", ignoreCase = true)
+    }
+
+    /**
+     * 返回 ProgId 打开命令的注册表搜索路径，先查用户级关联，再查系统级关联。
+     *
+     * @param progId 文件类型 ProgId。
+     * @return 注册表键路径列表。
+     */
+    private fun windowsProgIdCommandKeys(progId: String): List<String> {
+        return listOf(
+            "HKCU\\Software\\Classes\\$progId\\shell\\open\\command",
+            "HKCR\\$progId\\shell\\open\\command",
+        )
+    }
+
+    /**
+     * 返回 ProgId 显示名称的注册表搜索路径。
+     *
+     * @param progId 文件类型 ProgId。
+     * @return 注册表键路径列表。
+     */
+    private fun windowsProgIdDisplayKeys(progId: String): List<String> {
+        return listOf(
+            "HKCU\\Software\\Classes\\$progId",
+            "HKCR\\$progId",
+        )
+    }
+
+    /**
+     * 返回 ProgId 图标的注册表搜索路径。
+     *
+     * @param progId 文件类型 ProgId。
+     * @return 注册表键路径列表。
+     */
+    private fun windowsProgIdIconKeys(progId: String): List<String> {
+        return listOf(
+            "HKCU\\Software\\Classes\\$progId\\DefaultIcon",
+            "HKCR\\$progId\\DefaultIcon",
+        )
+    }
+
+    /**
+     * 返回 Windows Applications 打开命令的注册表搜索路径。
+     *
+     * @param executableName 可执行文件名，例如 `notepad.exe`。
+     * @return 注册表键路径列表。
+     */
+    private fun windowsApplicationCommandKeys(executableName: String): List<String> {
+        return listOf(
+            "HKCU\\Software\\Classes\\Applications\\$executableName\\shell\\open\\command",
+            "HKCR\\Applications\\$executableName\\shell\\open\\command",
+        )
+    }
+
+    /**
+     * 返回 Windows Applications 显示名称的注册表搜索路径。
+     *
+     * @param executableName 可执行文件名。
+     * @return 注册表键路径列表。
+     */
+    private fun windowsApplicationDisplayKeys(executableName: String): List<String> {
+        return listOf(
+            "HKCU\\Software\\Classes\\Applications\\$executableName",
+            "HKCR\\Applications\\$executableName",
+        )
+    }
+
+    /**
+     * 返回 Windows Applications 图标的注册表搜索路径。
+     *
+     * @param executableName 可执行文件名。
+     * @return 注册表键路径列表。
+     */
+    private fun windowsApplicationIconKeys(executableName: String): List<String> {
+        return listOf(
+            "HKCU\\Software\\Classes\\Applications\\$executableName\\DefaultIcon",
+            "HKCR\\Applications\\$executableName\\DefaultIcon",
+        )
     }
 
     private fun currentHostPlatform(): HostPlatform {

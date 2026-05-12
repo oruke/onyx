@@ -22,7 +22,7 @@ class JvmSystemMenuService(
         when (currentHostPlatform()) {
             HostPlatform.LINUX -> listLinuxServiceActions(entries)
             HostPlatform.WINDOWS -> listWindowsShellActionsWithComFallback(entries)
-            HostPlatform.MACOS -> emptyList()
+            HostPlatform.MACOS -> listMacServiceActions(entries)
             HostPlatform.OTHER -> emptyList()
         }
     }
@@ -38,7 +38,9 @@ class JvmSystemMenuService(
                 action.children.isNotEmpty() -> throw UnsupportedOperationException(
                     "System menu group cannot be executed directly: ${action.id}"
                 )
-                action.id.startsWith(LINUX_ACTION_PREFIX) -> runLinuxServiceAction(action, targetEntries)
+                action.id.startsWith(LINUX_SCRIPT_ACTION_PREFIX) -> runLinuxScriptAction(action, targetEntries)
+                action.id.startsWith(LINUX_SERVICE_ACTION_PREFIX) -> runLinuxServiceAction(action, targetEntries)
+                action.id.startsWith(MACOS_SERVICE_ACTION_PREFIX) -> runMacServiceAction(action, targetEntries)
                 action.id.startsWith(WINDOWS_COM_ACTION_PREFIX) -> windowsShellComMenuBridge
                     .execute(action, targetEntries)
                     .getOrThrow()
@@ -69,6 +71,7 @@ class JvmSystemMenuService(
         return serviceMenuFiles()
             .asSequence()
             .flatMap { file -> file.toLinuxServiceActions(mimeTypes.filterNotNull(), entries.size) }
+            .plus(listLinuxScriptActions())
             .distinctBy { action -> action.displayName to action.command }
             .toList()
     }
@@ -96,12 +99,72 @@ class JvmSystemMenuService(
                 val tryExec = fields["TryExec"]
                 if (tryExec != null && !isExecutableAvailable(tryExec)) return@mapNotNull null
                 SystemMenuAction(
-                    id = "$LINUX_ACTION_PREFIX${this}#$id",
+                    id = "$LINUX_SERVICE_ACTION_PREFIX${this}#$id",
                     displayName = name,
                     command = exec,
                     iconPath = fields["Icon"],
                 )
             }
+    }
+
+    /**
+     * 查询 Nautilus Scripts 目录，并保留目录层级作为级联菜单。
+     *
+     * @return 可展示的 GNOME/Nautilus 脚本动作。
+     */
+    private fun listLinuxScriptActions(): List<SystemMenuAction> {
+        return linuxScriptDirs()
+            .asSequence()
+            .filter { dir -> Files.isDirectory(dir) }
+            .flatMap { dir -> dir.toLinuxScriptActions(root = dir, depth = 0).asSequence() }
+            .toList()
+    }
+
+    /**
+     * 将 Nautilus Scripts 目录转换为系统菜单动作。
+     *
+     * @param root 脚本根目录。
+     * @param depth 当前递归深度。
+     * @return 当前目录下可展示的脚本动作。
+     */
+    private fun Path.toLinuxScriptActions(
+        root: Path,
+        depth: Int,
+    ): List<SystemMenuAction> {
+        if (depth > MAX_SYSTEM_MENU_DEPTH) return emptyList()
+        return runCatching {
+            Files.list(this).use { stream ->
+                stream
+                    .filter { path -> !path.fileName.toString().startsWith(".") }
+                    .sorted { left, right -> left.fileName.toString().compareTo(right.fileName.toString(), ignoreCase = true) }
+                    .map { path ->
+                        when {
+                            Files.isDirectory(path) -> {
+                                val children = path.toLinuxScriptActions(root, depth + 1)
+                                if (children.isEmpty()) {
+                                    null
+                                } else {
+                                    SystemMenuAction(
+                                        id = "$LINUX_SCRIPT_GROUP_PREFIX${root.relativize(path)}",
+                                        displayName = path.fileName.toString(),
+                                        command = "",
+                                        children = children,
+                                    )
+                                }
+                            }
+                            Files.isRegularFile(path) && Files.isExecutable(path) -> SystemMenuAction(
+                                id = "$LINUX_SCRIPT_ACTION_PREFIX${path.toAbsolutePath()}",
+                                displayName = path.fileName.toString(),
+                                command = path.toAbsolutePath().toString(),
+                            )
+                            else -> null
+                        }
+                    }
+                    .filter { action -> action != null }
+                    .map { action -> action!! }
+                    .toList()
+            }
+        }.getOrDefault(emptyList())
     }
 
     private fun runLinuxServiceAction(
@@ -113,6 +176,99 @@ class JvmSystemMenuService(
         ProcessBuilder(command)
             .directory(targets.first().parent?.toFile() ?: File("."))
             .start()
+    }
+
+    /**
+     * 执行 Nautilus Scripts 动作，并补齐 Nautilus 约定的环境变量。
+     *
+     * @param action 被点击的脚本动作。
+     * @param entries 命令作用的文件条目。
+     */
+    private fun runLinuxScriptAction(
+        action: SystemMenuAction,
+        entries: List<VFile>,
+    ) {
+        val targets = entries.map { entry -> entry.requireSystemLocalPath("system menu scripts") }
+        val currentDirectory = targets.first().parent ?: Path.of(System.getProperty("user.home"))
+        val processBuilder = ProcessBuilder(action.command)
+            .directory(currentDirectory.toFile())
+        processBuilder.environment().apply {
+            put("NAUTILUS_SCRIPT_SELECTED_FILE_PATHS", targets.joinToString("\n") { path -> path.toString() })
+            put("NAUTILUS_SCRIPT_SELECTED_URIS", targets.joinToString("\n") { path -> path.toUri().toString() })
+            put("NAUTILUS_SCRIPT_CURRENT_URI", currentDirectory.toUri().toString())
+            put("NAUTILUS_SCRIPT_WINDOW_GEOMETRY", "")
+        }
+        processBuilder.start()
+    }
+
+    /**
+     * 查询 macOS Services 目录中的 Automator Workflow。
+     *
+     * @param entries 当前选中的文件条目。
+     * @return 可展示的 macOS Services 动作。
+     */
+    private fun listMacServiceActions(entries: List<VFile>): List<SystemMenuAction> {
+        if (entries.any { entry -> !materializer.supports(entry) }) return emptyList()
+        return macServiceDirs()
+            .asSequence()
+            .filter { dir -> Files.isDirectory(dir) }
+            .flatMap { dir ->
+                runCatching {
+                    Files.list(dir).use { stream ->
+                        stream
+                            .filter { path -> path.fileName.toString().endsWith(".workflow", ignoreCase = true) }
+                            .map { path -> path.toMacServiceAction() }
+                            .toList()
+                            .filterNotNull()
+                            .asSequence()
+                    }
+                }.getOrDefault(emptySequence())
+            }
+            .distinctBy { action -> action.displayName to action.command }
+            .sortedBy { action -> action.displayName.lowercase(Locale.getDefault()) }
+            .toList()
+    }
+
+    /**
+     * 将 Automator Workflow 包转换为系统菜单动作。
+     *
+     * @return 可展示的 macOS Service 动作。
+     */
+    private fun Path.toMacServiceAction(): SystemMenuAction? {
+        if (!Files.isDirectory(this)) return null
+        val displayName = fileName.toString()
+            .removeSuffix(".workflow")
+            .takeIf { name -> name.isNotBlank() }
+            ?: return null
+        return SystemMenuAction(
+            id = "$MACOS_SERVICE_ACTION_PREFIX${toAbsolutePath()}",
+            displayName = displayName,
+            command = toAbsolutePath().toString(),
+            iconPath = toAbsolutePath().toString(),
+        )
+    }
+
+    /**
+     * 执行 macOS Automator Workflow 形式的 Service。
+     *
+     * @param action 被点击的 Service 动作。
+     * @param entries 命令作用的文件条目。
+     */
+    private fun runMacServiceAction(
+        action: SystemMenuAction,
+        entries: List<VFile>,
+    ) {
+        val workflow = Path.of(action.command)
+        check(Files.isDirectory(workflow)) {
+            "macOS Service workflow is not available: ${action.command}"
+        }
+        entries
+            .map { entry -> entry.requireSystemLocalPath("macOS Services") }
+            .forEach { target ->
+                ProcessBuilder("automator", "-i", target.toString(), workflow.toString())
+                    .directory(target.parent?.toFile() ?: File("."))
+                    .start()
+            }
     }
 
     /**
@@ -319,9 +475,12 @@ class JvmSystemMenuService(
 
     private fun String.isWindowsRegistryUnsetValue(): Boolean {
         return isBlank() ||
+            contains("value not set", ignoreCase = true) ||
             contains("not set", ignoreCase = true) ||
             contains("未设置") ||
-            contains("未設定")
+            contains("数值未设置") ||
+            contains("未設定") ||
+            contains("値が設定されていません")
     }
 
     private fun String.toWindowsCommandLine(target: String): String {
@@ -376,20 +535,65 @@ class JvmSystemMenuService(
             if (!Files.isDirectory(dir)) {
                 emptyList()
             } else {
-                Files.list(dir).use { stream ->
-                    stream.filter { path -> path.fileName.toString().endsWith(".desktop") }.toList()
-                }
+                runCatching {
+                    Files.list(dir).use { stream ->
+                        stream.filter { path -> path.fileName.toString().endsWith(".desktop") }.toList()
+                    }
+                }.getOrDefault(emptyList())
             }
         }
     }
 
+    /**
+     * 返回 KDE ServiceMenu 的 XDG 搜索目录。
+     *
+     * @return ServiceMenu 目录候选列表。
+     */
     private fun serviceMenuDirs(): List<Path> {
         val home = System.getProperty("user.home")
+        val dataHome = System.getenv("XDG_DATA_HOME")
+            ?.takeIf { value -> value.isNotBlank() }
+            ?.let { value -> Path.of(value) }
+            ?: Path.of(home, ".local/share")
+        val dataDirs = System.getenv("XDG_DATA_DIRS")
+            ?.split(File.pathSeparator)
+            ?.mapNotNull { value -> value.takeIf { it.isNotBlank() }?.let { Path.of(it) } }
+            ?.takeIf { dirs -> dirs.isNotEmpty() }
+            ?: listOf(Path.of("/usr/local/share"), Path.of("/usr/share"))
+        return (listOf(dataHome) + dataDirs).flatMap { base ->
+            listOf(
+                base.resolve("kio/servicemenus"),
+                base.resolve("kservices5/ServiceMenus"),
+                base.resolve("kservices6/ServiceMenus"),
+            )
+        }.distinct()
+    }
+
+    /**
+     * 返回 GNOME/Nautilus Scripts 搜索目录。
+     *
+     * @return 脚本目录候选列表。
+     */
+    private fun linuxScriptDirs(): List<Path> {
+        val home = System.getProperty("user.home")
+        val dataHome = System.getenv("XDG_DATA_HOME")
+            ?.takeIf { value -> value.isNotBlank() }
+            ?.let { value -> Path.of(value) }
+            ?: Path.of(home, ".local/share")
+        return listOf(dataHome.resolve("nautilus/scripts")).distinct()
+    }
+
+    /**
+     * 返回 macOS Services 搜索目录。
+     *
+     * @return Services 目录候选列表。
+     */
+    private fun macServiceDirs(): List<Path> {
+        val home = System.getProperty("user.home")
         return listOf(
-            Path.of(home, ".local/share/kio/servicemenus"),
-            Path.of(home, ".local/share/kservices5/ServiceMenus"),
-            Path.of("/usr/share/kio/servicemenus"),
-            Path.of("/usr/share/kservices5/ServiceMenus"),
+            Path.of(home, "Library/Services"),
+            Path.of("/Library/Services"),
+            Path.of("/System/Library/Services"),
         )
     }
 
@@ -505,10 +709,21 @@ class JvmSystemMenuService(
     }
 
     private companion object {
-        const val LINUX_ACTION_PREFIX = "linux:"
+        /** Linux KDE/Freedesktop ServiceMenu 动作 id 前缀。 */
+        const val LINUX_SERVICE_ACTION_PREFIX = "linux-service:"
+        /** Linux Nautilus Scripts 可执行动作 id 前缀。 */
+        const val LINUX_SCRIPT_ACTION_PREFIX = "linux-script:"
+        /** Linux Nautilus Scripts 级联分组 id 前缀。 */
+        const val LINUX_SCRIPT_GROUP_PREFIX = "linux-script-group:"
+        /** macOS Automator Service 动作 id 前缀。 */
+        const val MACOS_SERVICE_ACTION_PREFIX = "macos-service:"
+        /** Windows Shell COM 动作 id 前缀。 */
         const val WINDOWS_COM_ACTION_PREFIX = JvmWindowsShellComMenuBridge.WINDOWS_COM_ACTION_PREFIX
+        /** Windows 注册表静态 shell 动作 id 前缀。 */
         const val WINDOWS_ACTION_PREFIX = "windows:"
+        /** 级联系统菜单读取最大深度，防止异常菜单结构造成无限递归。 */
         const val MAX_SYSTEM_MENU_DEPTH = 4
+        /** Windows shell command 常见目标占位符。 */
         val WINDOWS_TARGET_PLACEHOLDERS = listOf("%1", "%L", "%l", "%V", "%v", "%I", "%i")
     }
 }

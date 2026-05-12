@@ -70,7 +70,7 @@ class FileActionDelegate(
             )
         )
 
-        val job = scope.launch {
+        taskOrchestrator.launchQueuedTask(taskId) {
             try {
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -119,7 +119,6 @@ class FileActionDelegate(
                 onRefreshAllPanes()
             }
         }
-        taskOrchestrator.registerJob(taskId, job)
     }
 
     /**
@@ -158,7 +157,7 @@ class FileActionDelegate(
             )
         )
 
-        val job = scope.launch {
+        taskOrchestrator.launchQueuedTask(taskId) {
             try {
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -213,7 +212,6 @@ class FileActionDelegate(
                 onRefreshPane(paneId)
             }
         }
-        taskOrchestrator.registerJob(taskId, job)
     }
 
     /**
@@ -240,7 +238,7 @@ class FileActionDelegate(
             )
         )
 
-        val job = scope.launch {
+        taskOrchestrator.launchQueuedTask(taskId) {
             try {
                 batchRenameUseCase.execute(
                     BatchRenameUseCase.BatchRenameRequest(renameMap = renameMap)
@@ -308,7 +306,6 @@ class FileActionDelegate(
                 onRefreshAllPanes()
             }
         }
-        taskOrchestrator.registerJob(taskId, job)
     }
 
     /**

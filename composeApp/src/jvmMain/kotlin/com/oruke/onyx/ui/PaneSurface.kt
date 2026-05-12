@@ -302,6 +302,7 @@ internal fun PaneSurface(
             showContextMenu = true
             return
         }
+        showContextMenu = true
         val sectionsDeferred: Deferred<List<FileContextMenuSection>> = coroutineScope.async(Dispatchers.IO) {
             runCatching {
                 contextMenuQuery.invoke(FileContextMenuRequest(targetEntries))
@@ -311,10 +312,13 @@ internal fun PaneSurface(
         coroutineScope.launch {
             val sections = withTimeoutOrNull(CONTEXT_MENU_PLATFORM_ACTION_TIMEOUT_MS) {
                 sectionsDeferred.await()
-            }.orEmpty()
+            }
+            if (sections == null) {
+                sectionsDeferred.cancel()
+                return@launch
+            }
             if (contextMenuQueryToken == token) {
                 contextMenuSections = sections
-                showContextMenu = true
             }
         }
     }
@@ -875,7 +879,7 @@ internal fun PaneSurface(
     }
 }
 
-private const val CONTEXT_MENU_PLATFORM_ACTION_TIMEOUT_MS = 260L
+private const val CONTEXT_MENU_PLATFORM_ACTION_TIMEOUT_MS = 2_200L
 
 @Composable
 private fun FloatingFilterInput(

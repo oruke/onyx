@@ -168,19 +168,10 @@ internal fun BoxScope.PaneContextMenu(
             }
             if (canOperateOnSelection && systemSection != null) {
                 Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-                var systemMenuExpanded by remember { mutableStateOf(false) }
-                ContextMenuSubmenuItem(
-                    text = stringResource(Res.string.action_system_menu),
-                    enabled = true,
-                    iconKey = AllIconsKeys.Actions.Execute,
-                    expanded = systemMenuExpanded,
-                    onExpandedChange = { expanded -> systemMenuExpanded = expanded },
-                ) {
-                    FileContextMenuItems(
-                        items = systemSection.items,
-                        onFileContextMenuCommand = onFileContextMenuCommand,
-                    )
-                }
+                FileContextMenuItems(
+                    items = systemSection.items,
+                    onFileContextMenuCommand = onFileContextMenuCommand,
+                )
             }
             ContextMenuItem(
                 text = stringResource(Res.string.action_rename),
@@ -341,6 +332,7 @@ private fun FileContextMenuItems(
                 text = item.contextMenuText(),
                 enabled = true,
                 iconKey = item.contextMenuIconKey(),
+                onPointerEnter = { expandedActionId = null },
                 onClick = { onFileContextMenuCommand(command) },
             )
         }
@@ -426,6 +418,7 @@ private fun ContextMenuSubmenuItem(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun ContextMenuItem(
     text: String,
@@ -435,6 +428,7 @@ internal fun ContextMenuItem(
     command: OnyxCommand? = null,
     commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
     trailingIconKey: IconKey? = null,
+    onPointerEnter: () -> Unit = {},
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -446,6 +440,7 @@ internal fun ContextMenuItem(
         modifier = Modifier
             .fillMaxWidth()
             .hoverable(interactionSource)
+            .onPointerEvent(PointerEventType.Enter) { onPointerEnter() }
             .background(background, RoundedCornerShape(4.dp))
             .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick)
             .alpha(if (enabled) 1f else 0.55f)

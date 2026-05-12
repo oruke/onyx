@@ -123,13 +123,19 @@ internal class JvmWindowsShellComMenuBridge {
                 if (!queryResult.succeeded()) {
                     throw IllegalStateException("IContextMenu.QueryContextMenu failed: ${queryResult.toInt()}")
                 }
-                val invokeInfo = InvokeCommandInfo().apply {
+                val directoryMemory = paths.first().parent?.toString()?.toNativeWideString()
+                val invokeInfo = InvokeCommandInfoEx().apply {
                     cbSize = size()
-                    fMask = 0
+                    fMask = CMIC_MASK_UNICODE or CMIC_MASK_ASYNCOK
                     hwnd = null
                     lpVerb = Pointer.createConstant(offset.toLong())
+                    lpVerbW = Pointer.createConstant(offset.toLong())
                     lpParameters = null
+                    lpParametersW = null
                     lpDirectory = null
+                    lpDirectoryW = directoryMemory
+                    lpTitle = null
+                    lpTitleW = null
                     nShow = SW_SHOWNORMAL
                     write()
                 }
@@ -402,7 +408,32 @@ internal class JvmWindowsShellComMenuBridge {
             .replace("&", "")
             .replace("\u0000", "&")
             .trim()
-        return text.takeIf { value -> value.isNotBlank() }
+        return text.takeIf { value -> value.isNotBlank() && !value.isUnavailableShellLabel() }
+    }
+
+    /**
+     * 判断 Shell 返回的文本是否只是注册表空值占位。
+     *
+     * @return `true` 表示不应作为菜单项展示。
+     */
+    private fun String.isUnavailableShellLabel(): Boolean {
+        return contains("not set", ignoreCase = true) ||
+            contains("value not set", ignoreCase = true) ||
+            contains("数值未设置") ||
+            contains("未设置") ||
+            contains("未設定") ||
+            contains("値が設定されていません")
+    }
+
+    /**
+     * 将 Kotlin 字符串复制到 Windows 宽字符内存。
+     *
+     * @return 以空字符结尾的 UTF-16 指针内存。
+     */
+    private fun String.toNativeWideString(): Memory {
+        val memory = Memory(((length + 1) * Native.WCHAR_SIZE).toLong())
+        memory.setWideString(0, this)
+        return memory
     }
 
     /**
@@ -469,7 +500,7 @@ internal class JvmWindowsShellComMenuBridge {
          * @param info 命令执行结构体。
          * @return COM 调用结果。
          */
-        fun invokeCommand(info: InvokeCommandInfo): WinNT.HRESULT {
+        fun invokeCommand(info: InvokeCommandInfoEx): WinNT.HRESULT {
             return _invokeNativeObject(
                 4,
                 arrayOf(pointer, info.pointer),
@@ -613,11 +644,17 @@ internal class JvmWindowsShellComMenuBridge {
         "nShow",
         "dwHotKey",
         "hIcon",
+        "lpTitle",
+        "lpVerbW",
+        "lpParametersW",
+        "lpDirectoryW",
+        "lpTitleW",
+        "ptInvoke",
     )
     /**
-     * `CMINVOKECOMMANDINFO` 的 JNA 结构体映射。
+     * `CMINVOKECOMMANDINFOEX` 的 JNA 结构体映射。
      */
-    private class InvokeCommandInfo : Structure() {
+    private class InvokeCommandInfoEx : Structure() {
         @JvmField var cbSize: Int = size()
         @JvmField var fMask: Int = 0
         @JvmField var hwnd: WinDef.HWND? = null
@@ -627,6 +664,12 @@ internal class JvmWindowsShellComMenuBridge {
         @JvmField var nShow: Int = SW_SHOWNORMAL
         @JvmField var dwHotKey: Int = 0
         @JvmField var hIcon: Pointer? = null
+        @JvmField var lpTitle: Pointer? = null
+        @JvmField var lpVerbW: Pointer? = null
+        @JvmField var lpParametersW: Pointer? = null
+        @JvmField var lpDirectoryW: Pointer? = null
+        @JvmField var lpTitleW: Pointer? = null
+        @JvmField var ptInvoke: WinDef.POINT = WinDef.POINT()
     }
 
     @Structure.FieldOrder(
@@ -793,6 +836,8 @@ internal class JvmWindowsShellComMenuBridge {
         private const val WINDOWS_COM_EXECUTE_TIMEOUT_MS = 5_000L
 
         private const val CMF_NORMAL = 0x00000000
+        private const val CMIC_MASK_UNICODE = 0x00004000
+        private const val CMIC_MASK_ASYNCOK = 0x00100000
         private const val GCS_VERBW = 0x00000004
         private const val RPC_E_CHANGED_MODE = -2147417850
         private const val SW_SHOWNORMAL = 1

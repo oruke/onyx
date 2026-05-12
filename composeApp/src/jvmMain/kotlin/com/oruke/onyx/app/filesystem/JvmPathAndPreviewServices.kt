@@ -455,13 +455,15 @@ class JvmPreviewService(
         }
         val output = ByteArrayOutputStream()
         var readBytes = 0L
-        source.chunks.collect { chunk ->
-            readBytes += chunk.size
-            if (readBytes <= request.maxBytes) {
+        try {
+            source.chunks.collect { chunk ->
+                if (readBytes + chunk.size >= request.maxBytes) {
+                    throw PreviewLimitExceededException()
+                }
+                readBytes += chunk.size
                 output.write(chunk)
             }
-        }
-        if (readBytes >= request.maxBytes) {
+        } catch (_: PreviewLimitExceededException) {
             return PreviewTextResult.TooLarge
         }
         val text = output.toString(Charsets.UTF_8)
@@ -470,6 +472,11 @@ class JvmPreviewService(
             .joinToString("\n")
         return PreviewTextResult.Text(text)
     }
+
+    /**
+     * 预览读取超过单文件上限时使用的内部中断信号。
+     */
+    private class PreviewLimitExceededException : RuntimeException()
 }
 
 class JvmFileHashService(

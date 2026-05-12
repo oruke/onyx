@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * 后台任务生命周期管理器。
@@ -37,6 +39,9 @@ class TaskOrchestrator(
 
     /** 失败任务的重试入口。重试会清理旧任务并重新发起同一业务请求。 */
     private val taskRetryHandlers = mutableMapOf<String, () -> Unit>()
+
+    /** 后台任务并发许可，保证 QUEUED 状态不是只用于展示。 */
+    private val taskConcurrency = Semaphore(MAX_CONCURRENT_RUNNING_TASKS)
 
     private val persistenceMutex = Mutex()
 
@@ -81,6 +86,40 @@ class TaskOrchestrator(
 
     fun registerJob(taskId: String, job: Job) {
         taskJobs[taskId] = job
+    }
+
+    /**
+     * 启动受并发队列约束的后台任务。
+     *
+     * @param taskId 后台任务 id。
+     * @param block 真正的任务执行逻辑；只有拿到并发许可后才会进入。
+     * @return 已注册的 coroutine Job。
+     */
+    fun launchQueuedTask(
+        taskId: String,
+        block: suspend CoroutineScope.() -> Unit,
+    ): Job {
+        var enteredExecution = false
+        val job = scope.launch {
+            try {
+                taskConcurrency.withPermit {
+                    enteredExecution = true
+                    block()
+                }
+            } finally {
+                if (!enteredExecution) {
+                    unregisterJob(taskId)
+                    updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.CANCELLED,
+                        detail = I18nMessage(MessageKey.MSG_CANCELLED),
+                        progress = null,
+                    )
+                }
+            }
+        }
+        registerJob(taskId, job)
+        return job
     }
 
     fun unregisterJob(taskId: String) {
@@ -243,5 +282,6 @@ class TaskOrchestrator(
 
     private companion object {
         const val MAX_PERSISTED_TASKS = 200
+        const val MAX_CONCURRENT_RUNNING_TASKS = 2
     }
 }

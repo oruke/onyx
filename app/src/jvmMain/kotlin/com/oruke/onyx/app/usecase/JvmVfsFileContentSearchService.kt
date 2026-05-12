@@ -64,18 +64,23 @@ class JvmVfsFileContentSearchService(
             }
             val output = ByteArrayOutputStream()
             var readBytes = 0L
-            source.chunks.collect { chunk ->
-                readBytes += chunk.size
-                if (readBytes > maxBytes) {
-                    return@collect
+            try {
+                source.chunks.collect { chunk ->
+                    if (readBytes + chunk.size > maxBytes) {
+                        throw ContentSearchLimitExceededException()
+                    }
+                    readBytes += chunk.size
+                    output.write(chunk)
                 }
-                output.write(chunk)
+            } catch (_: ContentSearchLimitExceededException) {
+                return@runCatching false
             }
-            if (readBytes > maxBytes) {
-                false
-            } else {
-                output.toString(Charsets.UTF_8).lowercase().contains(query)
-            }
+            output.toString(Charsets.UTF_8).lowercase().contains(query)
         }
     }
+
+    /**
+     * 内容搜索读取超过单文件上限时使用的内部中断信号。
+     */
+    private class ContentSearchLimitExceededException : RuntimeException()
 }

@@ -61,7 +61,7 @@ class ArchiveActionDelegate(
             )
         )
 
-        val job = scope.launch {
+        taskOrchestrator.launchQueuedTask(taskId) {
             try {
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -117,7 +117,6 @@ class ArchiveActionDelegate(
                 )
             }
         }
-        taskOrchestrator.registerJob(taskId, job)
     }
 
     /**
@@ -148,7 +147,7 @@ class ArchiveActionDelegate(
             )
         )
 
-        val job = scope.launch {
+        taskOrchestrator.launchQueuedTask(taskId) {
             try {
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -206,7 +205,6 @@ class ArchiveActionDelegate(
                 )
             }
         }
-        taskOrchestrator.registerJob(taskId, job)
     }
 
     /**

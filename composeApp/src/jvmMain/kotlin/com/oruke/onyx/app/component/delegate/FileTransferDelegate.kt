@@ -222,7 +222,7 @@ class FileTransferDelegate(
             )
         }
 
-        val job = scope.launch {
+        taskOrchestrator.launchQueuedTask(taskId) {
             try {
                 transferUseCase.execute(
                     request = FileTransferUseCase.FileTransferRequest(
@@ -293,7 +293,6 @@ class FileTransferDelegate(
                 onRefreshAllPanes()
             }
         }
-        taskOrchestrator.registerJob(taskId, job)
     }
 
     /**
