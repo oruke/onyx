@@ -182,6 +182,8 @@ internal fun PaneSurface(
             OnyxCommand.CutSelection -> selectedCount > 0
 
             OnyxCommand.Paste -> canPaste
+            OnyxCommand.UndoLastOperation -> actions.canUndo
+            OnyxCommand.RedoLastOperation -> actions.canRedo
             OnyxCommand.CloseMenu,
             OnyxCommand.CreateDirectories -> false
 
@@ -241,6 +243,24 @@ internal fun PaneSurface(
                     false
                 } else {
                     actions.onPaste()
+                    true
+                }
+            }
+
+            OnyxCommand.UndoLastOperation -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    actions.onUndo()
+                    true
+                }
+            }
+
+            OnyxCommand.RedoLastOperation -> {
+                if (!isPaneCommandEnabled(command)) {
+                    false
+                } else {
+                    actions.onRedo()
                     true
                 }
             }
@@ -412,6 +432,14 @@ internal fun PaneSurface(
 
                     event.matchesCommand(OnyxCommand.Paste, commandShortcuts) -> {
                         executePaneCommand(OnyxCommand.Paste)
+                    }
+
+                    event.matchesCommand(OnyxCommand.UndoLastOperation, commandShortcuts) -> {
+                        executePaneCommand(OnyxCommand.UndoLastOperation)
+                    }
+
+                    event.matchesCommand(OnyxCommand.RedoLastOperation, commandShortcuts) -> {
+                        executePaneCommand(OnyxCommand.RedoLastOperation)
                     }
 
                     event.key == Key.DirectionDown -> {
@@ -784,6 +812,8 @@ internal fun PaneSurface(
                         canRenameSelection = selectedCount == 1,
                         canCopyPath = selectedCount > 0,
                         canPaste = canPaste,
+                        canUndo = actions.canUndo,
+                        canRedo = actions.canRedo,
                         canExtractSelection = selectedCount > 0 && contextMenuEntries.any { entry ->
                             entry.kind == VFileKind.FILE && actions.isArchiveFileName(entry.name)
                         },
@@ -842,6 +872,14 @@ internal fun PaneSurface(
                         },
                         onPaste = {
                             actions.onPaste()
+                            showContextMenu = false
+                        },
+                        onUndo = {
+                            actions.onUndo()
+                            showContextMenu = false
+                        },
+                        onRedo = {
+                            actions.onRedo()
                             showContextMenu = false
                         },
                         contextMenuSections = contextMenuSections,

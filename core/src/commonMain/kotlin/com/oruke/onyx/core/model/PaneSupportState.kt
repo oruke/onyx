@@ -37,5 +37,6 @@ enum class PaneOperationFeedbackKind {
     CREATE_FILE_FAILED,
     CREATE_DIRECTORY_FAILED,
     COPY_PATH_FAILED,
+    FILE_OPERATION_FAILED,
     WATCH_DEGRADED,
 }

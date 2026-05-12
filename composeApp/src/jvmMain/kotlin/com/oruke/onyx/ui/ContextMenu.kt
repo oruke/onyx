@@ -64,9 +64,11 @@ import onyx.composeapp.generated.resources.action_open_terminal
 import onyx.composeapp.generated.resources.action_open_with
 import onyx.composeapp.generated.resources.action_open_with_other
 import onyx.composeapp.generated.resources.action_paste
+import onyx.composeapp.generated.resources.action_redo
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_rename
 import onyx.composeapp.generated.resources.action_system_menu
+import onyx.composeapp.generated.resources.action_undo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,6 +89,8 @@ internal fun BoxScope.PaneContextMenu(
     canRenameSelection: Boolean,
     canCopyPath: Boolean,
     canPaste: Boolean,
+    canUndo: Boolean,
+    canRedo: Boolean,
     canExtractSelection: Boolean,
     canBatchRename: Boolean,
     onOpenSelection: () -> Unit,
@@ -103,6 +107,8 @@ internal fun BoxScope.PaneContextMenu(
     onCopySelection: () -> Unit,
     onCutSelection: () -> Unit,
     onPaste: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
     contextMenuSections: List<FileContextMenuSection>,
     onFileContextMenuCommand: (FileContextMenuCommand) -> Unit,
     onRefresh: () -> Unit,
@@ -263,6 +269,22 @@ internal fun BoxScope.PaneContextMenu(
                 command = OnyxCommand.Paste,
                 commandShortcuts = commandShortcuts,
                 onClick = onPaste,
+            )
+            ContextMenuItem(
+                text = stringResource(Res.string.action_undo),
+                enabled = canUndo,
+                iconKey = AllIconsKeys.Actions.Back,
+                command = OnyxCommand.UndoLastOperation,
+                commandShortcuts = commandShortcuts,
+                onClick = onUndo,
+            )
+            ContextMenuItem(
+                text = stringResource(Res.string.action_redo),
+                enabled = canRedo,
+                iconKey = AllIconsKeys.Actions.Forward,
+                command = OnyxCommand.RedoLastOperation,
+                commandShortcuts = commandShortcuts,
+                onClick = onRedo,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
             ContextMenuItem(

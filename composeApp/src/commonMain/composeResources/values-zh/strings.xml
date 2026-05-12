@@ -54,6 +54,8 @@
     <string name="action_extract">解压</string>
     <string name="action_cut">剪切</string>
     <string name="action_paste">粘贴</string>
+    <string name="action_undo">撤销</string>
+    <string name="action_redo">重做</string>
     <string name="action_delete_selected">删除所选</string>
     <string name="action_extract_here">解压到此处</string>
     <string name="action_extract_to_directory">解压到独立目录</string>
@@ -76,6 +78,8 @@
     <string name="shortcut_key_d">D</string>
     <string name="shortcut_key_p">P</string>
     <string name="shortcut_key_x">X</string>
+    <string name="shortcut_key_y">Y</string>
+    <string name="shortcut_key_z">Z</string>
     <string name="shortcut_key_v">V</string>
     <string name="shortcut_key_f">F</string>
     <string name="label_with_shortcut">%1$s（%2$s）</string>
@@ -147,6 +151,7 @@
     <string name="label_feedback_create_file_failed">创建文件失败：%1$s</string>
     <string name="label_feedback_create_directory_failed">创建文件夹失败：%1$s</string>
     <string name="label_feedback_copy_path_failed">复制路径失败：%1$s</string>
+    <string name="label_feedback_file_operation_failed">文件操作失败：%1$s</string>
     <string name="label_feedback_watch_degraded">此目录的自动刷新已降级：%1$s</string>
     <string name="label_loading_entries">正在加载...</string>
     <string name="label_empty_directory">文件夹为空</string>

@@ -41,6 +41,7 @@ import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_feedback_copy_path_failed
 import onyx.composeapp.generated.resources.label_feedback_create_directory_failed
 import onyx.composeapp.generated.resources.label_feedback_create_file_failed
+import onyx.composeapp.generated.resources.label_feedback_file_operation_failed
 import onyx.composeapp.generated.resources.label_feedback_open_failed
 import onyx.composeapp.generated.resources.label_feedback_rename_failed
 import onyx.composeapp.generated.resources.label_feedback_watch_degraded
@@ -70,6 +71,9 @@ internal fun OperationFeedbackBar(
 
         PaneOperationFeedbackKind.COPY_PATH_FAILED ->
             stringResource(Res.string.label_feedback_copy_path_failed, feedback.detail?.resolve().orEmpty())
+
+        PaneOperationFeedbackKind.FILE_OPERATION_FAILED ->
+            stringResource(Res.string.label_feedback_file_operation_failed, feedback.detail?.resolve().orEmpty())
 
         PaneOperationFeedbackKind.WATCH_DEGRADED ->
             stringResource(Res.string.label_feedback_watch_degraded, feedback.detail?.resolve().orEmpty())

@@ -87,6 +87,8 @@ import java.util.UUID
 import com.oruke.onyx.app.component.delegate.ArchiveActionDelegate
 import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
+import com.oruke.onyx.app.component.delegate.FileOperationHistoryDelegate
+import com.oruke.onyx.app.component.delegate.FileOperationHistoryState
 import com.oruke.onyx.app.component.delegate.FileTransferDelegate
 import com.oruke.onyx.app.component.delegate.ImageViewerController
 import com.oruke.onyx.app.component.delegate.SessionManager
@@ -148,6 +150,7 @@ class DefaultRootComponent(
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
         onRemoteAuthenticationRequired = ::requestRemoteCredentials,
+        onFileRenamed = ::recordRenameOperation,
     )
     override val secondaryPane: PaneComponent = DefaultPaneComponent(
         componentContext = childContext("secondaryPane"),
@@ -163,6 +166,7 @@ class DefaultRootComponent(
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = { file, allImages -> openImageViewer(file, allImages) },
         onRemoteAuthenticationRequired = ::requestRemoteCredentials,
+        onFileRenamed = ::recordRenameOperation,
     )
 
     private val layoutMode = MutableStateFlow(PaneLayoutMode.DUAL_VERTICAL)
@@ -187,6 +191,7 @@ class DefaultRootComponent(
         pathService = pathService,
         providerRegistry = providerRegistry,
         onRefreshAllPanes = ::refreshAllPanes,
+        onMoveSucceeded = ::recordMoveOperation,
     )
     private val archiveActionDelegate = ArchiveActionDelegate(
         scope = scope,
@@ -204,6 +209,11 @@ class DefaultRootComponent(
         onRefreshAllPanes = ::refreshAllPanes,
         onRefreshPane = { paneId -> paneComponent(paneId).refresh() },
         getPaneState = ::paneState,
+        onBatchRenameSucceeded = ::recordBatchRenameOperation,
+    )
+    private val fileOperationHistoryDelegate = FileOperationHistoryDelegate(
+        fileCommandService = fileCommandService,
+        fileRepository = fileRepository,
     )
     private val fileSearchUseCase = FileSearchUseCase(
         fileRepository = fileRepository,
@@ -230,6 +240,7 @@ class DefaultRootComponent(
             tasks = taskOrchestrator.tasks.value,
             showPreviewPane = showPreviewPane.value,
             searchState = searchState.value,
+            operationHistoryState = fileOperationHistoryDelegate.state.value.toRootOperationHistoryState(),
         )
     )
 
@@ -252,12 +263,14 @@ class DefaultRootComponent(
                 ) { sidebar, stgs, restore -> Triple(sidebar, stgs, restore) },
                 combine(
                     dialogState, clipboardManager.clipboard, taskOrchestrator.tasks, searchState,
-                ) { dialog, clipboard, taskList, search ->
+                    fileOperationHistoryDelegate.state,
+                ) { dialog, clipboard, taskList, search, history ->
                     RuntimeContextSlice(
                         dialogState = dialog,
                         canPaste = clipboard != null,
                         tasks = taskList,
                         searchState = search,
+                        operationHistoryState = history.toRootOperationHistoryState(),
                     )
                 },
             ) { (sidebar, stgs, restore), runtime ->
@@ -269,6 +282,7 @@ class DefaultRootComponent(
                     canPaste = runtime.canPaste,
                     tasks = runtime.tasks,
                     searchState = runtime.searchState,
+                    operationHistoryState = runtime.operationHistoryState,
                 )
             }
 
@@ -287,6 +301,7 @@ class DefaultRootComponent(
                     tasks = context.tasks,
                     showPreviewPane = layout.showPreviewPane,
                     searchState = context.searchState,
+                    operationHistoryState = context.operationHistoryState,
                 )
             }.collect { combinedState ->
                 mutableState.value = combinedState
@@ -406,6 +421,8 @@ class DefaultRootComponent(
             is RootIntent.ResumeTask -> resumeTask(intent.taskId)
             is RootIntent.RetryTask -> retryTask(intent.taskId)
             RootIntent.ClearAllTasks -> clearAllTasks()
+            RootIntent.UndoLastFileOperation -> undoLastFileOperation()
+            RootIntent.RedoLastFileOperation -> redoLastFileOperation()
             is RootIntent.OpenImageViewer -> openImageViewer(
                 file = intent.file,
                 allImages = intent.allImages,
@@ -1065,6 +1082,77 @@ class DefaultRootComponent(
 
     fun clearAllTasks() = taskOrchestrator.clearAllTasks()
 
+    // ── 文件操作历史 ──────────────────────────────────────────────────────────
+
+    /**
+     * 撤销最近一次可逆文件操作。
+     *
+     * @return 无直接返回值；失败信息会投递到当前活动面板。
+     */
+    fun undoLastFileOperation() {
+        scope.launch {
+            fileOperationHistoryDelegate.undoLast()
+                .onSuccess {
+                    refreshAllPanes()
+                }
+                .onFailure { failure ->
+                    showActivePaneOperationFailure(failure)
+                }
+        }
+    }
+
+    /**
+     * 重做最近一次已撤销的文件操作。
+     *
+     * @return 无直接返回值；失败信息会投递到当前活动面板。
+     */
+    fun redoLastFileOperation() {
+        scope.launch {
+            fileOperationHistoryDelegate.redoLast()
+                .onSuccess {
+                    refreshAllPanes()
+                }
+                .onFailure { failure ->
+                    showActivePaneOperationFailure(failure)
+                }
+        }
+    }
+
+    /**
+     * 记录内联重命名产生的可撤销操作。
+     *
+     * @param source 重命名前的文件条目。
+     * @param renamed 重命名后的文件条目。
+     * @return 无返回值。
+     */
+    private fun recordRenameOperation(source: VFile, renamed: VFile) {
+        fileOperationHistoryDelegate.recordRename(source, renamed.name)
+    }
+
+    /**
+     * 记录批量重命名产生的可撤销操作。
+     *
+     * @param renameMap 重命名前条目到目标名称的映射。
+     * @return 无返回值。
+     */
+    private fun recordBatchRenameOperation(renameMap: List<Pair<VFile, String>>) {
+        fileOperationHistoryDelegate.recordBatchRename(renameMap)
+    }
+
+    /**
+     * 记录无冲突移动产生的可撤销操作。
+     *
+     * @param entries 移动前的文件条目。
+     * @param targetDirectoryLocation 移动目标目录。
+     * @return 无返回值。
+     */
+    private fun recordMoveOperation(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+    ) {
+        fileOperationHistoryDelegate.recordMove(entries, targetDirectoryLocation)
+    }
+
     // ── 图片查看器 ────────────────────────────────────────────────────────────
 
     fun openImageViewer(file: VFile, allImages: List<VFile>) = imageViewerController.open(file, allImages)
@@ -1155,6 +1243,21 @@ class DefaultRootComponent(
         paneComponent(activePane.value).dispatch(
             PaneIntent.ShowOperationFeedback(
                 kind = PaneOperationFeedbackKind.OPEN_FAILED,
+                detail = failure.toI18nMessage(),
+            )
+        )
+    }
+
+    /**
+     * 将文件操作失败展示到当前活动面板。
+     *
+     * @param failure 需要展示的失败原因。
+     * @return 无返回值。
+     */
+    private fun showActivePaneOperationFailure(failure: Throwable) {
+        paneComponent(activePane.value).dispatch(
+            PaneIntent.ShowOperationFeedback(
+                kind = PaneOperationFeedbackKind.FILE_OPERATION_FAILED,
                 detail = failure.toI18nMessage(),
             )
         )
@@ -1518,6 +1621,18 @@ private fun PaneComponent.toPaneSessionSnapshot(): PaneSessionSnapshot {
     )
 }
 
+/**
+ * 将文件操作历史委托状态映射为 RootState 使用的公共状态。
+ *
+ * @return 根组件文件操作历史状态。
+ */
+private fun FileOperationHistoryState.toRootOperationHistoryState(): OperationHistoryState {
+    return OperationHistoryState(
+        canUndo = canUndo,
+        canRedo = canRedo,
+    )
+}
+
 /** combine 中间类型 — 布局相关状态切片 */
 private data class LayoutSlice(
     val mode: PaneLayoutMode,
@@ -1535,6 +1650,7 @@ private data class ContextSlice(
     val canPaste: Boolean,
     val tasks: List<BackgroundTask>,
     val searchState: SearchPanelState,
+    val operationHistoryState: OperationHistoryState,
 )
 
 /** combine 中间类型 — 运行时状态切片 */
@@ -1543,4 +1659,5 @@ private data class RuntimeContextSlice(
     val canPaste: Boolean,
     val tasks: List<BackgroundTask>,
     val searchState: SearchPanelState,
+    val operationHistoryState: OperationHistoryState,
 )

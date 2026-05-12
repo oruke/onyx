@@ -41,6 +41,7 @@ class FileActionDelegate(
     private val onRefreshAllPanes: () -> Unit,
     private val onRefreshPane: (PaneId) -> Unit,
     private val getPaneState: (PaneId) -> PaneState,
+    private val onBatchRenameSucceeded: (List<Pair<VFile, String>>) -> Unit = {},
 ) {
     var pendingDeleteRequest: PendingDeleteRequest? = null
         private set
@@ -271,6 +272,7 @@ class FileActionDelegate(
                         processedCount = renameMap.size,
                     )
                 }
+                onBatchRenameSucceeded(renameMap)
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
                 // 短暂展示完成状态后自动重置为编辑模式

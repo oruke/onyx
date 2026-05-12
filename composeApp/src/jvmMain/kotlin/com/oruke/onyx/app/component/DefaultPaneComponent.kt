@@ -64,6 +64,7 @@ class DefaultPaneComponent(
     private val initialViewMode: ViewMode = ViewMode.DETAILS,
     private val onOpenImageViewer: ((file: VFile, allImages: List<VFile>) -> Unit)? = null,
     private val onRemoteAuthenticationRequired: (PaneId, VfsProviderError) -> Unit = { _, _ -> },
+    private val onFileRenamed: (source: VFile, renamed: VFile) -> Unit = { _, _ -> },
 ) : PaneComponent, ComponentContext by componentContext {
 
     // 生命周期绑定的 CoroutineScope — lifecycle.onDestroy 时自动取消
@@ -391,7 +392,8 @@ class DefaultPaneComponent(
                     fileCommandService.rename(
                         entry = operation.entry,
                         targetName = operation.targetName,
-                    ).onSuccess {
+                    ).onSuccess { renamedEntry ->
+                        onFileRenamed(operation.entry, renamedEntry)
                         clearOperationFeedback(tab.id)
                         refreshActiveTab(tab.id)
                     }.onFailure { failure ->

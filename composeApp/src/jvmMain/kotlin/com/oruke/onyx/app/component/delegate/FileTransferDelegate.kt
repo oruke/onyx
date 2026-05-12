@@ -46,6 +46,7 @@ class FileTransferDelegate(
     private val pathService: VfsPathService,
     private val providerRegistry: VfsProviderRegistry,
     private val onRefreshAllPanes: () -> Unit,
+    private val onMoveSucceeded: (entries: List<VFile>, targetDirectoryLocation: String) -> Unit = { _, _ -> },
 ) {
     var pendingTransferRequest: PendingTransferRequest? = null
         private set
@@ -266,6 +267,9 @@ class FileTransferDelegate(
                 taskOrchestrator.updateTaskFields(taskId) { task -> task.copy(errors = emptyList()) }
                 if (clearClipboardOnSuccess) {
                     clipboardManager.clear()
+                }
+                if (operation == FileTransferOperation.MOVE && conflictStrategies.isEmpty()) {
+                    onMoveSucceeded(entries, targetDirectoryLocation)
                 }
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)

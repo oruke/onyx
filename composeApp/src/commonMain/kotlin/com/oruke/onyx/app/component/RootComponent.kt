@@ -47,6 +47,18 @@ data class RootState(
     val tasks: List<BackgroundTask>,
     val showPreviewPane: Boolean = false,
     val searchState: SearchPanelState = SearchPanelState(),
+    val operationHistoryState: OperationHistoryState = OperationHistoryState(),
+)
+
+/**
+ * 文件操作历史的可用状态。
+ *
+ * @property canUndo 当前是否存在可撤销操作。
+ * @property canRedo 当前是否存在可重做操作。
+ */
+data class OperationHistoryState(
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
 )
 
 data class SearchPanelState(
@@ -389,6 +401,10 @@ sealed interface RootIntent {
 
     data object ClearAllTasks : RootIntent
 
+    data object UndoLastFileOperation : RootIntent
+
+    data object RedoLastFileOperation : RootIntent
+
     data class OpenImageViewer(
         val file: VFile,
         val allImages: List<VFile>,
@@ -607,6 +623,10 @@ fun RootComponent.resumeTask(taskId: String) = dispatch(RootIntent.ResumeTask(ta
 fun RootComponent.retryTask(taskId: String) = dispatch(RootIntent.RetryTask(taskId))
 
 fun RootComponent.clearAllTasks() = dispatch(RootIntent.ClearAllTasks)
+
+fun RootComponent.undoLastFileOperation() = dispatch(RootIntent.UndoLastFileOperation)
+
+fun RootComponent.redoLastFileOperation() = dispatch(RootIntent.RedoLastFileOperation)
 
 fun RootComponent.openImageViewer(
     file: VFile,

@@ -54,6 +54,8 @@
     <string name="action_extract">Extract</string>
     <string name="action_cut">Cut</string>
     <string name="action_paste">Paste</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_redo">Redo</string>
     <string name="action_delete_selected">Delete Selected</string>
     <string name="action_extract_here">Extract Here</string>
     <string name="action_extract_to_directory">Extract to Directory</string>
@@ -76,6 +78,8 @@
     <string name="shortcut_key_d">D</string>
     <string name="shortcut_key_p">P</string>
     <string name="shortcut_key_x">X</string>
+    <string name="shortcut_key_y">Y</string>
+    <string name="shortcut_key_z">Z</string>
     <string name="shortcut_key_v">V</string>
     <string name="shortcut_key_f">F</string>
     <string name="label_with_shortcut">%1$s (%2$s)</string>
@@ -149,6 +153,7 @@
     <string name="label_feedback_create_file_failed">Create file failed: %1$s</string>
     <string name="label_feedback_create_directory_failed">Create folder failed: %1$s</string>
     <string name="label_feedback_copy_path_failed">Copy path failed: %1$s</string>
+    <string name="label_feedback_file_operation_failed">File operation failed: %1$s</string>
     <string name="label_feedback_watch_degraded">Auto refresh is disabled for this folder: %1$s</string>
     <string name="label_loading_entries">Loading...</string>
     <string name="label_empty_directory">Folder is empty</string>

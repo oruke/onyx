@@ -24,10 +24,12 @@ import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
 import onyx.composeapp.generated.resources.action_open_settings
 import onyx.composeapp.generated.resources.action_paste
+import onyx.composeapp.generated.resources.action_redo
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_rename
 import onyx.composeapp.generated.resources.action_select_all
 import onyx.composeapp.generated.resources.action_toggle_favorite
+import onyx.composeapp.generated.resources.action_undo
 import onyx.composeapp.generated.resources.label_with_shortcut
 import onyx.composeapp.generated.resources.shortcut_key_a
 import onyx.composeapp.generated.resources.shortcut_key_backspace
@@ -44,6 +46,8 @@ import onyx.composeapp.generated.resources.shortcut_key_n
 import onyx.composeapp.generated.resources.shortcut_key_p
 import onyx.composeapp.generated.resources.shortcut_key_v
 import onyx.composeapp.generated.resources.shortcut_key_x
+import onyx.composeapp.generated.resources.shortcut_key_y
+import onyx.composeapp.generated.resources.shortcut_key_z
 import onyx.composeapp.generated.resources.shortcut_modifier_alt
 import onyx.composeapp.generated.resources.shortcut_modifier_cmd
 import onyx.composeapp.generated.resources.shortcut_modifier_ctrl
@@ -63,6 +67,8 @@ internal enum class OnyxCommand(val defaultShortcut: OnyxShortcut? = null) {
     CopySelection(OnyxShortcut(OnyxShortcutKey.C, setOf(OnyxShortcutModifier.PRIMARY))),
     CutSelection(OnyxShortcut(OnyxShortcutKey.X, setOf(OnyxShortcutModifier.PRIMARY))),
     Paste(OnyxShortcut(OnyxShortcutKey.V, setOf(OnyxShortcutModifier.PRIMARY))),
+    UndoLastOperation(OnyxShortcut(OnyxShortcutKey.Z, setOf(OnyxShortcutModifier.PRIMARY))),
+    RedoLastOperation(OnyxShortcut(OnyxShortcutKey.Y, setOf(OnyxShortcutModifier.PRIMARY))),
     Refresh(OnyxShortcut(OnyxShortcutKey.F5)),
     CloseMenu(OnyxShortcut(OnyxShortcutKey.ESCAPE)),
     Filter(OnyxShortcut(OnyxShortcutKey.F, setOf(OnyxShortcutModifier.PRIMARY))),
@@ -149,6 +155,8 @@ internal enum class OnyxShortcutKey(val composeKey: Key) {
     D(Key.D),
     P(Key.P),
     X(Key.X),
+    Y(Key.Y),
+    Z(Key.Z),
     V(Key.V),
     F(Key.F),
 }
@@ -206,6 +214,8 @@ internal object OnyxCommandRegistry {
         OnyxCommandSpec(OnyxCommand.CopySelection, Res.string.action_copy, AllIconsKeys.Actions.Copy),
         OnyxCommandSpec(OnyxCommand.CutSelection, Res.string.action_cut, AllIconsKeys.Actions.MenuCut),
         OnyxCommandSpec(OnyxCommand.Paste, Res.string.action_paste, AllIconsKeys.Actions.MenuPaste),
+        OnyxCommandSpec(OnyxCommand.UndoLastOperation, Res.string.action_undo, AllIconsKeys.Actions.Back),
+        OnyxCommandSpec(OnyxCommand.RedoLastOperation, Res.string.action_redo, AllIconsKeys.Actions.Forward),
         OnyxCommandSpec(OnyxCommand.Refresh, Res.string.action_refresh_active, AllIconsKeys.Actions.Refresh),
         OnyxCommandSpec(OnyxCommand.Filter, Res.string.action_filter, AllIconsKeys.Actions.Find),
         OnyxCommandSpec(OnyxCommand.SelectAll, Res.string.action_select_all, AllIconsKeys.Actions.ListFiles),
@@ -330,6 +340,8 @@ private fun shortcutKeyLabel(key: OnyxShortcutKey): String {
         OnyxShortcutKey.D -> stringResource(Res.string.shortcut_key_d)
         OnyxShortcutKey.P -> stringResource(Res.string.shortcut_key_p)
         OnyxShortcutKey.X -> stringResource(Res.string.shortcut_key_x)
+        OnyxShortcutKey.Y -> stringResource(Res.string.shortcut_key_y)
+        OnyxShortcutKey.Z -> stringResource(Res.string.shortcut_key_z)
         OnyxShortcutKey.V -> stringResource(Res.string.shortcut_key_v)
         OnyxShortcutKey.F -> stringResource(Res.string.shortcut_key_f)
     }
