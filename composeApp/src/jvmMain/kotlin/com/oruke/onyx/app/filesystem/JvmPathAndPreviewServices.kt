@@ -5,8 +5,10 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URI
 import java.nio.file.Files
@@ -403,12 +405,25 @@ class JvmTerminalLauncherService : TerminalLauncherService {
     }
 }
 
-class JvmPreviewService : PreviewService {
+/**
+ * JVM 文本预览服务，优先通过统一 VFS 内容服务读取文件内容。
+ *
+ * @param contentServices 可按 location 路由的内容服务列表。
+ */
+class JvmPreviewService(
+    private val contentServices: List<RoutableVfsContentService> = emptyList(),
+) : PreviewService {
+    /**
+     * 加载指定文件的文本预览。
+     *
+     * @param request 文本预览请求。
+     * @return 文本预览结果。
+     */
     override suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult = withContext(Dispatchers.IO) {
         try {
-            if (ArchiveService.isArchiveLocation(request.entry.location)) {
-                return@withContext PreviewTextResult.Unavailable
-            }
+            if (request.entry.kind != VFileKind.FILE) return@withContext PreviewTextResult.Unavailable
+            val routedPreview = loadTextPreviewFromContentService(request)
+            if (routedPreview != null) return@withContext routedPreview
             val path = Path.of(request.entry.location)
             if (!Files.exists(path)) {
                 return@withContext PreviewTextResult.Unavailable
@@ -422,6 +437,38 @@ class JvmPreviewService : PreviewService {
         } catch (failure: Throwable) {
             PreviewTextResult.Failed(failure.toI18nMessage())
         }
+    }
+
+    /**
+     * 通过统一内容服务加载文本预览。
+     *
+     * @param request 文本预览请求。
+     * @return 内容服务可处理时返回预览结果，否则返回 `null`。
+     */
+    private suspend fun loadTextPreviewFromContentService(request: PreviewTextRequest): PreviewTextResult? {
+        val contentService = contentServices.firstOrNull { service -> service.supports(request.entry.location) }
+            ?: return null
+        val source = contentService.readFile(request.entry).getOrThrow()
+        val sourceSizeBytes = source.sizeBytes
+        if (sourceSizeBytes != null && sourceSizeBytes >= request.maxBytes) {
+            return PreviewTextResult.TooLarge
+        }
+        val output = ByteArrayOutputStream()
+        var readBytes = 0L
+        source.chunks.collect { chunk ->
+            readBytes += chunk.size
+            if (readBytes <= request.maxBytes) {
+                output.write(chunk)
+            }
+        }
+        if (readBytes >= request.maxBytes) {
+            return PreviewTextResult.TooLarge
+        }
+        val text = output.toString(Charsets.UTF_8)
+            .lineSequence()
+            .take(request.maxLines)
+            .joinToString("\n")
+        return PreviewTextResult.Text(text)
     }
 }
 

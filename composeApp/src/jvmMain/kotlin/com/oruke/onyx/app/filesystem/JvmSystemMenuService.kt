@@ -14,11 +14,14 @@ import kotlin.streams.toList
 class JvmSystemMenuService(
     private val materializer: SystemFileMaterializer,
 ) : SystemMenuService {
+    /** Windows Shell COM 菜单桥接，优先用于读取 Explorer 同源的动态右键菜单。 */
+    private val windowsShellComMenuBridge = JvmWindowsShellComMenuBridge()
+
     override suspend fun listActions(entries: List<VFile>): List<SystemMenuAction> = withContext(Dispatchers.IO) {
         if (entries.isEmpty()) return@withContext emptyList()
         when (currentHostPlatform()) {
             HostPlatform.LINUX -> listLinuxServiceActions(entries)
-            HostPlatform.WINDOWS -> listWindowsShellActions(entries)
+            HostPlatform.WINDOWS -> listWindowsShellActionsWithComFallback(entries)
             HostPlatform.MACOS -> emptyList()
             HostPlatform.OTHER -> emptyList()
         }
@@ -36,6 +39,9 @@ class JvmSystemMenuService(
                     "System menu group cannot be executed directly: ${action.id}"
                 )
                 action.id.startsWith(LINUX_ACTION_PREFIX) -> runLinuxServiceAction(action, targetEntries)
+                action.id.startsWith(WINDOWS_COM_ACTION_PREFIX) -> windowsShellComMenuBridge
+                    .execute(action, targetEntries)
+                    .getOrThrow()
                 action.id.startsWith(WINDOWS_ACTION_PREFIX) -> runWindowsShellAction(action, targetEntries)
                 else -> throw UnsupportedOperationException("Unsupported system menu action: ${action.id}")
             }
@@ -107,6 +113,19 @@ class JvmSystemMenuService(
         ProcessBuilder(command)
             .directory(targets.first().parent?.toFile() ?: File("."))
             .start()
+    }
+
+    /**
+     * 优先通过 Windows Shell COM 读取系统右键菜单，失败或超时时回退到注册表静态菜单。
+     *
+     * @param entries 需要查询系统右键菜单的文件条目。
+     * @return 可展示的 Windows 系统菜单动作列表。
+     */
+    private suspend fun listWindowsShellActionsWithComFallback(entries: List<VFile>): List<SystemMenuAction> {
+        val targetEntries = entries.materializeEntries() ?: return emptyList()
+        val comActions = windowsShellComMenuBridge.listActions(targetEntries).getOrDefault(emptyList())
+        if (comActions.isNotEmpty()) return comActions
+        return listWindowsShellActions(targetEntries)
     }
 
     private fun listWindowsShellActions(entries: List<VFile>): List<SystemMenuAction> {
@@ -487,6 +506,7 @@ class JvmSystemMenuService(
 
     private companion object {
         const val LINUX_ACTION_PREFIX = "linux:"
+        const val WINDOWS_COM_ACTION_PREFIX = JvmWindowsShellComMenuBridge.WINDOWS_COM_ACTION_PREFIX
         const val WINDOWS_ACTION_PREFIX = "windows:"
         const val MAX_SYSTEM_MENU_DEPTH = 4
         val WINDOWS_TARGET_PLACEHOLDERS = listOf("%1", "%L", "%l", "%V", "%v", "%I", "%i")

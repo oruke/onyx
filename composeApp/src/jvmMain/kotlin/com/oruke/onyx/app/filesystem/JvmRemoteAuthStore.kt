@@ -11,6 +11,7 @@ class JvmRemoteAuthStore(
     private val sessionStore: RemoteAuthStore = InMemoryRemoteAuthStore(),
 ) : RemoteKeyringAuthStore {
     private val hostPlatform: HostPlatform by lazy { detectHostPlatform() }
+    private val windowsCredentialManager: JvmWindowsCredentialManager by lazy { JvmWindowsCredentialManager() }
     private val systemKeyringAvailable: Boolean by lazy { detectSystemKeyringAvailable() }
 
     override fun authContext(
@@ -87,7 +88,7 @@ class JvmRemoteAuthStore(
         return when (hostPlatform) {
             HostPlatform.LINUX -> commandSucceeds(listOf("secret-tool", "--help"))
             HostPlatform.MACOS -> commandSucceeds(listOf("security", "help"))
-            HostPlatform.WINDOWS,
+            HostPlatform.WINDOWS -> windowsCredentialManager.isAvailable()
             HostPlatform.OTHER -> false
         }
     }
@@ -121,7 +122,7 @@ class JvmRemoteAuthStore(
                 )
             ).takeIf { it.exitCode == 0 }?.output?.trimEnd()
 
-            HostPlatform.WINDOWS,
+            HostPlatform.WINDOWS -> windowsCredentialManager.read(key.windowsTargetName)
             HostPlatform.OTHER -> null
         }
     }
@@ -163,7 +164,12 @@ class JvmRemoteAuthStore(
                 )
             ).exitCode == 0
 
-            HostPlatform.WINDOWS,
+            HostPlatform.WINDOWS -> windowsCredentialManager.write(
+                targetName = key.windowsTargetName,
+                userName = key.authority,
+                secret = secret,
+            )
+
             HostPlatform.OTHER -> false
         }
     }
@@ -196,7 +202,7 @@ class JvmRemoteAuthStore(
                 )
             ).exitCode == 0
 
-            HostPlatform.WINDOWS,
+            HostPlatform.WINDOWS -> windowsCredentialManager.delete(key.windowsTargetName)
             HostPlatform.OTHER -> false
         }
     }
@@ -330,6 +336,7 @@ class JvmRemoteAuthStore(
         val authority: String,
     ) {
         val serviceName: String = "$KEYRING_APPLICATION.${protocol.name.lowercase()}.$scheme"
+        val windowsTargetName: String = "$serviceName.$authority"
     }
 
     private data class ProcessResult(

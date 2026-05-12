@@ -64,6 +64,8 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.app.filesystem.WebDavAuthRepository
 import com.oruke.onyx.app.filesystem.WebDavVfsProvider
+import com.oruke.onyx.app.usecase.FileContentSearchService
+import com.oruke.onyx.app.usecase.JvmVfsFileContentSearchService
 import com.oruke.onyx.ui.ResourceEntryNameSuggestionService
 import org.koin.dsl.module
 
@@ -133,6 +135,7 @@ val fileModule = module {
                 get<JvmLocalFileProvider>(),
                 get<SmbVfsProvider>(),
                 get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
             ),
             contentServices = listOf<RoutableVfsContentService>(
                 get<ArchiveVfsProvider>(),
@@ -167,7 +170,28 @@ val fileModule = module {
     single<FileTypeService> { JvmFileTypeService() }
     single<ArchiveEntryOpenService> { JvmArchiveEntryOpenService(get(), get()) }
     single<TerminalLauncherService> { JvmTerminalLauncherService() }
-    single<PreviewService> { JvmPreviewService() }
+    single<PreviewService> {
+        JvmPreviewService(
+            listOf(
+                get<ArchiveVfsProvider>(),
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
+            )
+        )
+    }
+    single<FileContentSearchService> {
+        JvmVfsFileContentSearchService(
+            listOf(
+                get<ArchiveVfsProvider>(),
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
+            )
+        )
+    }
     single<FileHashService> { JvmFileHashService(get()) }
     single<ArchiveInfoService> { JvmArchiveInfoService(get()) }
     single<ThumbnailService> { JvmThumbnailService() }

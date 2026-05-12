@@ -48,6 +48,7 @@ kotlin {
             implementation(libs.jewel.int.ui.decorated.window)
             implementation(libs.intellij.platform.icons)
             implementation(libs.jna)
+            implementation(libs.jna.platform)
             implementation(libs.zoomimage.compose)
             implementation(libs.slf4j.simple)
         }

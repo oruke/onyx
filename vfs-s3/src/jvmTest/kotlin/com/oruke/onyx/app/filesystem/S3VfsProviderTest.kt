@@ -1,0 +1,312 @@
+package com.oruke.onyx.app.filesystem
+
+import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * S3 VFS provider 的文件命令测试。
+ */
+class S3VfsProviderTest {
+    /**
+     * 验证目录复制会保留嵌套文件和空目录占位对象。
+     */
+    @Test
+    fun `copy directory copies nested files and empty directories`() = runBlocking {
+        val client = FakeS3Client(
+            initialObjects = mapOf(
+                "source/root.txt" to "root".encodeToByteArray(),
+                "source/nested/child.txt" to "child".encodeToByteArray(),
+                "source/empty/" to ByteArray(0),
+            )
+        )
+        val provider = S3VfsProvider(authRepository = StaticS3AuthRepository, client = client)
+
+        provider.copy(
+            entries = listOf(directory("source", "s3://bucket/source/")),
+            targetDirectoryLocation = "s3://bucket/target/",
+            conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+        ).getOrThrow()
+
+        assertContentEquals("root".encodeToByteArray(), client.objectBytes("target/source/root.txt"))
+        assertContentEquals("child".encodeToByteArray(), client.objectBytes("target/source/nested/child.txt"))
+        assertTrue(client.hasObject("target/source/empty/"))
+    }
+
+    /**
+     * 验证 SKIP 冲突策略下移动文件不会误删未复制的源对象。
+     */
+    @Test
+    fun `move file with skip conflict keeps source object`() = runBlocking {
+        val client = FakeS3Client(
+            initialObjects = mapOf(
+                "source/file.txt" to "source".encodeToByteArray(),
+                "target/file.txt" to "target".encodeToByteArray(),
+            )
+        )
+        val provider = S3VfsProvider(authRepository = StaticS3AuthRepository, client = client)
+
+        provider.move(
+            entries = listOf(file("file.txt", "s3://bucket/source/file.txt")),
+            targetDirectoryLocation = "s3://bucket/target/",
+            conflictStrategy = TransferConflictStrategy.SKIP,
+        ).getOrThrow()
+
+        assertContentEquals("source".encodeToByteArray(), client.objectBytes("source/file.txt"))
+        assertContentEquals("target".encodeToByteArray(), client.objectBytes("target/file.txt"))
+    }
+
+    /**
+     * 验证删除目录会递归移除子对象和目录占位对象。
+     */
+    @Test
+    fun `delete directory removes children and placeholder`() = runBlocking {
+        val client = FakeS3Client(
+            initialObjects = mapOf(
+                "source/" to ByteArray(0),
+                "source/root.txt" to "root".encodeToByteArray(),
+                "source/nested/child.txt" to "child".encodeToByteArray(),
+            )
+        )
+        val provider = S3VfsProvider(authRepository = StaticS3AuthRepository, client = client)
+
+        provider.delete(listOf(directory("source", "s3://bucket/source/"))).getOrThrow()
+
+        assertFalse(client.hasObject("source/"))
+        assertFalse(client.hasObject("source/root.txt"))
+        assertFalse(client.hasObject("source/nested/child.txt"))
+    }
+
+    /**
+     * 创建目录测试条目。
+     *
+     * @param name 条目名。
+     * @param location S3 目录位置。
+     * @return 目录 VFile。
+     */
+    private fun directory(
+        name: String,
+        location: String,
+    ): VFile {
+        return VFile(
+            id = location,
+            name = name,
+            location = location,
+            parentLocation = null,
+            kind = VFileKind.DIRECTORY,
+            sizeBytes = null,
+            modifiedAtEpochMillis = null,
+            hidden = false,
+            capabilities = emptySet(),
+        )
+    }
+
+    /**
+     * 创建文件测试条目。
+     *
+     * @param name 条目名。
+     * @param location S3 文件位置。
+     * @return 文件 VFile。
+     */
+    private fun file(
+        name: String,
+        location: String,
+    ): VFile {
+        return VFile(
+            id = location,
+            name = name,
+            location = location,
+            parentLocation = null,
+            kind = VFileKind.FILE,
+            sizeBytes = null,
+            modifiedAtEpochMillis = null,
+            hidden = false,
+            capabilities = emptySet(),
+        )
+    }
+
+    private object StaticS3AuthRepository : S3AuthRepository {
+        /**
+         * 返回固定 AWS 凭据，供 fake client 通过认证分支。
+         *
+         * @param location 请求位置。
+         * @return AWS 凭据上下文。
+         */
+        override fun authContext(location: String): VfsAuthContext {
+            return VfsAuthContext.AwsCredentials(
+                accessKeyId = "test-access",
+                secretAccessKey = "test-secret",
+                region = "us-east-1",
+            )
+        }
+    }
+
+    /**
+     * 基于内存对象表的 S3 client，用于验证 provider 层递归命令语义。
+     *
+     * @param initialObjects 初始对象 key 到内容的映射。
+     */
+    private inner class FakeS3Client(
+        initialObjects: Map<String, ByteArray>,
+    ) : S3Client {
+        /**
+         * 内存中的 S3 对象表，key 为对象路径，value 为对象内容。
+         */
+        private val objects = initialObjects.toMutableMap()
+
+        /**
+         * 判断对象是否存在。
+         *
+         * @param key S3 对象 key。
+         * @return `true` 表示对象存在。
+         */
+        fun hasObject(key: String): Boolean = key in objects
+
+        /**
+         * 读取指定对象内容。
+         *
+         * @param key S3 对象 key。
+         * @return 对象内容。
+         */
+        fun objectBytes(key: String): ByteArray = objects.getValue(key)
+
+        /**
+         * 验证连接时不访问网络。
+         *
+         * @param location 请求位置。
+         * @param authContext AWS 凭据。
+         */
+        override suspend fun testConnection(
+            location: S3Location,
+            authContext: VfsAuthContext.AwsCredentials,
+        ) = Unit
+
+        /**
+         * 按 S3 delimiter 语义列出当前前缀的直接子目录和文件。
+         *
+         * @param location 当前目录位置。
+         * @param authContext AWS 凭据。
+         * @return 当前目录直接子条目。
+         */
+        override suspend fun list(
+            location: S3Location,
+            authContext: VfsAuthContext.AwsCredentials,
+        ): List<VFile> {
+            val directoryPrefix = location.directoryPrefix
+            val directories = linkedSetOf<String>()
+            val files = mutableListOf<VFile>()
+            objects.keys.sorted().forEach { key ->
+                if (!key.startsWith(directoryPrefix)) return@forEach
+                val relative = key.removePrefix(directoryPrefix)
+                if (relative.isBlank()) return@forEach
+                val slashIndex = relative.indexOf('/')
+                if (slashIndex >= 0) {
+                    directories += relative.substring(0, slashIndex)
+                } else {
+                    files += file(
+                        name = relative,
+                        location = location.toLocation(directoryPrefix + relative, directory = false),
+                    )
+                }
+            }
+            return directories.map { name ->
+                directory(
+                    name = name,
+                    location = location.toLocation(directoryPrefix + name + "/", directory = true),
+                )
+            } + files
+        }
+
+        /**
+         * 读取指定对象内容。
+         *
+         * @param entry 源文件条目。
+         * @param location 对象位置。
+         * @param authContext AWS 凭据。
+         * @return 内容源。
+         */
+        override suspend fun readFile(
+            entry: VFile,
+            location: S3Location,
+            authContext: VfsAuthContext.AwsCredentials,
+        ): VfsContentSource {
+            return VfsContentSource(
+                name = entry.name,
+                sizeBytes = objects.getValue(location.objectKey).size.toLong(),
+                chunks = flowOf(objects.getValue(location.objectKey)),
+            )
+        }
+
+        /**
+         * 写入对象内容，并按 SKIP 策略返回空结果。
+         *
+         * @param parentLocation 目标父目录。
+         * @param name 目标文件名。
+         * @param chunks 内容分块。
+         * @param conflictStrategy 冲突处理策略。
+         * @param authContext AWS 凭据。
+         * @return 写入后的文件；跳过时返回 `null`。
+         */
+        override suspend fun writeFile(
+            parentLocation: S3Location,
+            name: String,
+            chunks: Flow<ByteArray>,
+            conflictStrategy: TransferConflictStrategy,
+            authContext: VfsAuthContext.AwsCredentials,
+        ): VFile? {
+            val key = parentLocation.directoryPrefix + name
+            if (key in objects && conflictStrategy == TransferConflictStrategy.SKIP) return null
+            val output = mutableListOf<Byte>()
+            chunks.collect { chunk -> output += chunk.toList() }
+            objects[key] = output.toByteArray()
+            return file(name, parentLocation.toLocation(key, directory = false))
+        }
+
+        /**
+         * 删除对象。
+         *
+         * @param location 对象位置。
+         * @param authContext AWS 凭据。
+         */
+        override suspend fun deleteObject(
+            location: S3Location,
+            authContext: VfsAuthContext.AwsCredentials,
+        ) {
+            objects -= location.objectKey
+        }
+
+        /**
+         * 创建目录占位对象。
+         *
+         * @param location 目录位置。
+         * @param authContext AWS 凭据。
+         */
+        override suspend fun createDirectory(
+            location: S3Location,
+            authContext: VfsAuthContext.AwsCredentials,
+        ) {
+            objects[location.directoryPrefix] = ByteArray(0)
+        }
+
+        /**
+         * 判断对象是否存在。
+         *
+         * @param location 对象位置。
+         * @param authContext AWS 凭据。
+         * @return `true` 表示存在。
+         */
+        override suspend fun objectExists(
+            location: S3Location,
+            authContext: VfsAuthContext.AwsCredentials,
+        ): Boolean {
+            return location.objectKey in objects
+        }
+    }
+}

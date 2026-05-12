@@ -45,6 +45,7 @@ jewel-int-ui-standalone = { module = "org.jetbrains.jewel:jewel-int-ui-standalon
 jewel-int-ui-decorated-window = { module = "org.jetbrains.jewel:jewel-int-ui-decorated-window", version.ref = "jewel" }
 intellij-platform-icons = { module = "com.jetbrains.intellij.platform:icons", version.ref = "intellij-platform-build" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 zoomimage-compose = { module = "io.github.panpf.zoomimage:zoomimage-compose", version.ref = "zoomimage" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 

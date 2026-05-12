@@ -49,7 +49,7 @@ import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.app.usecase.FileSearchEvent
 import com.oruke.onyx.app.usecase.FileSearchRequest
 import com.oruke.onyx.app.usecase.FileSearchUseCase
-import com.oruke.onyx.app.usecase.JvmLocalFileContentSearchService
+import com.oruke.onyx.app.usecase.FileContentSearchService
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.DeleteMode
@@ -121,6 +121,7 @@ class DefaultRootComponent(
     private val imageMetadataService: ImageMetadataService,
     private val connectionTestService: VfsConnectionTestService,
     private val remoteAuthStore: RemoteAuthStore,
+    private val fileContentSearchService: FileContentSearchService,
     // ── Delegate ──────────────────────────────────────────────────────────
     private val taskOrchestrator: TaskOrchestrator,
     private val clipboardManager: ClipboardManager,
@@ -206,7 +207,7 @@ class DefaultRootComponent(
     )
     private val fileSearchUseCase = FileSearchUseCase(
         fileRepository = fileRepository,
-        contentSearchService = JvmLocalFileContentSearchService(),
+        contentSearchService = fileContentSearchService,
         providerRegistry = providerRegistry,
     )
     private val searchState = MutableStateFlow(
