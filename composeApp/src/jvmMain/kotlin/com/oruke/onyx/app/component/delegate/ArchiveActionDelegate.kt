@@ -21,7 +21,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.util.*
+import java.util.UUID
 
 /**
  * 压缩包操作委托 — 负责解压任务、密码验证等压缩包相关业务。

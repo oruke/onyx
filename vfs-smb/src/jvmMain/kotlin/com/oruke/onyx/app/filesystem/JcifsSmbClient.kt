@@ -20,7 +20,9 @@ import java.net.MalformedURLException
 import java.net.UnknownHostException
 import java.util.Properties
 
-
+/**
+ * 基于 jcifs-ng 的 SMB 客户端实现。
+ */
 class JcifsSmbClient : SmbClient {
     override suspend fun testConnection(
         location: String,
@@ -312,7 +314,7 @@ class JcifsSmbClient : SmbClient {
         location: String,
         context: CIFSContext,
     ): SmbFile {
-        val directory = SmbFile(location.withTrailingSlash(), context)
+        val directory = SmbFile(location.withVfsTrailingSlash(), context)
         if (!directory.exists()) {
             throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, location))
         }
@@ -348,8 +350,8 @@ class JcifsSmbClient : SmbClient {
                 )
             )
         }
-        if (source.isDirectory && targetDirectory.canonicalPath.withTrailingSlash()
-                .startsWith(source.canonicalPath.withTrailingSlash())
+        if (source.isDirectory && targetDirectory.canonicalPath.withVfsTrailingSlash()
+                .startsWith(source.canonicalPath.withVfsTrailingSlash())
         ) {
             throw VfsProviderException(
                 VfsProviderError.UnsupportedOperation(
@@ -506,10 +508,6 @@ class JcifsSmbClient : SmbClient {
 
     private fun String.withDirectoryMarker(directory: Boolean): String {
         return if (directory) "${trimEnd('/')}/" else trimEnd('/')
-    }
-
-    private fun String.withTrailingSlash(): String {
-        return if (endsWith('/')) this else "$this/"
     }
 
     private fun SmbException.toProviderError(location: String?): VfsProviderError {

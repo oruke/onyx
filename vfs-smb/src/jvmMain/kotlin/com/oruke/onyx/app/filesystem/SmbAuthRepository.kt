@@ -1,34 +1,30 @@
 package com.oruke.onyx.app.filesystem
 
-import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileCapability
-import com.oruke.onyx.core.model.VFileKind
-import jcifs.CIFSContext
-import jcifs.config.PropertyConfiguration
-import jcifs.context.BaseContext
-import jcifs.smb.NtlmPasswordAuthenticator
-import jcifs.smb.SmbAuthException
-import jcifs.smb.SmbException
-import jcifs.smb.SmbFile
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
-import java.net.MalformedURLException
-import java.net.UnknownHostException
-import java.util.Properties
-
-
+/**
+ * SMB 认证信息仓库。
+ */
 interface SmbAuthRepository {
+    /**
+     * 获取指定位置的 SMB 认证上下文。
+     *
+     * @param location SMB 位置。
+     * @return 认证上下文。
+     */
     fun authContext(location: String): VfsAuthContext
 
+    /**
+     * 空认证仓库。
+     */
     data object None : SmbAuthRepository {
         override fun authContext(location: String): VfsAuthContext = VfsAuthContext.None
     }
 }
 
+/**
+ * 基于统一远程认证存储的 SMB 认证仓库。
+ *
+ * @property remoteAuthStore 远程认证存储。
+ */
 class RemoteAuthStoreSmbAuthRepository(
     private val remoteAuthStore: RemoteAuthStore,
 ) : SmbAuthRepository {

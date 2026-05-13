@@ -38,7 +38,12 @@ import java.util.Base64
 import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * 基于 Ktor CIO 的 WebDAV 客户端实现。
+ *
+ * @property httpClient 负责发起 WebDAV HTTP 请求的客户端。
+ * @property parser `PROPFIND` 多状态响应解析器。
+ */
 class KtorWebDavClient(
     private val httpClient: HttpClient = HttpClient(CIO),
     private val parser: WebDavMultiStatusParser = WebDavMultiStatusParser(),
@@ -339,7 +344,7 @@ class KtorWebDavClient(
         authContext: VfsAuthContext,
         method: HttpMethod,
     ): Unit = withContext(Dispatchers.IO) {
-        val normalizedTargetDirectory = targetDirectoryLocation.withTrailingSlash()
+        val normalizedTargetDirectory = targetDirectoryLocation.withVfsTrailingSlash()
         if (!resourceExists(normalizedTargetDirectory, authContext)) {
             throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.WEBDAV, normalizedTargetDirectory))
         }
@@ -389,7 +394,7 @@ class KtorWebDavClient(
                     if (!resourceExists(candidateLocation, authContext)) {
                         return candidateLocation
                     }
-                    candidateName = entry.name.withCopySuffix(index + 1, directory = isDirectory)
+                    candidateName = entry.name.withVfsCopySuffix(index + 1) + if (isDirectory) "/" else ""
                 }
                 throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
             }
@@ -416,7 +421,7 @@ class KtorWebDavClient(
                     if (!resourceExists(candidateLocation, authContext)) {
                         return candidateLocation
                     }
-                    candidateName = name.withCopySuffix(index + 1)
+                    candidateName = name.withVfsCopySuffix(index + 1)
                 }
                 throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
             }
@@ -538,32 +543,19 @@ class KtorWebDavClient(
         name: String,
         directory: Boolean,
     ): String {
-        val parentUri = URI(parentLocation.withTrailingSlash().encodeSpaces())
-        val childPath = parentUri.path.withTrailingSlash() + name + (if (directory) "/" else "")
+        val parentUri = URI(parentLocation.withVfsTrailingSlash().encodeVfsSpaces())
+        val childPath = parentUri.path.withVfsTrailingSlash() + name + (if (directory) "/" else "")
         return URI(parentUri.scheme, null, parentUri.host, parentUri.port, childPath, null, null).toASCIIString()
     }
 
     private fun String.fileNameFromWebDavLocation(): String {
-        return URI(encodeSpaces()).path.trimEnd('/').substringAfterLast('/').urlDecode()
-    }
-
-    private fun String.withCopySuffix(
-        index: Int,
-        directory: Boolean = false,
-    ): String {
-        if (directory) return "$this ($index)"
-        val dotIndex = lastIndexOf('.').takeIf { dot -> dot > 0 }
-        return if (dotIndex == null) {
-            "$this ($index)"
-        } else {
-            substring(0, dotIndex) + " ($index)" + substring(dotIndex)
-        }
+        return URI(encodeVfsSpaces()).path.trimEnd('/').substringAfterLast('/').urlDecode()
     }
 
     private fun String.parentWebDavLocation(): String {
-        val uri = URI(encodeSpaces())
+        val uri = URI(encodeVfsSpaces())
         val path = uri.path.trimEnd('/').substringBeforeLast('/', missingDelimiterValue = "").ifBlank { "/" }
-        val parentPath = if (path == "/") path else path.withTrailingSlash()
+        val parentPath = if (path == "/") path else path.withVfsTrailingSlash()
         return URI(uri.scheme, null, uri.host, uri.port, parentPath, null, null).toASCIIString()
     }
 
@@ -576,7 +568,7 @@ class KtorWebDavClient(
             id = this,
             name = name,
             location = this,
-            parentLocation = parentLocation.withTrailingSlash(),
+            parentLocation = parentLocation.withVfsTrailingSlash(),
             kind = if (directory) VFileKind.DIRECTORY else VFileKind.FILE,
             sizeBytes = if (directory) null else 0L,
             modifiedAtEpochMillis = null,

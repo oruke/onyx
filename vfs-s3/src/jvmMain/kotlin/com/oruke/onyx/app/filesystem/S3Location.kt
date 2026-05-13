@@ -1,71 +1,53 @@
 package com.oruke.onyx.app.filesystem
 
-import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileCapability
-import com.oruke.onyx.core.model.VFileKind
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpMethod
-import io.ktor.http.content.OutgoingContent
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
-import org.w3c.dom.Element
-import org.xml.sax.InputSource
-import java.io.IOException
-import java.io.StringReader
 import java.net.URI
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
-import javax.net.ssl.SSLException
-import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * 解析后的 S3 位置。
+ *
+ * @property bucket bucket 名称。
+ * @property prefix 当前前缀。
+ */
 data class S3Location(
     val bucket: String,
     val prefix: String,
 ) {
+    /** 对象 key，不包含开头 `/`。 */
     val objectKey: String = prefix.trimStart('/')
 
+    /** 目录前缀，非根目录时以 `/` 结尾。 */
     val directoryPrefix: String = prefix.trim('/').let { value ->
         if (value.isBlank()) "" else "$value/"
     }
 
+    /** 当前目录的 VFS 位置。 */
     val directoryLocation: String
         get() = toLocation(directoryPrefix, directory = true)
 
+    /**
+     * 将对象 key 组装回 `s3://` 位置。
+     *
+     * @param key 对象 key。
+     * @param directory 是否按目录位置输出。
+     * @return S3 VFS 位置。
+     */
     fun toLocation(
         key: String,
         directory: Boolean,
     ): String {
-        val path = if (directory) key.withTrailingSlash() else key
+        val path = if (directory) key.withVfsTrailingSlash() else key
         return URI("s3", bucket, "/$path", null).toASCIIString()
     }
 
     companion object {
+        /**
+         * 解析 `s3://bucket/key` 位置。
+         *
+         * @param location S3 VFS 位置。
+         * @return 解析后的 S3 位置。
+         */
         fun parse(location: String): S3Location {
-            val uri = URI(location.encodeSpaces())
+            val uri = URI(location.encodeVfsSpaces())
             val bucket = uri.host
             if (bucket.isNullOrBlank()) {
                 throw VfsProviderNotFoundException(location)

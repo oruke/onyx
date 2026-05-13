@@ -41,7 +41,13 @@ import javax.crypto.spec.SecretKeySpec
 import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * 基于 Ktor CIO 的 S3 客户端实现。
+ *
+ * @property httpClient 负责发起 S3 HTTP 请求的客户端。
+ * @property signer AWS Signature V4 请求签名器。
+ * @property parser S3 列表响应解析器。
+ */
 class KtorS3Client(
     private val httpClient: HttpClient = HttpClient(CIO),
     private val signer: S3RequestSigner = S3RequestSigner(),
@@ -386,7 +392,7 @@ class KtorS3Client(
                     if (!objectExists(candidate, authContext)) {
                         return candidate
                     }
-                    candidateName = name.withCopySuffix(index + 1)
+                    candidateName = name.withVfsCopySuffix(index + 1)
                 }
                 throw VfsProviderException(
                     VfsProviderError.AlreadyExists(

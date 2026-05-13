@@ -25,7 +25,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.util.*
+import java.util.UUID
 
 /**
  * 文件操作委托 — 负责删除、创建目录、批量重命名等文件管理操作。

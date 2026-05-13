@@ -38,7 +38,12 @@ import java.util.Base64
 import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * WebDAV 协议的 VFS Provider，负责把统一文件操作转换为 WebDAV 请求。
+ *
+ * @property authRepository WebDAV 认证上下文来源。
+ * @property client 实际执行 WebDAV 请求的客户端。
+ */
 class WebDavVfsProvider(
     private val authRepository: WebDavAuthRepository = WebDavAuthRepository.None,
     private val client: WebDavClient = KtorWebDavClient(),
@@ -66,7 +71,7 @@ class WebDavVfsProvider(
         if (!supports(location)) {
             return Result.failure(VfsProviderNotFoundException(location))
         }
-        val directoryLocation = location.withTrailingSlash()
+        val directoryLocation = location.withVfsTrailingSlash()
         return runCatching {
             client.list(
                 location = directoryLocation,
@@ -76,7 +81,7 @@ class WebDavVfsProvider(
     }
 
     override suspend fun testConnection(request: VfsConnectionTestRequest): VfsConnectionTestResult {
-        val testLocation = request.location.withTrailingSlash()
+        val testLocation = request.location.withVfsTrailingSlash()
         if (request.protocol != VfsProtocol.WEBDAV || !supports(request.location)) {
             return VfsConnectionTestResult.Failed(
                 protocol = VfsProtocol.WEBDAV,
@@ -118,7 +123,7 @@ class WebDavVfsProvider(
             targetDirectoryLocation = targetDirectoryLocation,
             capability = VfsProviderCapability.COPY,
         ) { authContext ->
-            client.copy(entries, targetDirectoryLocation.withTrailingSlash(), conflictStrategy, authContext)
+            client.copy(entries, targetDirectoryLocation.withVfsTrailingSlash(), conflictStrategy, authContext)
         }
     }
 
@@ -132,7 +137,7 @@ class WebDavVfsProvider(
             targetDirectoryLocation = targetDirectoryLocation,
             capability = VfsProviderCapability.MOVE,
         ) { authContext ->
-            client.move(entries, targetDirectoryLocation.withTrailingSlash(), conflictStrategy, authContext)
+            client.move(entries, targetDirectoryLocation.withVfsTrailingSlash(), conflictStrategy, authContext)
         }
     }
 
@@ -168,7 +173,7 @@ class WebDavVfsProvider(
         name: String,
     ): Result<VFile> {
         return runCatching {
-            client.createFile(parentLocation.withTrailingSlash(), name, authRepository.authContext(parentLocation))
+            client.createFile(parentLocation.withVfsTrailingSlash(), name, authRepository.authContext(parentLocation))
         }
     }
 
@@ -177,7 +182,7 @@ class WebDavVfsProvider(
         name: String,
     ): Result<VFile> {
         return runCatching {
-            client.createDirectory(parentLocation.withTrailingSlash(), name, authRepository.authContext(parentLocation))
+            client.createDirectory(parentLocation.withVfsTrailingSlash(), name, authRepository.authContext(parentLocation))
         }
     }
 
@@ -201,7 +206,7 @@ class WebDavVfsProvider(
         }
         return runCatching {
             client.writeFile(
-                parentLocation = parentLocation.withTrailingSlash(),
+                parentLocation = parentLocation.withVfsTrailingSlash(),
                 name = name,
                 chunks = chunks,
                 conflictStrategy = conflictStrategy,
@@ -245,7 +250,7 @@ class WebDavVfsProvider(
 
     private fun webDavEndpointKey(location: String): String? {
         return runCatching {
-            val uri = URI(location.encodeSpaces())
+            val uri = URI(location.encodeVfsSpaces())
             val scheme = uri.scheme?.lowercase() ?: return@runCatching null
             val host = uri.host?.lowercase() ?: return@runCatching null
             val port = when {

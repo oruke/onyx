@@ -706,11 +706,7 @@ private class CrossProviderTransferRecorder(
 private fun String.nextDirectoryCopyName(existingNames: Set<String>): String {
     var index = 1
     while (true) {
-        val candidate = if (index == 1) {
-            "$this - Copy"
-        } else {
-            "$this - Copy ($index)"
-        }
+        val candidate = withVfsCopySuffix(index)
         if (candidate !in existingNames) return candidate
         index += 1
     }

@@ -40,7 +40,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 
 internal fun String.toHttpWebDavUrl(): String {
-    val uri = URI(encodeSpaces())
+    val uri = URI(encodeVfsSpaces())
     val httpScheme = when (uri.scheme.lowercase()) {
         "webdav" -> "http"
         "webdavs" -> "https"
@@ -48,14 +48,6 @@ internal fun String.toHttpWebDavUrl(): String {
     }
     val path = uri.path.ifBlank { "/" }
     return URI(httpScheme, uri.userInfo, uri.host, uri.port, path, uri.query, uri.fragment).toASCIIString()
-}
-
-internal fun String.withTrailingSlash(): String {
-    return if (endsWith('/')) this else "$this/"
-}
-
-internal fun String.encodeSpaces(): String {
-    return replace(" ", "%20")
 }
 
 internal fun String.urlDecode(): String {

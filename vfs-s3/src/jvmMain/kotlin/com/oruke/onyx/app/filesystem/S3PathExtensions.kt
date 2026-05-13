@@ -108,29 +108,6 @@ internal fun S3Location.toDirectoryVFile(
     )
 }
 
-/**
- * 为保留两者策略生成副本文件名。
- *
- * @param index 副本序号。
- * @return 带副本后缀的文件名。
- */
-internal fun String.withCopySuffix(index: Int): String {
-    val dotIndex = lastIndexOf('.').takeIf { dot -> dot > 0 }
-    return if (dotIndex == null) {
-        "$this ($index)"
-    } else {
-        substring(0, dotIndex) + " ($index)" + substring(dotIndex)
-    }
-}
-
-internal fun String.withTrailingSlash(): String {
-    return if (endsWith('/')) this else "$this/"
-}
-
-internal fun String.encodeSpaces(): String {
-    return replace(" ", "%20")
-}
-
 internal fun String.toInstantMillisOrNull(): Long? {
     return runCatching { Instant.parse(this).toEpochMilli() }.getOrNull()
 }

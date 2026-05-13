@@ -42,14 +42,34 @@ import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
 
+/**
+ * 已签名的 S3 HTTP 请求。
+ *
+ * @property url 完整请求 URL。
+ * @property headers 已签名请求头。
+ */
 data class S3SignedRequest(
     val url: String,
     val headers: Map<String, String>,
 )
 
+/**
+ * AWS Signature V4 请求签名器。
+ *
+ * @property clock 签名时间来源。
+ */
 class S3RequestSigner(
     private val clock: Clock = Clock.systemUTC(),
 ) {
+    /**
+     * 签名 ListObjectsV2 请求。
+     *
+     * @param location S3 目录位置。
+     * @param authContext AWS 凭据。
+     * @param continuationToken 下一页 token。
+     * @param maxKeys 单页最大条目数。
+     * @return 已签名请求。
+     */
     fun signListObjectsV2(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
@@ -112,6 +132,13 @@ class S3RequestSigner(
         return S3SignedRequest(url = url, headers = requestHeaders)
     }
 
+    /**
+     * 签名 GetObject 请求。
+     *
+     * @param location S3 对象位置。
+     * @param authContext AWS 凭据。
+     * @return 已签名请求。
+     */
     fun signGetObject(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
@@ -123,6 +150,13 @@ class S3RequestSigner(
         )
     }
 
+    /**
+     * 签名 HeadObject 请求。
+     *
+     * @param location S3 对象位置。
+     * @param authContext AWS 凭据。
+     * @return 已签名请求。
+     */
     fun signHeadObject(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
@@ -134,6 +168,13 @@ class S3RequestSigner(
         )
     }
 
+    /**
+     * 签名 PutObject 请求。
+     *
+     * @param location S3 对象位置。
+     * @param authContext AWS 凭据。
+     * @return 已签名请求。
+     */
     fun signPutObject(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
@@ -145,6 +186,13 @@ class S3RequestSigner(
         )
     }
 
+    /**
+     * 签名 DeleteObject 请求。
+     *
+     * @param location S3 对象位置。
+     * @param authContext AWS 凭据。
+     * @return 已签名请求。
+     */
     fun signDeleteObject(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,

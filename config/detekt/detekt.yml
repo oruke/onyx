@@ -1,0 +1,47 @@
+build:
+  maxIssues: 0
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+complexity:
+  active: true
+  ComplexMethod:
+    active: true
+    threshold: 18
+  LargeClass:
+    active: true
+    threshold: 550
+  LongMethod:
+    active: true
+    threshold: 110
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 40
+    thresholdInClasses: 24
+    thresholdInInterfaces: 18
+
+comments:
+  active: true
+  UndocumentedPublicClass:
+    active: true
+    searchInNestedClass: true
+  UndocumentedPublicFunction:
+    active: true
+
+naming:
+  active: true
+  ClassNaming:
+    active: true
+  FunctionNaming:
+    active: true
+  VariableNaming:
+    active: true
+
+style:
+  active: true
+  WildcardImport:
+    active: true
+  UnusedPrivateMember:
+    active: true

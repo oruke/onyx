@@ -38,17 +38,27 @@ import java.util.Base64
 import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * WebDAV `207 Multi-Status` 响应解析器。
+ */
 class WebDavMultiStatusParser {
+    /**
+     * 解析 `PROPFIND` 响应并转换为统一的 [VFile] 列表。
+     *
+     * @param xml WebDAV 服务端返回的 XML 响应。
+     * @param requestLocation 发起请求时使用的 WebDAV VFS 地址。
+     * @param requestHttpUrl 发起请求时使用的 HTTP 地址。
+     * @return 当前目录下的直接子条目。
+     */
     fun parse(
         xml: String,
         requestLocation: String,
         requestHttpUrl: String,
     ): List<VFile> {
         val requestUri = URI(requestHttpUrl)
-        val requestPath = requestUri.path.ifBlank { "/" }.withTrailingSlash()
-        val requestLocationUri = URI(requestLocation.encodeSpaces())
-        val parentLocation = requestLocation.withTrailingSlash()
+        val requestPath = requestUri.path.ifBlank { "/" }.withVfsTrailingSlash()
+        val requestLocationUri = URI(requestLocation.encodeVfsSpaces())
+        val parentLocation = requestLocation.withVfsTrailingSlash()
         val document = documentBuilderFactory().newDocumentBuilder()
             .parse(InputSource(StringReader(xml)))
         val responses = document.getElementsByTagNameNS("*", "response")
@@ -56,9 +66,9 @@ class WebDavMultiStatusParser {
             for (index in 0 until responses.length) {
                 val response = responses.item(index) as? Element ?: continue
                 val href = response.childText("href") ?: continue
-                val hrefUri = requestUri.resolve(href.encodeSpaces())
+                val hrefUri = requestUri.resolve(href.encodeVfsSpaces())
                 val hrefPath = hrefUri.path.ifBlank { "/" }
-                if (hrefPath.withTrailingSlash() == requestPath) {
+                if (hrefPath.withVfsTrailingSlash() == requestPath) {
                     continue
                 }
                 val prop = response.successProp() ?: continue
@@ -139,7 +149,7 @@ class WebDavMultiStatusParser {
     ): String {
         val scheme = if (sourceScheme.equals("webdavs", ignoreCase = true)) "webdavs" else "webdav"
         val path = path.ifBlank { "/" }.let { value ->
-            if (directory) value.withTrailingSlash() else value
+            if (directory) value.withVfsTrailingSlash() else value
         }
         return URI(scheme, null, host, port, path, null, null).toASCIIString()
     }

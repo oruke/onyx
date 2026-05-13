@@ -1,60 +1,54 @@
 package com.oruke.onyx.app.filesystem
 
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileCapability
-import com.oruke.onyx.core.model.VFileKind
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.header
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
-import io.ktor.http.contentType
-import io.ktor.http.content.OutgoingContent
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
-import org.w3c.dom.Element
-import org.xml.sax.InputSource
-import java.io.IOException
-import java.io.StringReader
-import java.net.URI
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Base64
-import javax.net.ssl.SSLException
-import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * WebDAV provider 使用的底层 client。
+ */
 interface WebDavClient {
+    /**
+     * 测试 WebDAV 连接。
+     *
+     * @param location WebDAV 位置。
+     * @param authContext 认证上下文。
+     */
     suspend fun testConnection(
         location: String,
         authContext: VfsAuthContext,
     )
 
+    /**
+     * 列出目录直接子项。
+     *
+     * @param location WebDAV 目录位置。
+     * @param authContext 认证上下文。
+     * @return 子项列表。
+     */
     suspend fun list(
         location: String,
         authContext: VfsAuthContext,
     ): List<VFile>
 
+    /**
+     * 删除 WebDAV 条目。
+     *
+     * @param entries 待删除条目。
+     * @param authContext 认证上下文。
+     */
     suspend fun delete(
         entries: List<VFile>,
         authContext: VfsAuthContext,
     )
 
+    /**
+     * 复制 WebDAV 条目。
+     *
+     * @param entries 待复制条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突策略。
+     * @param authContext 认证上下文。
+     */
     suspend fun copy(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -70,6 +64,14 @@ interface WebDavClient {
         )
     }
 
+    /**
+     * 移动 WebDAV 条目。
+     *
+     * @param entries 待移动条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突策略。
+     * @param authContext 认证上下文。
+     */
     suspend fun move(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -85,29 +87,70 @@ interface WebDavClient {
         )
     }
 
+    /**
+     * 重命名 WebDAV 条目。
+     *
+     * @param entry 待重命名条目。
+     * @param targetName 目标名称。
+     * @param authContext 认证上下文。
+     * @return 重命名后的条目。
+     */
     suspend fun rename(
         entry: VFile,
         targetName: String,
         authContext: VfsAuthContext,
     ): VFile
 
+    /**
+     * 创建 WebDAV 文件。
+     *
+     * @param parentLocation 父目录位置。
+     * @param name 文件名。
+     * @param authContext 认证上下文。
+     * @return 创建后的文件条目。
+     */
     suspend fun createFile(
         parentLocation: String,
         name: String,
         authContext: VfsAuthContext,
     ): VFile
 
+    /**
+     * 创建 WebDAV 目录。
+     *
+     * @param parentLocation 父目录位置。
+     * @param name 目录名。
+     * @param authContext 认证上下文。
+     * @return 创建后的目录条目。
+     */
     suspend fun createDirectory(
         parentLocation: String,
         name: String,
         authContext: VfsAuthContext,
     ): VFile
 
+    /**
+     * 读取 WebDAV 文件内容。
+     *
+     * @param entry 文件条目。
+     * @param authContext 认证上下文。
+     * @return 文件内容源。
+     */
     suspend fun readFile(
         entry: VFile,
         authContext: VfsAuthContext,
     ): VfsContentSource
 
+    /**
+     * 写入 WebDAV 文件内容。
+     *
+     * @param parentLocation 父目录位置。
+     * @param name 文件名。
+     * @param chunks 内容块。
+     * @param conflictStrategy 名称冲突策略。
+     * @param authContext 认证上下文。
+     * @return 写入后的文件；SKIP 时可能返回 null。
+     */
     suspend fun writeFile(
         parentLocation: String,
         name: String,

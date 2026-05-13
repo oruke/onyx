@@ -20,7 +20,12 @@ import java.net.MalformedURLException
 import java.net.UnknownHostException
 import java.util.Properties
 
-
+/**
+ * SMB 协议的 VFS Provider，负责把统一文件操作路由到 SMB 客户端。
+ *
+ * @property authRepository SMB 认证上下文来源。
+ * @property client 实际执行 SMB 请求的客户端。
+ */
 class SmbVfsProvider(
     private val authRepository: SmbAuthRepository = SmbAuthRepository.None,
     private val client: SmbClient = JcifsSmbClient(),

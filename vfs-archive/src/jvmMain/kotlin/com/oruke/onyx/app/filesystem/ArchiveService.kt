@@ -56,6 +56,12 @@ class ArchiveService(
             "tar.gz", "tar.bz2", "tar.xz", "tar.lzma", "tar.zst",
         )
 
+        /**
+         * 判断文件名是否属于当前可识别的压缩包格式。
+         *
+         * @param fileName 待检测的文件名或路径尾段。
+         * @return `true` 表示文件扩展名可作为压缩包打开。
+         */
         fun isArchive(fileName: String): Boolean {
             val lower = fileName.lowercase()
             if (ARCHIVE_COMPOUND_EXTENSIONS.any { lower.endsWith(".$it") }) return true
@@ -63,15 +69,33 @@ class ArchiveService(
             return ext in ARCHIVE_EXTENSIONS
         }
 
-        /** 判断 location 是否为 archive:// 协议 */
+        /**
+         * 判断 location 是否为 `archive://` 协议地址。
+         *
+         * @param location 待检测的 VFS 地址。
+         * @return `true` 表示该地址指向压缩包内部位置。
+         */
         fun isArchiveLocation(location: String): Boolean {
             return location.startsWith(ARCHIVE_SCHEME)
         }
 
+        /**
+         * 组装压缩包内部条目的 VFS 地址。
+         *
+         * @param archivePath 压缩包在本地文件系统中的真实路径。
+         * @param entryPath 压缩包内部条目路径，空字符串表示压缩包根目录。
+         * @return `archive://` 协议地址。
+         */
         fun archiveLocation(archivePath: String, entryPath: String = ""): String {
             return "$ARCHIVE_SCHEME$archivePath!/$entryPath"
         }
 
+        /**
+         * 解析压缩包 VFS 地址中的物理路径与内部条目路径。
+         *
+         * @param location `archive://` 协议地址。
+         * @return 物理压缩包路径与内部条目路径；无法解析时返回 `null`。
+         */
         fun parseArchiveLocation(location: String): Pair<String, String>? {
             if (!location.startsWith(ARCHIVE_SCHEME)) return null
             val rest = location.removePrefix(ARCHIVE_SCHEME)
@@ -92,9 +116,13 @@ class ArchiveService(
         }
 
         /**
-         * 计算 archive:// location 的上级路径。
-         * - 压缩包内部子目录 → 上级内部路径
-         * - 压缩包根 → 压缩包所在的物理目录
+         * 计算 `archive://` 地址的上级位置。
+         *
+         * - 压缩包内部子目录返回上级内部路径。
+         * - 压缩包根目录返回压缩包所在的物理目录。
+         *
+         * @param location `archive://` 协议地址。
+         * @return 上级 VFS 地址；无法解析或无上级时返回 `null`。
          */
         fun archiveParentLocation(location: String): String? {
             val (archivePath, innerPath) = parseArchiveLocation(location) ?: return null
@@ -108,7 +136,12 @@ class ArchiveService(
             return archiveLocation(archivePath, parentInner)
         }
 
-        /** 从 archive location 提取显示标题 */
+        /**
+         * 从压缩包 VFS 地址提取面板标签可显示的标题。
+         *
+         * @param location `archive://` 协议地址。
+         * @return 内部目录名、压缩包文件名或原始地址。
+         */
         fun archiveLocationTitle(location: String): String {
             val (archivePath, innerPath) = parseArchiveLocation(location) ?: return location
             if (innerPath.isBlank()) {
@@ -697,19 +730,39 @@ class ArchiveService(
     }
 }
 
+/**
+ * 压缩包服务的轻量日志出口。
+ */
 interface ArchiveServiceLogger {
+    /**
+     * 记录可恢复的压缩包处理警告。
+     *
+     * @param tag 日志来源标签。
+     * @param message 警告内容。
+     * @param throwable 触发警告的异常。
+     */
     fun warn(
         tag: String,
         message: String,
         throwable: Throwable,
     )
 
+    /**
+     * 记录不可恢复或影响用户操作结果的压缩包错误。
+     *
+     * @param tag 日志来源标签。
+     * @param message 错误内容。
+     * @param throwable 触发错误的异常。
+     */
     fun error(
         tag: String,
         message: String,
         throwable: Throwable,
     )
 
+    /**
+     * 默认空实现，用于未接入日志系统的调用路径。
+     */
     data object NoOp : ArchiveServiceLogger {
         override fun warn(
             tag: String,

@@ -41,7 +41,12 @@ import javax.crypto.spec.SecretKeySpec
 import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * S3 协议的 VFS Provider，负责把统一文件操作转换为对象存储请求。
+ *
+ * @property authRepository S3 认证上下文来源。
+ * @property client 实际执行 S3 请求的客户端。
+ */
 class S3VfsProvider(
     private val authRepository: S3AuthRepository = S3AuthRepository.None,
     private val client: S3Client = KtorS3Client(),
@@ -375,7 +380,7 @@ class S3VfsProvider(
             is VfsAuthContext.AwsCredentials -> runCatching {
                 val targetName = validateTargetName(name)
                 val parent = S3Location.parse(parentLocation)
-                val target = parent.copy(prefix = parent.directoryPrefix + targetName.withTrailingSlash())
+                val target = parent.copy(prefix = parent.directoryPrefix + targetName.withVfsTrailingSlash())
                 if (client.objectExists(target, authContext)) {
                     throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.S3, target.directoryLocation))
                 }
@@ -533,7 +538,7 @@ class S3VfsProvider(
         return createDirectory(parentLocation, targetName).recoverCatching { failure ->
             if (conflictStrategy == TransferConflictStrategy.OVERWRITE && failure.isAlreadyExists()) {
                 parent
-                    .copy(prefix = parent.directoryPrefix + targetName.withTrailingSlash())
+                    .copy(prefix = parent.directoryPrefix + targetName.withVfsTrailingSlash())
                     .toDirectoryVFile(name = targetName, parentLocation = parent.directoryLocation)
             } else {
                 throw failure
@@ -563,7 +568,7 @@ class S3VfsProvider(
                 var candidateName = targetName
                 repeat(MAX_KEEP_BOTH_ATTEMPTS) { index ->
                     if (candidateName !in existingNames) return candidateName
-                    candidateName = targetName.withCopySuffix(index + 1)
+                    candidateName = targetName.withVfsCopySuffix(index + 1)
                 }
                 throw VfsProviderException(
                     VfsProviderError.AlreadyExists(

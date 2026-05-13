@@ -28,7 +28,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.util.*
+import java.util.UUID
 
 /**
  * 文件传输委托 — 负责复制 / 移动 / 冲突检测 / 进度追踪。

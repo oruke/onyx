@@ -1,53 +1,30 @@
 package com.oruke.onyx.app.filesystem
 
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileCapability
-import com.oruke.onyx.core.model.VFileKind
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpMethod
-import io.ktor.http.content.OutgoingContent
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
-import org.w3c.dom.Element
-import org.xml.sax.InputSource
-import java.io.IOException
-import java.io.StringReader
-import java.net.URI
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
-import javax.net.ssl.SSLException
-import javax.xml.parsers.DocumentBuilderFactory
 
-
+/**
+ * S3 provider 使用的底层 client。
+ */
 interface S3Client {
+    /**
+     * 测试 S3 连接。
+     *
+     * @param location S3 位置。
+     * @param authContext AWS 凭据。
+     */
     suspend fun testConnection(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
     )
 
+    /**
+     * 列出目录直接子项。
+     *
+     * @param location S3 目录位置。
+     * @param authContext AWS 凭据。
+     * @return 子项列表。
+     */
     suspend fun list(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
@@ -74,6 +51,14 @@ interface S3Client {
         )
     }
 
+    /**
+     * 读取 S3 对象内容。
+     *
+     * @param entry 文件条目。
+     * @param location S3 对象位置。
+     * @param authContext AWS 凭据。
+     * @return 文件内容源。
+     */
     suspend fun readFile(
         entry: VFile,
         location: S3Location,
@@ -88,6 +73,16 @@ interface S3Client {
         )
     }
 
+    /**
+     * 写入 S3 对象内容。
+     *
+     * @param parentLocation 目标父目录。
+     * @param name 文件名。
+     * @param chunks 内容块。
+     * @param conflictStrategy 名称冲突策略。
+     * @param authContext AWS 凭据。
+     * @return 写入后的文件；SKIP 时可能返回 null。
+     */
     suspend fun writeFile(
         parentLocation: S3Location,
         name: String,
@@ -104,6 +99,12 @@ interface S3Client {
         )
     }
 
+    /**
+     * 删除 S3 对象。
+     *
+     * @param location 对象位置。
+     * @param authContext AWS 凭据。
+     */
     suspend fun deleteObject(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
@@ -117,6 +118,12 @@ interface S3Client {
         )
     }
 
+    /**
+     * 创建目录占位对象。
+     *
+     * @param location 目录位置。
+     * @param authContext AWS 凭据。
+     */
     suspend fun createDirectory(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
@@ -130,6 +137,13 @@ interface S3Client {
         )
     }
 
+    /**
+     * 判断对象是否存在。
+     *
+     * @param location 对象位置。
+     * @param authContext AWS 凭据。
+     * @return 存在时返回 true。
+     */
     suspend fun objectExists(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
