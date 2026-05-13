@@ -34,11 +34,17 @@ import java.util.concurrent.TimeUnit
  */
 class ArchiveService(
     private val logger: ArchiveServiceLogger = ArchiveServiceLogger.NoOp,
+    private val zipMutationService: ZipArchiveMutationService = ZipArchiveMutationService(),
+    private val tarCommand: String = DEFAULT_TAR_COMMAND,
+    private val tarRuntimeTimeoutSeconds: Long = 5L,
 ) {
+    /** 系统 tar 能力检测结果缓存，避免每次进入 `.tar.zst` 都重复启动进程。 */
+    @Volatile
+    private var tarZstdRuntimeChecked = false
 
     companion object {
         private const val ARCHIVE_SCHEME = "archive://"
-        private const val TAR_COMMAND = "tar"
+        private const val DEFAULT_TAR_COMMAND = "tar"
         private const val TAR_LIST_TIMEOUT_SECONDS = 120L
         private val ARCHIVE_EXTENSIONS = setOf(
             "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz",
@@ -432,7 +438,136 @@ class ArchiveService(
         }
     }
 
+    /**
+     * 检测当前运行时是否可处理 `.tar.zst` / `.tzst`。
+     *
+     * @return 检测结果；失败时包含用户可见错误。
+     */
+    suspend fun checkTarZstdRuntime(): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            ensureTarZstdRuntimeAvailable(".tar.zst")
+        }
+    }
+
+    /**
+     * 在压缩包内部创建目录。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param innerPath 压缩包内部目录路径。
+     * @return 操作结果。
+     */
+    suspend fun createDirectoryInArchive(
+        archivePath: String,
+        innerPath: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            ensureMutableZipArchive(archivePath)
+            zipMutationService.createDirectory(archivePath, innerPath)
+        }
+    }
+
+    /**
+     * 删除压缩包内部条目。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param innerPaths 需要删除的内部路径。
+     * @return 操作结果。
+     */
+    suspend fun deleteEntriesInArchive(
+        archivePath: String,
+        innerPaths: List<String>,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            ensureMutableZipArchive(archivePath)
+            zipMutationService.deleteEntries(archivePath, innerPaths)
+        }
+    }
+
+    /**
+     * 重命名压缩包内部条目。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param sourceInnerPath 源内部路径。
+     * @param targetInnerPath 目标内部路径。
+     * @return 操作结果。
+     */
+    suspend fun renameEntryInArchive(
+        archivePath: String,
+        sourceInnerPath: String,
+        targetInnerPath: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            ensureMutableZipArchive(archivePath)
+            zipMutationService.renameEntry(
+                archivePath = archivePath,
+                sourcePath = sourceInnerPath,
+                targetPath = targetInnerPath,
+            )
+        }
+    }
+
+    /**
+     * 向压缩包内部追加文件。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param innerPath 目标内部文件路径。
+     * @param bytes 文件内容。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @return 实际写入的内部路径；SKIP 且目标存在时返回 null。
+     */
+    suspend fun appendFileToArchive(
+        archivePath: String,
+        innerPath: String,
+        bytes: ByteArray,
+        conflictStrategy: TransferConflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+    ): Result<String?> = withContext(Dispatchers.IO) {
+        runCatching {
+            ensureMutableZipArchive(archivePath)
+            zipMutationService.appendFile(
+                archivePath = archivePath,
+                entryPath = innerPath,
+                bytes = bytes,
+                conflictStrategy = conflictStrategy,
+            )
+        }
+    }
+
     // ── 内部工具 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 确认 ZIP 系列压缩包支持内部写入。
+     *
+     * @param archivePath 压缩包路径。
+     */
+    private fun ensureMutableZipArchive(archivePath: String) {
+        if (!archivePath.isMutableZipArchive()) {
+            throw ArchiveMutationException("当前压缩格式暂不支持内部写入: ${File(archivePath).name}")
+        }
+    }
+
+    /**
+     * 确认当前运行时可用系统 tar 处理 `.tar.zst` / `.tzst`。
+     *
+     * @param archivePath 压缩包路径，用于错误提示。
+     */
+    private fun ensureTarZstdRuntimeAvailable(archivePath: String) {
+        if (tarZstdRuntimeChecked) return
+        synchronized(this) {
+            if (tarZstdRuntimeChecked) return
+            try {
+                runTarTextCommand(
+                    command = listOf(tarCommand, "--version"),
+                    timeoutSeconds = tarRuntimeTimeoutSeconds,
+                )
+                tarZstdRuntimeChecked = true
+            } catch (failure: Throwable) {
+                throw ArchiveRuntimeException(
+                    "无法打开 ${File(archivePath).name}：系统 tar 不可用，无法处理 .tar.zst/.tzst 压缩包",
+                    failure,
+                )
+            }
+        }
+    }
 
     /**
      * 使用系统 `tar` 列出 `.tar.zst` / `.tzst` 归档。
@@ -447,8 +582,9 @@ class ArchiveService(
         archivePath: String,
         innerPath: String,
     ): List<VFile> {
+        ensureTarZstdRuntimeAvailable(archivePath)
         val output = runTarTextCommand(
-            listOf(TAR_COMMAND, "-tf", archivePath),
+            listOf(tarCommand, "-tf", archivePath),
             timeoutSeconds = TAR_LIST_TIMEOUT_SECONDS,
         )
         val entries = output
@@ -470,11 +606,12 @@ class ArchiveService(
         targetDirectory: String,
         innerPath: String,
     ) {
+        ensureTarZstdRuntimeAvailable(archivePath)
         val targetDir = File(targetDirectory)
         targetDir.mkdirs()
         val normalizedInnerPath = innerPath.toTarEntryNameOrNull()
         val command = buildList {
-            add(TAR_COMMAND)
+            add(tarCommand)
             add("-xf")
             add(archivePath)
             add("-C")
@@ -498,9 +635,10 @@ class ArchiveService(
         archivePath: String,
         innerPath: String,
     ): ByteArray? {
+        ensureTarZstdRuntimeAvailable(archivePath)
         val normalizedInnerPath = innerPath.toTarEntryNameOrNull() ?: return null
         return runTarBinaryCommand(
-            listOf(TAR_COMMAND, "-xOf", archivePath, normalizedInnerPath),
+            listOf(tarCommand, "-xOf", archivePath, normalizedInnerPath),
             timeoutSeconds = TAR_LIST_TIMEOUT_SECONDS,
         ).takeIf { bytes -> bytes.isNotEmpty() }
     }
@@ -517,13 +655,14 @@ class ArchiveService(
         entryPaths: List<String>,
         targetDir: String,
     ) {
+        ensureTarZstdRuntimeAvailable(archivePath)
         val targetDirectory = File(targetDir)
         targetDirectory.mkdirs()
         val normalizedEntries = entryPaths.mapNotNull { path -> path.toTarEntryNameOrNull() }
         if (normalizedEntries.isEmpty()) error("未找到匹配的条目: $entryPaths")
         val parentPrefix = normalizedEntries.commonTarParentPrefix()
         val command = buildList {
-            add(TAR_COMMAND)
+            add(tarCommand)
             add("-xf")
             add(archivePath)
             add("-C")
@@ -623,6 +762,16 @@ private data class TarEntryPath(
 private fun String.isTarZstdArchive(): Boolean {
     val lower = lowercase()
     return lower.endsWith(".tar.zst") || lower.endsWith(".tzst")
+}
+
+/**
+ * 判断路径是否为当前支持内部写入的 ZIP 系列压缩包。
+ *
+ * @return `true` 表示可使用 ZIP 写入服务修改内部条目。
+ */
+private fun String.isMutableZipArchive(): Boolean {
+    val lower = lowercase()
+    return lower.endsWith(".zip") || lower.endsWith(".cbz") || lower.endsWith(".epub")
 }
 
 /**

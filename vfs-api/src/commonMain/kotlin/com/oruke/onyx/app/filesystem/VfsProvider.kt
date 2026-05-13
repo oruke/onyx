@@ -107,6 +107,36 @@ class VfsProviderNotFoundException(
     location: String,
 ) : IllegalStateException("No VFS provider supports location: $location")
 
+/**
+ * VFS 目录分页请求。
+ *
+ * @property location 需要列出的目录位置。
+ * @property pageSize 单页最大条目数。
+ * @property pageToken provider 返回的下一页游标；第一页为 null。
+ */
+data class VfsDirectoryPageRequest(
+    val location: String,
+    val pageSize: Int = 500,
+    val pageToken: String? = null,
+) {
+    init {
+        require(pageSize > 0) {
+            "pageSize must be positive"
+        }
+    }
+}
+
+/**
+ * VFS 目录分页结果。
+ *
+ * @property entries 当前页条目。
+ * @property nextPageToken 下一页游标；为 null 表示已经读取完毕。
+ */
+data class VfsDirectoryPage(
+    val entries: List<VFile>,
+    val nextPageToken: String?,
+)
+
 interface VfsProvider {
     val protocol: VfsProtocol
 
@@ -121,6 +151,19 @@ interface VfsProvider {
     suspend fun totalSizeBytes(entries: List<VFile>): Result<Long> {
         return Result.success(entries.sumOf { entry -> entry.sizeBytes ?: 0L })
     }
+}
+
+/**
+ * 支持增量列目录的 VFS provider。
+ */
+interface PagedVfsProvider : VfsProvider {
+    /**
+     * 按 provider 原生分页能力列出目录条目，避免大目录一次性读取和排序。
+     *
+     * @param request 分页请求。
+     * @return 当前页条目与下一页游标。
+     */
+    suspend fun listPage(request: VfsDirectoryPageRequest): Result<VfsDirectoryPage>
 }
 
 class VfsProviderRegistry(
