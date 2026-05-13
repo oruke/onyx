@@ -1,78 +1,26 @@
 package com.oruke.onyx.app.filesystem
 
-import com.oruke.onyx.core.model.AppSessionSnapshot
-import com.oruke.onyx.core.model.BackgroundTask
-import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
-import kotlinx.coroutines.flow.Flow
 
-interface FileRepository {
-    suspend fun list(location: String): Result<List<VFile>>
-
-    fun defaultLocation(): String
-}
-
-interface FileCommandService {
-    suspend fun copy(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        conflictStrategy: TransferConflictStrategy = TransferConflictStrategy.KEEP_BOTH,
-    ): Result<Unit>
-
-    suspend fun move(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        conflictStrategy: TransferConflictStrategy = TransferConflictStrategy.KEEP_BOTH,
-    ): Result<Unit>
-
-    suspend fun delete(entries: List<VFile>): Result<Unit>
-
-    suspend fun rename(
-        entry: VFile,
-        targetName: String,
-    ): Result<VFile>
-
-    suspend fun createFile(
-        parentLocation: String,
-        name: String,
-    ): Result<VFile>
-
-    suspend fun createDirectory(
-        parentLocation: String,
-        name: String,
-    ): Result<VFile>
-}
-
-interface RoutableFileCommandService : FileCommandService {
-    fun supports(location: String): Boolean
-}
-
-data class VfsContentSource(
-    val name: String,
-    val sizeBytes: Long?,
-    val chunks: Flow<ByteArray>,
-)
-
-interface RoutableVfsContentService {
-    fun supports(location: String): Boolean
-
-    suspend fun readFile(entry: VFile): Result<VfsContentSource>
-
-    suspend fun writeFile(
-        parentLocation: String,
-        name: String,
-        chunks: Flow<ByteArray>,
-        conflictStrategy: TransferConflictStrategy = TransferConflictStrategy.KEEP_BOTH,
-    ): Result<VFile?>
-}
-
+/**
+ * 基于 VFS provider 路由的文件命令服务。
+ *
+ * 该服务负责在多个 provider 之间选择具体命令实现，并在 provider 边界不一致时通过内容流执行跨 provider 复制或移动。
+ *
+ * @param services 可路由文件命令服务列表。
+ * @param contentServices 可路由内容读写服务列表。
+ * @param providerRegistry provider 注册表，用于目录递归与错误语义构建。
+ */
 class ProviderBackedFileCommandService(
     services: List<RoutableFileCommandService>,
     contentServices: List<RoutableVfsContentService> = emptyList(),
     private val providerRegistry: VfsProviderRegistry? = null,
 ) : FileCommandService {
+    /** 按构造入参固定下来的命令服务快照，避免运行期外部列表变化影响路由。 */
     private val services = services.toList()
+
+    /** 按构造入参固定下来的内容服务快照，用于跨 provider 读写。 */
     private val contentServices = contentServices.toList()
 
     init {
@@ -81,6 +29,14 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 复制文件或目录到目标目录。
+     *
+     * @param entries 待复制条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @return 操作结果。
+     */
     override suspend fun copy(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -113,6 +69,14 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 移动文件或目录到目标目录。
+     *
+     * @param entries 待移动条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @return 操作结果。
+     */
     override suspend fun move(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -146,6 +110,12 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 删除文件或目录。
+     *
+     * @param entries 待删除条目。
+     * @return 操作结果。
+     */
     override suspend fun delete(entries: List<VFile>): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         return runCatching {
@@ -155,6 +125,13 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 重命名单个条目。
+     *
+     * @param entry 待重命名条目。
+     * @param targetName 新名称。
+     * @return 重命名后的条目。
+     */
     override suspend fun rename(
         entry: VFile,
         targetName: String,
@@ -165,6 +142,13 @@ class ProviderBackedFileCommandService(
         )
     }
 
+    /**
+     * 创建文件。
+     *
+     * @param parentLocation 父目录位置。
+     * @param name 文件名称。
+     * @return 创建后的文件条目。
+     */
     override suspend fun createFile(
         parentLocation: String,
         name: String,
@@ -175,6 +159,13 @@ class ProviderBackedFileCommandService(
         )
     }
 
+    /**
+     * 创建目录。
+     *
+     * @param parentLocation 父目录位置。
+     * @param name 目录名称。
+     * @return 创建后的目录条目。
+     */
     override suspend fun createDirectory(
         parentLocation: String,
         name: String,
@@ -185,12 +176,25 @@ class ProviderBackedFileCommandService(
         )
     }
 
+    /**
+     * 按源条目位置把条目分配到具体命令服务。
+     *
+     * @param capability 当前操作需要的 provider 能力。
+     * @return 命令服务到条目列表的映射。
+     */
     private fun List<VFile>.groupByCommandService(
         capability: VfsProviderCapability,
     ): Map<RoutableFileCommandService, List<VFile>> {
         return groupBy { entry -> serviceFor(entry.location, capability).getOrThrow() }
     }
 
+    /**
+     * 查找能处理指定位置的命令服务。
+     *
+     * @param location VFS 位置。
+     * @param capability 当前操作需要的 provider 能力。
+     * @return 命令服务或明确错误。
+     */
     private fun serviceFor(
         location: String,
         capability: VfsProviderCapability,
@@ -203,6 +207,14 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 使用内容服务执行跨 provider 复制。
+     *
+     * @param entries 待复制条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @return true 表示已完成跨 provider 复制，false 表示当前配置不支持该路径。
+     */
     private suspend fun copyAcrossProviders(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -248,14 +260,13 @@ class ProviderBackedFileCommandService(
     /**
      * 递归复制一个跨 provider 条目。
      *
-     * 文件通过统一内容流读写；目录先在目标 provider 创建同名目录，再通过 `VfsProviderRegistry`
-     * 列出子项递归复制。这样目录级跨 provider 传输仍遵守 VFS/provider 边界，不直接解析平台路径。
+     * 目录需要依赖 provider 注册表列出子项，否则无法在不泄漏底层路径的前提下完成递归复制。
      *
-     * @param entry 当前需要复制的源条目。
+     * @param entry 当前源条目。
      * @param targetDirectoryLocation 目标父目录位置。
-     * @param targetContentService 目标 provider 的内容写入服务。
-     * @param targetCommandService 目标 provider 的目录创建服务；复制目录时必需。
-     * @param conflictStrategy 文件冲突处理策略。
+     * @param targetContentService 目标 provider 内容写入服务。
+     * @param targetCommandService 目标 provider 目录创建服务。
+     * @param conflictStrategy 名称冲突处理策略。
      */
     private suspend fun copyEntryAcrossProviders(
         entry: VFile,
@@ -300,10 +311,10 @@ class ProviderBackedFileCommandService(
     /**
      * 复制单个跨 provider 文件。
      *
-     * @param entry 当前需要复制的源文件。
+     * @param entry 当前源文件。
      * @param targetDirectoryLocation 目标父目录位置。
-     * @param targetContentService 目标 provider 的内容写入服务。
-     * @param conflictStrategy 文件冲突处理策略。
+     * @param targetContentService 目标 provider 内容写入服务。
+     * @param conflictStrategy 名称冲突处理策略。
      */
     private suspend fun copyFileAcrossProviders(
         entry: VFile,
@@ -324,6 +335,15 @@ class ProviderBackedFileCommandService(
         ).getOrThrow()
     }
 
+    /**
+     * 使用“复制成功后删除源条目”的语义执行跨 provider 移动。
+     *
+     * @param sourceCommandService 源 provider 命令服务。
+     * @param entries 待移动条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @return true 表示完成跨 provider 移动，false 表示当前配置不支持。
+     */
     private suspend fun moveAcrossProviders(
         sourceCommandService: RoutableFileCommandService,
         entries: List<VFile>,
@@ -342,6 +362,13 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 查找能处理指定位置的内容服务。
+     *
+     * @param location VFS 位置。
+     * @param capability 当前操作需要的 provider 能力。
+     * @return 内容服务或明确错误。
+     */
     private fun contentServiceFor(
         location: String,
         capability: VfsProviderCapability,
@@ -354,6 +381,13 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 构建指定位置不支持当前能力的错误。
+     *
+     * @param location VFS 位置。
+     * @param capability 当前操作需要的 provider 能力。
+     * @return 语义化 VFS 错误。
+     */
     private fun unsupportedFor(
         location: String,
         capability: VfsProviderCapability,
@@ -372,6 +406,14 @@ class ProviderBackedFileCommandService(
         }
     }
 
+    /**
+     * 构建跨 provider 传输不支持的错误。
+     *
+     * @param sourceLocation 源位置。
+     * @param targetLocation 目标位置。
+     * @param capability 当前操作需要的 provider 能力。
+     * @return 语义化 VFS 错误。
+     */
     private fun crossProviderUnsupportedFor(
         sourceLocation: String?,
         targetLocation: String,
@@ -393,153 +435,4 @@ class ProviderBackedFileCommandService(
             unsupportedFor(targetLocation, capability)
         }
     }
-}
-
-enum class TransferConflictStrategy {
-    KEEP_BOTH,
-    OVERWRITE,
-    SKIP,
-}
-
-interface ExternalOpenService {
-    suspend fun open(entry: VFile): Result<Unit>
-}
-
-interface TextClipboardService {
-    suspend fun copyText(text: String): Result<Unit>
-}
-
-interface TrashService {
-    val isSupported: Boolean
-
-    suspend fun moveToTrash(entries: List<VFile>): Result<Unit>
-}
-
-/**
- * "打开方式"可选应用 — 从系统注册的应用中查询。
- */
-data class OpenWithApp(
-    /** 应用唯一标识（Linux 为 .desktop 文件名，Windows 为 ProgId） */
-    val id: String,
-    /** 显示名称 */
-    val displayName: String,
-    /** 平台启动标识 */
-    val command: String,
-    /** 应用图标路径（可选） */
-    val iconPath: String? = null,
-)
-
-/**
- * 系统已注册的右键菜单动作。
- */
-data class SystemMenuAction(
-    val id: String,
-    val displayName: String,
-    val command: String,
-    val iconPath: String? = null,
-    val children: List<SystemMenuAction> = emptyList(),
-)
-
-enum class FileContextMenuSectionKind {
-    OPEN_WITH,
-    SYSTEM,
-}
-
-enum class FileContextMenuLabel {
-    OPEN_WITH_OTHER,
-}
-
-data class FileContextMenuRequest(
-    val entries: List<VFile>,
-)
-
-data class FileContextMenuSection(
-    val kind: FileContextMenuSectionKind,
-    val items: List<FileContextMenuItem>,
-)
-
-data class FileContextMenuItem(
-    val id: String,
-    val displayName: String,
-    val label: FileContextMenuLabel? = null,
-    val iconPath: String? = null,
-    val command: FileContextMenuCommand? = null,
-    val children: List<FileContextMenuItem> = emptyList(),
-)
-
-sealed interface FileContextMenuCommand {
-    data class OpenWith(
-        val app: OpenWithApp,
-    ) : FileContextMenuCommand
-
-    data object OpenWithChooser : FileContextMenuCommand
-
-    data class SystemAction(
-        val action: SystemMenuAction,
-    ) : FileContextMenuCommand
-}
-
-interface SystemFileMaterializer {
-    fun supports(entry: VFile): Boolean
-
-    suspend fun materialize(entry: VFile): Result<VFile>
-}
-
-/**
- * "打开方式"服务 — 查询和启动关联应用。
- */
-interface OpenWithService {
-    /**
-     * 当前条目是否能交给系统打开方式处理。
-     */
-    fun supports(entry: VFile): Boolean
-
-    /**
-     * 查询指定文件的可用打开方式应用列表。
-     */
-    suspend fun listApps(entry: VFile): List<OpenWithApp>
-
-    /**
-     * 使用指定应用打开文件。
-     */
-    suspend fun openWith(entry: VFile, app: OpenWithApp): Result<Unit>
-
-    /**
-     * 打开系统"选择应用"对话框。
-     */
-    suspend fun openWithChooser(entry: VFile): Result<Unit>
-}
-
-interface SystemMenuService {
-    suspend fun listActions(entries: List<VFile>): List<SystemMenuAction>
-
-    suspend fun execute(action: SystemMenuAction, entries: List<VFile>): Result<Unit>
-}
-
-interface FileContextMenuService {
-    fun supportsOpenWith(entry: VFile): Boolean
-
-    suspend fun listSections(request: FileContextMenuRequest): List<FileContextMenuSection>
-
-    suspend fun execute(command: FileContextMenuCommand, entries: List<VFile>): Result<Unit>
-}
-
-interface SettingsRepository {
-    suspend fun loadSettings(): Result<OnyxSettings?>
-
-    suspend fun saveSettings(settings: OnyxSettings): Result<Unit>
-}
-
-interface SessionRepository {
-    suspend fun loadSession(): Result<AppSessionSnapshot?>
-
-    suspend fun saveSession(snapshot: AppSessionSnapshot): Result<Unit>
-}
-
-interface TaskPersistenceRepository {
-    suspend fun loadTasks(): Result<List<BackgroundTask>>
-
-    suspend fun saveTasks(tasks: List<BackgroundTask>): Result<Unit>
-
-    suspend fun archiveTasks(tasks: List<BackgroundTask>): Result<Unit> = Result.success(Unit)
 }

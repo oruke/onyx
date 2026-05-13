@@ -1,10 +1,10 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.app.component.delegate.SelectionHelper
+import com.oruke.onyx.app.component.delegate.SelectionReducer
 import com.oruke.onyx.core.model.VFile
 
 internal fun PaneTabState.resolveSelectionFocusEntry(entries: List<VFile>): VFile? {
-    val focusId = SelectionHelper.resolveSelectionFocusId(
+    val focusId = SelectionReducer.resolveSelectionFocusId(
         entries = entries,
         focusId = selectionFocusId,
         anchorId = selectionAnchorId,
@@ -21,12 +21,12 @@ internal fun PaneTabState.selectEntryState(
 ): PaneTabState {
     if (entries.none { it.id == entryId }) return this
 
-    val currentAnchor = SelectionHelper.validEntryId(selectionAnchorId, entries)
-    val currentFocus = SelectionHelper.validEntryId(selectionFocusId, entries)
+    val currentAnchor = SelectionReducer.validEntryId(selectionAnchorId, entries)
+    val currentFocus = SelectionReducer.validEntryId(selectionFocusId, entries)
     val nextSelection = when {
         range -> {
             val anchorId = currentAnchor ?: currentFocus ?: selectedEntryIds.firstOrNull() ?: entryId
-            SelectionHelper.buildRangeSelection(
+            SelectionReducer.buildRangeSelection(
                 entries = entries,
                 anchorId = anchorId,
                 targetId = entryId,
@@ -73,7 +73,7 @@ internal fun PaneTabState.moveSelectionState(
 ): PaneTabState {
     if (entries.isEmpty()) return this
 
-    val currentFocusId = SelectionHelper.resolveSelectionFocusId(
+    val currentFocusId = SelectionReducer.resolveSelectionFocusId(
         entries = entries,
         focusId = selectionFocusId,
         anchorId = selectionAnchorId,
@@ -86,12 +86,12 @@ internal fun PaneTabState.moveSelectionState(
     val nextEntryId = entries[nextIndex].id
 
     return if (extendSelection) {
-        val anchorId = SelectionHelper.validEntryId(selectionAnchorId, entries)
+        val anchorId = SelectionReducer.validEntryId(selectionAnchorId, entries)
             ?: currentFocusId
             ?: nextEntryId
         withTabState { current ->
             current.copy(
-                selectedEntryIds = SelectionHelper.buildRangeSelection(
+                selectedEntryIds = SelectionReducer.buildRangeSelection(
                     entries = entries,
                     anchorId = anchorId,
                     targetId = nextEntryId,

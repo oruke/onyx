@@ -64,6 +64,8 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.app.filesystem.WebDavAuthRepository
 import com.oruke.onyx.app.filesystem.WebDavVfsProvider
+import com.oruke.onyx.app.platform.ExternalFileDragService
+import com.oruke.onyx.app.platform.JvmExternalFileDragService
 import com.oruke.onyx.app.usecase.FileContentSearchService
 import com.oruke.onyx.app.usecase.JvmVfsFileContentSearchService
 import com.oruke.onyx.ui.ResourceEntryNameSuggestionService
@@ -162,6 +164,7 @@ val fileModule = module {
             )
         )
     }
+    single<ExternalFileDragService> { JvmExternalFileDragService(get()) }
     single<OpenWithService> { JvmPlatformOpenWithService(get()) }
     single<SystemMenuService> { JvmSystemMenuService(get()) }
     single<FileContextMenuService> { JvmFileContextMenuService(get(), get()) }

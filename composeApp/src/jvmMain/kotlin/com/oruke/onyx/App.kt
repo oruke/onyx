@@ -41,7 +41,7 @@ import com.oruke.onyx.ui.ConfirmationDialog
 import com.oruke.onyx.ui.ArchivePasswordDialog
 import com.oruke.onyx.ui.ConflictResolutionDialog
 import com.oruke.onyx.ui.CreateDirectoriesDialog
-import com.oruke.onyx.app.platform.ExternalDragHelper
+import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.ui.FileDragOverlay
 import com.oruke.onyx.ui.BoundPaneSurface
 import com.oruke.onyx.ui.OnyxTooltipOverlay
@@ -81,7 +81,10 @@ import org.jetbrains.jewel.window.newFullscreenControls
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 @Composable
-fun DecoratedWindowScope.WindowApp(rootComponent: RootComponent) {
+fun DecoratedWindowScope.WindowApp(
+    rootComponent: RootComponent,
+    externalFileDragService: ExternalFileDragService,
+) {
     // rootComponent 由 main.kt 在 application 级别创建并传入
     val state by rootComponent.state.collectAsState()
     val palette = rememberOnyxPalette()
@@ -143,6 +146,7 @@ fun DecoratedWindowScope.WindowApp(rootComponent: RootComponent) {
             AppContent(
                 rootComponent = rootComponent,
                 state = state,
+                externalFileDragService = externalFileDragService,
                 externalTooltipRequest = titleBarTooltipRequest,
             )
         }
@@ -152,6 +156,8 @@ fun DecoratedWindowScope.WindowApp(rootComponent: RootComponent) {
 @Composable
 fun App(rootComponent: RootComponent = rememberRootComponent()) {
     // 独立使用时仍可默认创建 rootComponent
+    val koin = org.koin.compose.getKoin()
+    val externalFileDragService = remember { koin.get<ExternalFileDragService>() }
     val state by rootComponent.state.collectAsState()
     val appearance = rememberOnyxAppearance(
         listRowHeightDp = state.settings.listRowHeightDp,
@@ -166,6 +172,7 @@ fun App(rootComponent: RootComponent = rememberRootComponent()) {
         AppContent(
             rootComponent = rootComponent,
             state = state,
+            externalFileDragService = externalFileDragService,
         )
     }
 }
@@ -174,6 +181,7 @@ fun App(rootComponent: RootComponent = rememberRootComponent()) {
 private fun AppContent(
     rootComponent: RootComponent,
     state: RootState,
+    externalFileDragService: ExternalFileDragService,
     externalTooltipRequest: TooltipRequest? = null,
 ) {
     val tabDropZones = remember { mutableStateMapOf<PaneId, TabDropZone>() }
@@ -307,7 +315,7 @@ private fun AppContent(
         val dragState = fileDragState
         val target = windowPosition?.let(::resolveFileDropTarget) ?: fileDropTarget
         // 如果 AWT 系统拖放已激活，不执行内部传输逻辑
-        if (!ExternalDragHelper.isSystemDragActive && dragState != null && target != null) {
+        if (!externalFileDragService.isSystemDragActive && dragState != null && target != null) {
             dispatch(
                 RootIntent.RequestTransferSelectedToDirectory(
                     sourcePaneId = dragState.sourcePaneId,
@@ -320,7 +328,7 @@ private fun AppContent(
         fileDragState = null
         fileDropTarget = null
         fileDragPosition = null
-        ExternalDragHelper.clearPending()
+        externalFileDragService.clearPending()
     }
 
 

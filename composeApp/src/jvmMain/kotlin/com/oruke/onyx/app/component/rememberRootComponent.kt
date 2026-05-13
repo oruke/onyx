@@ -27,7 +27,6 @@ import com.oruke.onyx.app.filesystem.PreviewService
 import com.oruke.onyx.app.filesystem.RemoteAuthStore
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
-import com.oruke.onyx.app.filesystem.SystemFileMaterializer
 import com.oruke.onyx.app.filesystem.SystemMenuService
 import com.oruke.onyx.app.filesystem.TaskPersistenceRepository
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
@@ -38,6 +37,7 @@ import com.oruke.onyx.app.filesystem.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.app.usecase.FileContentSearchService
+import com.oruke.onyx.app.platform.ExternalFileDragService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -81,7 +81,7 @@ fun rememberRootComponent(): RootComponent {
             openWithService = koin.get<OpenWithService>(),
             systemMenuService = koin.get<SystemMenuService>(),
             fileContextMenuService = koin.get<FileContextMenuService>(),
-            systemFileMaterializer = koin.get<SystemFileMaterializer>(),
+            externalFileDragService = koin.get<ExternalFileDragService>(),
             pathService = koin.get<VfsPathService>(),
             entryNameSuggestionService = koin.get<EntryNameSuggestionService>(),
             providerRegistry = koin.get<VfsProviderRegistry>(),

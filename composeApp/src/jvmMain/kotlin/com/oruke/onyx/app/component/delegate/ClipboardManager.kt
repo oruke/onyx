@@ -1,7 +1,7 @@
 package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.platform.ExternalDragHelper
+import com.oruke.onyx.app.platform.FileTransferable
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,7 +56,7 @@ class ClipboardManager {
                 if (file.exists()) file else null
             }
             if (files.isNotEmpty()) {
-                val transferable = ExternalDragHelper.FileTransferable(
+                val transferable = FileTransferable(
                     files = files,
                     isCut = isCut,
                 )

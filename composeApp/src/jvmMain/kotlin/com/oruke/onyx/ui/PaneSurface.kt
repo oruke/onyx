@@ -63,7 +63,6 @@ import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
-import com.oruke.onyx.app.filesystem.FileContextMenuRequest
 import com.oruke.onyx.app.filesystem.FileContextMenuSection
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone
@@ -73,11 +72,6 @@ import com.oruke.onyx.ui.theme.windowBounds
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_filter
 import onyx.composeapp.generated.resources.action_go_back
@@ -155,188 +149,27 @@ internal fun PaneSurface(
             )
         },
     )
-    fun dispatch(intent: PaneIntent) {
-        component.dispatch(intent)
-    }
-    fun openFilterInput() {
-        dispatch(PaneIntent.ShowFilterInput)
-    }
-    fun closeFilterInput() {
-        filterFocused = false
-        dispatch(PaneIntent.HideFilterInput(clearQuery = true))
-        focusRequester.requestFocus()
-    }
-    fun isPaneCommandEnabled(command: OnyxCommand): Boolean {
-        val selectedCount = state.selectedEntryIds.size
-        return when (command) {
-            OnyxCommand.OpenSelection,
-            OnyxCommand.RenameSelection -> selectedCount == 1
-
-            OnyxCommand.DeleteSelection,
-            OnyxCommand.CopySelection,
-            OnyxCommand.CutSelection -> selectedCount > 0
-
-            OnyxCommand.Paste -> canPaste
-            OnyxCommand.UndoLastOperation -> actions.canUndo
-            OnyxCommand.RedoLastOperation -> actions.canRedo
-            OnyxCommand.CloseMenu,
-            OnyxCommand.CreateDirectories -> false
-
-            else -> true
-        }
-    }
-    fun executePaneCommand(command: OnyxCommand): Boolean {
-        return when (command) {
-            OnyxCommand.OpenSelection -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    dispatch(PaneIntent.OpenSelectedEntry)
-                    true
-                }
-            }
-
-            OnyxCommand.RenameSelection -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    dispatch(PaneIntent.BeginRename)
-                    true
-                }
-            }
-
-            OnyxCommand.NewDirectory -> {
-                actions.onBeginCreateDirectory()
-                true
-            }
-
-            OnyxCommand.NewFile -> {
-                dispatch(PaneIntent.BeginCreateFile)
-                true
-            }
-
-            OnyxCommand.CopySelection -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    actions.onCopySelection()
-                    true
-                }
-            }
-
-            OnyxCommand.CutSelection -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    actions.onCutSelection()
-                    true
-                }
-            }
-
-            OnyxCommand.Paste -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    actions.onPaste()
-                    true
-                }
-            }
-
-            OnyxCommand.UndoLastOperation -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    actions.onUndo()
-                    true
-                }
-            }
-
-            OnyxCommand.RedoLastOperation -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    actions.onRedo()
-                    true
-                }
-            }
-
-            OnyxCommand.DeleteSelection -> {
-                if (!isPaneCommandEnabled(command)) {
-                    false
-                } else {
-                    actions.onDeleteSelection()
-                    true
-                }
-            }
-
-            OnyxCommand.Filter -> {
-                openFilterInput()
-                true
-            }
-
-            OnyxCommand.Refresh -> {
-                dispatch(PaneIntent.Refresh)
-                true
-            }
-
-            OnyxCommand.SelectAll -> {
-                dispatch(PaneIntent.SelectAll)
-                true
-            }
-
-            OnyxCommand.GoUp -> {
-                dispatch(PaneIntent.GoUp)
-                true
-            }
-
-            OnyxCommand.ToggleFavorite -> {
-                actions.onToggleFavoriteLocation(state.location)
-                true
-            }
-
-            OnyxCommand.OpenSettings -> {
-                actions.onOpenSettings()
-                true
-            }
-
-            OnyxCommand.CommandPalette -> {
-                dispatch(PaneIntent.ShowCommandPalette)
-                true
-            }
-
-            OnyxCommand.CloseMenu,
-            OnyxCommand.CreateDirectories -> false
-        }
-    }
-    fun loadContextMenuPlatformActions(
-        targetEntries: List<VFile>,
-        token: Int,
-    ) {
-        val contextMenuQuery = actions.onQueryContextMenuSections
-        if (targetEntries.isEmpty() || contextMenuQuery == null) {
-            showContextMenu = true
-            return
-        }
-        showContextMenu = true
-        val sectionsDeferred: Deferred<List<FileContextMenuSection>> = coroutineScope.async(Dispatchers.IO) {
-            runCatching {
-                contextMenuQuery.invoke(FileContextMenuRequest(targetEntries))
-            }.getOrDefault(emptyList())
-        }
-
-        coroutineScope.launch {
-            val sections = withTimeoutOrNull(CONTEXT_MENU_PLATFORM_ACTION_TIMEOUT_MS) {
-                sectionsDeferred.await()
-            }
-            if (sections == null) {
-                sectionsDeferred.cancel()
-                return@launch
-            }
-            if (contextMenuQueryToken == token) {
-                contextMenuSections = sections
-            }
-        }
-    }
+    val paneCommands = PaneCommandController(
+        state = state,
+        component = component,
+        actions = actions,
+        canPaste = canPaste,
+        onFilterClosed = {
+            filterFocused = false
+            focusRequester.requestFocus()
+        },
+    )
+    val dispatch = paneCommands::dispatch
+    val openFilterInput = paneCommands::openFilterInput
+    val closeFilterInput = paneCommands::closeFilterInput
+    val executePaneCommand = paneCommands::execute
+    val contextMenuPlatformActionLoader = PaneContextMenuPlatformActionLoader(
+        coroutineScope = coroutineScope,
+        actions = actions,
+        onShowContextMenu = { showContextMenu = true },
+        isLatestToken = { token -> contextMenuQueryToken == token },
+        onSectionsLoaded = { sections -> contextMenuSections = sections },
+    )
     val paneDropBackground by animateColorAsState(
         targetValue = if (fileDropTarget?.paneId == state.paneId &&
             fileDropTarget.directoryEntryId == null &&
@@ -504,7 +337,7 @@ internal fun PaneSurface(
         val currentLocationFavorite = favoriteLocations.contains(state.location)
         if (state.commandPaletteVisible) {
             val commandItems = OnyxCommandRegistry
-                .paneCommandStates(commandShortcuts, ::isPaneCommandEnabled)
+                .paneCommandStates(commandShortcuts, paneCommands::isEnabled)
                 .filterNot { commandState -> commandState.spec.command == OnyxCommand.CommandPalette }
                 .map { commandState ->
                     CommandPaletteItem(
@@ -745,7 +578,7 @@ internal fun PaneSurface(
                         contextMenuSections = emptyList()
                         val nextToken = contextMenuQueryToken + 1
                         contextMenuQueryToken = nextToken
-                        loadContextMenuPlatformActions(
+                        contextMenuPlatformActionLoader.load(
                             targetEntries = readyEntries.filter { entry -> targetEntryIds.contains(entry.id) },
                             token = nextToken,
                         )
@@ -911,8 +744,6 @@ internal fun PaneSurface(
         }
     }
 }
-
-private const val CONTEXT_MENU_PLATFORM_ACTION_TIMEOUT_MS = 2_200L
 
 @Composable
 private fun FloatingFilterInput(

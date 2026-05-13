@@ -1,7 +1,7 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.component.delegate.EntrySorter
-import com.oruke.onyx.app.component.delegate.SelectionHelper
+import com.oruke.onyx.app.component.delegate.SelectionReducer
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
@@ -124,13 +124,13 @@ internal fun PaneTabState.withDerivedState(
     val allVisibleForSelection = if (inlineExpandedLocations.isEmpty()) {
         visibleEntries
     } else {
-        SelectionHelper.collectVisibleEntries(
+        SelectionReducer.collectVisibleEntries(
             entries = visibleEntries,
             expandedLocations = inlineExpandedLocations,
             expandedEntries = inlineExpandedEntries,
         )
     }
-    val selection = SelectionHelper.reconcileSelection(
+    val selection = SelectionReducer.reconcileSelection(
         entries = allVisibleForSelection,
         selectedEntryIds = selectedEntryIds,
         anchorId = selectionAnchorId,
@@ -151,7 +151,7 @@ internal fun PaneTabState.withDerivedState(
             selectedEntryIds = selection.selectedEntryIds,
             selectionAnchorId = selection.anchorId,
             selectionFocusId = selection.focusId,
-            statusInfo = SelectionHelper.buildStatusInfo(
+            statusInfo = SelectionReducer.buildStatusInfo(
                 allEntries = allEntries,
                 visibleEntries = visibleEntries,
                 selectedEntryIds = selection.selectedEntryIds,

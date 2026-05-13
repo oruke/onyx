@@ -8,14 +8,13 @@ import com.arkivanov.decompose.router.stack.navigate
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.component.delegate.SelectionHelper
+import com.oruke.onyx.app.component.delegate.SelectionReducer
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.FileTypeService
-import com.oruke.onyx.app.filesystem.FileWatcher
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderError
@@ -42,11 +41,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import java.nio.file.Path
 import java.util.*
 
 class DefaultPaneComponent(
@@ -102,8 +97,25 @@ class DefaultPaneComponent(
         },
     )
 
-    private val fileWatcher = FileWatcher()
-    private var fileWatcherJob: Job? = null
+    private val fileWatcherController = PaneFileWatcherController(
+        scope = scope,
+        onChanged = { location ->
+            val tab = activeTab()
+            if (tab != null && tab.location == location) {
+                loadTab(tabId = tab.id, location = tab.location)
+            }
+        },
+        onWatchDegraded = { location, failure ->
+            val tab = activeTab()
+            if (tab != null && tab.location == location) {
+                updateFailure(
+                    tabId = tab.id,
+                    kind = PaneOperationFeedbackKind.WATCH_DEGRADED,
+                    detail = failure.toI18nMessage(),
+                )
+            }
+        },
+    )
 
     /** 每个 tab 正在执行的加载 Job — 导航 / 刷新时先取消旧 Job，避免状态卡死。 */
     private val tabLoadJobs = mutableMapOf<String, Job>()
@@ -116,7 +128,7 @@ class DefaultPaneComponent(
 
     init {
         refresh()
-        startWatching(mutableState.value.location)
+        fileWatcherController.start(mutableState.value.location)
     }
 
     override fun dispatch(intent: PaneIntent) {
@@ -303,7 +315,7 @@ class DefaultPaneComponent(
             return
         }
         val entries = currentVisibleEntries()
-        val targetEntryId = SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
+        val targetEntryId = SelectionReducer.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
         val targetEntry = entries.firstOrNull { it.id == targetEntryId } ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.beginRenameInlineEdit(targetEntry)
@@ -341,7 +353,7 @@ class DefaultPaneComponent(
     fun openSelectedInNewTab() {
         val tab = activeTab() ?: return
         val entries = currentVisibleEntries()
-        val targetEntryId = SelectionHelper.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
+        val targetEntryId = SelectionReducer.resolveSelectionFocusId(entries, tab.selectionFocusId, tab.selectionAnchorId, tab.selectedEntryIds) ?: return
         val targetEntry = entries.firstOrNull { it.id == targetEntryId } ?: return
         if (targetEntry.kind != VFileKind.DIRECTORY) {
             return
@@ -799,7 +811,7 @@ class DefaultPaneComponent(
         // 导航时清空内联展开状态
         mutableState.value = mutableState.value.clearInlineExpandState()
         loadTab(tabId = tab.id, location = normalizedLocation)
-        startWatching(normalizedLocation)
+        fileWatcherController.start(normalizedLocation)
     }
 
     private fun loadTab(
@@ -878,42 +890,6 @@ class DefaultPaneComponent(
             return
         }
         onRemoteAuthenticationRequired(paneId, authError)
-    }
-
-    /**
-     * 开始监听指定目录的文件变更，有变更时自动刷新。
-     * 每次调用会取消前一个监听。
-     */
-    private fun startWatching(location: String) {
-        fileWatcherJob?.cancel()
-        // 压缩包内部无文件系统事件，跳过监听
-        if (ArchiveService.isArchiveLocation(location)) return
-        if (location.contains("://")) return
-        val path = try {
-            Path.of(location)
-        } catch (_: Exception) {
-            return
-        }
-        if (!java.nio.file.Files.isDirectory(path)) return
-        fileWatcherJob = fileWatcher.watch(path)
-            .onEach {
-                val tab = activeTab() ?: return@onEach
-                if (tab.location == location) {
-                    loadTab(tabId = tab.id, location = tab.location)
-                }
-            }
-            .catch { failure ->
-                OnyxLogger.warn("DefaultPaneComponent", "文件监听已降级：$location", failure)
-                val tab = activeTab() ?: return@catch
-                if (tab.location == location) {
-                    updateFailure(
-                        tabId = tab.id,
-                        kind = PaneOperationFeedbackKind.WATCH_DEGRADED,
-                        detail = failure.toI18nMessage(),
-                    )
-                }
-            }
-            .launchIn(scope)
     }
 
     private fun createTabState(
@@ -1090,7 +1066,7 @@ class DefaultPaneComponent(
                 if (state.inlineExpandedLocations.isEmpty()) {
                     entriesState.entries
                 } else {
-                    SelectionHelper.collectVisibleEntries(
+                    SelectionReducer.collectVisibleEntries(
                         entries = entriesState.entries,
                         expandedLocations = state.inlineExpandedLocations,
                         expandedEntries = state.inlineExpandedEntries,

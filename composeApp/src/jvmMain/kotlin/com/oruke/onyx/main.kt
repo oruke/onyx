@@ -15,7 +15,7 @@ import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.rememberRootComponent
-import com.oruke.onyx.app.platform.ExternalDragHelper
+import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.di.fileModule
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.theme.OnyxTheme
@@ -35,6 +35,7 @@ import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
 import org.jetbrains.jewel.ui.ComponentStyling
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.styling.TitleBarStyle
+import org.koin.compose.getKoin
 
 fun main() = application {
     KoinApplication(application = { modules(fileModule) }) {
@@ -50,6 +51,8 @@ fun main() = application {
         ) {
             // rootComponent 在 application 级别创建，供主窗口和图片查看器共享
             val rootComponent = rememberRootComponent()
+            val koin = getKoin()
+            val externalFileDragService = remember { koin.get<ExternalFileDragService>() }
             val state by rootComponent.state.collectAsState()
 
             // ── 主窗口（记忆大小，最小 800×600）──────────────────────────
@@ -82,7 +85,7 @@ fun main() = application {
 
             DecoratedWindow(
                 onCloseRequest = {
-                    ExternalDragHelper.uninstall()
+                    externalFileDragService.uninstall()
                     exitApplication()
                 },
                 title = "Onyx ${BuildConfig.VERSION}",
@@ -92,9 +95,9 @@ fun main() = application {
                 window.minimumSize = java.awt.Dimension(800, 600)
                 // 安装外部拖放支持
                 LaunchedEffect(window) {
-                    ExternalDragHelper.install(window)
+                    externalFileDragService.install(window)
                 }
-                WindowApp(rootComponent)
+                WindowApp(rootComponent, externalFileDragService)
             }
 
             // ── 图片查看器窗口 ──────────────────────────────────────────

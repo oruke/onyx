@@ -31,7 +31,6 @@ import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
 import com.oruke.onyx.app.filesystem.SystemMenuAction
 import com.oruke.onyx.app.filesystem.SystemMenuService
-import com.oruke.onyx.app.filesystem.SystemFileMaterializer
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
@@ -95,7 +94,7 @@ import com.oruke.onyx.app.component.delegate.ImageViewerController
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.SidebarDelegate
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
-import com.oruke.onyx.app.platform.ExternalDragHelper
+import com.oruke.onyx.app.platform.ExternalFileDragService
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 class DefaultRootComponent(
@@ -111,7 +110,7 @@ class DefaultRootComponent(
     private val openWithService: OpenWithService,
     private val systemMenuService: SystemMenuService,
     private val fileContextMenuService: FileContextMenuService,
-    private val systemFileMaterializer: SystemFileMaterializer,
+    private val externalFileDragService: ExternalFileDragService,
     private val pathService: VfsPathService,
     private val entryNameSuggestionService: EntryNameSuggestionService,
     private val providerRegistry: VfsProviderRegistry,
@@ -1266,7 +1265,7 @@ class DefaultRootComponent(
     }
 
     override fun prepareExternalDrag(entries: List<VFile>): Boolean {
-        return ExternalDragHelper.preparePendingFiles(entries, systemFileMaterializer)
+        return externalFileDragService.preparePendingFiles(entries)
     }
 
     override fun isArchiveFileName(fileName: String): Boolean {
