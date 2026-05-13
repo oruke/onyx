@@ -23,6 +23,12 @@ data class OnyxSettings(
     val hiddenDetailsColumns: Set<DetailsColumn> = emptySet(),
     // 命令快捷键覆盖；command 使用 UI 命令枚举名，避免 core 反向依赖 UI 层。
     val commandShortcutOverrides: List<CommandShortcutOverride> = emptyList(),
+    // 文件标签与颜色规则，用于列表高亮、固定和过滤。
+    val fileLabelRules: List<FileLabelRule> = emptyList(),
+    // 批量重命名预设，供对话框复用和序列化保存。
+    val batchRenamePresets: List<BatchRenamePreset> = emptyList(),
+    // 用户自定义工具栏、菜单和脚本命令。
+    val userCommands: List<UserCommandDefinition> = emptyList(),
     // 窗口大小记忆
     val mainWindowWidth: Int = 1200,
     val mainWindowHeight: Int = 800,

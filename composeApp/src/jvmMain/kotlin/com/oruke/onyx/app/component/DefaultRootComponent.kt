@@ -49,6 +49,7 @@ import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.app.usecase.FileSearchEvent
 import com.oruke.onyx.app.usecase.FileSearchRequest
 import com.oruke.onyx.app.usecase.FileSearchUseCase
+import com.oruke.onyx.app.usecase.FileCollectionUseCase
 import com.oruke.onyx.app.usecase.FileContentSearchService
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.BackgroundTask
@@ -61,6 +62,7 @@ import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.RemoteConnectionProfile
@@ -124,6 +126,7 @@ class DefaultRootComponent(
     private val imageMetadataService: ImageMetadataService,
     private val connectionTestService: VfsConnectionTestService,
     private val remoteAuthStore: RemoteAuthStore,
+    private val fileCollectionUseCase: FileCollectionUseCase,
     private val fileContentSearchService: FileContentSearchService,
     // ── Delegate ──────────────────────────────────────────────────────────
     private val taskOrchestrator: TaskOrchestrator,
@@ -231,6 +234,7 @@ class DefaultRootComponent(
             layoutMode = layoutMode.value,
             paneSplitFraction = paneSplitFraction.value,
             activePane = activePane.value,
+            paneRoles = PaneRoleState.fromSource(activePane.value),
             primaryPane = primaryPane.state.value,
             secondaryPane = secondaryPane.state.value,
             sidebarTreeState = sidebarDelegate.sidebarTreeState.value,
@@ -292,6 +296,7 @@ class DefaultRootComponent(
                     layoutMode = layout.mode,
                     paneSplitFraction = layout.fraction,
                     activePane = layout.activePane,
+                    paneRoles = PaneRoleState.fromSource(layout.activePane),
                     primaryPane = panes.first,
                     secondaryPane = panes.second,
                     sidebarTreeState = context.sidebarTreeState,
@@ -395,6 +400,7 @@ class DefaultRootComponent(
             RootIntent.ExecuteSearch -> executeSearch()
             RootIntent.CancelSearch -> cancelSearch()
             is RootIntent.OpenSearchResult -> openSearchResult(intent.entry)
+            RootIntent.OpenSearchResultsAsCollection -> openSearchResultsAsCollection()
             is RootIntent.StageCopySelectedInPane -> stageCopySelectedInPane(intent.paneId)
             is RootIntent.StageCutSelectedInPane -> stageCutSelectedInPane(intent.paneId)
             is RootIntent.RequestPasteIntoPane -> requestPasteIntoPane(intent.paneId)
@@ -403,6 +409,7 @@ class DefaultRootComponent(
                 targetDirectoryLocation = intent.targetDirectoryLocation,
                 operation = intent.operation,
             )
+            is RootIntent.RequestTransferSourceToDestination -> requestTransferSourceToDestination(intent.operation)
             is RootIntent.RequestDeleteSelectedInPane -> requestDeleteSelectedInPane(intent.paneId)
             is RootIntent.ExtractSelectedInPane -> extractSelectedInPane(intent.paneId)
             is RootIntent.ExtractToDirectoryInPane -> extractToDirectoryInPane(intent.paneId)
@@ -869,6 +876,25 @@ class DefaultRootComponent(
         paneComponent(paneId).openEntry(entry)
     }
 
+    /**
+     * 将当前搜索结果保存为虚拟集合并在搜索来源面板打开。
+     *
+     * @return 无返回值。
+     */
+    fun openSearchResultsAsCollection() {
+        val currentSearch = searchState.value
+        if (currentSearch.results.isEmpty()) {
+            return
+        }
+        val collection = fileCollectionUseCase.saveSearchResults(
+            id = searchRunId ?: UUID.randomUUID().toString(),
+            name = currentSearch.query,
+            entries = currentSearch.results,
+        )
+        activatePane(currentSearch.paneId)
+        paneComponent(currentSearch.paneId).createTab(collection.location)
+    }
+
     private fun reduceSearchEvent(event: FileSearchEvent) {
         when (event) {
             is FileSearchEvent.Progress -> {
@@ -1100,6 +1126,21 @@ class DefaultRootComponent(
                     showActivePaneOperationFailure(failure)
                 }
         }
+    }
+
+    /**
+     * 按 Source / Destination 角色把源面板选中项传输到目标面板目录。
+     *
+     * @param operation 传输操作类型。
+     * @return 无返回值。
+     */
+    fun requestTransferSourceToDestination(operation: FileTransferOperation) {
+        val roles = PaneRoleState.fromSource(activePane.value)
+        requestTransferSelectedToDirectory(
+            sourcePaneId = roles.sourcePaneId,
+            targetDirectoryLocation = paneState(roles.destinationPaneId).location,
+            operation = operation,
+        )
     }
 
     /**

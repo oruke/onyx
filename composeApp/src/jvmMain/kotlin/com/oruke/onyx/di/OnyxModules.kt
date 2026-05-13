@@ -8,6 +8,7 @@ import com.oruke.onyx.app.filesystem.ArchiveInfoService
 import com.oruke.onyx.app.filesystem.ArchiveVfsProvider
 import com.oruke.onyx.app.filesystem.ExternalOpenService
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.FileCollectionVfsProvider
 import com.oruke.onyx.app.filesystem.FileContextMenuService
 import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.app.filesystem.FileRepository
@@ -67,7 +68,17 @@ import com.oruke.onyx.app.filesystem.WebDavVfsProvider
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.app.platform.JvmExternalFileDragService
 import com.oruke.onyx.app.usecase.FileContentSearchService
+import com.oruke.onyx.app.usecase.BatchRenamePresetPlanner
+import com.oruke.onyx.app.usecase.DirectoryComparisonUseCase
+import com.oruke.onyx.app.usecase.DirectorySyncPlanner
+import com.oruke.onyx.app.usecase.DuplicateFileFinderUseCase
+import com.oruke.onyx.app.usecase.FileCollectionRepository
+import com.oruke.onyx.app.usecase.FileCollectionUseCase
+import com.oruke.onyx.app.usecase.FileLabelRuleUseCase
+import com.oruke.onyx.app.usecase.InMemoryFileCollectionRepository
 import com.oruke.onyx.app.usecase.JvmVfsFileContentSearchService
+import com.oruke.onyx.app.usecase.PreviewCapabilityUseCase
+import com.oruke.onyx.app.usecase.UserCommandUseCase
 import com.oruke.onyx.ui.ResourceEntryNameSuggestionService
 import org.koin.dsl.module
 
@@ -104,6 +115,8 @@ val fileModule = module {
     single { LocalVfsProvider(get()) }
     single { ArchiveVfsProvider(get()) }
     single<RemoteAuthStore> { JvmRemoteAuthStore() }
+    single<FileCollectionRepository> { InMemoryFileCollectionRepository() }
+    single { FileCollectionVfsProvider(get()) }
     single<SmbAuthRepository> { RemoteAuthStoreSmbAuthRepository(get()) }
     single<WebDavAuthRepository> { RemoteAuthStoreWebDavAuthRepository(get()) }
     single<S3AuthRepository> { RemoteAuthStoreS3AuthRepository(get()) }
@@ -114,6 +127,7 @@ val fileModule = module {
         VfsProviderRegistry(
             listOf(
                 get<ArchiveVfsProvider>(),
+                get<FileCollectionVfsProvider>(),
                 get<SmbVfsProvider>(),
                 get<WebDavVfsProvider>(),
                 get<S3VfsProvider>(),
@@ -196,6 +210,14 @@ val fileModule = module {
         )
     }
     single<FileHashService> { JvmFileHashService(get()) }
+    single { FileCollectionUseCase(get()) }
+    single { FileLabelRuleUseCase() }
+    single { DirectoryComparisonUseCase(get()) }
+    single { DirectorySyncPlanner() }
+    single { DuplicateFileFinderUseCase(get()) }
+    single { BatchRenamePresetPlanner() }
+    single { PreviewCapabilityUseCase() }
+    single { UserCommandUseCase() }
     single<ArchiveInfoService> { JvmArchiveInfoService(get()) }
     single<ThumbnailService> {
         JvmThumbnailService(

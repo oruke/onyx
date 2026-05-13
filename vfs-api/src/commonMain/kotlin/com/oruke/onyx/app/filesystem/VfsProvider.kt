@@ -8,6 +8,7 @@ import com.oruke.onyx.core.model.VFile
 enum class VfsProtocol {
     LOCAL,
     ARCHIVE,
+    COLLECTION,
     SMB,
     WEBDAV,
     S3,

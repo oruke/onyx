@@ -1,5 +1,7 @@
 package com.oruke.onyx.core.model
 
+import kotlinx.serialization.Serializable
+
 data class VFile(
     val id: String,
     val name: String,
@@ -12,11 +14,13 @@ data class VFile(
     val capabilities: Set<VFileCapability>,
 )
 
+@Serializable
 enum class VFileKind {
     FILE,
     DIRECTORY,
 }
 
+@Serializable
 enum class VFileCapability {
     LIST_CHILDREN,
     READ_METADATA,

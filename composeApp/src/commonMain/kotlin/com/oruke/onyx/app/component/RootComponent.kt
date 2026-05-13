@@ -25,6 +25,7 @@ import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
@@ -37,6 +38,7 @@ data class RootState(
     val layoutMode: PaneLayoutMode,
     val paneSplitFraction: Float,
     val activePane: PaneId,
+    val paneRoles: PaneRoleState = PaneRoleState.fromSource(activePane),
     val primaryPane: PaneState,
     val secondaryPane: PaneState,
     val sidebarTreeState: SidebarTreeState,
@@ -322,6 +324,8 @@ sealed interface RootIntent {
         val entry: VFile,
     ) : RootIntent
 
+    data object OpenSearchResultsAsCollection : RootIntent
+
     data class StageCopySelectedInPane(
         val paneId: PaneId,
     ) : RootIntent
@@ -337,6 +341,10 @@ sealed interface RootIntent {
     data class RequestTransferSelectedToDirectory(
         val sourcePaneId: PaneId,
         val targetDirectoryLocation: String,
+        val operation: FileTransferOperation,
+    ) : RootIntent
+
+    data class RequestTransferSourceToDestination(
         val operation: FileTransferOperation,
     ) : RootIntent
 
@@ -575,6 +583,8 @@ fun RootComponent.cancelSearch() = dispatch(RootIntent.CancelSearch)
 
 fun RootComponent.openSearchResult(entry: VFile) = dispatch(RootIntent.OpenSearchResult(entry))
 
+fun RootComponent.openSearchResultsAsCollection() = dispatch(RootIntent.OpenSearchResultsAsCollection)
+
 fun RootComponent.stageCopySelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCopySelectedInPane(paneId))
 
 fun RootComponent.stageCutSelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCutSelectedInPane(paneId))
@@ -586,6 +596,10 @@ fun RootComponent.requestTransferSelectedToDirectory(
     targetDirectoryLocation: String,
     operation: FileTransferOperation,
 ) = dispatch(RootIntent.RequestTransferSelectedToDirectory(sourcePaneId, targetDirectoryLocation, operation))
+
+fun RootComponent.requestTransferSourceToDestination(
+    operation: FileTransferOperation,
+) = dispatch(RootIntent.RequestTransferSourceToDestination(operation))
 
 fun RootComponent.requestDeleteSelectedInPane(paneId: PaneId) = dispatch(RootIntent.RequestDeleteSelectedInPane(paneId))
 

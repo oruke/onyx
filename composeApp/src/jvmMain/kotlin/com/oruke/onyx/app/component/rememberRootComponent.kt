@@ -36,6 +36,7 @@ import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
+import com.oruke.onyx.app.usecase.FileCollectionUseCase
 import com.oruke.onyx.app.usecase.FileContentSearchService
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import kotlinx.coroutines.CoroutineScope
@@ -95,6 +96,7 @@ fun rememberRootComponent(): RootComponent {
             imageMetadataService = koin.get<ImageMetadataService>(),
             connectionTestService = koin.get<VfsConnectionTestService>(),
             remoteAuthStore = koin.get<RemoteAuthStore>(),
+            fileCollectionUseCase = koin.get<FileCollectionUseCase>(),
             fileContentSearchService = koin.get<FileContentSearchService>(),
             taskOrchestrator = taskOrchestrator,
             clipboardManager = clipboardManager,
