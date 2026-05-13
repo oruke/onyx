@@ -147,7 +147,7 @@ val fileModule = module {
             providerRegistry = get(),
         )
     }
-    single<ExternalOpenService> { JvmDesktopExternalOpenService() }
+    single<ExternalOpenService> { JvmDesktopExternalOpenService(get()) }
     single<TrashService> { JvmDesktopTrashService() }
     single<TextClipboardService> { JvmTextClipboardService() }
     single<SystemFileMaterializer> {
@@ -194,7 +194,17 @@ val fileModule = module {
     }
     single<FileHashService> { JvmFileHashService(get()) }
     single<ArchiveInfoService> { JvmArchiveInfoService(get()) }
-    single<ThumbnailService> { JvmThumbnailService() }
+    single<ThumbnailService> {
+        JvmThumbnailService(
+            listOf<RoutableVfsContentService>(
+                get<ArchiveVfsProvider>(),
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
+            )
+        )
+    }
     single<ImageMetadataService> { JvmImageMetadataService(get()) }
     single<SettingsRepository> { JsonSettingsRepository() }
     single<SessionRepository> { JsonSessionRepository() }

@@ -41,10 +41,23 @@ data class TabState(
     val pendingScrollToEntryId: String? = null,
 )
 
+/**
+ * 面板 chrome 层状态，描述不属于单个文件条目的交互外壳。
+ *
+ * @property activeTabId 当前活动标签页 ID。
+ * @property inlineExpandedLocations 当前以内联树方式展开的目录位置。
+ * @property inlineExpandedEntries 内联展开目录的子项缓存。
+ * @property filterInputVisible 筛选输入框是否处于打开状态。
+ * @property filterInputFocusRequestId 筛选输入框聚焦请求编号，每次显式打开递增。
+ * @property commandPaletteVisible 命令面板是否处于打开状态。
+ */
 data class PaneChromeState(
     val activeTabId: String,
     val inlineExpandedLocations: Set<String> = emptySet(),
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
+    val filterInputVisible: Boolean = false,
+    val filterInputFocusRequestId: Int = 0,
+    val commandPaletteVisible: Boolean = false,
 )
 
 data class PaneState(
@@ -55,6 +68,9 @@ data class PaneState(
     val activeTabId: String get() = chromeState.activeTabId
     val inlineExpandedLocations: Set<String> get() = chromeState.inlineExpandedLocations
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> get() = chromeState.inlineExpandedEntries
+    val filterInputVisible: Boolean get() = chromeState.filterInputVisible
+    val filterInputFocusRequestId: Int get() = chromeState.filterInputFocusRequestId
+    val commandPaletteVisible: Boolean get() = chromeState.commandPaletteVisible
     val location: String get() = activeTabState.location
     val canGoBack: Boolean get() = activeTabState.canGoBack
     val canGoForward: Boolean get() = activeTabState.canGoForward
@@ -189,6 +205,16 @@ sealed interface PaneIntent {
     data class SetFilterQuery(
         val query: String,
     ) : PaneIntent
+
+    data object ShowFilterInput : PaneIntent
+
+    data class HideFilterInput(
+        val clearQuery: Boolean,
+    ) : PaneIntent
+
+    data object ShowCommandPalette : PaneIntent
+
+    data object HideCommandPalette : PaneIntent
 
     data class ToggleSort(
         val column: DetailsColumn,
@@ -325,6 +351,14 @@ fun PaneComponent.openEntry(entry: VFile) = dispatch(PaneIntent.OpenEntry(entry)
 fun PaneComponent.setViewMode(mode: ViewMode) = dispatch(PaneIntent.SetViewMode(mode))
 
 fun PaneComponent.setFilterQuery(query: String) = dispatch(PaneIntent.SetFilterQuery(query))
+
+fun PaneComponent.showFilterInput() = dispatch(PaneIntent.ShowFilterInput)
+
+fun PaneComponent.hideFilterInput(clearQuery: Boolean = true) = dispatch(PaneIntent.HideFilterInput(clearQuery))
+
+fun PaneComponent.showCommandPalette() = dispatch(PaneIntent.ShowCommandPalette)
+
+fun PaneComponent.hideCommandPalette() = dispatch(PaneIntent.HideCommandPalette)
 
 fun PaneComponent.toggleSort(column: DetailsColumn) = dispatch(PaneIntent.ToggleSort(column))
 

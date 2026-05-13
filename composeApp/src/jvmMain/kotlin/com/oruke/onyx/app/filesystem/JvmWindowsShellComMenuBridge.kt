@@ -104,7 +104,7 @@ internal class JvmWindowsShellComMenuBridge {
         action: SystemMenuAction,
         entries: List<VFile>,
     ) {
-        val offset = action.command.toIntOrNull()
+        val command = ShellComCommand.parse(action.command)
             ?: throw IllegalArgumentException("Invalid Windows Shell COM command: ${action.command}")
         val paths = entries.toSystemPaths()
         if (paths.isEmpty()) throw IllegalArgumentException("Windows Shell COM command requires files")
@@ -123,13 +123,14 @@ internal class JvmWindowsShellComMenuBridge {
                 if (!queryResult.succeeded()) {
                     throw IllegalStateException("IContextMenu.QueryContextMenu failed: ${queryResult.toInt()}")
                 }
+                initializeMenuPath(menu, command.menuPath, session)
                 val directoryMemory = paths.first().parent?.toString()?.toNativeWideString()
                 val invokeInfo = InvokeCommandInfoEx().apply {
                     cbSize = size()
                     fMask = CMIC_MASK_UNICODE or CMIC_MASK_ASYNCOK
                     hwnd = null
-                    lpVerb = Pointer.createConstant(offset.toLong())
-                    lpVerbW = Pointer.createConstant(offset.toLong())
+                    lpVerb = Pointer.createConstant(command.offset.toLong())
+                    lpVerbW = Pointer.createConstant(command.offset.toLong())
                     lpParameters = null
                     lpParametersW = null
                     lpDirectory = null
@@ -327,12 +328,13 @@ internal class JvmWindowsShellComMenuBridge {
     private fun readMenuItems(
         menu: WinDef.HMENU,
         session: WindowsShellMenuSession,
+        menuPath: List<Int> = emptyList(),
     ): List<SystemMenuAction> {
         val count = User32Menu.INSTANCE.GetMenuItemCount(menu)
         if (count <= 0) return emptyList()
         return buildList {
             repeat(count) { index ->
-                readMenuItem(menu, index, session)?.let { action -> add(action) }
+                readMenuItem(menu, index, session, menuPath)?.let { action -> add(action) }
             }
         }
     }
@@ -349,6 +351,7 @@ internal class JvmWindowsShellComMenuBridge {
         menu: WinDef.HMENU,
         index: Int,
         session: WindowsShellMenuSession,
+        menuPath: List<Int>,
     ): SystemMenuAction? {
         val info = MenuItemInfo().apply {
             cbSize = size()
@@ -361,13 +364,14 @@ internal class JvmWindowsShellComMenuBridge {
         if ((info.fState and MFS_DISABLED) != 0) return null
         val label = User32Menu.INSTANCE.getMenuString(menu, index).toShellMenuLabel() ?: return null
         val subMenu = info.hSubMenu?.takeUnless { handle -> handle.isNullPointer() }
+        val childMenuPath = menuPath + index
         val children = subMenu?.let { handle ->
             session.messageHandler?.handleInitMenuPopup(handle, index)
-            readMenuItems(handle, session)
+            readMenuItems(handle, session, childMenuPath)
         }.orEmpty()
         if (children.isNotEmpty()) {
             return SystemMenuAction(
-                id = "$WINDOWS_COM_ACTION_PREFIX:submenu:$index:${label.hashCode()}",
+                id = "$WINDOWS_COM_ACTION_PREFIX:submenu:${childMenuPath.joinToString("/")}:${label.hashCode()}",
                 displayName = label,
                 command = "",
                 children = children,
@@ -377,10 +381,43 @@ internal class JvmWindowsShellComMenuBridge {
         if (offset < 0 || info.wID > COMMAND_ID_LAST) return null
         val verb = session.contextMenu.commandString(offset, GCS_VERBW)
         return SystemMenuAction(
-            id = "$WINDOWS_COM_ACTION_PREFIX:${verb ?: offset}:${label.hashCode()}",
+            id = "$WINDOWS_COM_ACTION_PREFIX:${verb ?: offset}:${menuPath.joinToString("/")}:${label.hashCode()}",
             displayName = label,
-            command = offset.toString(),
+            command = ShellComCommand(offset = offset, menuPath = menuPath).serialize(),
         )
+    }
+
+    /**
+     * 按读取菜单时记录的级联路径重新初始化动态子菜单。
+     *
+     * Windows Shell 扩展经常只在 `WM_INITMENUPOPUP` 后注册子菜单命令；执行阶段如果不重放这条路径，
+     * `InvokeCommand` 会拿到一个尚未初始化的命令偏移量，表现为点击级联项无效果。
+     *
+     * @param rootMenu `QueryContextMenu` 填充后的根菜单句柄。
+     * @param menuPath 从根菜单到叶子菜单父级的菜单项索引路径。
+     * @param session 当前 Shell 菜单会话。
+     */
+    private fun initializeMenuPath(
+        rootMenu: WinDef.HMENU,
+        menuPath: List<Int>,
+        session: WindowsShellMenuSession,
+    ) {
+        var currentMenu = rootMenu
+        menuPath.forEach { index ->
+            val info = MenuItemInfo().apply {
+                cbSize = size()
+                fMask = MIIM_SUBMENU
+                write()
+            }
+            if (!User32Menu.INSTANCE.GetMenuItemInfoW(currentMenu, index, true, info)) {
+                throw IllegalStateException("Windows Shell submenu is not available at index $index")
+            }
+            info.read()
+            val subMenu = info.hSubMenu?.takeUnless { handle -> handle.isNullPointer() }
+                ?: throw IllegalStateException("Windows Shell submenu is empty at index $index")
+            session.messageHandler?.handleInitMenuPopup(subMenu, index)
+            currentMenu = subMenu
+        }
     }
 
     /**
@@ -462,6 +499,47 @@ internal class JvmWindowsShellComMenuBridge {
         val contextMenu: WindowsContextMenu,
         val messageHandler: WindowsContextMenuMessageHandler?,
     )
+
+    /**
+     * 可序列化的 Shell COM 命令描述。
+     *
+     * @property offset `QueryContextMenu` 返回菜单中的命令偏移量。
+     * @property menuPath 叶子命令所属级联菜单的父级索引路径。
+     */
+    private data class ShellComCommand(
+        val offset: Int,
+        val menuPath: List<Int>,
+    ) {
+        /**
+         * 序列化到 `SystemMenuAction.command`，供 UI 层无感传回执行服务。
+         *
+         * @return 可解析的命令描述字符串。
+         */
+        fun serialize(): String {
+            if (menuPath.isEmpty()) return offset.toString()
+            return "$offset@$COMMAND_PATH_PREFIX${menuPath.joinToString("/")}"
+        }
+
+        companion object {
+            /**
+             * 从菜单动作命令字符串恢复 Shell COM 命令描述。
+             *
+             * @param value `SystemMenuAction.command` 中保存的命令字符串。
+             * @return 可执行命令描述；格式无效时返回 `null`。
+             */
+            fun parse(value: String): ShellComCommand? {
+                val offsetText = value.substringBefore('@')
+                val offset = offsetText.toIntOrNull() ?: return null
+                val pathText = value.substringAfter("@$COMMAND_PATH_PREFIX", missingDelimiterValue = "")
+                val path = pathText
+                    .takeIf { text -> text.isNotBlank() }
+                    ?.split("/")
+                    ?.mapNotNull { index -> index.toIntOrNull() }
+                    .orEmpty()
+                return ShellComCommand(offset = offset, menuPath = path)
+            }
+        }
+    }
 
     /**
      * `IContextMenu` 的最小 JNA 包装。
@@ -842,6 +920,7 @@ internal class JvmWindowsShellComMenuBridge {
         private const val RPC_E_CHANGED_MODE = -2147417850
         private const val SW_SHOWNORMAL = 1
         private const val WM_INITMENUPOPUP = 0x0117
+        private const val COMMAND_PATH_PREFIX = "path:"
 
         private const val MF_BYPOSITION = 0x00000400
         private const val MIIM_STATE = 0x00000001

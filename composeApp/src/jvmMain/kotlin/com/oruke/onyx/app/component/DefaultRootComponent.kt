@@ -31,6 +31,7 @@ import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
 import com.oruke.onyx.app.filesystem.SystemMenuAction
 import com.oruke.onyx.app.filesystem.SystemMenuService
+import com.oruke.onyx.app.filesystem.SystemFileMaterializer
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
@@ -110,6 +111,7 @@ class DefaultRootComponent(
     private val openWithService: OpenWithService,
     private val systemMenuService: SystemMenuService,
     private val fileContextMenuService: FileContextMenuService,
+    private val systemFileMaterializer: SystemFileMaterializer,
     private val pathService: VfsPathService,
     private val entryNameSuggestionService: EntryNameSuggestionService,
     private val providerRegistry: VfsProviderRegistry,
@@ -1264,7 +1266,7 @@ class DefaultRootComponent(
     }
 
     override fun prepareExternalDrag(entries: List<VFile>): Boolean {
-        return ExternalDragHelper.preparePendingFiles(entries, archiveService)
+        return ExternalDragHelper.preparePendingFiles(entries, systemFileMaterializer)
     }
 
     override fun isArchiveFileName(fileName: String): Boolean {

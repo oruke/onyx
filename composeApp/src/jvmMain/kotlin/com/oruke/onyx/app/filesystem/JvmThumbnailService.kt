@@ -3,7 +3,11 @@ package com.oruke.onyx.app.filesystem
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileCapability
+import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.FilterMipmap
 import org.jetbrains.skia.FilterMode
@@ -32,7 +36,9 @@ import org.jetbrains.skia.Image as SkiaImage
  *    - 最后一步使用 Mitchell-Netravali 三次重采样，确保锐度与平滑的最佳平衡
  * 3. 输出：直接转为 Compose ImageBitmap，无跨引擎转码损失
  */
-class JvmThumbnailService : ThumbnailService {
+class JvmThumbnailService(
+    private val contentServices: List<RoutableVfsContentService> = emptyList(),
+) : ThumbnailService {
 
     private companion object {
         const val MAX_CACHE_SIZE = 500
@@ -149,10 +155,15 @@ class JvmThumbnailService : ThumbnailService {
                 if (innerPath.isBlank()) return@withContext null
                 bytes = extractArchiveEntryBytes(archivePath, innerPath) ?: return@withContext null
             } else {
-                val file = File(location)
-                if (!file.exists() || !file.isFile) return@withContext null
-                if (file.length() > MAX_FILE_SIZE_BYTES) return@withContext null
-                bytes = file.readBytes()
+                val routedBytes = readRoutedContentBytes(location)
+                if (routedBytes != null) {
+                    bytes = routedBytes
+                } else {
+                    val file = File(location)
+                    if (!file.exists() || !file.isFile) return@withContext null
+                    if (file.length() > MAX_FILE_SIZE_BYTES) return@withContext null
+                    bytes = file.readBytes()
+                }
             }
 
             val skImage = SkiaImage.makeFromEncoded(bytes)
@@ -175,6 +186,58 @@ class JvmThumbnailService : ThumbnailService {
             null
         }
     }
+
+    /**
+     * 通过统一内容服务读取远程图片字节。
+     *
+     * @param location 图片位置。
+     * @return 可解码图片字节；没有可路由内容服务或超过大小限制时返回 `null`。
+     */
+    private suspend fun readRoutedContentBytes(location: String): ByteArray? {
+        val contentService = contentServices.firstOrNull { service -> service.supports(location) } ?: return null
+        val source = contentService.readFile(location.toSyntheticVFile()).getOrNull() ?: return null
+        val sourceSize = source.sizeBytes
+        if (sourceSize != null && sourceSize > MAX_FILE_SIZE_BYTES) return null
+        val buffer = ByteArrayOutputStream()
+        var readBytes = 0L
+        return try {
+            source.chunks.collect { chunk ->
+                if (readBytes + chunk.size > MAX_FILE_SIZE_BYTES) {
+                    throw ThumbnailContentTooLargeException()
+                }
+                readBytes += chunk.size
+                buffer.write(chunk)
+            }
+            buffer.toByteArray()
+        } catch (_: ThumbnailContentTooLargeException) {
+            null
+        }
+    }
+
+    /**
+     * 为只按 location 调用的缩略图服务构造最小 VFS 文件条目。
+     *
+     * @return 合成的文件条目。
+     */
+    private fun String.toSyntheticVFile(): VFile {
+        val normalized = trimEnd('/')
+        return VFile(
+            id = this,
+            name = normalized.substringAfterLast('/', missingDelimiterValue = normalized),
+            location = this,
+            parentLocation = normalized.substringBeforeLast('/', missingDelimiterValue = ""),
+            kind = VFileKind.FILE,
+            sizeBytes = null,
+            modifiedAtEpochMillis = null,
+            hidden = false,
+            capabilities = setOf(VFileCapability.READ_CONTENT),
+        )
+    }
+
+    /**
+     * 缩略图远程内容超过读取上限时使用的内部中断信号。
+     */
+    private class ThumbnailContentTooLargeException : RuntimeException()
 
     /**
      * 从压缩包中提取单个条目的字节数据（同步，需在 IO 线程调用）。

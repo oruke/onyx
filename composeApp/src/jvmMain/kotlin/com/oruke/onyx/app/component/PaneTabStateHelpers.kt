@@ -43,6 +43,9 @@ internal fun PaneTabState.toPaneState(
     activeTabId: String,
     inlineExpandedLocations: Set<String> = emptySet(),
     inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
+    filterInputVisible: Boolean = false,
+    filterInputFocusRequestId: Int = 0,
+    commandPaletteVisible: Boolean = false,
 ): PaneState {
     return PaneState(
         paneId = paneId,
@@ -50,6 +53,9 @@ internal fun PaneTabState.toPaneState(
             activeTabId = activeTabId,
             inlineExpandedLocations = inlineExpandedLocations,
             inlineExpandedEntries = inlineExpandedEntries,
+            filterInputVisible = filterInputVisible,
+            filterInputFocusRequestId = filterInputFocusRequestId,
+            commandPaletteVisible = commandPaletteVisible,
         ),
         activeTabState = tabState,
     )

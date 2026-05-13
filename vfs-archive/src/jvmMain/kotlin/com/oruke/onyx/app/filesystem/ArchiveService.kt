@@ -14,11 +14,14 @@ import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
+import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.File
 import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.util.Date
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 
 /**
  * 压缩文件服务 — 基于 7-Zip-JBinding 实现。
@@ -35,14 +38,16 @@ class ArchiveService(
 
     companion object {
         private const val ARCHIVE_SCHEME = "archive://"
+        private const val TAR_COMMAND = "tar"
+        private const val TAR_LIST_TIMEOUT_SECONDS = 120L
         private val ARCHIVE_EXTENSIONS = setOf(
             "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "xz",
             "lzma", "cab", "iso", "arj", "lzh", "z", "cpio",
-            "cbz", "cbr", "epub",
+            "cbz", "cbr", "epub", "tzst",
         )
         // tar.xx 双扩展名
         private val ARCHIVE_COMPOUND_EXTENSIONS = setOf(
-            "tar.gz", "tar.bz2", "tar.xz", "tar.lzma",
+            "tar.gz", "tar.bz2", "tar.xz", "tar.lzma", "tar.zst",
         )
 
         fun isArchive(fileName: String): Boolean {
@@ -114,6 +119,9 @@ class ArchiveService(
     suspend fun list(archivePath: String, innerPath: String = ""): Result<List<VFile>> =
         withContext(Dispatchers.IO) {
             runCatching {
+                if (archivePath.isTarZstdArchive()) {
+                    return@runCatching listTarZstdArchive(archivePath, innerPath)
+                }
                 openArchive(archivePath).use { handle ->
                     val archive = handle.archive
                     val numItems = archive.numberOfItems
@@ -174,6 +182,10 @@ class ArchiveService(
         password: String? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            if (archivePath.isTarZstdArchive()) {
+                extractTarZstdArchive(archivePath, targetDirectory, innerPath)
+                return@runCatching
+            }
             openArchive(archivePath, password).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
@@ -243,6 +255,7 @@ class ArchiveService(
      * 检查压缩包是否需要密码（是否加密）。
      */
     suspend fun isEncrypted(archivePath: String): Boolean = withContext(Dispatchers.IO) {
+        if (archivePath.isTarZstdArchive()) return@withContext false
         try {
             openArchive(archivePath).use { handle ->
                 val archive = handle.archive
@@ -268,6 +281,7 @@ class ArchiveService(
      * @return true = 密码正确，false = 密码错误或验证失败
      */
     suspend fun verifyPassword(archivePath: String, password: String): Boolean = withContext(Dispatchers.IO) {
+        if (archivePath.isTarZstdArchive()) return@withContext true
         try {
             openArchive(archivePath, password).use { handle ->
                 val archive = handle.archive
@@ -290,7 +304,7 @@ class ArchiveService(
 
                 // ── 步骤 2：解压到内存，CRC32 比对 ──
                 if (storedCrc != null) {
-                    val buffer = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArrayOutputStream()
                     val memCallback = MemoryExtractCallback(buffer, password)
                     archive.extract(intArrayOf(testIndex), false, memCallback)
                     if (memCallback.errors.isNotEmpty()) return@withContext false
@@ -326,6 +340,9 @@ class ArchiveService(
         innerPath: String,
     ): Result<ByteArray?> = withContext(Dispatchers.IO) {
         runCatching {
+            if (archivePath.isTarZstdArchive()) {
+                return@runCatching extractTarZstdEntryToBytes(archivePath, innerPath)
+            }
             openArchive(archivePath).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
@@ -340,7 +357,7 @@ class ArchiveService(
                 if (targetIndex < 0) return@runCatching null
 
                 val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
-                val buffer = java.io.ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
+                val buffer = ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
                 val callback = MemoryExtractCallback(buffer)
                 archive.extract(intArrayOf(targetIndex), false, callback)
                 buffer.toByteArray()
@@ -363,6 +380,10 @@ class ArchiveService(
         password: String? = null,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            if (archivePath.isTarZstdArchive()) {
+                extractTarZstdEntries(archivePath, entryPaths, targetDir)
+                return@runCatching
+            }
             val targetDirectory = File(targetDir)
             targetDirectory.mkdirs()
 
@@ -412,6 +433,109 @@ class ArchiveService(
     }
 
     // ── 内部工具 ──────────────────────────────────────────────────────────────
+
+    /**
+     * 使用系统 `tar` 列出 `.tar.zst` / `.tzst` 归档。
+     *
+     * 7-Zip-JBinding 16.02 没有稳定的 zstd codec；这里只在 zstd tar 包上走系统 tar，保持其它格式仍由 7-Zip 处理。
+     *
+     * @param archivePath 归档文件路径。
+     * @param innerPath 归档内部目录路径。
+     * @return 当前目录下的直接子条目。
+     */
+    private fun listTarZstdArchive(
+        archivePath: String,
+        innerPath: String,
+    ): List<VFile> {
+        val output = runTarTextCommand(
+            listOf(TAR_COMMAND, "-tf", archivePath),
+            timeoutSeconds = TAR_LIST_TIMEOUT_SECONDS,
+        )
+        val entries = output
+            .lineSequence()
+            .mapNotNull { line -> line.toTarEntryPath() }
+            .toList()
+        return entries.toDirectTarChildren(archivePath, innerPath)
+    }
+
+    /**
+     * 使用系统 `tar` 解压 `.tar.zst` / `.tzst` 归档。
+     *
+     * @param archivePath 归档文件路径。
+     * @param targetDirectory 解压目标目录。
+     * @param innerPath 归档内部路径；为空时解压全部内容。
+     */
+    private fun extractTarZstdArchive(
+        archivePath: String,
+        targetDirectory: String,
+        innerPath: String,
+    ) {
+        val targetDir = File(targetDirectory)
+        targetDir.mkdirs()
+        val normalizedInnerPath = innerPath.toTarEntryNameOrNull()
+        val command = buildList {
+            add(TAR_COMMAND)
+            add("-xf")
+            add(archivePath)
+            add("-C")
+            add(targetDir.absolutePath)
+            if (normalizedInnerPath != null) {
+                add("--strip-components=${normalizedInnerPath.tarPathDepth()}")
+                add(normalizedInnerPath)
+            }
+        }
+        runTarTextCommand(command)
+    }
+
+    /**
+     * 使用系统 `tar` 将 `.tar.zst` 内单个文件读取到内存。
+     *
+     * @param archivePath 归档文件路径。
+     * @param innerPath 归档内部文件路径。
+     * @return 文件字节；目录或空路径返回 `null`。
+     */
+    private fun extractTarZstdEntryToBytes(
+        archivePath: String,
+        innerPath: String,
+    ): ByteArray? {
+        val normalizedInnerPath = innerPath.toTarEntryNameOrNull() ?: return null
+        return runTarBinaryCommand(
+            listOf(TAR_COMMAND, "-xOf", archivePath, normalizedInnerPath),
+            timeoutSeconds = TAR_LIST_TIMEOUT_SECONDS,
+        ).takeIf { bytes -> bytes.isNotEmpty() }
+    }
+
+    /**
+     * 使用系统 `tar` 解压 `.tar.zst` 内指定条目集合。
+     *
+     * @param archivePath 归档文件路径。
+     * @param entryPaths 需要解压的归档内部条目路径。
+     * @param targetDir 解压目标目录。
+     */
+    private fun extractTarZstdEntries(
+        archivePath: String,
+        entryPaths: List<String>,
+        targetDir: String,
+    ) {
+        val targetDirectory = File(targetDir)
+        targetDirectory.mkdirs()
+        val normalizedEntries = entryPaths.mapNotNull { path -> path.toTarEntryNameOrNull() }
+        if (normalizedEntries.isEmpty()) error("未找到匹配的条目: $entryPaths")
+        val parentPrefix = normalizedEntries.commonTarParentPrefix()
+        val command = buildList {
+            add(TAR_COMMAND)
+            add("-xf")
+            add(archivePath)
+            add("-C")
+            add(targetDirectory.absolutePath)
+            val stripComponents = parentPrefix.tarPathDepth()
+            if (stripComponents > 0) {
+                add("--strip-components=$stripComponents")
+            }
+            addAll(normalizedEntries)
+        }
+        runTarTextCommand(command)
+    }
 
     /**
      * 打开压缩包，返回 [ArchiveHandle]。
@@ -478,6 +602,186 @@ private class ArchiveHandle(
             raf.close()
         }
     }
+}
+
+/**
+ * `.tar.zst` / `.tzst` 条目路径。
+ *
+ * @property path 统一为 `/` 分隔且不带首尾 `/` 的归档内部路径。
+ * @property isDirectory `true` 表示该条目来自 tar 目录项。
+ */
+private data class TarEntryPath(
+    val path: String,
+    val isDirectory: Boolean,
+)
+
+/**
+ * 判断路径是否为 zstd 压缩的 tar 包。
+ *
+ * @return `true` 表示应走系统 tar 兜底。
+ */
+private fun String.isTarZstdArchive(): Boolean {
+    val lower = lowercase()
+    return lower.endsWith(".tar.zst") || lower.endsWith(".tzst")
+}
+
+/**
+ * 将 tar 输出行转换为内部条目路径。
+ *
+ * @return 可用条目；空行或根目录返回 `null`。
+ */
+private fun String.toTarEntryPath(): TarEntryPath? {
+    val rawPath = trim().takeIf { value -> value.isNotBlank() } ?: return null
+    val normalized = rawPath
+        .replace('\\', '/')
+        .removePrefix("./")
+        .trimStart('/')
+    val path = normalized.trim('/')
+    if (path.isBlank()) return null
+    return TarEntryPath(
+        path = path,
+        isDirectory = normalized.endsWith("/"),
+    )
+}
+
+/**
+ * 将用户选中的归档内部路径规范化为 tar 可识别的路径参数。
+ *
+ * @return 非空内部路径；根路径返回 `null`。
+ */
+private fun String.toTarEntryNameOrNull(): String? {
+    return replace('\\', '/')
+        .removePrefix("./")
+        .trim('/')
+        .takeIf { value -> value.isNotBlank() }
+}
+
+/**
+ * 从完整 tar 条目集合中计算当前目录的直接子节点。
+ *
+ * @param archivePath 归档文件路径。
+ * @param innerPath 当前浏览的归档内部目录。
+ * @return 可展示到文件列表的直接子节点。
+ */
+private fun List<TarEntryPath>.toDirectTarChildren(
+    archivePath: String,
+    innerPath: String,
+): List<VFile> {
+    val normalizedInnerPath = innerPath.toTarEntryNameOrNull().orEmpty()
+    val prefix = if (normalizedInnerPath.isBlank()) "" else "$normalizedInnerPath/"
+    val parentLoc = ArchiveService.archiveLocation(archivePath, normalizedInnerPath)
+    val directChildren = linkedMapOf<String, VFile>()
+    forEach { entry ->
+        if (!entry.path.startsWith(prefix)) return@forEach
+        val relativePath = entry.path.removePrefix(prefix)
+        if (relativePath.isBlank()) return@forEach
+        val segments = relativePath.split("/").filter { segment -> segment.isNotBlank() }
+        if (segments.isEmpty()) return@forEach
+        val directChildName = segments.first()
+        if (directChildName in directChildren) return@forEach
+        val isChildDir = segments.size > 1 || entry.isDirectory
+        val childEntryPath = if (prefix.isBlank()) directChildName else prefix + directChildName
+        directChildren[directChildName] = VFile(
+            id = ArchiveService.archiveLocation(archivePath, childEntryPath),
+            name = directChildName,
+            location = ArchiveService.archiveLocation(archivePath, childEntryPath),
+            parentLocation = parentLoc,
+            kind = if (isChildDir) VFileKind.DIRECTORY else VFileKind.FILE,
+            sizeBytes = null,
+            modifiedAtEpochMillis = null,
+            hidden = false,
+            capabilities = setOf(VFileCapability.READ_CONTENT, VFileCapability.READ_METADATA),
+        )
+    }
+    return directChildren.values.toList()
+}
+
+/**
+ * 计算多个 tar 条目的公共父目录前缀。
+ *
+ * @return 以 `/` 结尾的公共父路径；无公共父目录时返回空字符串。
+ */
+private fun List<String>.commonTarParentPrefix(): String {
+    val parents = map { path ->
+        val lastSlash = path.trimEnd('/').lastIndexOf('/')
+        if (lastSlash >= 0) path.substring(0, lastSlash + 1) else ""
+    }
+    val common = parents.minByOrNull { parent -> parent.length } ?: ""
+    return if (parents.all { parent -> parent.startsWith(common) }) common else ""
+}
+
+/**
+ * 计算 tar 路径的层级深度，用于 `--strip-components`。
+ *
+ * @return 路径段数量。
+ */
+private fun String.tarPathDepth(): Int {
+    val normalized = trim('/').takeIf { value -> value.isNotBlank() } ?: return 0
+    return normalized.split('/').count { segment -> segment.isNotBlank() }
+}
+
+/**
+ * 执行输出文本的系统 tar 命令。
+ *
+ * @param command 完整命令参数。
+ * @param timeoutSeconds 超时秒数；为空时一直等待进程结束。
+ * @return 标准输出文本。
+ */
+private fun runTarTextCommand(
+    command: List<String>,
+    timeoutSeconds: Long? = null,
+): String {
+    return String(runTarCommand(command, timeoutSeconds), Charsets.UTF_8).trimEnd()
+}
+
+/**
+ * 执行输出二进制内容的系统 tar 命令。
+ *
+ * @param command 完整命令参数。
+ * @param timeoutSeconds 超时秒数；为空时一直等待进程结束。
+ * @return 标准输出字节。
+ */
+private fun runTarBinaryCommand(
+    command: List<String>,
+    timeoutSeconds: Long? = null,
+): ByteArray {
+    return runTarCommand(command, timeoutSeconds)
+}
+
+/**
+ * 执行系统 tar 命令并校验退出码。
+ *
+ * @param command 完整命令参数。
+ * @param timeoutSeconds 超时秒数；为空时一直等待进程结束。
+ * @return 标准输出字节。
+ */
+private fun runTarCommand(
+    command: List<String>,
+    timeoutSeconds: Long?,
+): ByteArray {
+    val process = ProcessBuilder(command).start()
+    val stdoutFuture = CompletableFuture.supplyAsync {
+        process.inputStream.use { stream -> stream.readBytes() }
+    }
+    val stderrFuture = CompletableFuture.supplyAsync {
+        process.errorStream.use { stream -> stream.readBytes() }
+    }
+    val completed = if (timeoutSeconds == null) {
+        process.waitFor()
+        true
+    } else {
+        process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+    }
+    if (!completed) {
+        process.destroyForcibly()
+        error("tar 命令超时: ${command.joinToString(" ")}")
+    }
+    val stdout = stdoutFuture.get()
+    val stderr = String(stderrFuture.get(), Charsets.UTF_8).trim()
+    if (process.exitValue() != 0) {
+        error(stderr.ifBlank { "tar 命令执行失败: ${command.joinToString(" ")}" })
+    }
+    return stdout
 }
 
 /**
@@ -561,7 +865,7 @@ private class FileExtractCallback(
  * 解压到内存的回调 — 将条目写入 [ByteArrayOutputStream]。
  */
 private class MemoryExtractCallback(
-    private val buffer: java.io.ByteArrayOutputStream,
+    private val buffer: ByteArrayOutputStream,
     private val password: String? = null,
 ) : IArchiveExtractCallback, ICryptoGetTextPassword {
 

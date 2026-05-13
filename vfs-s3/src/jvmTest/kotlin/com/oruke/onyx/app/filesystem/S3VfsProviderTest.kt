@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -82,6 +83,52 @@ class S3VfsProviderTest {
         assertFalse(client.hasObject("source/"))
         assertFalse(client.hasObject("source/root.txt"))
         assertFalse(client.hasObject("source/nested/child.txt"))
+    }
+
+    /**
+     * 验证写入文件会把内容落到目标 S3 对象。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun `write file stores object bytes`() = runBlocking {
+        val client = FakeS3Client(initialObjects = emptyMap())
+        val provider = S3VfsProvider(authRepository = StaticS3AuthRepository, client = client)
+
+        val written = provider.writeFile(
+            parentLocation = "s3://bucket/target/",
+            name = "note.txt",
+            chunks = flowOf("hello s3".encodeToByteArray()),
+            conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+        ).getOrThrow()
+
+        assertEquals("s3://bucket/target/note.txt", written?.location)
+        assertContentEquals("hello s3".encodeToByteArray(), client.objectBytes("target/note.txt"))
+    }
+
+    /**
+     * 验证创建文件和目录会分别写入空对象与目录占位对象。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun `create file and directory create s3 objects`() = runBlocking {
+        val client = FakeS3Client(initialObjects = emptyMap())
+        val provider = S3VfsProvider(authRepository = StaticS3AuthRepository, client = client)
+
+        val fileEntry = provider.createFile(
+            parentLocation = "s3://bucket/target/",
+            name = "empty.txt",
+        ).getOrThrow()
+        val directoryEntry = provider.createDirectory(
+            parentLocation = "s3://bucket/target/",
+            name = "folder",
+        ).getOrThrow()
+
+        assertEquals("s3://bucket/target/empty.txt", fileEntry.location)
+        assertEquals("s3://bucket/target/folder/", directoryEntry.location)
+        assertContentEquals(ByteArray(0), client.objectBytes("target/empty.txt"))
+        assertTrue(client.hasObject("target/folder/"))
     }
 
     /**

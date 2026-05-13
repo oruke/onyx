@@ -2,6 +2,8 @@ package com.oruke.onyx.app.platform
 
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.app.filesystem.SystemFileMaterializer
+import com.oruke.onyx.app.filesystem.systemLocalPathOrNull
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -51,15 +53,15 @@ object ExternalDragHelper {
     var pendingDragFiles: List<File> = emptyList()
 
     /**
-     * 待解压的压缩包条目信息（archivePath, innerPath）。
-     * 在 createTransferable 中才实际执行解压，避免阻塞 EDT。
+     * 待物化为系统本地文件的 VFS 条目。
+     * 在 createTransferable 中才实际执行导出，避免阻塞 Compose 拖拽检测。
      */
     @Volatile
-    var pendingArchiveEntries: List<Pair<String, String>> = emptyList()
+    var pendingMaterializeEntries: List<VFile> = emptyList()
 
-    /** 用于延迟解压的 ArchiveService 引用 */
+    /** 用于延迟物化远程文件或压缩包条目的服务引用 */
     @Volatile
-    var archiveServiceRef: ArchiveService? = null
+    var materializerRef: SystemFileMaterializer? = null
 
     /** 是否正在进行系统级拖放 */
     @Volatile
@@ -141,30 +143,21 @@ object ExternalDragHelper {
             override fun createTransferable(c: JComponent?): Transferable? {
                 // 先收集已解析的本地文件
                 val localFiles = pendingDragFiles.toMutableList()
-                // 延迟解压压缩包条目（此方法在 DnD 线程中调用，不阻塞 EDT）
-                val archiveEntries = pendingArchiveEntries
-                val service = archiveServiceRef
-                if (archiveEntries.isNotEmpty() && service != null) {
-                    for ((archivePath, innerPath) in archiveEntries) {
+                // 延迟物化远程文件和压缩包条目（此方法在 DnD 线程中调用，不阻塞 EDT）
+                val materializeEntries = pendingMaterializeEntries
+                val materializer = materializerRef
+                if (materializeEntries.isNotEmpty() && materializer != null) {
+                    for (entry in materializeEntries) {
                         try {
-                            val sessionDir = tempRootDir.resolve(UUID.randomUUID().toString())
-                            Files.createDirectories(sessionDir)
-                            val result = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                                service.extractEntriesToTemp(
-                                    archivePath = archivePath,
-                                    entryPaths = listOf(innerPath),
-                                    targetDir = sessionDir.toString(),
-                                )
-                            }
-                            if (result.isSuccess) {
-                                val extractedName = innerPath.substringAfterLast('/')
-                                val extractedFile = sessionDir.resolve(extractedName).toFile()
-                                if (extractedFile.exists()) {
-                                    localFiles.add(extractedFile)
-                                }
+                            val materialized = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+                                materializer.materialize(entry)
+                            }.getOrThrow()
+                            val file = File(materialized.location)
+                            if (file.exists()) {
+                                localFiles.add(file)
                             }
                         } catch (e: Exception) {
-                            OnyxLogger.error("ExternalDragHelper", "延迟解压失败", e)
+                            OnyxLogger.error("ExternalDragHelper", "延迟物化失败", e)
                         }
                     }
                 }
@@ -174,8 +167,8 @@ object ExternalDragHelper {
             override fun exportDone(source: JComponent?, data: Transferable?, action: Int) {
                 isSystemDragActive = false
                 pendingDragFiles = emptyList()
-                pendingArchiveEntries = emptyList()
-                archiveServiceRef = null
+                pendingMaterializeEntries = emptyList()
+                materializerRef = null
                 exportTriggered = false
             }
 
@@ -207,7 +200,7 @@ object ExternalDragHelper {
                 }
 
                 MouseEvent.MOUSE_DRAGGED -> {
-                    val hasPending = pendingDragFiles.isNotEmpty() || pendingArchiveEntries.isNotEmpty()
+                    val hasPending = pendingDragFiles.isNotEmpty() || pendingMaterializeEntries.isNotEmpty()
                     if (hasPending && !isSystemDragActive && !exportTriggered) {
                         val pressEvent = lastMousePressedEvent ?: return@AWTEventListener
                         val component = installedComponent ?: return@AWTEventListener
@@ -264,8 +257,8 @@ object ExternalDragHelper {
     fun clearPending() {
         if (!isSystemDragActive) {
             pendingDragFiles = emptyList()
-            pendingArchiveEntries = emptyList()
-            archiveServiceRef = null
+            pendingMaterializeEntries = emptyList()
+            materializerRef = null
             exportTriggered = false
         }
     }
@@ -279,28 +272,27 @@ object ExternalDragHelper {
      */
     fun preparePendingFiles(
         entries: List<VFile>,
-        archiveService: ArchiveService,
+        materializer: SystemFileMaterializer,
     ): Boolean {
         val localFiles = mutableListOf<File>()
-        val archiveEntries = mutableListOf<Pair<String, String>>()
+        val materializeEntries = mutableListOf<VFile>()
+        var containsArchiveEntry = false
         entries.forEach { entry ->
             val parsed = ArchiveService.parseArchiveLocation(entry.location)
-            if (parsed != null) {
-                val (archivePath, innerPath) = parsed
-                if (innerPath.isNotBlank()) {
-                    archiveEntries += archivePath to innerPath
-                }
-            } else {
-                val file = File(entry.location)
-                if (file.exists()) {
-                    localFiles += file
-                }
+            if (parsed?.second?.isNotBlank() == true) {
+                containsArchiveEntry = true
+            }
+            val localPath = entry.systemLocalPathOrNull()
+            if (localPath != null && Files.exists(localPath)) {
+                localFiles += localPath.toFile()
+            } else if (materializer.supports(entry)) {
+                materializeEntries += entry
             }
         }
         pendingDragFiles = localFiles
-        pendingArchiveEntries = archiveEntries
-        archiveServiceRef = archiveService
-        return archiveEntries.isNotEmpty()
+        pendingMaterializeEntries = materializeEntries
+        materializerRef = materializer
+        return containsArchiveEntry
     }
 
     /**

@@ -8,9 +8,27 @@ import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
 
-class JvmDesktopExternalOpenService : ExternalOpenService {
+/**
+ * JVM Desktop 外部打开服务。
+ *
+ * @property materializer 系统文件物化服务；可将远程文件或压缩包条目转换为本地临时文件后再交给 Desktop API。
+ */
+class JvmDesktopExternalOpenService(
+    private val materializer: SystemFileMaterializer? = null,
+) : ExternalOpenService {
+    /**
+     * 使用系统默认应用打开文件。
+     *
+     * @param entry 待打开条目。
+     * @return 打开结果。
+     */
     override suspend fun open(entry: VFile): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            val targetEntry = materializer
+                ?.takeIf { candidate -> candidate.supports(entry) }
+                ?.materialize(entry)
+                ?.getOrThrow()
+                ?: entry
             check(Desktop.isDesktopSupported()) {
                 "Desktop integration is not available"
             }
@@ -18,7 +36,7 @@ class JvmDesktopExternalOpenService : ExternalOpenService {
             check(desktop.isSupported(Desktop.Action.OPEN)) {
                 "Open action is not supported on this platform"
             }
-            desktop.open(Path.of(entry.location).toFile())
+            desktop.open(Path.of(targetEntry.location).toFile())
         }
     }
 }

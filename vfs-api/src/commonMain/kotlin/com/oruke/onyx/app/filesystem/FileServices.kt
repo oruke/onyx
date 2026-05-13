@@ -208,24 +208,29 @@ class ProviderBackedFileCommandService(
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
     ): Result<Boolean> {
-        if (contentServices.isEmpty() || entries.any { entry -> entry.kind != VFileKind.FILE }) {
+        if (contentServices.isEmpty()) {
+            return Result.success(false)
+        }
+        val hasDirectories = entries.any { entry -> entry.kind == VFileKind.DIRECTORY }
+        if (hasDirectories && providerRegistry == null) {
             return Result.success(false)
         }
         return contentServiceFor(targetDirectoryLocation, VfsProviderCapability.WRITE_CONTENT).fold(
             onSuccess = { targetContentService ->
                 runCatching {
+                    val targetCommandService = if (hasDirectories) {
+                        serviceFor(targetDirectoryLocation, VfsProviderCapability.CREATE_DIRECTORY).getOrThrow()
+                    } else {
+                        null
+                    }
                     entries.forEach { entry ->
-                        val sourceContentService = contentServiceFor(
-                            location = entry.location,
-                            capability = VfsProviderCapability.READ_CONTENT,
-                        ).getOrThrow()
-                        val source = sourceContentService.readFile(entry).getOrThrow()
-                        targetContentService.writeFile(
-                            parentLocation = targetDirectoryLocation,
-                            name = source.name,
-                            chunks = source.chunks,
+                        copyEntryAcrossProviders(
+                            entry = entry,
+                            targetDirectoryLocation = targetDirectoryLocation,
+                            targetContentService = targetContentService,
+                            targetCommandService = targetCommandService,
                             conflictStrategy = conflictStrategy,
-                        ).getOrThrow()
+                        )
                     }
                     true
                 }
@@ -238,6 +243,85 @@ class ProviderBackedFileCommandService(
                 }
             },
         )
+    }
+
+    /**
+     * 递归复制一个跨 provider 条目。
+     *
+     * 文件通过统一内容流读写；目录先在目标 provider 创建同名目录，再通过 `VfsProviderRegistry`
+     * 列出子项递归复制。这样目录级跨 provider 传输仍遵守 VFS/provider 边界，不直接解析平台路径。
+     *
+     * @param entry 当前需要复制的源条目。
+     * @param targetDirectoryLocation 目标父目录位置。
+     * @param targetContentService 目标 provider 的内容写入服务。
+     * @param targetCommandService 目标 provider 的目录创建服务；复制目录时必需。
+     * @param conflictStrategy 文件冲突处理策略。
+     */
+    private suspend fun copyEntryAcrossProviders(
+        entry: VFile,
+        targetDirectoryLocation: String,
+        targetContentService: RoutableVfsContentService,
+        targetCommandService: RoutableFileCommandService?,
+        conflictStrategy: TransferConflictStrategy,
+    ) {
+        when (entry.kind) {
+            VFileKind.FILE -> copyFileAcrossProviders(
+                entry = entry,
+                targetDirectoryLocation = targetDirectoryLocation,
+                targetContentService = targetContentService,
+                conflictStrategy = conflictStrategy,
+            )
+
+            VFileKind.DIRECTORY -> {
+                val directoryService = targetCommandService
+                    ?: throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.CREATE_DIRECTORY)
+                val targetDirectory = directoryService.createDirectory(targetDirectoryLocation, entry.name).getOrThrow()
+                val children = providerRegistry
+                    ?.list(entry.location)
+                    ?.getOrThrow()
+                    ?: throw crossProviderUnsupportedFor(
+                        sourceLocation = entry.location,
+                        targetLocation = targetDirectoryLocation,
+                        capability = VfsProviderCapability.COPY,
+                    )
+                children.forEach { child ->
+                    copyEntryAcrossProviders(
+                        entry = child,
+                        targetDirectoryLocation = targetDirectory.location,
+                        targetContentService = targetContentService,
+                        targetCommandService = targetCommandService,
+                        conflictStrategy = conflictStrategy,
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * 复制单个跨 provider 文件。
+     *
+     * @param entry 当前需要复制的源文件。
+     * @param targetDirectoryLocation 目标父目录位置。
+     * @param targetContentService 目标 provider 的内容写入服务。
+     * @param conflictStrategy 文件冲突处理策略。
+     */
+    private suspend fun copyFileAcrossProviders(
+        entry: VFile,
+        targetDirectoryLocation: String,
+        targetContentService: RoutableVfsContentService,
+        conflictStrategy: TransferConflictStrategy,
+    ) {
+        val sourceContentService = contentServiceFor(
+            location = entry.location,
+            capability = VfsProviderCapability.READ_CONTENT,
+        ).getOrThrow()
+        val source = sourceContentService.readFile(entry).getOrThrow()
+        targetContentService.writeFile(
+            parentLocation = targetDirectoryLocation,
+            name = source.name,
+            chunks = source.chunks,
+            conflictStrategy = conflictStrategy,
+        ).getOrThrow()
     }
 
     private suspend fun moveAcrossProviders(

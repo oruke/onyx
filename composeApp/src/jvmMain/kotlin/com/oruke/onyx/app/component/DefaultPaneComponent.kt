@@ -129,6 +129,10 @@ class DefaultPaneComponent(
             is PaneIntent.OpenEntry -> openEntry(intent.entry)
             is PaneIntent.SetViewMode -> setViewMode(intent.mode)
             is PaneIntent.SetFilterQuery -> setFilterQuery(intent.query)
+            PaneIntent.ShowFilterInput -> showFilterInput()
+            is PaneIntent.HideFilterInput -> hideFilterInput(intent.clearQuery)
+            PaneIntent.ShowCommandPalette -> showCommandPalette()
+            PaneIntent.HideCommandPalette -> hideCommandPalette()
             is PaneIntent.ToggleSort -> toggleSort(intent.column)
             PaneIntent.ToggleHiddenItems -> toggleHiddenItems()
             is PaneIntent.ToggleColumnVisibility -> toggleColumnVisibility(intent.column)
@@ -476,6 +480,57 @@ class DefaultPaneComponent(
         val tab = activeTab() ?: return
         updateTab(tab.id) { currentTab ->
             currentTab.withFilterQueryState(query)
+        }
+    }
+
+    /**
+     * 打开面板内筛选输入框，并递增聚焦请求编号。
+     *
+     * @return 无返回值。
+     */
+    fun showFilterInput() {
+        updatePaneChrome { chrome ->
+            chrome.copy(
+                filterInputVisible = true,
+                filterInputFocusRequestId = chrome.filterInputFocusRequestId + 1,
+            )
+        }
+    }
+
+    /**
+     * 关闭面板内筛选输入框，可按需清空当前标签的筛选条件。
+     *
+     * @param clearQuery 是否同时清空当前标签筛选文本。
+     * @return 无返回值。
+     */
+    fun hideFilterInput(clearQuery: Boolean) {
+        if (clearQuery) {
+            setFilterQuery("")
+        }
+        updatePaneChrome { chrome ->
+            chrome.copy(filterInputVisible = false)
+        }
+    }
+
+    /**
+     * 打开面板内命令面板。
+     *
+     * @return 无返回值。
+     */
+    fun showCommandPalette() {
+        updatePaneChrome { chrome ->
+            chrome.copy(commandPaletteVisible = true)
+        }
+    }
+
+    /**
+     * 关闭面板内命令面板。
+     *
+     * @return 无返回值。
+     */
+    fun hideCommandPalette() {
+        updatePaneChrome { chrome ->
+            chrome.copy(commandPaletteVisible = false)
         }
     }
 
@@ -980,11 +1035,28 @@ class DefaultPaneComponent(
         inlineExpandedLocations: Set<String> = emptySet(),
         inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
     ) {
+        val chrome = mutableState.value.chromeState
         mutableState.value = activeTab.toPaneState(
             paneId = paneId,
             activeTabId = activeTabId,
             inlineExpandedLocations = inlineExpandedLocations,
             inlineExpandedEntries = inlineExpandedEntries,
+            filterInputVisible = chrome.filterInputVisible,
+            filterInputFocusRequestId = chrome.filterInputFocusRequestId,
+            commandPaletteVisible = chrome.commandPaletteVisible,
+        )
+    }
+
+    /**
+     * 更新面板 chrome 状态，不触碰当前标签业务状态。
+     *
+     * @param transform 基于当前 chrome 状态生成下一状态的转换函数。
+     * @return 无返回值。
+     */
+    private fun updatePaneChrome(transform: (PaneChromeState) -> PaneChromeState) {
+        val currentState = mutableState.value
+        mutableState.value = currentState.copy(
+            chromeState = transform(currentState.chromeState),
         )
     }
 

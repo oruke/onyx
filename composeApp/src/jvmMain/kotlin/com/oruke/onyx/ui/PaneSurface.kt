@@ -131,9 +131,6 @@ internal fun PaneSurface(
     val inlineEditState = state.inlineEditState
     val focusRequester = remember { FocusRequester() }
     val filterFocusRequester = remember { FocusRequester() }
-    var showFilterBar by remember { mutableStateOf(false) }
-    var filterFocusRequestId by remember { mutableStateOf(0) }
-    var showCommandPalette by remember { mutableStateOf(false) }
     var showContextMenu by remember { mutableStateOf(false) }
     var addressBarEditing by remember { mutableStateOf(false) }
     var filterFocused by remember { mutableStateOf(false) }
@@ -146,8 +143,8 @@ internal fun PaneSurface(
     val tabStack by component.tabStack.subscribeAsState()
     val tabOrder by component.tabOrder.collectAsState()
     val orderedTabs = component.tabStatesInDisplayOrder()
-    val filterOverlayVisible = showFilterBar || filterQuery.isNotEmpty()
-    val textInputOwnsKeyboard = addressBarEditing || filterFocused || showCommandPalette
+    val filterOverlayVisible = state.filterInputVisible || filterQuery.isNotEmpty()
+    val textInputOwnsKeyboard = addressBarEditing || filterFocused || state.commandPaletteVisible
     val coroutineScope = rememberCoroutineScope()
     val tabBarState = PaneTabBarState(
         activeTabId = state.activeTabId,
@@ -162,13 +159,11 @@ internal fun PaneSurface(
         component.dispatch(intent)
     }
     fun openFilterInput() {
-        showFilterBar = true
-        filterFocusRequestId += 1
+        dispatch(PaneIntent.ShowFilterInput)
     }
     fun closeFilterInput() {
-        showFilterBar = false
         filterFocused = false
-        dispatch(PaneIntent.SetFilterQuery(""))
+        dispatch(PaneIntent.HideFilterInput(clearQuery = true))
         focusRequester.requestFocus()
     }
     fun isPaneCommandEnabled(command: OnyxCommand): Boolean {
@@ -305,7 +300,7 @@ internal fun PaneSurface(
             }
 
             OnyxCommand.CommandPalette -> {
-                showCommandPalette = true
+                dispatch(PaneIntent.ShowCommandPalette)
                 true
             }
 
@@ -507,7 +502,7 @@ internal fun PaneSurface(
         val contextMenuEntries = readyEntries.filter { entry -> contextMenuEntryIds.contains(entry.id) }
         val singleSelectedEntry = selectedEntries.singleOrNull()
         val currentLocationFavorite = favoriteLocations.contains(state.location)
-        if (showCommandPalette) {
+        if (state.commandPaletteVisible) {
             val commandItems = OnyxCommandRegistry
                 .paneCommandStates(commandShortcuts, ::isPaneCommandEnabled)
                 .filterNot { commandState -> commandState.spec.command == OnyxCommand.CommandPalette }
@@ -524,10 +519,10 @@ internal fun PaneSurface(
                 items = commandItems,
                 onExecute = { command ->
                     if (executePaneCommand(command)) {
-                        showCommandPalette = false
+                        dispatch(PaneIntent.HideCommandPalette)
                     }
                 },
-                onClose = { showCommandPalette = false },
+                onClose = { dispatch(PaneIntent.HideCommandPalette) },
             )
         }
         PaneTabBar(
@@ -786,7 +781,7 @@ internal fun PaneSurface(
                     FloatingFilterInput(
                         query = filterQuery,
                         focusRequester = filterFocusRequester,
-                        focusRequestId = filterFocusRequestId,
+                        focusRequestId = state.filterInputFocusRequestId,
                         onQueryChange = { dispatch(PaneIntent.SetFilterQuery(it)) },
                         onFocusChanged = { focused ->
                             filterFocused = focused

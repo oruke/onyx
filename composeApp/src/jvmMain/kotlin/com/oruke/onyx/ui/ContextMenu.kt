@@ -142,6 +142,10 @@ internal fun BoxScope.PaneContextMenu(
         val systemSection = contextMenuSections.firstOrNull { section ->
             section.kind == FileContextMenuSectionKind.SYSTEM && section.items.isNotEmpty()
         }
+        var expandedRootSubmenuId by remember { mutableStateOf<String?>(null) }
+        fun collapseRootSubmenus() {
+            expandedRootSubmenuId = null
+        }
         ContextMenuPanel {
             ContextMenuItem(
                 text = stringResource(Res.string.action_open),
@@ -149,22 +153,25 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.MenuOpen,
                 command = OnyxCommand.OpenSelection,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onOpenSelection,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_open_in_new_tab),
                 enabled = canOpenSelectionInNewTab,
                 iconKey = AllIconsKeys.Actions.OpenNewTab,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onOpenSelectionInNewTab,
             )
             if (openWithSection != null) {
-                var openWithExpanded by remember { mutableStateOf(false) }
                 ContextMenuSubmenuItem(
                     text = stringResource(Res.string.action_open_with),
                     enabled = true,
                     iconKey = AllIconsKeys.Actions.MenuOpen,
-                    expanded = openWithExpanded,
-                    onExpandedChange = { expanded -> openWithExpanded = expanded },
+                    expanded = expandedRootSubmenuId == ROOT_OPEN_WITH_SUBMENU_ID,
+                    onExpandedChange = { expanded ->
+                        expandedRootSubmenuId = if (expanded) ROOT_OPEN_WITH_SUBMENU_ID else null
+                    },
                 ) {
                     FileContextMenuItems(
                         items = openWithSection.items,
@@ -177,6 +184,7 @@ internal fun BoxScope.PaneContextMenu(
                 FileContextMenuItems(
                     items = systemSection.items,
                     onFileContextMenuCommand = onFileContextMenuCommand,
+                    onItemPointerEnter = ::collapseRootSubmenus,
                 )
             }
             ContextMenuItem(
@@ -185,6 +193,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.Edit,
                 command = OnyxCommand.RenameSelection,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onRenameSelection,
             )
             ContextMenuItem(
@@ -193,6 +202,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.FileTypes.Any_type,
                 command = OnyxCommand.NewFile,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onCreateFile,
             )
             ContextMenuItem(
@@ -201,6 +211,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Nodes.Folder,
                 command = OnyxCommand.NewDirectory,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onCreateDirectory,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -210,6 +221,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.General.Delete,
                 command = OnyxCommand.DeleteSelection,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onDeleteSelection,
             )
             if (canExtractSelection) {
@@ -217,18 +229,21 @@ internal fun BoxScope.PaneContextMenu(
                     text = stringResource(Res.string.action_extract_here),
                     enabled = true,
                     iconKey = AllIconsKeys.Nodes.ExtractedFolder,
+                    onPointerEnter = ::collapseRootSubmenus,
                     onClick = onExtractSelection,
                 )
                 ContextMenuItem(
                     text = stringResource(Res.string.action_extract_to_directory),
                     enabled = true,
                     iconKey = AllIconsKeys.Nodes.ExtractedFolder,
+                    onPointerEnter = ::collapseRootSubmenus,
                     onClick = onExtractToDirectory,
                 )
                 ContextMenuItem(
                     text = stringResource(Res.string.action_extract_smart),
                     enabled = true,
                     iconKey = AllIconsKeys.Nodes.ExtractedFolder,
+                    onPointerEnter = ::collapseRootSubmenus,
                     onClick = onExtractSmart,
                 )
             }
@@ -237,6 +252,7 @@ internal fun BoxScope.PaneContextMenu(
                     text = stringResource(Res.string.action_batch_rename),
                     enabled = true,
                     iconKey = AllIconsKeys.Actions.Edit,
+                    onPointerEnter = ::collapseRootSubmenus,
                     onClick = onBatchRename,
                 )
             }
@@ -244,6 +260,7 @@ internal fun BoxScope.PaneContextMenu(
                 text = stringResource(Res.string.action_copy_path),
                 enabled = canCopyPath,
                 iconKey = AllIconsKeys.Actions.Copy,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onCopyPath,
             )
             ContextMenuItem(
@@ -252,6 +269,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.Copy,
                 command = OnyxCommand.CopySelection,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onCopySelection,
             )
             ContextMenuItem(
@@ -260,6 +278,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.MenuCut,
                 command = OnyxCommand.CutSelection,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onCutSelection,
             )
             ContextMenuItem(
@@ -268,6 +287,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.MenuPaste,
                 command = OnyxCommand.Paste,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onPaste,
             )
             ContextMenuItem(
@@ -276,6 +296,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.Back,
                 command = OnyxCommand.UndoLastOperation,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onUndo,
             )
             ContextMenuItem(
@@ -284,6 +305,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.Forward,
                 command = OnyxCommand.RedoLastOperation,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onRedo,
             )
             Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
@@ -293,12 +315,14 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.Refresh,
                 command = OnyxCommand.Refresh,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onRefresh,
             )
             ContextMenuItem(
                 text = stringResource(Res.string.action_open_terminal),
                 enabled = true,
                 iconKey = AllIconsKeys.Debugger.Console,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onOpenTerminal,
             )
             ContextMenuItem(
@@ -307,6 +331,7 @@ internal fun BoxScope.PaneContextMenu(
                 iconKey = AllIconsKeys.Actions.Close,
                 command = OnyxCommand.CloseMenu,
                 commandShortcuts = commandShortcuts,
+                onPointerEnter = ::collapseRootSubmenus,
                 onClick = onClose,
             )
         }
@@ -330,6 +355,7 @@ private fun ContextMenuPanel(content: @Composable ColumnScope.() -> Unit) {
 private fun FileContextMenuItems(
     items: List<FileContextMenuItem>,
     onFileContextMenuCommand: (FileContextMenuCommand) -> Unit,
+    onItemPointerEnter: () -> Unit = {},
 ) {
     var expandedActionId by remember { mutableStateOf<String?>(null) }
     items.forEach { item ->
@@ -340,6 +366,7 @@ private fun FileContextMenuItems(
                 iconKey = item.contextMenuIconKey(),
                 expanded = expandedActionId == item.id,
                 onExpandedChange = { expanded ->
+                    if (expanded) onItemPointerEnter()
                     expandedActionId = if (expanded) item.id else null
                 },
             ) {
@@ -354,7 +381,10 @@ private fun FileContextMenuItems(
                 text = item.contextMenuText(),
                 enabled = true,
                 iconKey = item.contextMenuIconKey(),
-                onPointerEnter = { expandedActionId = null },
+                onPointerEnter = {
+                    onItemPointerEnter()
+                    expandedActionId = null
+                },
                 onClick = { onFileContextMenuCommand(command) },
             )
         }
@@ -383,6 +413,7 @@ private fun ContextMenuSubmenuItem(
     enabled: Boolean,
     iconKey: IconKey,
     expanded: Boolean,
+    onPointerEnter: () -> Unit = {},
     onExpandedChange: (Boolean) -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -391,6 +422,7 @@ private fun ContextMenuSubmenuItem(
     fun keepOpen() {
         closeJob?.cancel()
         closeJob = null
+        onPointerEnter()
         if (enabled) onExpandedChange(true)
     }
     fun closeSoon() {
@@ -515,3 +547,4 @@ private object CascadingMenuPositionProvider : PopupPositionProvider {
 private const val SUBMENU_OVERLAP_PX = 4
 private const val SUBMENU_VERTICAL_OFFSET_PX = 4
 private const val SUBMENU_CLOSE_DELAY_MS = 180L
+private const val ROOT_OPEN_WITH_SUBMENU_ID = "root-open-with"

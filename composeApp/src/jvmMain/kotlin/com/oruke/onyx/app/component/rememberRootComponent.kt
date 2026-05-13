@@ -27,6 +27,7 @@ import com.oruke.onyx.app.filesystem.PreviewService
 import com.oruke.onyx.app.filesystem.RemoteAuthStore
 import com.oruke.onyx.app.filesystem.SessionRepository
 import com.oruke.onyx.app.filesystem.SettingsRepository
+import com.oruke.onyx.app.filesystem.SystemFileMaterializer
 import com.oruke.onyx.app.filesystem.SystemMenuService
 import com.oruke.onyx.app.filesystem.TaskPersistenceRepository
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
@@ -80,6 +81,7 @@ fun rememberRootComponent(): RootComponent {
             openWithService = koin.get<OpenWithService>(),
             systemMenuService = koin.get<SystemMenuService>(),
             fileContextMenuService = koin.get<FileContextMenuService>(),
+            systemFileMaterializer = koin.get<SystemFileMaterializer>(),
             pathService = koin.get<VfsPathService>(),
             entryNameSuggestionService = koin.get<EntryNameSuggestionService>(),
             providerRegistry = koin.get<VfsProviderRegistry>(),
