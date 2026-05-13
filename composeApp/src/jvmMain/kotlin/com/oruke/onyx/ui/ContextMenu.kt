@@ -40,12 +40,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
-import com.oruke.onyx.app.filesystem.FileContextMenuCommand
-import com.oruke.onyx.app.filesystem.FileContextMenuItem
-import com.oruke.onyx.app.filesystem.FileContextMenuLabel
-import com.oruke.onyx.app.filesystem.FileContextMenuSection
-import com.oruke.onyx.app.filesystem.FileContextMenuSectionKind
+import com.oruke.onyx.app.component.PaneContextMenuCommand
+import com.oruke.onyx.app.component.PaneContextMenuIcon
+import com.oruke.onyx.app.component.PaneContextMenuModel
+import com.oruke.onyx.app.component.PaneContextMenuNode
+import com.oruke.onyx.app.component.PaneContextMenuText
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_close_menu
@@ -54,8 +57,8 @@ import onyx.composeapp.generated.resources.action_copy_path
 import onyx.composeapp.generated.resources.action_cut
 import onyx.composeapp.generated.resources.action_delete_selected
 import onyx.composeapp.generated.resources.action_extract_here
-import onyx.composeapp.generated.resources.action_extract_to_directory
 import onyx.composeapp.generated.resources.action_extract_smart
+import onyx.composeapp.generated.resources.action_extract_to_directory
 import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
@@ -67,11 +70,8 @@ import onyx.composeapp.generated.resources.action_paste
 import onyx.composeapp.generated.resources.action_redo
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_rename
-import onyx.composeapp.generated.resources.action_system_menu
 import onyx.composeapp.generated.resources.action_undo
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
@@ -80,39 +80,20 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+/**
+ * 面板右键菜单弹层。
+ *
+ * @param anchorOffset 弹层锚点在窗口内的像素位置。
+ * @param model 已合成的统一右键菜单模型。
+ * @param onCommand 菜单命令点击回调。
+ * @param commandShortcuts 面板命令快捷键映射。
+ * @param onClose 关闭菜单回调。
+ */
 @Composable
 internal fun BoxScope.PaneContextMenu(
     anchorOffset: IntOffset,
-    canOperateOnSelection: Boolean,
-    canOpenSelection: Boolean,
-    canOpenSelectionInNewTab: Boolean,
-    canRenameSelection: Boolean,
-    canCopyPath: Boolean,
-    canPaste: Boolean,
-    canUndo: Boolean,
-    canRedo: Boolean,
-    canExtractSelection: Boolean,
-    canBatchRename: Boolean,
-    onOpenSelection: () -> Unit,
-    onOpenSelectionInNewTab: () -> Unit,
-    onRenameSelection: () -> Unit,
-    onBatchRename: () -> Unit,
-    onCreateFile: () -> Unit,
-    onCreateDirectory: () -> Unit,
-    onDeleteSelection: () -> Unit,
-    onExtractSelection: () -> Unit,
-    onExtractToDirectory: () -> Unit,
-    onExtractSmart: () -> Unit,
-    onCopyPath: () -> Unit,
-    onCopySelection: () -> Unit,
-    onCutSelection: () -> Unit,
-    onPaste: () -> Unit,
-    onUndo: () -> Unit,
-    onRedo: () -> Unit,
-    contextMenuSections: List<FileContextMenuSection>,
-    onFileContextMenuCommand: (FileContextMenuCommand) -> Unit,
-    onRefresh: () -> Unit,
-    onOpenTerminal: () -> Unit,
+    model: PaneContextMenuModel,
+    onCommand: (PaneContextMenuCommand) -> Unit,
     commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
     onClose: () -> Unit,
 ) {
@@ -136,208 +117,21 @@ internal fun BoxScope.PaneContextMenu(
         onDismissRequest = onClose,
         properties = PopupProperties(focusable = false),
     ) {
-        val openWithSection = contextMenuSections.firstOrNull { section ->
-            section.kind == FileContextMenuSectionKind.OPEN_WITH && section.items.isNotEmpty()
-        }
-        val systemSection = contextMenuSections.firstOrNull { section ->
-            section.kind == FileContextMenuSectionKind.SYSTEM && section.items.isNotEmpty()
-        }
-        var expandedRootSubmenuId by remember { mutableStateOf<String?>(null) }
-        fun collapseRootSubmenus() {
-            expandedRootSubmenuId = null
-        }
         ContextMenuPanel {
-            ContextMenuItem(
-                text = stringResource(Res.string.action_open),
-                enabled = canOpenSelection,
-                iconKey = AllIconsKeys.Actions.MenuOpen,
-                command = OnyxCommand.OpenSelection,
+            PaneContextMenuNodes(
+                nodes = model.nodes,
                 commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onOpenSelection,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_open_in_new_tab),
-                enabled = canOpenSelectionInNewTab,
-                iconKey = AllIconsKeys.Actions.OpenNewTab,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onOpenSelectionInNewTab,
-            )
-            if (openWithSection != null) {
-                ContextMenuSubmenuItem(
-                    text = stringResource(Res.string.action_open_with),
-                    enabled = true,
-                    iconKey = AllIconsKeys.Actions.MenuOpen,
-                    expanded = expandedRootSubmenuId == ROOT_OPEN_WITH_SUBMENU_ID,
-                    onExpandedChange = { expanded ->
-                        expandedRootSubmenuId = if (expanded) ROOT_OPEN_WITH_SUBMENU_ID else null
-                    },
-                ) {
-                    FileContextMenuItems(
-                        items = openWithSection.items,
-                        onFileContextMenuCommand = onFileContextMenuCommand,
-                    )
-                }
-            }
-            if (canOperateOnSelection && systemSection != null) {
-                Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-                FileContextMenuItems(
-                    items = systemSection.items,
-                    onFileContextMenuCommand = onFileContextMenuCommand,
-                    onItemPointerEnter = ::collapseRootSubmenus,
-                )
-            }
-            ContextMenuItem(
-                text = stringResource(Res.string.action_rename),
-                enabled = canRenameSelection,
-                iconKey = AllIconsKeys.Actions.Edit,
-                command = OnyxCommand.RenameSelection,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onRenameSelection,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_new_file),
-                enabled = true,
-                iconKey = AllIconsKeys.FileTypes.Any_type,
-                command = OnyxCommand.NewFile,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onCreateFile,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_new_directory),
-                enabled = true,
-                iconKey = AllIconsKeys.Nodes.Folder,
-                command = OnyxCommand.NewDirectory,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onCreateDirectory,
-            )
-            Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-            ContextMenuItem(
-                text = stringResource(Res.string.action_delete_selected),
-                enabled = canOperateOnSelection,
-                iconKey = AllIconsKeys.General.Delete,
-                command = OnyxCommand.DeleteSelection,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onDeleteSelection,
-            )
-            if (canExtractSelection) {
-                ContextMenuItem(
-                    text = stringResource(Res.string.action_extract_here),
-                    enabled = true,
-                    iconKey = AllIconsKeys.Nodes.ExtractedFolder,
-                    onPointerEnter = ::collapseRootSubmenus,
-                    onClick = onExtractSelection,
-                )
-                ContextMenuItem(
-                    text = stringResource(Res.string.action_extract_to_directory),
-                    enabled = true,
-                    iconKey = AllIconsKeys.Nodes.ExtractedFolder,
-                    onPointerEnter = ::collapseRootSubmenus,
-                    onClick = onExtractToDirectory,
-                )
-                ContextMenuItem(
-                    text = stringResource(Res.string.action_extract_smart),
-                    enabled = true,
-                    iconKey = AllIconsKeys.Nodes.ExtractedFolder,
-                    onPointerEnter = ::collapseRootSubmenus,
-                    onClick = onExtractSmart,
-                )
-            }
-            if (canBatchRename) {
-                ContextMenuItem(
-                    text = stringResource(Res.string.action_batch_rename),
-                    enabled = true,
-                    iconKey = AllIconsKeys.Actions.Edit,
-                    onPointerEnter = ::collapseRootSubmenus,
-                    onClick = onBatchRename,
-                )
-            }
-            ContextMenuItem(
-                text = stringResource(Res.string.action_copy_path),
-                enabled = canCopyPath,
-                iconKey = AllIconsKeys.Actions.Copy,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onCopyPath,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_copy),
-                enabled = canOperateOnSelection,
-                iconKey = AllIconsKeys.Actions.Copy,
-                command = OnyxCommand.CopySelection,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onCopySelection,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_cut),
-                enabled = canOperateOnSelection,
-                iconKey = AllIconsKeys.Actions.MenuCut,
-                command = OnyxCommand.CutSelection,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onCutSelection,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_paste),
-                enabled = canPaste,
-                iconKey = AllIconsKeys.Actions.MenuPaste,
-                command = OnyxCommand.Paste,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onPaste,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_undo),
-                enabled = canUndo,
-                iconKey = AllIconsKeys.Actions.Back,
-                command = OnyxCommand.UndoLastOperation,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onUndo,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_redo),
-                enabled = canRedo,
-                iconKey = AllIconsKeys.Actions.Forward,
-                command = OnyxCommand.RedoLastOperation,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onRedo,
-            )
-            Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-            ContextMenuItem(
-                text = stringResource(Res.string.action_refresh_active),
-                enabled = true,
-                iconKey = AllIconsKeys.Actions.Refresh,
-                command = OnyxCommand.Refresh,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onRefresh,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_open_terminal),
-                enabled = true,
-                iconKey = AllIconsKeys.Debugger.Console,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onOpenTerminal,
-            )
-            ContextMenuItem(
-                text = stringResource(Res.string.action_close_menu),
-                enabled = true,
-                iconKey = AllIconsKeys.Actions.Close,
-                command = OnyxCommand.CloseMenu,
-                commandShortcuts = commandShortcuts,
-                onPointerEnter = ::collapseRootSubmenus,
-                onClick = onClose,
+                onCommand = onCommand,
             )
         }
     }
 }
 
+/**
+ * 右键菜单面板容器。
+ *
+ * @param content 菜单内容。
+ */
 @Composable
 private fun ContextMenuPanel(content: @Composable ColumnScope.() -> Unit) {
     Column(
@@ -351,61 +145,110 @@ private fun ContextMenuPanel(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
+/**
+ * 渲染统一菜单节点列表，并维护同级级联菜单的展开状态。
+ *
+ * @param nodes 菜单节点列表。
+ * @param commandShortcuts 面板命令快捷键映射。
+ * @param onCommand 菜单命令点击回调。
+ * @param onItemPointerEnter 指针进入任意子项时通知父级菜单的回调。
+ */
 @Composable
-private fun FileContextMenuItems(
-    items: List<FileContextMenuItem>,
-    onFileContextMenuCommand: (FileContextMenuCommand) -> Unit,
+private fun PaneContextMenuNodes(
+    nodes: List<PaneContextMenuNode>,
+    commandShortcuts: OnyxCommandShortcutMap,
+    onCommand: (PaneContextMenuCommand) -> Unit,
     onItemPointerEnter: () -> Unit = {},
 ) {
-    var expandedActionId by remember { mutableStateOf<String?>(null) }
-    items.forEach { item ->
-        if (item.children.isNotEmpty()) {
-            ContextMenuSubmenuItem(
-                text = item.contextMenuText(),
-                enabled = true,
-                iconKey = item.contextMenuIconKey(),
-                expanded = expandedActionId == item.id,
-                onExpandedChange = { expanded ->
-                    if (expanded) onItemPointerEnter()
-                    expandedActionId = if (expanded) item.id else null
-                },
-            ) {
-                FileContextMenuItems(
-                    items = item.children,
-                    onFileContextMenuCommand = onFileContextMenuCommand,
+    var expandedItemId by remember { mutableStateOf<String?>(null) }
+    nodes.forEach { node ->
+        when (node) {
+            PaneContextMenuNode.Divider -> {
+                Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+            }
+
+            is PaneContextMenuNode.Item -> {
+                PaneContextMenuItemNode(
+                    item = node,
+                    commandShortcuts = commandShortcuts,
+                    expanded = expandedItemId == node.id,
+                    onExpandedChange = { expanded ->
+                        expandedItemId = if (expanded) node.id else expandedItemId.takeUnless { it == node.id }
+                    },
+                    onPointerEnter = {
+                        onItemPointerEnter()
+                        if (node.children.isEmpty()) expandedItemId = null
+                    },
+                    onCommand = onCommand,
                 )
             }
-        } else {
-            val command = item.command ?: return@forEach
-            ContextMenuItem(
-                text = item.contextMenuText(),
-                enabled = true,
-                iconKey = item.contextMenuIconKey(),
-                onPointerEnter = {
-                    onItemPointerEnter()
-                    expandedActionId = null
-                },
-                onClick = { onFileContextMenuCommand(command) },
-            )
         }
     }
 }
 
+/**
+ * 渲染单个菜单项，自动选择普通菜单项或级联菜单项。
+ *
+ * @param item 菜单项模型。
+ * @param commandShortcuts 面板命令快捷键映射。
+ * @param expanded 当前级联菜单是否展开。
+ * @param onExpandedChange 级联菜单展开状态变更回调。
+ * @param onPointerEnter 指针进入当前项时的回调。
+ * @param onCommand 菜单命令点击回调。
+ */
 @Composable
-private fun FileContextMenuItem.contextMenuText(): String {
-    return when (label) {
-        FileContextMenuLabel.OPEN_WITH_OTHER -> stringResource(Res.string.action_open_with_other)
-        null -> displayName
+private fun PaneContextMenuItemNode(
+    item: PaneContextMenuNode.Item,
+    commandShortcuts: OnyxCommandShortcutMap,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onPointerEnter: () -> Unit,
+    onCommand: (PaneContextMenuCommand) -> Unit,
+) {
+    val text = item.contextMenuText()
+    val iconKey = item.icon.toIconKey(item.iconPath)
+    if (item.children.isNotEmpty()) {
+        ContextMenuSubmenuItem(
+            text = text,
+            enabled = item.enabled,
+            iconKey = iconKey,
+            expanded = expanded,
+            onPointerEnter = onPointerEnter,
+            onExpandedChange = onExpandedChange,
+        ) {
+            PaneContextMenuNodes(
+                nodes = item.children,
+                commandShortcuts = commandShortcuts,
+                onCommand = onCommand,
+            )
+        }
+    } else {
+        val command = item.command
+        ContextMenuItem(
+            text = text,
+            enabled = item.enabled && command != null,
+            iconKey = iconKey,
+            command = command?.shortcutCommandOrNull(),
+            commandShortcuts = commandShortcuts,
+            onPointerEnter = onPointerEnter,
+            onClick = {
+                if (command != null) onCommand(command)
+            },
+        )
     }
 }
 
-private fun FileContextMenuItem.contextMenuIconKey(): IconKey {
-    return when (command) {
-        FileContextMenuCommand.OpenWithChooser -> AllIconsKeys.General.OpenDisk
-        else -> AllIconsKeys.Actions.Execute
-    }
-}
-
+/**
+ * 渲染级联菜单项，并在鼠标离开时延迟关闭。
+ *
+ * @param text 菜单项文本。
+ * @param enabled 是否允许展开。
+ * @param iconKey 菜单项图标。
+ * @param expanded 当前是否展开。
+ * @param onPointerEnter 指针进入当前项时的回调。
+ * @param onExpandedChange 展开状态变更回调。
+ * @param content 子菜单内容。
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun ContextMenuSubmenuItem(
@@ -419,12 +262,20 @@ private fun ContextMenuSubmenuItem(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var closeJob by remember { mutableStateOf<Job?>(null) }
+
+    /**
+     * 保持当前级联菜单展开。
+     */
     fun keepOpen() {
         closeJob?.cancel()
         closeJob = null
         onPointerEnter()
         if (enabled) onExpandedChange(true)
     }
+
+    /**
+     * 延迟关闭当前级联菜单，给鼠标移动到子菜单留出容错时间。
+     */
     fun closeSoon() {
         closeJob?.cancel()
         closeJob = coroutineScope.launch {
@@ -472,9 +323,21 @@ private fun ContextMenuSubmenuItem(
     }
 }
 
+/**
+ * 渲染普通菜单项。
+ *
+ * @param text 菜单项文本。
+ * @param enabled 是否允许点击。
+ * @param iconKey 菜单项图标。
+ * @param onClick 点击回调。
+ * @param command 用于展示快捷键的 UI 命令。
+ * @param commandShortcuts 面板命令快捷键映射。
+ * @param trailingIconKey 尾部图标。
+ * @param onPointerEnter 指针进入当前项时的回调。
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun ContextMenuItem(
+private fun ContextMenuItem(
     text: String,
     enabled: Boolean,
     iconKey: IconKey,
@@ -524,7 +387,118 @@ internal fun ContextMenuItem(
     }
 }
 
+/**
+ * 将菜单项文案语义解析为可显示文本。
+ *
+ * @return 当前语言下的菜单文本。
+ */
+@Composable
+private fun PaneContextMenuNode.Item.contextMenuText(): String {
+    return text?.stringResourceValue() ?: displayName.orEmpty()
+}
+
+/**
+ * 将内置菜单文案语义映射到资源。
+ *
+ * @return 字符串资源。
+ */
+private fun PaneContextMenuText.stringResourceKey(): StringResource {
+    return when (this) {
+        PaneContextMenuText.OPEN -> Res.string.action_open
+        PaneContextMenuText.OPEN_IN_NEW_TAB -> Res.string.action_open_in_new_tab
+        PaneContextMenuText.OPEN_WITH -> Res.string.action_open_with
+        PaneContextMenuText.OPEN_WITH_OTHER -> Res.string.action_open_with_other
+        PaneContextMenuText.RENAME -> Res.string.action_rename
+        PaneContextMenuText.NEW_FILE -> Res.string.action_new_file
+        PaneContextMenuText.NEW_DIRECTORY -> Res.string.action_new_directory
+        PaneContextMenuText.DELETE_SELECTED -> Res.string.action_delete_selected
+        PaneContextMenuText.EXTRACT_HERE -> Res.string.action_extract_here
+        PaneContextMenuText.EXTRACT_TO_DIRECTORY -> Res.string.action_extract_to_directory
+        PaneContextMenuText.EXTRACT_SMART -> Res.string.action_extract_smart
+        PaneContextMenuText.BATCH_RENAME -> Res.string.action_batch_rename
+        PaneContextMenuText.COPY_PATH -> Res.string.action_copy_path
+        PaneContextMenuText.COPY -> Res.string.action_copy
+        PaneContextMenuText.CUT -> Res.string.action_cut
+        PaneContextMenuText.PASTE -> Res.string.action_paste
+        PaneContextMenuText.UNDO -> Res.string.action_undo
+        PaneContextMenuText.REDO -> Res.string.action_redo
+        PaneContextMenuText.REFRESH -> Res.string.action_refresh_active
+        PaneContextMenuText.OPEN_TERMINAL -> Res.string.action_open_terminal
+        PaneContextMenuText.CLOSE_MENU -> Res.string.action_close_menu
+    }
+}
+
+/**
+ * 读取内置菜单文案的当前语言字符串。
+ *
+ * @return 当前语言字符串。
+ */
+@Composable
+private fun PaneContextMenuText.stringResourceValue(): String {
+    return stringResource(stringResourceKey())
+}
+
+/**
+ * 将统一菜单图标语义映射到 Jewel 图标。
+ *
+ * @param iconPath 平台动态图标路径或标识，当前用于保留菜单来源信息。
+ * @return Jewel 图标键。
+ */
+private fun PaneContextMenuIcon.toIconKey(iconPath: String?): IconKey {
+    return when (this) {
+        PaneContextMenuIcon.OPEN -> AllIconsKeys.Actions.MenuOpen
+        PaneContextMenuIcon.OPEN_IN_NEW_TAB -> AllIconsKeys.Actions.OpenNewTab
+        PaneContextMenuIcon.EDIT -> AllIconsKeys.Actions.Edit
+        PaneContextMenuIcon.FILE -> AllIconsKeys.FileTypes.Any_type
+        PaneContextMenuIcon.FOLDER -> AllIconsKeys.Nodes.Folder
+        PaneContextMenuIcon.DELETE -> AllIconsKeys.General.Delete
+        PaneContextMenuIcon.EXTRACT -> AllIconsKeys.Nodes.ExtractedFolder
+        PaneContextMenuIcon.COPY -> AllIconsKeys.Actions.Copy
+        PaneContextMenuIcon.CUT -> AllIconsKeys.Actions.MenuCut
+        PaneContextMenuIcon.PASTE -> AllIconsKeys.Actions.MenuPaste
+        PaneContextMenuIcon.UNDO -> AllIconsKeys.Actions.Back
+        PaneContextMenuIcon.REDO -> AllIconsKeys.Actions.Forward
+        PaneContextMenuIcon.REFRESH -> AllIconsKeys.Actions.Refresh
+        PaneContextMenuIcon.TERMINAL -> AllIconsKeys.Debugger.Console
+        PaneContextMenuIcon.CLOSE -> AllIconsKeys.Actions.Close
+        PaneContextMenuIcon.OPEN_WITH -> AllIconsKeys.General.OpenDisk
+        PaneContextMenuIcon.EXECUTE -> {
+            if (iconPath.isNullOrBlank()) AllIconsKeys.Actions.Execute else AllIconsKeys.FileTypes.Any_type
+        }
+    }
+}
+
+/**
+ * 解析菜单命令对应的 UI 快捷键命令。
+ *
+ * @return 可展示快捷键的 UI 命令。
+ */
+private fun PaneContextMenuCommand.shortcutCommandOrNull(): OnyxCommand? {
+    return when (this) {
+        is PaneContextMenuCommand.Pane -> command.toOnyxCommand()
+        PaneContextMenuCommand.BatchRename,
+        PaneContextMenuCommand.ExtractSelection,
+        PaneContextMenuCommand.ExtractToDirectory,
+        PaneContextMenuCommand.ExtractSmart,
+        PaneContextMenuCommand.CopyPath,
+        PaneContextMenuCommand.OpenTerminal,
+        is PaneContextMenuCommand.FileContext -> null
+    }
+}
+
+/**
+ * 级联菜单弹层定位器。
+ */
 private object CascadingMenuPositionProvider : PopupPositionProvider {
+    /**
+     * 计算级联菜单位置。
+     *
+     * @param anchorBounds 父菜单项边界。
+     * @param windowSize 窗口大小。
+     * @param layoutDirection 布局方向。
+     * @param popupContentSize 子菜单大小。
+     * @return 子菜单左上角位置。
+     */
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
@@ -547,4 +521,3 @@ private object CascadingMenuPositionProvider : PopupPositionProvider {
 private const val SUBMENU_OVERLAP_PX = 4
 private const val SUBMENU_VERTICAL_OFFSET_PX = 4
 private const val SUBMENU_CLOSE_DELAY_MS = 180L
-private const val ROOT_OPEN_WITH_SUBMENU_ID = "root-open-with"

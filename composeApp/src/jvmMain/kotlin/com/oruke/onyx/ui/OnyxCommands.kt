@@ -10,6 +10,7 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import com.oruke.onyx.app.component.PaneCommand
 import com.oruke.onyx.core.model.CommandShortcutModifierSetting
 import com.oruke.onyx.core.model.CommandShortcutOverride
 import onyx.composeapp.generated.resources.Res
@@ -78,6 +79,65 @@ internal enum class OnyxCommand(val defaultShortcut: OnyxShortcut? = null) {
     ToggleFavorite(OnyxShortcut(OnyxShortcutKey.D, setOf(OnyxShortcutModifier.PRIMARY))),
     OpenSettings(OnyxShortcut(OnyxShortcutKey.COMMA, setOf(OnyxShortcutModifier.PRIMARY))),
     CommandPalette(OnyxShortcut(OnyxShortcutKey.P, setOf(OnyxShortcutModifier.PRIMARY, OnyxShortcutModifier.SHIFT))),
+}
+
+/**
+ * 将 UI 命令映射为组件层面板命令。
+ *
+ * @return 对应面板命令；非面板命令返回 `null`。
+ */
+internal fun OnyxCommand.toPaneCommand(): PaneCommand? {
+    return when (this) {
+        OnyxCommand.OpenSelection -> PaneCommand.OPEN_SELECTION
+        OnyxCommand.RenameSelection -> PaneCommand.RENAME_SELECTION
+        OnyxCommand.NewFile -> PaneCommand.NEW_FILE
+        OnyxCommand.NewDirectory -> PaneCommand.NEW_DIRECTORY
+        OnyxCommand.DeleteSelection -> PaneCommand.DELETE_SELECTION
+        OnyxCommand.CopySelection -> PaneCommand.COPY_SELECTION
+        OnyxCommand.CutSelection -> PaneCommand.CUT_SELECTION
+        OnyxCommand.Paste -> PaneCommand.PASTE
+        OnyxCommand.UndoLastOperation -> PaneCommand.UNDO_LAST_OPERATION
+        OnyxCommand.RedoLastOperation -> PaneCommand.REDO_LAST_OPERATION
+        OnyxCommand.Refresh -> PaneCommand.REFRESH
+        OnyxCommand.CloseMenu -> PaneCommand.CLOSE_MENU
+        OnyxCommand.Filter -> PaneCommand.FILTER
+        OnyxCommand.CreateDirectories -> PaneCommand.CREATE_DIRECTORIES
+        OnyxCommand.SelectAll -> PaneCommand.SELECT_ALL
+        OnyxCommand.GoUp -> PaneCommand.GO_UP
+        OnyxCommand.ToggleFavorite -> PaneCommand.TOGGLE_FAVORITE
+        OnyxCommand.OpenSettings -> PaneCommand.OPEN_SETTINGS
+        OnyxCommand.CommandPalette -> PaneCommand.COMMAND_PALETTE
+    }
+}
+
+/**
+ * 将组件层面板命令映射为 UI 命令。
+ *
+ * @return 对应 UI 命令；没有快捷键展示需求的命令返回 `null`。
+ */
+internal fun PaneCommand.toOnyxCommand(): OnyxCommand? {
+    return when (this) {
+        PaneCommand.OPEN_SELECTION -> OnyxCommand.OpenSelection
+        PaneCommand.RENAME_SELECTION -> OnyxCommand.RenameSelection
+        PaneCommand.NEW_FILE -> OnyxCommand.NewFile
+        PaneCommand.NEW_DIRECTORY -> OnyxCommand.NewDirectory
+        PaneCommand.DELETE_SELECTION -> OnyxCommand.DeleteSelection
+        PaneCommand.COPY_SELECTION -> OnyxCommand.CopySelection
+        PaneCommand.CUT_SELECTION -> OnyxCommand.CutSelection
+        PaneCommand.PASTE -> OnyxCommand.Paste
+        PaneCommand.UNDO_LAST_OPERATION -> OnyxCommand.UndoLastOperation
+        PaneCommand.REDO_LAST_OPERATION -> OnyxCommand.RedoLastOperation
+        PaneCommand.REFRESH -> OnyxCommand.Refresh
+        PaneCommand.CLOSE_MENU -> OnyxCommand.CloseMenu
+        PaneCommand.FILTER -> OnyxCommand.Filter
+        PaneCommand.CREATE_DIRECTORIES -> OnyxCommand.CreateDirectories
+        PaneCommand.SELECT_ALL -> OnyxCommand.SelectAll
+        PaneCommand.GO_UP -> OnyxCommand.GoUp
+        PaneCommand.TOGGLE_FAVORITE -> OnyxCommand.ToggleFavorite
+        PaneCommand.OPEN_SETTINGS -> OnyxCommand.OpenSettings
+        PaneCommand.COMMAND_PALETTE -> OnyxCommand.CommandPalette
+        PaneCommand.OPEN_SELECTION_IN_NEW_TAB -> null
+    }
 }
 
 internal data class OnyxShortcut(

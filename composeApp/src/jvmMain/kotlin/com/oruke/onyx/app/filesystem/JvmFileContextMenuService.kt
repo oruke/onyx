@@ -4,6 +4,7 @@ import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -55,10 +56,15 @@ class JvmFileContextMenuService(
             }
 
             val openWithItems = openWithDeferred
-                ?.await()
+                ?.let { deferred ->
+                    withTimeoutOrNull(OPEN_WITH_SECTION_TIMEOUT_MS) { deferred.await() }
+                        ?: emptyList<FileContextMenuItem>().also { deferred.cancel() }
+                }
                 .orEmpty()
-            val systemItems = systemDeferred
-                .await()
+            val systemItems = (
+                withTimeoutOrNull(SYSTEM_SECTION_TIMEOUT_MS) { systemDeferred.await() }
+                    ?: emptyList<SystemMenuAction>().also { systemDeferred.cancel() }
+                )
                 .map { action -> action.toContextMenuItem() }
 
             buildList {
@@ -183,6 +189,11 @@ class JvmFileContextMenuService(
     )
 
     private companion object {
+        /** “打开方式”固定入口的菜单 ID。 */
         const val OPEN_WITH_CHOOSER_ID = "open-with:chooser"
+        /** “打开方式”来源的单独等待时间，超时后忽略该来源。 */
+        const val OPEN_WITH_SECTION_TIMEOUT_MS = 900L
+        /** 系统右键菜单来源的单独等待时间，超时后保留其他已完成来源。 */
+        const val SYSTEM_SECTION_TIMEOUT_MS = 1_900L
     }
 }

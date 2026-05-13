@@ -1220,7 +1220,7 @@ class DefaultRootComponent(
                     paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
                 }
                 .onFailure { failure ->
-                    showActivePaneOpenFailure(failure)
+                    showActivePaneOperationFailure(failure)
                 }
         }
     }
@@ -1235,7 +1235,7 @@ class DefaultRootComponent(
                     paneComponent(activePane.value).dispatch(PaneIntent.DismissOperationFeedback)
                 }
                 .onFailure { failure ->
-                    showActivePaneOpenFailure(failure)
+                    showActivePaneOperationFailure(failure)
                 }
         }
     }

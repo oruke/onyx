@@ -53,7 +53,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import com.oruke.onyx.core.model.FileTransferOperation
+import com.oruke.onyx.app.component.PaneCommand
+import com.oruke.onyx.app.component.PaneCommandController
+import com.oruke.onyx.app.component.PaneCommandExecutionContext
+import com.oruke.onyx.app.component.PaneCommandExternalActions
 import com.oruke.onyx.app.component.PaneComponent
+import com.oruke.onyx.app.component.PaneContextMenuBuildInput
+import com.oruke.onyx.app.component.PaneContextMenuCommandController
+import com.oruke.onyx.app.component.PaneContextMenuExternalActions
+import com.oruke.onyx.app.component.PaneContextMenuModelBuilder
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.PaneState
@@ -152,17 +160,47 @@ internal fun PaneSurface(
     val paneCommands = PaneCommandController(
         state = state,
         component = component,
-        actions = actions,
-        canPaste = canPaste,
-        onFilterClosed = {
-            filterFocused = false
-            focusRequester.requestFocus()
-        },
+        executionContext = PaneCommandExecutionContext(
+            canPaste = canPaste,
+            canUndo = actions.canUndo,
+            canRedo = actions.canRedo,
+        ),
+        externalActions = PaneCommandExternalActions(
+            onBeginCreateDirectory = actions.onBeginCreateDirectory,
+            onCopySelection = actions.onCopySelection,
+            onCutSelection = actions.onCutSelection,
+            onPaste = actions.onPaste,
+            onUndo = actions.onUndo,
+            onRedo = actions.onRedo,
+            onDeleteSelection = actions.onDeleteSelection,
+            onToggleFavoriteLocation = actions.onToggleFavoriteLocation,
+            onOpenSettings = actions.onOpenSettings,
+        ),
     )
     val dispatch = paneCommands::dispatch
     val openFilterInput = paneCommands::openFilterInput
-    val closeFilterInput = paneCommands::closeFilterInput
-    val executePaneCommand = paneCommands::execute
+    val closeFilterInput = {
+        paneCommands.closeFilterInput()
+        filterFocused = false
+        focusRequester.requestFocus()
+    }
+    val executePaneCommand: (OnyxCommand) -> Boolean = { command ->
+        command.toPaneCommand()?.let { paneCommand -> paneCommands.execute(paneCommand) } == true
+    }
+    val isPaneCommandEnabled: (OnyxCommand) -> Boolean = { command ->
+        command.toPaneCommand()?.let { paneCommand -> paneCommands.isEnabled(paneCommand) } == true
+    }
+    val paneMenuCommands = PaneContextMenuCommandController(
+        paneCommandController = paneCommands,
+        externalActions = PaneContextMenuExternalActions(
+            onBatchRename = actions.onBatchRename,
+            onExtractSelection = actions.onExtractSelection,
+            onExtractToDirectory = actions.onExtractToDirectory,
+            onExtractSmart = actions.onExtractSmart,
+            onFileContextMenuCommand = actions.onFileContextMenuCommand,
+            onOpenTerminal = actions.onOpenTerminal,
+        ),
+    )
     val contextMenuPlatformActionLoader = PaneContextMenuPlatformActionLoader(
         coroutineScope = coroutineScope,
         actions = actions,
@@ -337,7 +375,7 @@ internal fun PaneSurface(
         val currentLocationFavorite = favoriteLocations.contains(state.location)
         if (state.commandPaletteVisible) {
             val commandItems = OnyxCommandRegistry
-                .paneCommandStates(commandShortcuts, paneCommands::isEnabled)
+                .paneCommandStates(commandShortcuts, isPaneCommandEnabled)
                 .filterNot { commandState -> commandState.spec.command == OnyxCommand.CommandPalette }
                 .map { commandState ->
                     CommandPaletteItem(
@@ -406,7 +444,7 @@ internal fun PaneSurface(
             }
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); dispatch(PaneIntent.GoUp) },
+                onClick = { onActivate(); paneCommands.execute(PaneCommand.GO_UP) },
                 tooltip = stringResource(Res.string.action_go_up),
             ) {
                 Icon(key = AllIconsKeys.General.ArrowUp, contentDescription = stringResource(Res.string.action_go_up))
@@ -421,7 +459,7 @@ internal fun PaneSurface(
 
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); actions.onToggleFavoriteLocation(state.location) },
+                onClick = { onActivate(); paneCommands.execute(PaneCommand.TOGGLE_FAVORITE) },
                 tooltip = stringResource(Res.string.action_toggle_favorite),
                 selected = currentLocationFavorite,
             ) {
@@ -474,7 +512,7 @@ internal fun PaneSurface(
 
             ToolbarIconButton(
                 enabled = true,
-                onClick = { onActivate(); dispatch(PaneIntent.Refresh) },
+                onClick = { onActivate(); paneCommands.execute(PaneCommand.REFRESH) },
                 tooltip = stringResource(Res.string.action_refresh_active),
             ) {
                 Icon(
@@ -631,97 +669,25 @@ internal fun PaneSurface(
 
                 if (showContextMenu) {
                     val selectedCount = contextMenuEntries.size
-                    val singleEntry = contextMenuEntries.singleOrNull()
+                    val menuModel = PaneContextMenuModelBuilder.build(
+                        PaneContextMenuBuildInput(
+                            entries = contextMenuEntries,
+                            canPaste = canPaste,
+                            canUndo = actions.canUndo,
+                            canRedo = actions.canRedo,
+                            canExtractSelection = selectedCount > 0 && contextMenuEntries.any { entry ->
+                                entry.kind == VFileKind.FILE && actions.isArchiveFileName(entry.name)
+                            },
+                            contextMenuSections = contextMenuSections,
+                        )
+                    )
                     PaneContextMenu(
                         anchorOffset = contextMenuOffset,
-                        canOperateOnSelection = selectedCount > 0,
-                        canOpenSelection = selectedCount == 1,
-                        canOpenSelectionInNewTab = singleEntry?.kind == VFileKind.DIRECTORY,
-                        canRenameSelection = selectedCount == 1,
-                        canCopyPath = selectedCount > 0,
-                        canPaste = canPaste,
-                        canUndo = actions.canUndo,
-                        canRedo = actions.canRedo,
-                        canExtractSelection = selectedCount > 0 && contextMenuEntries.any { entry ->
-                            entry.kind == VFileKind.FILE && actions.isArchiveFileName(entry.name)
-                        },
-                        canBatchRename = selectedCount >= 2,
-                        onOpenSelection = {
-                            dispatch(PaneIntent.OpenSelectedEntry)
-                            showContextMenu = false
-                        },
-                        onOpenSelectionInNewTab = {
-                            dispatch(PaneIntent.OpenSelectedInNewTab)
-                            showContextMenu = false
-                        },
-                        onRenameSelection = {
-                            dispatch(PaneIntent.BeginRename)
-                            showContextMenu = false
-                        },
-                        onBatchRename = {
-                            actions.onBatchRename()
-                            showContextMenu = false
-                        },
-                        onCreateFile = {
-                            dispatch(PaneIntent.BeginCreateFile)
-                            showContextMenu = false
-                        },
-                        onCreateDirectory = {
-                            actions.onBeginCreateDirectory()
-                            showContextMenu = false
-                        },
-                        onDeleteSelection = {
-                            actions.onDeleteSelection()
-                            showContextMenu = false
-                        },
-                        onExtractSelection = {
-                            actions.onExtractSelection()
-                            showContextMenu = false
-                        },
-                        onExtractToDirectory = {
-                            actions.onExtractToDirectory()
-                            showContextMenu = false
-                        },
-                        onExtractSmart = {
-                            actions.onExtractSmart()
-                            showContextMenu = false
-                        },
-                        onCopyPath = {
-                            dispatch(PaneIntent.CopySelectedPaths)
-                            showContextMenu = false
-                        },
-                        onCopySelection = {
-                            actions.onCopySelection()
-                            showContextMenu = false
-                        },
-                        onCutSelection = {
-                            actions.onCutSelection()
-                            showContextMenu = false
-                        },
-                        onPaste = {
-                            actions.onPaste()
-                            showContextMenu = false
-                        },
-                        onUndo = {
-                            actions.onUndo()
-                            showContextMenu = false
-                        },
-                        onRedo = {
-                            actions.onRedo()
-                            showContextMenu = false
-                        },
-                        contextMenuSections = contextMenuSections,
-                        onFileContextMenuCommand = { command ->
-                            actions.onFileContextMenuCommand(command, contextMenuEntries)
-                            showContextMenu = false
-                        },
-                        onRefresh = {
-                            dispatch(PaneIntent.Refresh)
-                            showContextMenu = false
-                        },
-                        onOpenTerminal = {
-                            showContextMenu = false
-                            actions.onOpenTerminal(state.location)
+                        model = menuModel,
+                        onCommand = { command ->
+                            if (paneMenuCommands.execute(command, contextMenuEntries, state.location)) {
+                                showContextMenu = false
+                            }
                         },
                         commandShortcuts = commandShortcuts,
                         onClose = { showContextMenu = false },

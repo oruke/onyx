@@ -209,21 +209,9 @@ class JvmSystemMenuService(
      */
     private fun listMacServiceActions(entries: List<VFile>): List<SystemMenuAction> {
         if (entries.any { entry -> !materializer.supports(entry) }) return emptyList()
-        return macServiceDirs()
+        return macServiceWorkflows()
             .asSequence()
-            .filter { dir -> Files.isDirectory(dir) }
-            .flatMap { dir ->
-                runCatching {
-                    Files.list(dir).use { stream ->
-                        stream
-                            .filter { path -> path.fileName.toString().endsWith(".workflow", ignoreCase = true) }
-                            .map { path -> path.toMacServiceAction() }
-                            .toList()
-                            .filterNotNull()
-                            .asSequence()
-                    }
-                }.getOrDefault(emptySequence())
-            }
+            .mapNotNull { path -> path.toMacServiceAction() }
             .distinctBy { action -> action.displayName to action.command }
             .sortedBy { action -> action.displayName.lowercase(Locale.getDefault()) }
             .toList()
@@ -595,6 +583,70 @@ class JvmSystemMenuService(
             Path.of("/Library/Services"),
             Path.of("/System/Library/Services"),
         )
+    }
+
+    /**
+     * 返回 macOS 可执行 Service workflow 列表。
+     *
+     * 除了传统 `Library/Services`，这里还读取应用包内的 `Contents/Library/Services`，
+     * 因为不少 Finder Services / Quick Actions 是随应用包一起注册的。
+     *
+     * @return 可展示的 workflow 文件列表。
+     */
+    private fun macServiceWorkflows(): List<Path> {
+        return (macServiceDirs() + macBundledServiceDirs())
+            .distinct()
+            .flatMap { dir -> dir.workflowFiles() }
+    }
+
+    /**
+     * 返回应用包内的 macOS Service 目录。
+     *
+     * @return 应用包 `Contents/Library/Services` 目录列表。
+     */
+    private fun macBundledServiceDirs(): List<Path> {
+        return macApplicationDirs()
+            .flatMap { dir ->
+                runCatching {
+                    Files.list(dir).use { stream ->
+                        stream
+                            .filter { path -> path.fileName.toString().endsWith(".app", ignoreCase = true) }
+                            .map { path -> path.resolve("Contents/Library/Services") }
+                            .filter { path -> Files.isDirectory(path) }
+                            .toList()
+                    }
+                }.getOrDefault(emptyList())
+            }
+    }
+
+    /**
+     * 返回 macOS 应用搜索目录。
+     *
+     * @return 应用目录候选列表。
+     */
+    private fun macApplicationDirs(): List<Path> {
+        val home = System.getProperty("user.home")
+        return listOf(
+            Path.of(home, "Applications"),
+            Path.of("/Applications"),
+            Path.of("/System/Applications"),
+        ).filter { dir -> Files.isDirectory(dir) }
+    }
+
+    /**
+     * 读取目录下的 Automator workflow。
+     *
+     * @return 当前目录中的 workflow 文件列表。
+     */
+    private fun Path.workflowFiles(): List<Path> {
+        if (!Files.isDirectory(this)) return emptyList()
+        return runCatching {
+            Files.list(this).use { stream ->
+                stream
+                    .filter { path -> path.fileName.toString().endsWith(".workflow", ignoreCase = true) }
+                    .toList()
+            }
+        }.getOrDefault(emptyList())
     }
 
     private fun desktopExecArguments(
