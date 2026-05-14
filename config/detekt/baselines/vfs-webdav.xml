@@ -1,0 +1,27 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>LoopWithTooManyJumpStatements:WebDavMultiStatusParser.kt$WebDavMultiStatusParser$for</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$200</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$207</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$401</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$403</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$404</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$412</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$500</ID>
+    <ID>MagicNumber:KtorWebDavClient.kt$KtorWebDavClient$599</ID>
+    <ID>MaxLineLength:KtorWebDavClient.kt$KtorWebDavClient$status.value == 403 -&gt; throw VfsProviderException(VfsProviderError.PermissionDenied(VfsProtocol.WEBDAV, location))</ID>
+    <ID>MaxLineLength:KtorWebDavClient.kt$KtorWebDavClient$status.value == 412 -&gt; throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, location))</ID>
+    <ID>MaxLineLength:KtorWebDavClient.kt$KtorWebDavClient$targetLocation.toWebDavVFile(name = targetLocation.fileNameFromWebDavLocation(), parentLocation = parentLocation, directory = false)</ID>
+    <ID>MaxLineLength:KtorWebDavClient.kt$KtorWebDavClient$val candidateLocation = webDavChildLocation(targetDirectoryLocation, candidateName, directory = isDirectory)</ID>
+    <ID>MaxLineLength:WebDavVfsProvider.kt$WebDavVfsProvider$client.createDirectory(parentLocation.withVfsTrailingSlash(), name, authRepository.authContext(parentLocation))</ID>
+    <ID>MaxLineLength:WebDavVfsProvider.kt$WebDavVfsProvider$val hasDifferentSourceAuth = entries.any { entry -&gt; authRepository.authContext(entry.location) != targetAuthContext }</ID>
+    <ID>ReturnCount:WebDavVfsProvider.kt$WebDavVfsProvider$override suspend fun delete(entries: List&lt;VFile&gt;): Result&lt;Unit&gt;</ID>
+    <ID>ReturnCount:WebDavVfsProvider.kt$WebDavVfsProvider$private suspend fun runTransferCommand( entries: List&lt;VFile&gt;, targetDirectoryLocation: String, capability: VfsProviderCapability, block: suspend (VfsAuthContext) -&gt; Unit, ): Result&lt;Unit&gt;</ID>
+    <ID>SwallowedException:KtorWebDavClient.kt$KtorWebDavClient$failure: IOException</ID>
+    <ID>SwallowedException:KtorWebDavClient.kt$KtorWebDavClient$failure: SSLException</ID>
+    <ID>ThrowsCount:KtorWebDavClient.kt$KtorWebDavClient$private fun HttpResponse.requireSuccess( location: String, authContext: VfsAuthContext, acceptedStatuses: Set&lt;Int&gt; = ListSuccessStatuses, )</ID>
+    <ID>ThrowsCount:KtorWebDavClient.kt$KtorWebDavClient$private suspend fun resourceExists( location: String, authContext: VfsAuthContext, ): Boolean</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -34,7 +34,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.StateFlow
 
-data class RootState(
+internal data class RootState(
     val layoutMode: PaneLayoutMode,
     val paneSplitFraction: Float,
     val activePane: PaneId,
@@ -58,12 +58,12 @@ data class RootState(
  * @property canUndo 当前是否存在可撤销操作。
  * @property canRedo 当前是否存在可重做操作。
  */
-data class OperationHistoryState(
+internal data class OperationHistoryState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
 )
 
-data class SearchPanelState(
+internal data class SearchPanelState(
     val visible: Boolean = false,
     val paneId: PaneId = PaneId.PRIMARY,
     val rootLocation: String = "",
@@ -75,7 +75,7 @@ data class SearchPanelState(
     val error: I18nMessage? = null,
 )
 
-enum class SearchStatus {
+internal enum class SearchStatus {
     IDLE,
     RUNNING,
     COMPLETED,
@@ -83,11 +83,11 @@ enum class SearchStatus {
     CANCELLED,
 }
 
-data class SidebarTreeState(
+internal data class SidebarTreeState(
     val roots: List<SidebarTreeNode>,
 )
 
-data class SidebarTreeNode(
+internal data class SidebarTreeNode(
     val location: String,
     val label: String,
     val expanded: Boolean,
@@ -96,14 +96,14 @@ data class SidebarTreeNode(
     val children: List<SidebarTreeNode> = emptyList(),
 )
 
-enum class SidebarTreeNodeLoadState {
+internal enum class SidebarTreeNodeLoadState {
     IDLE,
     LOADING,
     READY,
     FAILURE,
 }
 
-sealed interface SessionRestoreState {
+internal sealed interface SessionRestoreState {
     data object Loading : SessionRestoreState
 
     data object Ready : SessionRestoreState
@@ -113,7 +113,7 @@ sealed interface SessionRestoreState {
     ) : SessionRestoreState
 }
 
-sealed interface RootDialogState {
+internal sealed interface RootDialogState {
     data class DeleteSelectionConfirmation(
         val moveToTrash: Boolean,
         val itemCount: Int,
@@ -170,23 +170,23 @@ sealed interface RootDialogState {
     ) : RootDialogState
 }
 
-enum class CreateDirectoriesDialogError {
+internal enum class CreateDirectoriesDialogError {
     EMPTY_INPUT,
 }
 
-data class RemoteCredentialsDraft(
+internal data class RemoteCredentialsDraft(
     val username: String = "",
     val password: String = "",
     val domain: String = "",
     val savePolicy: RemoteCredentialSavePolicy = RemoteCredentialSavePolicy.SESSION,
 )
 
-enum class RemoteCredentialsDialogError {
+internal enum class RemoteCredentialsDialogError {
     USERNAME_EMPTY,
     SYSTEM_KEYRING_UNAVAILABLE,
 }
 
-data class RemoteConnectionDraft(
+internal data class RemoteConnectionDraft(
     val name: String = "",
     val protocol: RemoteConnectionProtocol = RemoteConnectionProtocol.SMB,
     val location: String = "",
@@ -196,7 +196,7 @@ data class RemoteConnectionDraft(
     val savePolicy: RemoteConnectionSavePolicy = RemoteConnectionSavePolicy.SESSION,
 )
 
-sealed interface RemoteConnectionTestState {
+internal sealed interface RemoteConnectionTestState {
     data object Idle : RemoteConnectionTestState
 
     data object Testing : RemoteConnectionTestState
@@ -210,14 +210,14 @@ sealed interface RemoteConnectionTestState {
     ) : RemoteConnectionTestState
 }
 
-enum class RemoteConnectionDialogError {
+internal enum class RemoteConnectionDialogError {
     NAME_EMPTY,
     LOCATION_EMPTY,
     USERNAME_EMPTY,
     SYSTEM_KEYRING_UNAVAILABLE,
 }
 
-sealed interface RootIntent {
+internal sealed interface RootIntent {
     data class SetLayoutMode(
         val mode: PaneLayoutMode,
     ) : RootIntent
@@ -460,7 +460,7 @@ sealed interface RootIntent {
     ) : RootIntent
 }
 
-interface RootComponent {
+internal interface RootComponent {
     val state: StateFlow<RootState>
     val imageViewerState: StateFlow<ImageViewerState>
     val primaryPane: PaneComponent
@@ -509,171 +509,171 @@ interface RootComponent {
     suspend fun readImageSize(entry: VFile): IntSize?
 }
 
-fun RootComponent.setLayoutMode(mode: PaneLayoutMode) = dispatch(RootIntent.SetLayoutMode(mode))
+internal fun RootComponent.setLayoutMode(mode: PaneLayoutMode) = dispatch(RootIntent.SetLayoutMode(mode))
 
-fun RootComponent.setPaneSplitFraction(fraction: Float) = dispatch(RootIntent.SetPaneSplitFraction(fraction))
+internal fun RootComponent.setPaneSplitFraction(fraction: Float) = dispatch(RootIntent.SetPaneSplitFraction(fraction))
 
-fun RootComponent.openSettings() = dispatch(RootIntent.OpenSettings)
+internal fun RootComponent.openSettings() = dispatch(RootIntent.OpenSettings)
 
-fun RootComponent.updateSettingsDraft(draft: OnyxSettings) = dispatch(RootIntent.UpdateSettingsDraft(draft))
+internal fun RootComponent.updateSettingsDraft(draft: OnyxSettings) = dispatch(RootIntent.UpdateSettingsDraft(draft))
 
-fun RootComponent.updateRemoteConnectionDraft(draft: RemoteConnectionDraft) =
+internal fun RootComponent.updateRemoteConnectionDraft(draft: RemoteConnectionDraft) =
     dispatch(RootIntent.UpdateRemoteConnectionDraft(draft))
 
-fun RootComponent.editRemoteConnection(profile: RemoteConnectionProfile) =
+internal fun RootComponent.editRemoteConnection(profile: RemoteConnectionProfile) =
     dispatch(RootIntent.EditRemoteConnection(profile))
 
-fun RootComponent.newRemoteConnection() = dispatch(RootIntent.NewRemoteConnection)
+internal fun RootComponent.newRemoteConnection() = dispatch(RootIntent.NewRemoteConnection)
 
-fun RootComponent.saveRemoteConnectionDraft() = dispatch(RootIntent.SaveRemoteConnectionDraft)
+internal fun RootComponent.saveRemoteConnectionDraft() = dispatch(RootIntent.SaveRemoteConnectionDraft)
 
-fun RootComponent.testRemoteConnectionDraft() = dispatch(RootIntent.TestRemoteConnectionDraft)
+internal fun RootComponent.testRemoteConnectionDraft() = dispatch(RootIntent.TestRemoteConnectionDraft)
 
-fun RootComponent.deleteRemoteConnection(id: String) = dispatch(RootIntent.DeleteRemoteConnection(id))
+internal fun RootComponent.deleteRemoteConnection(id: String) = dispatch(RootIntent.DeleteRemoteConnection(id))
 
-fun RootComponent.openRemoteConnection(location: String) = dispatch(RootIntent.OpenRemoteConnection(location))
+internal fun RootComponent.openRemoteConnection(location: String) = dispatch(RootIntent.OpenRemoteConnection(location))
 
-fun RootComponent.activatePane(paneId: PaneId) = dispatch(RootIntent.ActivatePane(paneId))
+internal fun RootComponent.activatePane(paneId: PaneId) = dispatch(RootIntent.ActivatePane(paneId))
 
-fun RootComponent.updateSettings(settings: OnyxSettings) = dispatch(RootIntent.UpdateSettings(settings))
+internal fun RootComponent.updateSettings(settings: OnyxSettings) = dispatch(RootIntent.UpdateSettings(settings))
 
-fun RootComponent.openLocationInActivePane(location: String) = dispatch(RootIntent.OpenLocationInActivePane(location))
+internal fun RootComponent.openLocationInActivePane(location: String) = dispatch(RootIntent.OpenLocationInActivePane(location))
 
-fun RootComponent.toggleFavoriteLocation(location: String) = dispatch(RootIntent.ToggleFavoriteLocation(location))
+internal fun RootComponent.toggleFavoriteLocation(location: String) = dispatch(RootIntent.ToggleFavoriteLocation(location))
 
-fun RootComponent.toggleSidebarTreeNode(location: String) = dispatch(RootIntent.ToggleSidebarTreeNode(location))
+internal fun RootComponent.toggleSidebarTreeNode(location: String) = dispatch(RootIntent.ToggleSidebarTreeNode(location))
 
-fun RootComponent.retrySidebarTreeNode(location: String) = dispatch(RootIntent.RetrySidebarTreeNode(location))
+internal fun RootComponent.retrySidebarTreeNode(location: String) = dispatch(RootIntent.RetrySidebarTreeNode(location))
 
-fun RootComponent.beginCreateDirectoriesInPane(paneId: PaneId) =
+internal fun RootComponent.beginCreateDirectoriesInPane(paneId: PaneId) =
     dispatch(RootIntent.BeginCreateDirectoriesInPane(paneId))
 
-fun RootComponent.updateCreateDirectoriesDraft(draft: String) =
+internal fun RootComponent.updateCreateDirectoriesDraft(draft: String) =
     dispatch(RootIntent.UpdateCreateDirectoriesDraft(draft))
 
-fun RootComponent.confirmDialog() = dispatch(RootIntent.ConfirmDialog)
+internal fun RootComponent.confirmDialog() = dispatch(RootIntent.ConfirmDialog)
 
-fun RootComponent.dismissDialog() = dispatch(RootIntent.DismissDialog)
+internal fun RootComponent.dismissDialog() = dispatch(RootIntent.DismissDialog)
 
-fun RootComponent.resolveConflict(
+internal fun RootComponent.resolveConflict(
     strategy: TransferConflictStrategy,
     applyToAll: Boolean,
 ) = dispatch(RootIntent.ResolveConflict(strategy, applyToAll))
 
-fun RootComponent.moveTab(
+internal fun RootComponent.moveTab(
     sourcePaneId: PaneId,
     tabId: String,
     targetPaneId: PaneId,
     targetIndex: Int,
 ) = dispatch(RootIntent.MoveTab(sourcePaneId, tabId, targetPaneId, targetIndex))
 
-fun RootComponent.refreshActivePane() = dispatch(RootIntent.RefreshActivePane)
+internal fun RootComponent.refreshActivePane() = dispatch(RootIntent.RefreshActivePane)
 
-fun RootComponent.togglePreviewPane() = dispatch(RootIntent.TogglePreviewPane)
+internal fun RootComponent.togglePreviewPane() = dispatch(RootIntent.TogglePreviewPane)
 
-fun RootComponent.showSearchPanel() = dispatch(RootIntent.ShowSearchPanel)
+internal fun RootComponent.showSearchPanel() = dispatch(RootIntent.ShowSearchPanel)
 
-fun RootComponent.closeSearchPanel() = dispatch(RootIntent.CloseSearchPanel)
+internal fun RootComponent.closeSearchPanel() = dispatch(RootIntent.CloseSearchPanel)
 
-fun RootComponent.updateSearchQuery(query: String) = dispatch(RootIntent.UpdateSearchQuery(query))
+internal fun RootComponent.updateSearchQuery(query: String) = dispatch(RootIntent.UpdateSearchQuery(query))
 
-fun RootComponent.executeSearch() = dispatch(RootIntent.ExecuteSearch)
+internal fun RootComponent.executeSearch() = dispatch(RootIntent.ExecuteSearch)
 
-fun RootComponent.cancelSearch() = dispatch(RootIntent.CancelSearch)
+internal fun RootComponent.cancelSearch() = dispatch(RootIntent.CancelSearch)
 
-fun RootComponent.openSearchResult(entry: VFile) = dispatch(RootIntent.OpenSearchResult(entry))
+internal fun RootComponent.openSearchResult(entry: VFile) = dispatch(RootIntent.OpenSearchResult(entry))
 
-fun RootComponent.openSearchResultsAsCollection() = dispatch(RootIntent.OpenSearchResultsAsCollection)
+internal fun RootComponent.openSearchResultsAsCollection() = dispatch(RootIntent.OpenSearchResultsAsCollection)
 
-fun RootComponent.stageCopySelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCopySelectedInPane(paneId))
+internal fun RootComponent.stageCopySelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCopySelectedInPane(paneId))
 
-fun RootComponent.stageCutSelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCutSelectedInPane(paneId))
+internal fun RootComponent.stageCutSelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCutSelectedInPane(paneId))
 
-fun RootComponent.requestPasteIntoPane(paneId: PaneId) = dispatch(RootIntent.RequestPasteIntoPane(paneId))
+internal fun RootComponent.requestPasteIntoPane(paneId: PaneId) = dispatch(RootIntent.RequestPasteIntoPane(paneId))
 
-fun RootComponent.requestTransferSelectedToDirectory(
+internal fun RootComponent.requestTransferSelectedToDirectory(
     sourcePaneId: PaneId,
     targetDirectoryLocation: String,
     operation: FileTransferOperation,
 ) = dispatch(RootIntent.RequestTransferSelectedToDirectory(sourcePaneId, targetDirectoryLocation, operation))
 
-fun RootComponent.requestTransferSourceToDestination(
+internal fun RootComponent.requestTransferSourceToDestination(
     operation: FileTransferOperation,
 ) = dispatch(RootIntent.RequestTransferSourceToDestination(operation))
 
-fun RootComponent.requestDeleteSelectedInPane(paneId: PaneId) = dispatch(RootIntent.RequestDeleteSelectedInPane(paneId))
+internal fun RootComponent.requestDeleteSelectedInPane(paneId: PaneId) = dispatch(RootIntent.RequestDeleteSelectedInPane(paneId))
 
-fun RootComponent.extractSelectedInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSelectedInPane(paneId))
+internal fun RootComponent.extractSelectedInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSelectedInPane(paneId))
 
-fun RootComponent.extractToDirectoryInPane(paneId: PaneId) = dispatch(RootIntent.ExtractToDirectoryInPane(paneId))
+internal fun RootComponent.extractToDirectoryInPane(paneId: PaneId) = dispatch(RootIntent.ExtractToDirectoryInPane(paneId))
 
-fun RootComponent.extractSmartInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSmartInPane(paneId))
+internal fun RootComponent.extractSmartInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSmartInPane(paneId))
 
-fun RootComponent.submitArchivePassword(password: String) = dispatch(RootIntent.SubmitArchivePassword(password))
+internal fun RootComponent.submitArchivePassword(password: String) = dispatch(RootIntent.SubmitArchivePassword(password))
 
-fun RootComponent.updateRemoteCredentialsDraft(draft: RemoteCredentialsDraft) =
+internal fun RootComponent.updateRemoteCredentialsDraft(draft: RemoteCredentialsDraft) =
     dispatch(RootIntent.UpdateRemoteCredentialsDraft(draft))
 
-fun RootComponent.submitRemoteCredentials() = dispatch(RootIntent.SubmitRemoteCredentials)
+internal fun RootComponent.submitRemoteCredentials() = dispatch(RootIntent.SubmitRemoteCredentials)
 
-fun RootComponent.batchRenameInPane(paneId: PaneId) = dispatch(RootIntent.BatchRenameInPane(paneId))
+internal fun RootComponent.batchRenameInPane(paneId: PaneId) = dispatch(RootIntent.BatchRenameInPane(paneId))
 
-fun RootComponent.executeBatchRename(
+internal fun RootComponent.executeBatchRename(
     paneId: PaneId,
     renameMap: List<Pair<VFile, String>>,
 ) = dispatch(RootIntent.ExecuteBatchRename(paneId, renameMap))
 
-fun RootComponent.resetBatchRenameForContinue(paneId: PaneId) =
+internal fun RootComponent.resetBatchRenameForContinue(paneId: PaneId) =
     dispatch(RootIntent.ResetBatchRenameForContinue(paneId))
 
-fun RootComponent.dismissTask(taskId: String) = dispatch(RootIntent.DismissTask(taskId))
+internal fun RootComponent.dismissTask(taskId: String) = dispatch(RootIntent.DismissTask(taskId))
 
-fun RootComponent.cancelTask(taskId: String) = dispatch(RootIntent.CancelTask(taskId))
+internal fun RootComponent.cancelTask(taskId: String) = dispatch(RootIntent.CancelTask(taskId))
 
-fun RootComponent.pauseTask(taskId: String) = dispatch(RootIntent.PauseTask(taskId))
+internal fun RootComponent.pauseTask(taskId: String) = dispatch(RootIntent.PauseTask(taskId))
 
-fun RootComponent.resumeTask(taskId: String) = dispatch(RootIntent.ResumeTask(taskId))
+internal fun RootComponent.resumeTask(taskId: String) = dispatch(RootIntent.ResumeTask(taskId))
 
-fun RootComponent.retryTask(taskId: String) = dispatch(RootIntent.RetryTask(taskId))
+internal fun RootComponent.retryTask(taskId: String) = dispatch(RootIntent.RetryTask(taskId))
 
-fun RootComponent.clearAllTasks() = dispatch(RootIntent.ClearAllTasks)
+internal fun RootComponent.clearAllTasks() = dispatch(RootIntent.ClearAllTasks)
 
-fun RootComponent.undoLastFileOperation() = dispatch(RootIntent.UndoLastFileOperation)
+internal fun RootComponent.undoLastFileOperation() = dispatch(RootIntent.UndoLastFileOperation)
 
-fun RootComponent.redoLastFileOperation() = dispatch(RootIntent.RedoLastFileOperation)
+internal fun RootComponent.redoLastFileOperation() = dispatch(RootIntent.RedoLastFileOperation)
 
-fun RootComponent.openImageViewer(
+internal fun RootComponent.openImageViewer(
     file: VFile,
     allImages: List<VFile>,
 ) = dispatch(RootIntent.OpenImageViewer(file, allImages))
 
-fun RootComponent.closeImageViewer() = dispatch(RootIntent.CloseImageViewer)
+internal fun RootComponent.closeImageViewer() = dispatch(RootIntent.CloseImageViewer)
 
-fun RootComponent.imageViewerNext() = dispatch(RootIntent.ImageViewerNext)
+internal fun RootComponent.imageViewerNext() = dispatch(RootIntent.ImageViewerNext)
 
-fun RootComponent.imageViewerPrevious() = dispatch(RootIntent.ImageViewerPrevious)
+internal fun RootComponent.imageViewerPrevious() = dispatch(RootIntent.ImageViewerPrevious)
 
-fun RootComponent.imageViewerSetZoom(factor: Float) = dispatch(RootIntent.ImageViewerSetZoom(factor))
+internal fun RootComponent.imageViewerSetZoom(factor: Float) = dispatch(RootIntent.ImageViewerSetZoom(factor))
 
-fun RootComponent.imageViewerSetFitMode(mode: ImageFitMode) = dispatch(RootIntent.ImageViewerSetFitMode(mode))
+internal fun RootComponent.imageViewerSetFitMode(mode: ImageFitMode) = dispatch(RootIntent.ImageViewerSetFitMode(mode))
 
-fun RootComponent.imageViewerRotate(clockwise: Boolean) = dispatch(RootIntent.ImageViewerRotate(clockwise))
+internal fun RootComponent.imageViewerRotate(clockwise: Boolean) = dispatch(RootIntent.ImageViewerRotate(clockwise))
 
-fun RootComponent.openWithApp(
+internal fun RootComponent.openWithApp(
     entry: VFile,
     app: OpenWithApp,
 ) = dispatch(RootIntent.OpenWithApp(entry, app))
 
-fun RootComponent.openWithChooser(entry: VFile) = dispatch(RootIntent.OpenWithChooser(entry))
+internal fun RootComponent.openWithChooser(entry: VFile) = dispatch(RootIntent.OpenWithChooser(entry))
 
-fun RootComponent.executeSystemMenuAction(
+internal fun RootComponent.executeSystemMenuAction(
     action: SystemMenuAction,
     entries: List<VFile>,
 ) = dispatch(RootIntent.ExecuteSystemMenuAction(action, entries))
 
-fun RootComponent.executeFileContextMenuCommand(
+internal fun RootComponent.executeFileContextMenuCommand(
     command: FileContextMenuCommand,
     entries: List<VFile>,
 ) = dispatch(RootIntent.ExecuteFileContextMenuCommand(command, entries))
 
-fun RootComponent.openTerminalAt(location: String) = dispatch(RootIntent.OpenTerminalAt(location))
+internal fun RootComponent.openTerminalAt(location: String) = dispatch(RootIntent.OpenTerminalAt(location))

@@ -1,0 +1,13 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MaxLineLength:SmbVfsProvider.kt$SmbVfsProvider$val hasDifferentSourceAuth = entries.any { entry -&gt; authRepository.authContext(entry.location) != targetAuthContext }</ID>
+    <ID>ReturnCount:SmbVfsProvider.kt$SmbVfsProvider$override suspend fun delete(entries: List&lt;VFile&gt;): Result&lt;Unit&gt;</ID>
+    <ID>ReturnCount:SmbVfsProvider.kt$SmbVfsProvider$private suspend fun runTransferCommand( entries: List&lt;VFile&gt;, targetDirectoryLocation: String, capability: VfsProviderCapability, block: suspend (VfsAuthContext) -&gt; Unit, ): Result&lt;Unit&gt;</ID>
+    <ID>SwallowedException:JcifsSmbClient.kt$JcifsSmbClient$failure: SmbAuthException</ID>
+    <ID>SwallowedException:JcifsSmbClient.kt$JcifsSmbClient$failure: SmbException</ID>
+    <ID>SwallowedException:JcifsSmbClient.kt$JcifsSmbClient$failure: UnknownHostException</ID>
+    <ID>ThrowsCount:JcifsSmbClient.kt$JcifsSmbClient$private fun resolveTransferTarget( source: SmbFile, targetDirectory: SmbFile, conflictStrategy: TransferConflictStrategy, ): SmbFile?</ID>
+  </CurrentIssues>
+</SmellBaseline>

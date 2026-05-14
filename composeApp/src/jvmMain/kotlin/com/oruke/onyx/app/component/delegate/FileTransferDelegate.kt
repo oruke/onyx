@@ -36,7 +36,7 @@ import java.util.UUID
  * 从 DefaultRootComponent 剥离的纯业务逻辑，不直接持有 UI 组件引用。
  * 通过回调 lambda 与宿主组件交互（对话框、面板刷新等）。
  */
-class FileTransferDelegate(
+internal class FileTransferDelegate(
     private val scope: CoroutineScope,
     private val fileCommandService: FileCommandService,
     private val fileRepository: FileRepository,

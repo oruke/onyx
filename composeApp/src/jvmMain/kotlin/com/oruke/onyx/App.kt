@@ -81,7 +81,7 @@ import org.jetbrains.jewel.window.newFullscreenControls
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 @Composable
-fun DecoratedWindowScope.WindowApp(
+internal fun DecoratedWindowScope.WindowApp(
     rootComponent: RootComponent,
     externalFileDragService: ExternalFileDragService,
 ) {
@@ -154,7 +154,7 @@ fun DecoratedWindowScope.WindowApp(
 }
 
 @Composable
-fun App(rootComponent: RootComponent = rememberRootComponent()) {
+internal fun App(rootComponent: RootComponent = rememberRootComponent()) {
     // 独立使用时仍可默认创建 rootComponent
     val koin = org.koin.compose.getKoin()
     val externalFileDragService = remember { koin.get<ExternalFileDragService>() }

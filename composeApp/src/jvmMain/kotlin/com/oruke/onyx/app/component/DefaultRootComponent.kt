@@ -101,7 +101,7 @@ import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 import com.oruke.onyx.app.platform.ExternalFileDragService
 
 @OptIn(kotlinx.coroutines.FlowPreview::class)
-class DefaultRootComponent(
+internal class DefaultRootComponent(
     componentContext: ComponentContext,
     private val fileRepository: FileRepository,
     private val fileCommandService: FileCommandService,

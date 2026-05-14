@@ -52,7 +52,7 @@ import org.koin.compose.getKoin
  * - Composable 退出组合 → destroy（自动取消组件内部 CoroutineScope）
  */
 @Composable
-fun rememberRootComponent(): RootComponent {
+internal fun rememberRootComponent(): RootComponent {
     val koin = getKoin()
     val lifecycle = remember { LifecycleRegistry() }
     val component = remember {

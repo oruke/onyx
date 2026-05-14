@@ -5,7 +5,7 @@ import com.oruke.onyx.core.model.VFileKind
 /**
  * 面板级命令 ID，用于让快捷键、工具栏、命令面板和右键菜单共享同一套状态判断。
  */
-enum class PaneCommand {
+internal enum class PaneCommand {
     OPEN_SELECTION,
     OPEN_SELECTION_IN_NEW_TAB,
     RENAME_SELECTION,
@@ -41,7 +41,7 @@ enum class PaneCommand {
  * @property onToggleFavoriteLocation 切换指定路径的收藏状态。
  * @property onOpenSettings 打开设置界面。
  */
-data class PaneCommandExternalActions(
+internal data class PaneCommandExternalActions(
     val onBeginCreateDirectory: () -> Unit,
     val onCopySelection: () -> Unit,
     val onCutSelection: () -> Unit,
@@ -60,7 +60,7 @@ data class PaneCommandExternalActions(
  * @property canUndo 当前是否允许撤销。
  * @property canRedo 当前是否允许重做。
  */
-data class PaneCommandExecutionContext(
+internal data class PaneCommandExecutionContext(
     val canPaste: Boolean,
     val canUndo: Boolean,
     val canRedo: Boolean,
@@ -74,7 +74,7 @@ data class PaneCommandExecutionContext(
  * @property executionContext 跨组件命令状态上下文。
  * @property externalActions 需要 Root 或跨面板能力参与的动作集合。
  */
-class PaneCommandController(
+internal class PaneCommandController(
     private val state: PaneState,
     private val component: PaneComponent,
     private val executionContext: PaneCommandExecutionContext,

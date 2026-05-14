@@ -18,7 +18,7 @@ import javax.imageio.ImageIO
 import kotlin.io.path.pathString
 import kotlin.coroutines.cancellation.CancellationException
 
-class JvmVfsPathService : VfsPathService {
+internal class JvmVfsPathService : VfsPathService {
     override fun normalizeLocation(location: String): String {
         val trimmedLocation = location.trim()
         if (ArchiveService.isArchiveLocation(trimmedLocation)) return trimmedLocation
@@ -316,7 +316,7 @@ class JvmVfsPathService : VfsPathService {
     }
 }
 
-class JvmTerminalLauncherService : TerminalLauncherService {
+internal class JvmTerminalLauncherService : TerminalLauncherService {
     override suspend fun openTerminal(location: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val directory = File(location)
@@ -410,7 +410,7 @@ class JvmTerminalLauncherService : TerminalLauncherService {
  *
  * @param contentServices 可按 location 路由的内容服务列表。
  */
-class JvmPreviewService(
+internal class JvmPreviewService(
     private val contentServices: List<RoutableVfsContentService> = emptyList(),
 ) : PreviewService {
     /**
@@ -479,7 +479,7 @@ class JvmPreviewService(
     private class PreviewLimitExceededException : RuntimeException()
 }
 
-class JvmFileHashService(
+internal class JvmFileHashService(
     private val archiveService: ArchiveService,
 ) : FileHashService {
     override suspend fun readHash(request: FileHashRequest): FileHashResult = withContext(Dispatchers.IO) {
@@ -538,7 +538,7 @@ class JvmFileHashService(
     }
 }
 
-class JvmArchiveInfoService(
+internal class JvmArchiveInfoService(
     private val archiveService: ArchiveService,
 ) : ArchiveInfoService {
     override suspend fun readInfo(request: ArchiveInfoRequest): ArchiveInfoResult = withContext(Dispatchers.IO) {
@@ -565,7 +565,7 @@ class JvmArchiveInfoService(
     }
 }
 
-class JvmFileTypeService : FileTypeService {
+internal class JvmFileTypeService : FileTypeService {
     override fun isImageFileName(fileName: String): Boolean {
         val ext = fileName.substringAfterLast('.', "").lowercase()
         return ext in ImageExtensions
@@ -584,7 +584,7 @@ class JvmFileTypeService : FileTypeService {
     }
 }
 
-class JvmArchiveEntryOpenService(
+internal class JvmArchiveEntryOpenService(
     private val archiveService: ArchiveService,
     private val externalOpenService: ExternalOpenService,
 ) : ArchiveEntryOpenService {
@@ -608,7 +608,7 @@ class JvmArchiveEntryOpenService(
     }
 }
 
-class JvmImageMetadataService(
+internal class JvmImageMetadataService(
     private val archiveService: ArchiveService,
 ) : ImageMetadataService {
     override suspend fun readImageSize(entry: VFile): IntSize? = withContext(Dispatchers.IO) {

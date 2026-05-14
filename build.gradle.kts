@@ -16,7 +16,13 @@ subprojects {
         buildUponDefaultConfig = true
         allRules = false
         config.setFrom(rootProject.files("config/detekt/detekt.yml"))
-        source.setFrom(files("src"))
+        baseline = rootProject.file("config/detekt/baselines/${project.name}.xml")
+        source.setFrom(
+            files(
+                "src/commonMain",
+                "src/jvmMain",
+            ),
+        )
         parallel = true
         basePath = rootProject.projectDir.absolutePath
     }

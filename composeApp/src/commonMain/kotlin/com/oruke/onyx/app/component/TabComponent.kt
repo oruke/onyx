@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.Serializable
 
 @Serializable
-class TabConfig(
+internal class TabConfig(
     val id: String,
     val snapshot: TabSnapshot,
 ) {
@@ -22,14 +22,14 @@ class TabConfig(
     }
 }
 
-fun TabSnapshot.toTabConfig(): TabConfig {
+internal fun TabSnapshot.toTabConfig(): TabConfig {
     return TabConfig(
         id = id,
         snapshot = this,
     )
 }
 
-interface TabComponent {
+internal interface TabComponent {
     val state: StateFlow<PaneTabState>
 
     fun updateState(state: PaneTabState)

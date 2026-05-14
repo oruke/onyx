@@ -11,7 +11,7 @@ import com.oruke.onyx.core.model.VFileKind
 /**
  * 右键菜单内置文案语义，由 UI 层映射到 i18n 资源。
  */
-enum class PaneContextMenuText {
+internal enum class PaneContextMenuText {
     OPEN,
     OPEN_IN_NEW_TAB,
     OPEN_WITH,
@@ -38,7 +38,7 @@ enum class PaneContextMenuText {
 /**
  * 右键菜单图标语义，由 UI 层映射到当前图标库。
  */
-enum class PaneContextMenuIcon {
+internal enum class PaneContextMenuIcon {
     OPEN,
     OPEN_IN_NEW_TAB,
     EDIT,
@@ -61,7 +61,7 @@ enum class PaneContextMenuIcon {
 /**
  * 统一右键菜单命令，覆盖面板命令、跨组件动作和平台系统动作。
  */
-sealed interface PaneContextMenuCommand {
+internal sealed interface PaneContextMenuCommand {
     /**
      * 面板内命令。
      *
@@ -102,7 +102,7 @@ sealed interface PaneContextMenuCommand {
 /**
  * 统一右键菜单节点。
  */
-sealed interface PaneContextMenuNode {
+internal sealed interface PaneContextMenuNode {
     /** 菜单分隔线。 */
     data object Divider : PaneContextMenuNode
 
@@ -135,7 +135,7 @@ sealed interface PaneContextMenuNode {
  *
  * @property nodes 菜单节点列表。
  */
-data class PaneContextMenuModel(
+internal data class PaneContextMenuModel(
     val nodes: List<PaneContextMenuNode>,
 )
 
@@ -149,7 +149,7 @@ data class PaneContextMenuModel(
  * @property canExtractSelection 当前选择项是否包含可解压文件。
  * @property contextMenuSections 平台菜单来源，包括打开方式与系统右键菜单。
  */
-data class PaneContextMenuBuildInput(
+internal data class PaneContextMenuBuildInput(
     val entries: List<VFile>,
     val canPaste: Boolean,
     val canUndo: Boolean,
@@ -168,7 +168,7 @@ data class PaneContextMenuBuildInput(
  * @property onFileContextMenuCommand 执行平台右键菜单命令。
  * @property onOpenTerminal 在指定目录打开终端。
  */
-data class PaneContextMenuExternalActions(
+internal data class PaneContextMenuExternalActions(
     val onBatchRename: () -> Unit,
     val onExtractSelection: () -> Unit,
     val onExtractToDirectory: () -> Unit,
@@ -183,7 +183,7 @@ data class PaneContextMenuExternalActions(
  * @property paneCommandController 面板命令控制器。
  * @property externalActions 右键菜单跨组件动作集合。
  */
-class PaneContextMenuCommandController(
+internal class PaneContextMenuCommandController(
     private val paneCommandController: PaneCommandController,
     private val externalActions: PaneContextMenuExternalActions,
 ) {
@@ -246,7 +246,7 @@ class PaneContextMenuCommandController(
 /**
  * 统一右键菜单模型构建器，负责将内置文件操作与平台菜单合并为单一节点树。
  */
-object PaneContextMenuModelBuilder {
+internal object PaneContextMenuModelBuilder {
     /**
      * 构建当前右键菜单模型。
      *

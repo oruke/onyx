@@ -35,7 +35,7 @@ import java.util.UUID
  * @property onBatchRenameSucceeded 批量重命名成功后的历史记录回调。
  * @property onTrashDeleteSucceeded 回收站删除成功后的历史记录回调。
  */
-data class FileActionDelegateCallbacks(
+internal data class FileActionDelegateCallbacks(
     val onRefreshAllPanes: () -> Unit,
     val onRefreshPane: (PaneId) -> Unit,
     val getPaneState: (PaneId) -> PaneState,
@@ -54,7 +54,7 @@ data class FileActionDelegateCallbacks(
  * @param dialogState 根组件对话框状态。
  * @param callbacks 文件操作结果回调集合。
  */
-class FileActionDelegate(
+internal class FileActionDelegate(
     private val fileCommandService: FileCommandService,
     private val trashService: TrashService,
     private val taskOrchestrator: TaskOrchestrator,

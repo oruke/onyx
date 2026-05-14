@@ -36,7 +36,7 @@ import org.jetbrains.skia.Image as SkiaImage
  *    - 最后一步使用 Mitchell-Netravali 三次重采样，确保锐度与平滑的最佳平衡
  * 3. 输出：直接转为 Compose ImageBitmap，无跨引擎转码损失
  */
-class JvmThumbnailService(
+internal class JvmThumbnailService(
     private val contentServices: List<RoutableVfsContentService> = emptyList(),
 ) : ThumbnailService {
 

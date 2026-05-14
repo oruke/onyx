@@ -18,7 +18,7 @@ import java.nio.file.Path
  *
  * 从 DefaultRootComponent 剥离的纯业务逻辑，自持 SidebarTreeState。
  */
-class SidebarDelegate(
+internal class SidebarDelegate(
     private val scope: CoroutineScope,
     private val fileRepository: FileRepository,
 ) {
@@ -145,7 +145,7 @@ class SidebarDelegate(
 
 // ── SidebarTreeState 扩展函数 ─────────────────────────────────────────────
 
-fun SidebarTreeState.findNode(location: String): SidebarTreeNode? {
+internal fun SidebarTreeState.findNode(location: String): SidebarTreeNode? {
     fun List<SidebarTreeNode>.search(): SidebarTreeNode? {
         for (node in this) {
             if (node.location == location) {
@@ -162,7 +162,7 @@ fun SidebarTreeState.findNode(location: String): SidebarTreeNode? {
     return roots.search()
 }
 
-fun SidebarTreeState.updateNode(
+internal fun SidebarTreeState.updateNode(
     location: String,
     transform: (SidebarTreeNode) -> SidebarTreeNode,
 ): SidebarTreeState {

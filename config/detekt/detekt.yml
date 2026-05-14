@@ -16,6 +16,12 @@ complexity:
   LongMethod:
     active: true
     threshold: 110
+  LongParameterList:
+    active: true
+    functionThreshold: 12
+    constructorThreshold: 12
+    ignoreDefaultParameters: true
+    ignoreDataClasses: true
   TooManyFunctions:
     active: true
     thresholdInFiles: 40
@@ -36,11 +42,18 @@ naming:
     active: true
   FunctionNaming:
     active: true
+    functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
   VariableNaming:
     active: true
 
 style:
   active: true
+  MagicNumber:
+    active: true
+    ignorePropertyDeclaration: true
+    ignoreLocalVariableDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreNamedArgument: true
   WildcardImport:
     active: true
   UnusedPrivateMember:

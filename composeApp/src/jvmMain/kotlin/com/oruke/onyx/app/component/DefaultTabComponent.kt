@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class DefaultTabComponent(
+internal class DefaultTabComponent(
     componentContext: ComponentContext,
     config: TabConfig,
     pathService: VfsPathService,

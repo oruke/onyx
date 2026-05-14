@@ -14,7 +14,7 @@ import com.oruke.onyx.core.model.VFileKind
  * - 状态栏信息构建
  * - 内联展开条目收集
  */
-object SelectionReducer {
+internal object SelectionReducer {
 
     /**
      * 构建范围选择：从 anchor 到 target 的所有条目 ID。

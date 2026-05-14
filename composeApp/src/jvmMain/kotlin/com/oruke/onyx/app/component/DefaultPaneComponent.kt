@@ -44,7 +44,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-class DefaultPaneComponent(
+internal class DefaultPaneComponent(
     componentContext: ComponentContext,
     private val paneId: PaneId,
     initialLocation: String,

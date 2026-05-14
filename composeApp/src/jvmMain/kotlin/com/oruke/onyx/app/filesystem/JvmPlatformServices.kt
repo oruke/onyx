@@ -13,7 +13,7 @@ import java.nio.file.Path
  *
  * @property materializer 系统文件物化服务；可将远程文件或压缩包条目转换为本地临时文件后再交给 Desktop API。
  */
-class JvmDesktopExternalOpenService(
+internal class JvmDesktopExternalOpenService(
     private val materializer: SystemFileMaterializer? = null,
 ) : ExternalOpenService {
     /**
@@ -41,7 +41,7 @@ class JvmDesktopExternalOpenService(
     }
 }
 
-class JvmTextClipboardService : TextClipboardService {
+internal class JvmTextClipboardService : TextClipboardService {
     override suspend fun copyText(text: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null)

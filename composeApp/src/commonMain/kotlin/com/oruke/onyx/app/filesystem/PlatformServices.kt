@@ -6,12 +6,12 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.VFile
 
-data class VfsBreadcrumb(
+internal data class VfsBreadcrumb(
     val label: String,
     val location: String,
 )
 
-interface VfsPathService {
+internal interface VfsPathService {
     fun normalizeLocation(location: String): String
 
     fun parentLocation(location: String): String?
@@ -47,17 +47,17 @@ interface VfsPathService {
     fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>
 }
 
-interface TerminalLauncherService {
+internal interface TerminalLauncherService {
     suspend fun openTerminal(location: String): Result<Unit>
 }
 
-data class PreviewTextRequest(
+internal data class PreviewTextRequest(
     val entry: VFile,
     val maxBytes: Long,
     val maxLines: Int,
 )
 
-sealed interface PreviewTextResult {
+internal sealed interface PreviewTextResult {
     data class Text(
         val value: String,
     ) : PreviewTextResult
@@ -71,16 +71,16 @@ sealed interface PreviewTextResult {
     ) : PreviewTextResult
 }
 
-interface PreviewService {
+internal interface PreviewService {
     suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult
 }
 
-data class FileHashRequest(
+internal data class FileHashRequest(
     val entry: VFile,
     val maxBytes: Long,
 )
 
-sealed interface FileHashResult {
+internal sealed interface FileHashResult {
     data class Hash(
         val algorithm: String,
         val value: String,
@@ -95,15 +95,15 @@ sealed interface FileHashResult {
     ) : FileHashResult
 }
 
-interface FileHashService {
+internal interface FileHashService {
     suspend fun readHash(request: FileHashRequest): FileHashResult
 }
 
-data class ArchiveInfoRequest(
+internal data class ArchiveInfoRequest(
     val entry: VFile,
 )
 
-sealed interface ArchiveInfoResult {
+internal sealed interface ArchiveInfoResult {
     data class Info(
         val encrypted: Boolean,
         val canBrowse: Boolean,
@@ -118,11 +118,11 @@ sealed interface ArchiveInfoResult {
     ) : ArchiveInfoResult
 }
 
-interface ArchiveInfoService {
+internal interface ArchiveInfoService {
     suspend fun readInfo(request: ArchiveInfoRequest): ArchiveInfoResult
 }
 
-interface FileTypeService {
+internal interface FileTypeService {
     fun isImageFileName(fileName: String): Boolean
 
     fun isArchiveFileName(fileName: String): Boolean
@@ -130,11 +130,11 @@ interface FileTypeService {
     fun isTextPreviewFileName(fileName: String): Boolean
 }
 
-interface ArchiveEntryOpenService {
+internal interface ArchiveEntryOpenService {
     suspend fun openArchiveEntry(entry: VFile): Result<VFile>
 }
 
-interface ThumbnailService {
+internal interface ThumbnailService {
     suspend fun loadThumbnail(
         location: String,
         maxDimension: Int,
@@ -148,6 +148,6 @@ interface ThumbnailService {
     fun clearCache()
 }
 
-interface ImageMetadataService {
+internal interface ImageMetadataService {
     suspend fun readImageSize(entry: VFile): IntSize?
 }

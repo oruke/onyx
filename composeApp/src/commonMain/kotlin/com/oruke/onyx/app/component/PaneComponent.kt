@@ -18,7 +18,7 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.flow.StateFlow
 
-data class TabState(
+internal data class TabState(
     val location: String,
     val canGoBack: Boolean,
     val canGoForward: Boolean,
@@ -51,7 +51,7 @@ data class TabState(
  * @property filterInputFocusRequestId 筛选输入框聚焦请求编号，每次显式打开递增。
  * @property commandPaletteVisible 命令面板是否处于打开状态。
  */
-data class PaneChromeState(
+internal data class PaneChromeState(
     val activeTabId: String,
     val inlineExpandedLocations: Set<String> = emptySet(),
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
@@ -60,7 +60,7 @@ data class PaneChromeState(
     val commandPaletteVisible: Boolean = false,
 )
 
-data class PaneState(
+internal data class PaneState(
     val paneId: PaneId,
     val chromeState: PaneChromeState,
     val activeTabState: TabState,
@@ -93,7 +93,7 @@ data class PaneState(
     val pendingScrollToEntryId: String? get() = activeTabState.pendingScrollToEntryId
 }
 
-data class PaneTabState(
+internal data class PaneTabState(
     val id: String,
     val title: String,
     val tabState: TabState,
@@ -127,7 +127,7 @@ data class PaneTabState(
     }
 }
 
-sealed interface PaneEntriesState {
+internal sealed interface PaneEntriesState {
     data object Idle : PaneEntriesState
 
     data object Loading : PaneEntriesState
@@ -141,7 +141,7 @@ sealed interface PaneEntriesState {
     ) : PaneEntriesState
 }
 
-data class PaneEntriesError(
+internal data class PaneEntriesError(
     val kind: PaneEntriesErrorKind,
     val detail: I18nMessage? = null,
 ) {
@@ -162,7 +162,7 @@ data class PaneEntriesError(
     }
 }
 
-enum class PaneEntriesErrorKind {
+internal enum class PaneEntriesErrorKind {
     LOAD_FAILED,
     UNKNOWN,
 }
@@ -174,14 +174,14 @@ enum class PaneEntriesErrorKind {
  * [parentLocation] 是展开的目录 location，[depth] 是嵌套深度（从 1 开始），
  * [entries] 为 null 表示正在加载，非 null 表示已加载完成。
  */
-data class InlineExpandedEntry(
+internal data class InlineExpandedEntry(
     val parentLocation: String,
     val depth: Int,
     val entries: List<VFile>? = null,
     val error: Boolean = false,
 )
 
-sealed interface PaneIntent {
+internal sealed interface PaneIntent {
     data object Refresh : PaneIntent
 
     data object GoBack : PaneIntent
@@ -307,7 +307,7 @@ sealed interface PaneIntent {
 }
 
 
-interface PaneComponent {
+internal interface PaneComponent {
     val state: StateFlow<PaneState>
     /** 视觉标签顺序；ChildStack 是导航栈顺序，active child 会被放到栈顶。 */
     val tabOrder: StateFlow<List<String>>
@@ -325,7 +325,7 @@ interface PaneComponent {
     fun restoreSession(snapshot: PaneSessionSnapshot)
 }
 
-fun PaneComponent.tabStatesInDisplayOrder(): List<PaneTabState> {
+internal fun PaneComponent.tabStatesInDisplayOrder(): List<PaneTabState> {
     val children = tabStack.value.items
     val childrenById = children.associateBy { child -> child.configuration.id }
     val orderedIds = tabOrder.value.toSet()
@@ -336,98 +336,98 @@ fun PaneComponent.tabStatesInDisplayOrder(): List<PaneTabState> {
         .map { child -> child.instance.state.value }
 }
 
-fun PaneComponent.refresh() = dispatch(PaneIntent.Refresh)
+internal fun PaneComponent.refresh() = dispatch(PaneIntent.Refresh)
 
-fun PaneComponent.goBack() = dispatch(PaneIntent.GoBack)
+internal fun PaneComponent.goBack() = dispatch(PaneIntent.GoBack)
 
-fun PaneComponent.goForward() = dispatch(PaneIntent.GoForward)
+internal fun PaneComponent.goForward() = dispatch(PaneIntent.GoForward)
 
-fun PaneComponent.goUp() = dispatch(PaneIntent.GoUp)
+internal fun PaneComponent.goUp() = dispatch(PaneIntent.GoUp)
 
-fun PaneComponent.openDirectory(location: String) = dispatch(PaneIntent.OpenDirectory(location))
+internal fun PaneComponent.openDirectory(location: String) = dispatch(PaneIntent.OpenDirectory(location))
 
-fun PaneComponent.openEntry(entry: VFile) = dispatch(PaneIntent.OpenEntry(entry))
+internal fun PaneComponent.openEntry(entry: VFile) = dispatch(PaneIntent.OpenEntry(entry))
 
-fun PaneComponent.setViewMode(mode: ViewMode) = dispatch(PaneIntent.SetViewMode(mode))
+internal fun PaneComponent.setViewMode(mode: ViewMode) = dispatch(PaneIntent.SetViewMode(mode))
 
-fun PaneComponent.setFilterQuery(query: String) = dispatch(PaneIntent.SetFilterQuery(query))
+internal fun PaneComponent.setFilterQuery(query: String) = dispatch(PaneIntent.SetFilterQuery(query))
 
-fun PaneComponent.showFilterInput() = dispatch(PaneIntent.ShowFilterInput)
+internal fun PaneComponent.showFilterInput() = dispatch(PaneIntent.ShowFilterInput)
 
-fun PaneComponent.hideFilterInput(clearQuery: Boolean = true) = dispatch(PaneIntent.HideFilterInput(clearQuery))
+internal fun PaneComponent.hideFilterInput(clearQuery: Boolean = true) = dispatch(PaneIntent.HideFilterInput(clearQuery))
 
-fun PaneComponent.showCommandPalette() = dispatch(PaneIntent.ShowCommandPalette)
+internal fun PaneComponent.showCommandPalette() = dispatch(PaneIntent.ShowCommandPalette)
 
-fun PaneComponent.hideCommandPalette() = dispatch(PaneIntent.HideCommandPalette)
+internal fun PaneComponent.hideCommandPalette() = dispatch(PaneIntent.HideCommandPalette)
 
-fun PaneComponent.toggleSort(column: DetailsColumn) = dispatch(PaneIntent.ToggleSort(column))
+internal fun PaneComponent.toggleSort(column: DetailsColumn) = dispatch(PaneIntent.ToggleSort(column))
 
-fun PaneComponent.toggleHiddenItems() = dispatch(PaneIntent.ToggleHiddenItems)
+internal fun PaneComponent.toggleHiddenItems() = dispatch(PaneIntent.ToggleHiddenItems)
 
-fun PaneComponent.toggleColumnVisibility(column: DetailsColumn) = dispatch(PaneIntent.ToggleColumnVisibility(column))
+internal fun PaneComponent.toggleColumnVisibility(column: DetailsColumn) = dispatch(PaneIntent.ToggleColumnVisibility(column))
 
-fun PaneComponent.setGalleryItemSize(sizeDp: Int) = dispatch(PaneIntent.SetGalleryItemSize(sizeDp))
+internal fun PaneComponent.setGalleryItemSize(sizeDp: Int) = dispatch(PaneIntent.SetGalleryItemSize(sizeDp))
 
-fun PaneComponent.resizeDetailsColumn(
+internal fun PaneComponent.resizeDetailsColumn(
     column: DetailsColumn,
     nextColumn: DetailsColumn,
     deltaWeight: Float,
 ) = dispatch(PaneIntent.ResizeDetailsColumn(column, nextColumn, deltaWeight))
 
-fun PaneComponent.selectEntry(
+internal fun PaneComponent.selectEntry(
     entryId: String,
     additive: Boolean = false,
     range: Boolean = false,
 ) = dispatch(PaneIntent.SelectEntry(entryId, additive, range))
 
-fun PaneComponent.selectEntries(entryIds: Set<String>) = dispatch(PaneIntent.SelectEntries(entryIds))
+internal fun PaneComponent.selectEntries(entryIds: Set<String>) = dispatch(PaneIntent.SelectEntries(entryIds))
 
-fun PaneComponent.moveSelection(
+internal fun PaneComponent.moveSelection(
     offset: Int,
     extendSelection: Boolean = false,
 ) = dispatch(PaneIntent.MoveSelection(offset, extendSelection))
 
-fun PaneComponent.openSelectedEntry() = dispatch(PaneIntent.OpenSelectedEntry)
+internal fun PaneComponent.openSelectedEntry() = dispatch(PaneIntent.OpenSelectedEntry)
 
-fun PaneComponent.beginRename() = dispatch(PaneIntent.BeginRename)
+internal fun PaneComponent.beginRename() = dispatch(PaneIntent.BeginRename)
 
-fun PaneComponent.beginCreateFile() = dispatch(PaneIntent.BeginCreateFile)
+internal fun PaneComponent.beginCreateFile() = dispatch(PaneIntent.BeginCreateFile)
 
-fun PaneComponent.beginCreateDirectory() = dispatch(PaneIntent.BeginCreateDirectory)
+internal fun PaneComponent.beginCreateDirectory() = dispatch(PaneIntent.BeginCreateDirectory)
 
-fun PaneComponent.openSelectedInNewTab() = dispatch(PaneIntent.OpenSelectedInNewTab)
+internal fun PaneComponent.openSelectedInNewTab() = dispatch(PaneIntent.OpenSelectedInNewTab)
 
-fun PaneComponent.copySelectedPaths() = dispatch(PaneIntent.CopySelectedPaths)
+internal fun PaneComponent.copySelectedPaths() = dispatch(PaneIntent.CopySelectedPaths)
 
-fun PaneComponent.updateInlineEditDraft(draft: String) = dispatch(PaneIntent.UpdateInlineEditDraft(draft))
+internal fun PaneComponent.updateInlineEditDraft(draft: String) = dispatch(PaneIntent.UpdateInlineEditDraft(draft))
 
-fun PaneComponent.confirmInlineEdit() = dispatch(PaneIntent.ConfirmInlineEdit)
+internal fun PaneComponent.confirmInlineEdit() = dispatch(PaneIntent.ConfirmInlineEdit)
 
-fun PaneComponent.cancelInlineEdit() = dispatch(PaneIntent.CancelInlineEdit)
+internal fun PaneComponent.cancelInlineEdit() = dispatch(PaneIntent.CancelInlineEdit)
 
-fun PaneComponent.dismissOperationFeedback() = dispatch(PaneIntent.DismissOperationFeedback)
+internal fun PaneComponent.dismissOperationFeedback() = dispatch(PaneIntent.DismissOperationFeedback)
 
-fun PaneComponent.selectAll() = dispatch(PaneIntent.SelectAll)
+internal fun PaneComponent.selectAll() = dispatch(PaneIntent.SelectAll)
 
-fun PaneComponent.clearSelection() = dispatch(PaneIntent.ClearSelection)
+internal fun PaneComponent.clearSelection() = dispatch(PaneIntent.ClearSelection)
 
-fun PaneComponent.createTab(location: String = state.value.location) = dispatch(PaneIntent.CreateTab(location))
+internal fun PaneComponent.createTab(location: String = state.value.location) = dispatch(PaneIntent.CreateTab(location))
 
-fun PaneComponent.selectTab(tabId: String) = dispatch(PaneIntent.SelectTab(tabId))
+internal fun PaneComponent.selectTab(tabId: String) = dispatch(PaneIntent.SelectTab(tabId))
 
-fun PaneComponent.closeTab(tabId: String) = dispatch(PaneIntent.CloseTab(tabId))
+internal fun PaneComponent.closeTab(tabId: String) = dispatch(PaneIntent.CloseTab(tabId))
 
-fun PaneComponent.moveTab(
+internal fun PaneComponent.moveTab(
     tabId: String,
     targetIndex: Int,
 ) = dispatch(PaneIntent.MoveTab(tabId, targetIndex))
 
-fun PaneComponent.toggleInlineExpand(directoryLocation: String) =
+internal fun PaneComponent.toggleInlineExpand(directoryLocation: String) =
     dispatch(PaneIntent.ToggleInlineExpand(directoryLocation))
 
-fun PaneComponent.consumePendingScroll() = dispatch(PaneIntent.ConsumePendingScroll)
+internal fun PaneComponent.consumePendingScroll() = dispatch(PaneIntent.ConsumePendingScroll)
 
-interface EntryNameSuggestionService {
+internal interface EntryNameSuggestionService {
     suspend fun newFileName(): String
 
     suspend fun newDirectoryName(): String

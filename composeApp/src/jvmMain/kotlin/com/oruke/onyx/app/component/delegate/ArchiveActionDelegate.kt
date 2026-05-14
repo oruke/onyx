@@ -28,7 +28,7 @@ import java.util.UUID
  *
  * 从 DefaultRootComponent 剥离的纯业务逻辑。
  */
-class ArchiveActionDelegate(
+internal class ArchiveActionDelegate(
     private val scope: CoroutineScope,
     private val archiveService: ArchiveService,
     private val taskOrchestrator: TaskOrchestrator,
