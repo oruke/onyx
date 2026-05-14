@@ -41,27 +41,6 @@ class JvmDesktopExternalOpenService(
     }
 }
 
-class JvmDesktopTrashService : TrashService {
-    override val isSupported: Boolean
-        get() = Desktop.isDesktopSupported() && runCatching {
-            Desktop.getDesktop().isSupported(Desktop.Action.MOVE_TO_TRASH)
-        }.getOrDefault(false)
-
-    override suspend fun moveToTrash(entries: List<VFile>): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            check(isSupported) {
-                "Trash is not supported on this platform"
-            }
-            val desktop = Desktop.getDesktop()
-            entries.forEach { entry ->
-                check(desktop.moveToTrash(Path.of(entry.location).toFile())) {
-                    "Failed to move ${entry.name} to trash"
-                }
-            }
-        }
-    }
-}
-
 class JvmTextClipboardService : TextClipboardService {
     override suspend fun copyText(text: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {

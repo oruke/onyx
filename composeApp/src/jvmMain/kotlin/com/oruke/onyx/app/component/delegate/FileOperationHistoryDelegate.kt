@@ -3,6 +3,8 @@ package com.oruke.onyx.app.component.delegate
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.FileRepository
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.app.filesystem.TrashMoveRecord
+import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -11,15 +13,16 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * 文件操作历史委托，负责记录可逆文件操作并执行撤销 / 重做。
  *
- * 当前只记录可以通过统一 VFS 命令明确反向执行的操作：重命名、批量重命名和无冲突移动。
- * 删除到系统回收站无法从 JVM Desktop API 获得还原位置，因此不会伪造可撤销记录。
+ * 当前只记录可以明确反向执行的操作：重命名、批量重命名、无冲突移动和带恢复记录的回收站删除。
  *
  * @param fileCommandService 统一文件命令服务。
  * @param fileRepository 统一文件列表服务，用于撤销前重新定位当前条目。
+ * @param trashService 回收站服务，用于恢复或重新移入回收站条目。
  */
 class FileOperationHistoryDelegate(
     private val fileCommandService: FileCommandService,
     private val fileRepository: FileRepository,
+    private val trashService: TrashService? = null,
 ) {
     private val _state = MutableStateFlow(FileOperationHistoryState())
     val state: StateFlow<FileOperationHistoryState> = _state.asStateFlow()
@@ -65,6 +68,17 @@ class FileOperationHistoryDelegate(
         val steps = entries.mapNotNull { entry -> FileMoveStep.from(entry, targetDirectoryLocation) }
         if (steps.isEmpty()) return
         record(FileOperationRecord.MoveBatch(steps))
+    }
+
+    /**
+     * 记录移入回收站操作。
+     *
+     * @param records 回收站服务返回的恢复记录。
+     */
+    fun recordTrashDelete(records: List<TrashMoveRecord>) {
+        val restorableRecords = records.filter { record -> record.trashedLocation.isNotBlank() }
+        if (restorableRecords.isEmpty() || trashService == null) return
+        record(FileOperationRecord.TrashBatch(restorableRecords))
     }
 
     /**
@@ -135,7 +149,15 @@ class FileOperationHistoryDelegate(
             }
 
             is FileOperationRecord.MoveBatch -> steps.asReversed().forEach { step ->
-                move(name = step.name, sourceDirectory = step.targetDirectoryLocation, targetDirectory = step.sourceParentLocation)
+                move(
+                    name = step.name,
+                    sourceDirectory = step.targetDirectoryLocation,
+                    targetDirectory = step.sourceParentLocation,
+                )
+            }
+
+            is FileOperationRecord.TrashBatch -> {
+                requireNotNull(trashService).restoreFromTrash(records).getOrThrow()
             }
         }
     }
@@ -150,7 +172,17 @@ class FileOperationHistoryDelegate(
             }
 
             is FileOperationRecord.MoveBatch -> steps.forEach { step ->
-                move(name = step.name, sourceDirectory = step.sourceParentLocation, targetDirectory = step.targetDirectoryLocation)
+                move(
+                    name = step.name,
+                    sourceDirectory = step.sourceParentLocation,
+                    targetDirectory = step.targetDirectoryLocation,
+                )
+            }
+
+            is FileOperationRecord.TrashBatch -> {
+                records = requireNotNull(trashService)
+                    .moveToTrash(records.map { record -> record.originalEntry })
+                    .getOrThrow()
             }
         }
     }
@@ -206,7 +238,7 @@ class FileOperationHistoryDelegate(
         return fileRepository.list(parentLocation)
             .getOrThrow()
             .firstOrNull { entry -> entry.name == name }
-            ?: throw IllegalStateException("Entry is no longer available: $parentLocation/$name")
+            ?: error("Entry is no longer available: $parentLocation/$name")
     }
 
     /**
@@ -235,6 +267,10 @@ class FileOperationHistoryDelegate(
         data class MoveBatch(
             val steps: List<FileMoveStep>,
         ) : FileOperationRecord
+
+        data class TrashBatch(
+            var records: List<TrashMoveRecord>,
+        ) : FileOperationRecord
     }
 
     private data class FileRenameStep(
@@ -254,14 +290,20 @@ class FileOperationHistoryDelegate(
                 entry: VFile,
                 targetName: String,
             ): FileRenameStep? {
-                val parentLocation = entry.parentLocation ?: return null
+                val parentLocation = entry.parentLocation
                 val normalizedTargetName = targetName.trim()
-                if (normalizedTargetName.isBlank() || normalizedTargetName == entry.name) return null
-                return FileRenameStep(
-                    parentLocation = parentLocation,
-                    oldName = entry.name,
-                    newName = normalizedTargetName,
-                )
+                val shouldSkip = parentLocation == null ||
+                    normalizedTargetName.isBlank() ||
+                    normalizedTargetName == entry.name
+                return if (shouldSkip) {
+                    null
+                } else {
+                    FileRenameStep(
+                        parentLocation = parentLocation,
+                        oldName = entry.name,
+                        newName = normalizedTargetName,
+                    )
+                }
             }
         }
     }
@@ -283,13 +325,16 @@ class FileOperationHistoryDelegate(
                 entry: VFile,
                 targetDirectoryLocation: String,
             ): FileMoveStep? {
-                val sourceParentLocation = entry.parentLocation ?: return null
-                if (sourceParentLocation == targetDirectoryLocation) return null
-                return FileMoveStep(
-                    sourceParentLocation = sourceParentLocation,
-                    targetDirectoryLocation = targetDirectoryLocation,
-                    name = entry.name,
-                )
+                val sourceParentLocation = entry.parentLocation
+                return if (sourceParentLocation == null || sourceParentLocation == targetDirectoryLocation) {
+                    null
+                } else {
+                    FileMoveStep(
+                        sourceParentLocation = sourceParentLocation,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                        name = entry.name,
+                    )
+                }
             }
         }
     }

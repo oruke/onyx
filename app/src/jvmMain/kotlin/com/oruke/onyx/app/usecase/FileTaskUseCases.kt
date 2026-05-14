@@ -4,6 +4,7 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.app.filesystem.ArchiveService
 import com.oruke.onyx.app.filesystem.FileCommandService
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.app.filesystem.TrashMoveRecord
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.VfsProviderRegistry
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -24,6 +25,7 @@ data class TaskProgress(
     val processedCount: Int? = null,
     val processedBytes: Long? = null,
     val totalBytes: Long? = null,
+    val trashRecords: List<TrashMoveRecord> = emptyList(),
 )
 
 class FileTransferUseCase(
@@ -128,10 +130,11 @@ class DeleteEntriesUseCase(
         )
         request.entries.forEachIndexed { index, entry ->
             currentCoroutineContext().ensureActive()
-            if (request.moveToTrash) {
+            val trashRecords = if (request.moveToTrash) {
                 trashService.moveToTrash(listOf(entry)).getOrThrow()
             } else {
                 fileCommandService.delete(listOf(entry)).getOrThrow()
+                emptyList()
             }
             emit(
                 TaskProgress(
@@ -140,6 +143,7 @@ class DeleteEntriesUseCase(
                     progress = progressValue(index + 1, request.entries.size),
                     currentFileName = entry.name,
                     processedCount = index + 1,
+                    trashRecords = trashRecords,
                 )
             )
         }

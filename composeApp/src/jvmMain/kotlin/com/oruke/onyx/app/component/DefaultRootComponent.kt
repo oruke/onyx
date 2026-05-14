@@ -35,6 +35,7 @@ import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.app.filesystem.TrashMoveRecord
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.VfsAuthContext
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
@@ -89,6 +90,7 @@ import java.util.UUID
 import com.oruke.onyx.app.component.delegate.ArchiveActionDelegate
 import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
+import com.oruke.onyx.app.component.delegate.FileActionDelegateCallbacks
 import com.oruke.onyx.app.component.delegate.FileOperationHistoryDelegate
 import com.oruke.onyx.app.component.delegate.FileOperationHistoryState
 import com.oruke.onyx.app.component.delegate.FileTransferDelegate
@@ -205,19 +207,22 @@ class DefaultRootComponent(
         onRefreshAllPanes = ::refreshAllPanes,
     )
     private val fileActionDelegate = FileActionDelegate(
-        scope = scope,
         fileCommandService = fileCommandService,
         trashService = trashService,
         taskOrchestrator = taskOrchestrator,
         dialogState = dialogState,
-        onRefreshAllPanes = ::refreshAllPanes,
-        onRefreshPane = { paneId -> paneComponent(paneId).refresh() },
-        getPaneState = ::paneState,
-        onBatchRenameSucceeded = ::recordBatchRenameOperation,
+        callbacks = FileActionDelegateCallbacks(
+            onRefreshAllPanes = ::refreshAllPanes,
+            onRefreshPane = { paneId -> paneComponent(paneId).refresh() },
+            getPaneState = ::paneState,
+            onBatchRenameSucceeded = ::recordBatchRenameOperation,
+            onTrashDeleteSucceeded = ::recordTrashDeleteOperation,
+        ),
     )
     private val fileOperationHistoryDelegate = FileOperationHistoryDelegate(
         fileCommandService = fileCommandService,
         fileRepository = fileRepository,
+        trashService = trashService,
     )
     private val fileSearchUseCase = FileSearchUseCase(
         fileRepository = fileRepository,
@@ -1193,6 +1198,16 @@ class DefaultRootComponent(
         targetDirectoryLocation: String,
     ) {
         fileOperationHistoryDelegate.recordMove(entries, targetDirectoryLocation)
+    }
+
+    /**
+     * 记录移入回收站产生的可撤销操作。
+     *
+     * @param records 回收站服务返回的恢复记录。
+     * @return 无返回值。
+     */
+    private fun recordTrashDeleteOperation(records: List<TrashMoveRecord>) {
+        fileOperationHistoryDelegate.recordTrashDelete(records)
     }
 
     // ── 图片查看器 ────────────────────────────────────────────────────────────

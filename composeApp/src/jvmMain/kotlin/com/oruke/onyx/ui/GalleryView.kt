@@ -414,8 +414,8 @@ internal fun GalleryItem(
                         if (focusState.isFocused) {
                             hasFocused = true
                         } else if (hasFocused) {
-                            // 失焦时取消编辑，避免 Alt+Tab 等场景下误提交空名称
-                            cancelInlineEdit()
+                            // 失焦提交当前草稿，贴近系统文件管理器的内联重命名行为。
+                            confirmInlineEdit()
                         }
                     }
                     .onPreviewKeyEvent { event ->

@@ -9,6 +9,7 @@ import com.oruke.onyx.app.usecase.DeleteEntriesUseCase
 import com.oruke.onyx.app.usecase.TaskProgress
 import com.oruke.onyx.app.usecase.buildTaskDetail
 import com.oruke.onyx.app.filesystem.FileCommandService
+import com.oruke.onyx.app.filesystem.TrashMoveRecord
 import com.oruke.onyx.app.filesystem.TrashService
 import com.oruke.onyx.app.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.BackgroundTask
@@ -19,29 +20,46 @@ import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import java.util.UUID
+
+/**
+ * 文件操作委托回调集合，负责把操作结果同步回根组件和面板。
+ *
+ * @property onRefreshAllPanes 刷新所有面板的回调。
+ * @property onRefreshPane 刷新指定面板的回调。
+ * @property getPaneState 获取指定面板状态的回调。
+ * @property onBatchRenameSucceeded 批量重命名成功后的历史记录回调。
+ * @property onTrashDeleteSucceeded 回收站删除成功后的历史记录回调。
+ */
+data class FileActionDelegateCallbacks(
+    val onRefreshAllPanes: () -> Unit,
+    val onRefreshPane: (PaneId) -> Unit,
+    val getPaneState: (PaneId) -> PaneState,
+    val onBatchRenameSucceeded: (List<Pair<VFile, String>>) -> Unit = {},
+    val onTrashDeleteSucceeded: (List<TrashMoveRecord>) -> Unit = {},
+)
 
 /**
  * 文件操作委托 — 负责删除、创建目录、批量重命名等文件管理操作。
  *
  * 从 DefaultRootComponent 剥离的纯业务逻辑。
+ *
+ * @param fileCommandService 统一文件命令服务。
+ * @param trashService 平台回收站服务。
+ * @param taskOrchestrator 后台任务编排器。
+ * @param dialogState 根组件对话框状态。
+ * @param callbacks 文件操作结果回调集合。
  */
 class FileActionDelegate(
-    private val scope: CoroutineScope,
     private val fileCommandService: FileCommandService,
     private val trashService: TrashService,
     private val taskOrchestrator: TaskOrchestrator,
     private val dialogState: MutableStateFlow<RootDialogState?>,
-    private val onRefreshAllPanes: () -> Unit,
-    private val onRefreshPane: (PaneId) -> Unit,
-    private val getPaneState: (PaneId) -> PaneState,
-    private val onBatchRenameSucceeded: (List<Pair<VFile, String>>) -> Unit = {},
+    private val callbacks: FileActionDelegateCallbacks,
 ) {
     var pendingDeleteRequest: PendingDeleteRequest? = null
         private set
@@ -56,6 +74,7 @@ class FileActionDelegate(
         if (selectedEntries.isEmpty()) {
             return
         }
+        val trashRecords = mutableListOf<TrashMoveRecord>()
 
         val taskId = UUID.randomUUID().toString()
         taskOrchestrator.appendTask(
@@ -64,7 +83,7 @@ class FileActionDelegate(
                 kind = BackgroundTaskKind.DELETE,
                 title = I18nMessage(MessageKey.MSG_DELETE_ITEMS, selectedEntries.size),
                 status = BackgroundTaskStatus.QUEUED,
-                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, getPaneState(request.paneId).location),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, callbacks.getPaneState(request.paneId).location),
                 progress = 0f,
                 totalCount = selectedEntries.size,
                 startTimeMillis = System.currentTimeMillis(),
@@ -86,6 +105,7 @@ class FileActionDelegate(
                         moveToTrash = request.moveToTrash,
                     )
                 ).collect { progress ->
+                    trashRecords += progress.trashRecords
                     applyTaskProgress(taskId, progress)
                 }
 
@@ -97,7 +117,8 @@ class FileActionDelegate(
                     progress = 1f,
                     processedCount = selectedEntries.size,
                 )
-                onRefreshAllPanes()
+                callbacks.onTrashDeleteSucceeded(trashRecords)
+                callbacks.onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
@@ -107,8 +128,9 @@ class FileActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
-                onRefreshAllPanes()
+                callbacks.onRefreshAllPanes()
             } catch (failure: Throwable) {
+                callbacks.onTrashDeleteSucceeded(trashRecords)
                 OnyxLogger.error("FileActionDelegate", "删除失败", failure)
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
@@ -117,7 +139,7 @@ class FileActionDelegate(
                     detail = failure.toI18nMessage(MessageKey.MSG_DELETE_FAILED),
                     progress = null,
                 )
-                onRefreshAllPanes()
+                callbacks.onRefreshAllPanes()
             }
         }
     }
@@ -190,7 +212,7 @@ class FileActionDelegate(
                     progress = 1f,
                     processedCount = paths.size,
                 )
-                onRefreshPane(paneId)
+                callbacks.onRefreshPane(paneId)
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (_: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
@@ -200,7 +222,7 @@ class FileActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
-                onRefreshPane(paneId)
+                callbacks.onRefreshPane(paneId)
             } catch (failure: Throwable) {
                 OnyxLogger.error("FileActionDelegate", "创建目录失败", failure)
                 taskOrchestrator.unregisterJob(taskId)
@@ -210,7 +232,7 @@ class FileActionDelegate(
                     detail = failure.toI18nMessage(MessageKey.MSG_CREATE_FOLDER_FAILED),
                     progress = null,
                 )
-                onRefreshPane(paneId)
+                callbacks.onRefreshPane(paneId)
             }
         }
     }
@@ -272,11 +294,11 @@ class FileActionDelegate(
                         processedCount = renameMap.size,
                     )
                 }
-                onBatchRenameSucceeded(renameMap)
-                onRefreshAllPanes()
+                callbacks.onBatchRenameSucceeded(renameMap)
+                callbacks.onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
                 // 短暂展示完成状态后自动重置为编辑模式
-                delay(600)
+                delay(BATCH_RENAME_COMPLETION_RESET_DELAY_MS)
                 resetBatchRenameForContinue(paneId)
             } catch (_: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
@@ -305,7 +327,7 @@ class FileActionDelegate(
                         errorMessage = e.toI18nMessage(),
                     )
                 }
-                onRefreshAllPanes()
+                callbacks.onRefreshAllPanes()
             }
         }
     }
@@ -314,7 +336,7 @@ class FileActionDelegate(
      * 重置批量重命名为新一轮输入模式。
      */
     fun resetBatchRenameForContinue(paneId: PaneId) {
-        val paneState = getPaneState(paneId)
+        val paneState = callbacks.getPaneState(paneId)
         val allEntries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
         if (allEntries.isEmpty()) {
             dialogState.value = null
@@ -326,11 +348,23 @@ class FileActionDelegate(
         )
     }
 
+    /**
+     * 待确认的删除请求。
+     *
+     * @property paneId 发起删除的面板标识。
+     * @property entries 待删除条目。
+     * @property moveToTrash 是否移动到系统回收站。
+     */
     data class PendingDeleteRequest(
         val paneId: PaneId,
         val entries: List<VFile>,
         val moveToTrash: Boolean,
     )
+
+    private companion object {
+        /** 批量重命名完成状态保留时长。 */
+        const val BATCH_RENAME_COMPLETION_RESET_DELAY_MS = 600L
+    }
 
     private fun applyTaskProgress(
         taskId: String,

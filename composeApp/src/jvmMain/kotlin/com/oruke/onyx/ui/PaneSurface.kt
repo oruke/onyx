@@ -131,11 +131,13 @@ internal fun PaneSurface(
     // ── 从 state / component / actions 派生，消除冗余参数 ──
     val filterQuery = state.filterQuery
     val inlineEditState = state.inlineEditState
+    val inlineEditActive = inlineEditState != null
     val focusRequester = remember { FocusRequester() }
     val filterFocusRequester = remember { FocusRequester() }
     var showContextMenu by remember { mutableStateOf(false) }
     var addressBarEditing by remember { mutableStateOf(false) }
     var filterFocused by remember { mutableStateOf(false) }
+    var inlineEditWasActive by remember { mutableStateOf(inlineEditActive) }
     var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
     var contextMenuEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var contextMenuQueryToken by remember { mutableStateOf(0) }
@@ -230,6 +232,14 @@ internal fun PaneSurface(
 
     LaunchedEffect(active) {
         if (active) focusRequester.requestFocus()
+    }
+
+    LaunchedEffect(active, inlineEditActive, textInputOwnsKeyboard) {
+        val inlineEditFinished = inlineEditWasActive && !inlineEditActive
+        inlineEditWasActive = inlineEditActive
+        if (active && inlineEditFinished && !textInputOwnsKeyboard) {
+            focusRequester.requestFocus()
+        }
     }
 
     Column(
