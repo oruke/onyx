@@ -132,6 +132,35 @@ class S3VfsProviderTest {
     }
 
     /**
+     * 验证 S3 provider 会把分页参数传给 client，并返回下一页 token。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun `list page delegates native s3 pagination`() = runBlocking {
+        val client = FakeS3Client(
+            initialObjects = mapOf(
+                "source/a.txt" to "a".encodeToByteArray(),
+                "source/b.txt" to "b".encodeToByteArray(),
+            )
+        )
+        val provider = S3VfsProvider(authRepository = StaticS3AuthRepository, client = client)
+
+        val page = provider.listPage(
+            VfsDirectoryPageRequest(
+                location = "s3://bucket/source/",
+                pageSize = 1,
+                pageToken = "token-1",
+            )
+        ).getOrThrow()
+
+        assertEquals(1, page.entries.size)
+        assertEquals("token-2", page.nextPageToken)
+        assertEquals(1, client.lastPageSize)
+        assertEquals("token-1", client.lastPageToken)
+    }
+
+    /**
      * 创建目录测试条目。
      *
      * @param name 条目名。
@@ -208,6 +237,12 @@ class S3VfsProviderTest {
          */
         private val objects = initialObjects.toMutableMap()
 
+        /** 最近一次分页请求的 pageSize。 */
+        var lastPageSize: Int? = null
+
+        /** 最近一次分页请求的 pageToken。 */
+        var lastPageToken: String? = null
+
         /**
          * 判断对象是否存在。
          *
@@ -269,6 +304,29 @@ class S3VfsProviderTest {
                     location = location.toLocation(directoryPrefix + name + "/", directory = true),
                 )
             } + files
+        }
+
+        /**
+         * 按测试所需的单页大小截断列表，并记录分页请求参数。
+         *
+         * @param location 当前目录位置。
+         * @param pageSize 单页最大条目数。
+         * @param pageToken continuation token。
+         * @param authContext AWS 凭据。
+         * @return 当前页和下一页 token。
+         */
+        override suspend fun listPage(
+            location: S3Location,
+            pageSize: Int,
+            pageToken: String?,
+            authContext: VfsAuthContext.AwsCredentials,
+        ): S3ListPage {
+            lastPageSize = pageSize
+            lastPageToken = pageToken
+            return S3ListPage(
+                entries = list(location, authContext).take(pageSize),
+                nextContinuationToken = "token-2",
+            )
         }
 
         /**

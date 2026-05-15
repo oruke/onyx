@@ -104,7 +104,7 @@ internal class JvmWindowsShellComMenuBridge {
         action: SystemMenuAction,
         entries: List<VFile>,
     ) {
-        val command = ShellComCommand.parse(action.command)
+        val command = WindowsShellComCommand.parse(action.command)
             ?: throw IllegalArgumentException("Invalid Windows Shell COM command: ${action.command}")
         val paths = entries.toSystemPaths()
         if (paths.isEmpty()) throw IllegalArgumentException("Windows Shell COM command requires files")
@@ -383,7 +383,7 @@ internal class JvmWindowsShellComMenuBridge {
         return SystemMenuAction(
             id = "$WINDOWS_COM_ACTION_PREFIX:${verb ?: offset}:${menuPath.joinToString("/")}:${label.hashCode()}",
             displayName = label,
-            command = ShellComCommand(offset = offset, menuPath = menuPath).serialize(),
+            command = WindowsShellComCommand(offset = offset, menuPath = menuPath).serialize(),
         )
     }
 
@@ -499,47 +499,6 @@ internal class JvmWindowsShellComMenuBridge {
         val contextMenu: WindowsContextMenu,
         val messageHandler: WindowsContextMenuMessageHandler?,
     )
-
-    /**
-     * 可序列化的 Shell COM 命令描述。
-     *
-     * @property offset `QueryContextMenu` 返回菜单中的命令偏移量。
-     * @property menuPath 叶子命令所属级联菜单的父级索引路径。
-     */
-    private data class ShellComCommand(
-        val offset: Int,
-        val menuPath: List<Int>,
-    ) {
-        /**
-         * 序列化到 `SystemMenuAction.command`，供 UI 层无感传回执行服务。
-         *
-         * @return 可解析的命令描述字符串。
-         */
-        fun serialize(): String {
-            if (menuPath.isEmpty()) return offset.toString()
-            return "$offset@$COMMAND_PATH_PREFIX${menuPath.joinToString("/")}"
-        }
-
-        companion object {
-            /**
-             * 从菜单动作命令字符串恢复 Shell COM 命令描述。
-             *
-             * @param value `SystemMenuAction.command` 中保存的命令字符串。
-             * @return 可执行命令描述；格式无效时返回 `null`。
-             */
-            fun parse(value: String): ShellComCommand? {
-                val offsetText = value.substringBefore('@')
-                val offset = offsetText.toIntOrNull() ?: return null
-                val pathText = value.substringAfter("@$COMMAND_PATH_PREFIX", missingDelimiterValue = "")
-                val path = pathText
-                    .takeIf { text -> text.isNotBlank() }
-                    ?.split("/")
-                    ?.mapNotNull { index -> index.toIntOrNull() }
-                    .orEmpty()
-                return ShellComCommand(offset = offset, menuPath = path)
-            }
-        }
-    }
 
     /**
      * `IContextMenu` 的最小 JNA 包装。
@@ -920,7 +879,6 @@ internal class JvmWindowsShellComMenuBridge {
         private const val RPC_E_CHANGED_MODE = -2147417850
         private const val SW_SHOWNORMAL = 1
         private const val WM_INITMENUPOPUP = 0x0117
-        private const val COMMAND_PATH_PREFIX = "path:"
 
         private const val MF_BYPOSITION = 0x00000400
         private const val MIIM_STATE = 0x00000001

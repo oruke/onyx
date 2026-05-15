@@ -105,6 +105,91 @@ class ProviderBackedFileCommandServiceTest {
         assertEquals("alpha", targetContentService.writtenText["$TARGET_PREFIX/dest/root/a.txt"])
     }
 
+    /**
+     * 校验跨 provider 复制会聚合子项失败，同时保留已成功写入的文件。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun aggregatesFailuresAcrossProviderDirectoryCopy() = runBlocking {
+        val sourceProvider = FakeProvider(
+            protocol = VfsProtocol.LOCAL,
+            locationPrefix = SOURCE_PREFIX,
+            entries = mapOf(
+                "$SOURCE_PREFIX/root" to listOf(
+                    file(name = "a.txt", location = "$SOURCE_PREFIX/root/a.txt", content = "alpha"),
+                    file(name = "b.txt", location = "$SOURCE_PREFIX/root/b.txt", content = "beta"),
+                ),
+            ),
+        )
+        val targetProvider = FakeProvider(
+            protocol = VfsProtocol.WEBDAV,
+            locationPrefix = TARGET_PREFIX,
+            entries = emptyMap(),
+        )
+        val sourceContentService = FakeContentService(SOURCE_PREFIX)
+        sourceContentService.seed("$SOURCE_PREFIX/root/a.txt", "alpha")
+        val targetContentService = FakeContentService(TARGET_PREFIX)
+        val commandService = ProviderBackedFileCommandService(
+            services = listOf(FakeCommandService(SOURCE_PREFIX), FakeCommandService(TARGET_PREFIX)),
+            contentServices = listOf(sourceContentService, targetContentService),
+            providerRegistry = VfsProviderRegistry(listOf(sourceProvider, targetProvider)),
+        )
+
+        val result = commandService.copy(
+            entries = listOf(directory(name = "root", location = "$SOURCE_PREFIX/root")),
+            targetDirectoryLocation = "$TARGET_PREFIX/dest",
+        )
+
+        val failure = result.exceptionOrNull()
+        assertTrue(failure is CrossProviderTransferException)
+        assertEquals(1, failure.report.failures.size)
+        assertEquals("alpha", targetContentService.writtenText["$TARGET_PREFIX/dest/root/a.txt"])
+    }
+
+    /**
+     * 校验跨 provider 目录复制会按 SKIP 策略跳过已存在目录并上报进度。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun skipsExistingDirectoryAndReportsProgress() = runBlocking {
+        val sourceProvider = FakeProvider(
+            protocol = VfsProtocol.LOCAL,
+            locationPrefix = SOURCE_PREFIX,
+            entries = mapOf(
+                "$SOURCE_PREFIX/root" to listOf(
+                    file(name = "a.txt", location = "$SOURCE_PREFIX/root/a.txt", content = "alpha"),
+                ),
+            ),
+        )
+        val targetProvider = FakeProvider(
+            protocol = VfsProtocol.WEBDAV,
+            locationPrefix = TARGET_PREFIX,
+            entries = mapOf(
+                "$TARGET_PREFIX/dest" to listOf(directory(name = "root", location = "$TARGET_PREFIX/dest/root")),
+            ),
+        )
+        val targetCommandService = FakeCommandService(TARGET_PREFIX)
+        val progressEvents = mutableListOf<CrossProviderTransferProgress>()
+        val commandService = ProviderBackedFileCommandService(
+            services = listOf(FakeCommandService(SOURCE_PREFIX), targetCommandService),
+            contentServices = listOf(FakeContentService(SOURCE_PREFIX), FakeContentService(TARGET_PREFIX)),
+            providerRegistry = VfsProviderRegistry(listOf(sourceProvider, targetProvider)),
+            progressSink = CrossProviderTransferProgressSink { progress -> progressEvents += progress },
+        )
+
+        val result = commandService.copy(
+            entries = listOf(directory(name = "root", location = "$SOURCE_PREFIX/root")),
+            targetDirectoryLocation = "$TARGET_PREFIX/dest",
+            conflictStrategy = TransferConflictStrategy.SKIP,
+        )
+
+        assertTrue(result.isSuccess)
+        assertTrue(targetCommandService.createdDirectories.isEmpty())
+        assertEquals(CrossProviderTransferStage.ENTRY_SKIPPED, progressEvents.single().stage)
+    }
+
     private companion object {
         const val SOURCE_PREFIX = "source://"
         const val TARGET_PREFIX = "target://"
