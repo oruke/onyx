@@ -1,10 +1,10 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.app.filesystem.FileContextMenuCommand
-import com.oruke.onyx.app.filesystem.FileContextMenuItem
-import com.oruke.onyx.app.filesystem.FileContextMenuLabel
-import com.oruke.onyx.app.filesystem.FileContextMenuSection
-import com.oruke.onyx.app.filesystem.FileContextMenuSectionKind
+import com.oruke.onyx.vfs.api.FileContextMenuCommand
+import com.oruke.onyx.vfs.api.FileContextMenuItem
+import com.oruke.onyx.vfs.api.FileContextMenuLabel
+import com.oruke.onyx.vfs.api.FileContextMenuSection
+import com.oruke.onyx.vfs.api.FileContextMenuSectionKind
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 

@@ -36,7 +36,7 @@ plugins {
 }
 
 include(":core")
-include(":app")
+include(":shared")
 include(":vfs-api")
 include(":vfs-archive")
 include(":vfs-local")

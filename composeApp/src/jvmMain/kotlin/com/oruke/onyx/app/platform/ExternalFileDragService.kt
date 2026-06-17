@@ -1,8 +1,8 @@
 package com.oruke.onyx.app.platform
 
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.filesystem.ArchiveService
-import com.oruke.onyx.app.filesystem.SystemFileMaterializer
+import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.api.SystemFileMaterializer
 import com.oruke.onyx.app.filesystem.systemLocalPathOrNull
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.Dispatchers

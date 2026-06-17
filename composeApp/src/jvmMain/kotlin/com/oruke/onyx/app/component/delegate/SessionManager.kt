@@ -1,9 +1,9 @@
 package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.filesystem.SessionRepository
-import com.oruke.onyx.app.filesystem.SettingsRepository
-import com.oruke.onyx.app.filesystem.toI18nMessage
+import com.oruke.onyx.vfs.api.SessionRepository
+import com.oruke.onyx.vfs.api.SettingsRepository
+import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey

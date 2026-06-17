@@ -7,6 +7,11 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
+import com.oruke.onyx.vfs.api.OpenWithApp
+import com.oruke.onyx.vfs.api.OpenWithService
+import com.oruke.onyx.vfs.api.ExternalOpenService
+import com.oruke.onyx.vfs.api.SystemFileMaterializer
+import com.oruke.onyx.vfs.api.VfsProtocol
 
 class JvmLinuxOpenWithService(
     private val materializer: SystemFileMaterializer,

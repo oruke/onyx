@@ -6,6 +6,13 @@ import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.Properties
 import java.util.concurrent.TimeUnit
+import com.oruke.onyx.vfs.api.RemoteAuthStore
+import com.oruke.onyx.vfs.api.RemoteKeyringAuthStore
+import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
+import com.oruke.onyx.vfs.api.RemoteCredentialSaveResult
+import com.oruke.onyx.vfs.api.VfsAuthContext
+import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.InMemoryRemoteAuthStore
 
 class JvmRemoteAuthStore(
     private val sessionStore: RemoteAuthStore = InMemoryRemoteAuthStore(),

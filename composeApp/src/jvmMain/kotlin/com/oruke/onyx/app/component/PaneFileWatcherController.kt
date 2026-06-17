@@ -1,8 +1,8 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.filesystem.ArchiveService
-import com.oruke.onyx.app.filesystem.FileWatcher
+import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.local.FileWatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch

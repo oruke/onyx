@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import com.oruke.onyx.vfs.api.SystemMenuAction
 
 /**
  * 通过 Windows Shell COM 读取和执行系统右键菜单。

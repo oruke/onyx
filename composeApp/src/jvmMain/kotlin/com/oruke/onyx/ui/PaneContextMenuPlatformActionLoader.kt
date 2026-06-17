@@ -1,7 +1,7 @@
 package com.oruke.onyx.ui
 
-import com.oruke.onyx.app.filesystem.FileContextMenuRequest
-import com.oruke.onyx.app.filesystem.FileContextMenuSection
+import com.oruke.onyx.vfs.api.FileContextMenuRequest
+import com.oruke.onyx.vfs.api.FileContextMenuSection
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred

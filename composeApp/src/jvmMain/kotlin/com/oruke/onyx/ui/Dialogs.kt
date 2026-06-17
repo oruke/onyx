@@ -73,8 +73,8 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.app.component.RemoteCredentialsDialogError
 import com.oruke.onyx.app.component.RemoteCredentialsDraft
 import com.oruke.onyx.app.component.RootDialogState
-import com.oruke.onyx.app.filesystem.TransferConflictStrategy
-import com.oruke.onyx.app.filesystem.RemoteCredentialSavePolicy
+import com.oruke.onyx.vfs.api.TransferConflictStrategy
+import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn

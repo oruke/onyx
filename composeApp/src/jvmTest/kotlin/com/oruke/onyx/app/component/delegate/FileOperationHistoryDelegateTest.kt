@@ -1,8 +1,8 @@
 package com.oruke.onyx.app.component.delegate
 
-import com.oruke.onyx.app.filesystem.FileCommandService
-import com.oruke.onyx.app.filesystem.FileRepository
-import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.vfs.api.FileCommandService
+import com.oruke.onyx.vfs.api.FileRepository
+import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.test.runTest

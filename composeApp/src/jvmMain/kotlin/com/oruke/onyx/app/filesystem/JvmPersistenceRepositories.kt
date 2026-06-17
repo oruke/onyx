@@ -17,6 +17,9 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
+import com.oruke.onyx.vfs.api.SettingsRepository
+import com.oruke.onyx.vfs.api.SessionRepository
+import com.oruke.onyx.vfs.api.TaskPersistenceRepository
 
 private val PersistenceJson = Json {
     prettyPrint = true

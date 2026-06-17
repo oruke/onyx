@@ -7,6 +7,11 @@ import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 import java.nio.file.Path
+import com.oruke.onyx.vfs.api.ExternalOpenService
+import com.oruke.onyx.vfs.api.TextClipboardService
+import com.oruke.onyx.vfs.api.SystemFileMaterializer
+import com.oruke.onyx.vfs.api.OpenWithService
+import com.oruke.onyx.vfs.api.SystemMenuService
 
 /**
  * JVM Desktop 外部打开服务。

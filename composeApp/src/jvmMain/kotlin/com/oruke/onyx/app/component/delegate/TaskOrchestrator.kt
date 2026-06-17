@@ -1,7 +1,7 @@
 package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.filesystem.TaskPersistenceRepository
+import com.oruke.onyx.vfs.api.TaskPersistenceRepository
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage

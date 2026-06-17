@@ -25,6 +25,11 @@ import java.io.RandomAccessFile
 import kotlin.math.max
 import kotlin.math.min
 import org.jetbrains.skia.Image as SkiaImage
+import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.api.VfsProviderCapability
+import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
+import com.oruke.onyx.vfs.archive.ArchiveService
 
 /**
  * 纯 Skia 原生缩略图加载器

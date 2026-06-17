@@ -30,7 +30,7 @@ kotlin {
             implementation(libs.kotlin.test)
         }
         jvmMain.dependencies {
-            implementation(project(":app"))
+            implementation(project(":shared"))
             implementation(project(":vfs-archive"))
             implementation(project(":vfs-local"))
             implementation(project(":vfs-smb"))

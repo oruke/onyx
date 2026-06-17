@@ -6,6 +6,17 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentHashMap
+import com.oruke.onyx.vfs.api.OpenWithApp
+import com.oruke.onyx.vfs.api.OpenWithService
+import com.oruke.onyx.vfs.api.SystemMenuAction
+import com.oruke.onyx.vfs.api.SystemMenuService
+import com.oruke.onyx.vfs.api.FileContextMenuService
+import com.oruke.onyx.vfs.api.FileContextMenuRequest
+import com.oruke.onyx.vfs.api.FileContextMenuSection
+import com.oruke.onyx.vfs.api.FileContextMenuSectionKind
+import com.oruke.onyx.vfs.api.FileContextMenuLabel
+import com.oruke.onyx.vfs.api.FileContextMenuItem
+import com.oruke.onyx.vfs.api.FileContextMenuCommand
 
 /**
  * JVM 平台文件右键菜单服务，负责合并“打开方式”和系统右键菜单两类扩展动作。

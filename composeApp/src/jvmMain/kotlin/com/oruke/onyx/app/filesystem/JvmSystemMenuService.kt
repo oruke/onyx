@@ -10,6 +10,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Locale
 import kotlin.streams.toList
+import com.oruke.onyx.vfs.api.SystemMenuService
+import com.oruke.onyx.vfs.api.SystemMenuAction
+import com.oruke.onyx.vfs.api.SystemFileMaterializer
+import com.oruke.onyx.vfs.api.VfsProvider
 
 class JvmSystemMenuService(
     private val materializer: SystemFileMaterializer,

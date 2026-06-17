@@ -6,6 +6,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
+import com.oruke.onyx.vfs.api.SystemFileMaterializer
+import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
+import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.api.TransferConflictStrategy
+import com.oruke.onyx.vfs.api.VfsProviderRegistry
+import com.oruke.onyx.vfs.api.VfsProvider
+import com.oruke.onyx.vfs.archive.ArchiveService
 
 /**
  * JVM 平台系统文件物化服务。

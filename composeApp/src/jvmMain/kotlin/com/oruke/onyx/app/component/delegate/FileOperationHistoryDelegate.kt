@@ -1,10 +1,10 @@
 package com.oruke.onyx.app.component.delegate
 
-import com.oruke.onyx.app.filesystem.FileCommandService
-import com.oruke.onyx.app.filesystem.FileRepository
-import com.oruke.onyx.app.filesystem.TransferConflictStrategy
-import com.oruke.onyx.app.filesystem.TrashMoveRecord
-import com.oruke.onyx.app.filesystem.TrashService
+import com.oruke.onyx.vfs.api.FileCommandService
+import com.oruke.onyx.vfs.api.FileRepository
+import com.oruke.onyx.vfs.api.TransferConflictStrategy
+import com.oruke.onyx.vfs.api.TrashMoveRecord
+import com.oruke.onyx.vfs.api.TrashService
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

@@ -14,6 +14,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.io.path.name
 import kotlin.io.path.pathString
+import com.oruke.onyx.vfs.api.TrashService
+import com.oruke.onyx.vfs.api.TrashMoveRecord
 
 /**
  * JVM 桌面回收站服务，负责移入系统回收站并生成可撤销恢复记录。

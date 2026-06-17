@@ -31,7 +31,7 @@ Onyx 是一个面向桌面端的高密度文件管理器，目标是逐步接近
 ```text
 onyx/
 ├─ core/          # 跨模块基础模型
-├─ app/           # 应用层用例与任务模型
+├─ shared/        # 共享业务用例与任务模型
 ├─ composeApp/    # Compose Desktop UI、组件实现、平台服务
 ├─ vfs-api/       # VFS 统一抽象、命令服务、内容服务、右键菜单模型
 ├─ vfs-local/     # 本地文件系统 provider
@@ -40,6 +40,8 @@ onyx/
 ├─ vfs-webdav/    # WebDAV provider、认证、Ktor client、PROPFIND 解析
 └─ vfs-s3/        # S3 provider、认证、签名、Ktor client、XML 解析
 ```
+
+包名约定：`shared` 使用 `com.oruke.onyx.shared.*`，`vfs-*` 使用 `com.oruke.onyx.vfs.*`，`composeApp` 中桌面应用层继续使用 `com.oruke.onyx.app.*`。
 
 ## 远程协议状态
 

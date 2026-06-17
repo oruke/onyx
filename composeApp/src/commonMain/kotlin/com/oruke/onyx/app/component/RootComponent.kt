@@ -1,22 +1,22 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.app.filesystem.OpenWithApp
+import com.oruke.onyx.vfs.api.OpenWithApp
 import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
-import com.oruke.onyx.app.filesystem.FileContextMenuCommand
-import com.oruke.onyx.app.filesystem.FileContextMenuRequest
-import com.oruke.onyx.app.filesystem.FileContextMenuSection
+import com.oruke.onyx.vfs.api.FileContextMenuCommand
+import com.oruke.onyx.vfs.api.FileContextMenuRequest
+import com.oruke.onyx.vfs.api.FileContextMenuSection
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
-import com.oruke.onyx.app.filesystem.RemoteCredentialSavePolicy
-import com.oruke.onyx.app.filesystem.SystemMenuAction
-import com.oruke.onyx.app.filesystem.TransferConflictStrategy
+import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
+import com.oruke.onyx.vfs.api.SystemMenuAction
+import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
-import com.oruke.onyx.app.filesystem.VfsConnectionTestRequest
-import com.oruke.onyx.app.filesystem.VfsConnectionTestResult
-import com.oruke.onyx.app.filesystem.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
+import com.oruke.onyx.vfs.api.VfsConnectionTestResult
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
@@ -438,7 +438,7 @@ internal sealed interface RootIntent {
 
     data class OpenWithApp(
         val entry: VFile,
-        val app: com.oruke.onyx.app.filesystem.OpenWithApp,
+        val app: com.oruke.onyx.vfs.api.OpenWithApp,
     ) : RootIntent
 
     data class OpenWithChooser(

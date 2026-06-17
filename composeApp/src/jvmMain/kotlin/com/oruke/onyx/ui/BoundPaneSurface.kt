@@ -11,7 +11,7 @@ import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
-import com.oruke.onyx.app.filesystem.FileContextMenuRequest
+import com.oruke.onyx.vfs.api.FileContextMenuRequest
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.FileDropZone

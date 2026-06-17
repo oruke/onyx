@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.filesystem
 
 import androidx.compose.ui.unit.IntSize
+import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
@@ -17,6 +18,13 @@ import java.security.MessageDigest
 import javax.imageio.ImageIO
 import kotlin.io.path.pathString
 import kotlin.coroutines.cancellation.CancellationException
+import com.oruke.onyx.vfs.api.ExternalOpenService
+import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.api.VfsProviderCapability
+import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
+import com.oruke.onyx.vfs.api.VfsProvider
+import com.oruke.onyx.vfs.archive.ArchiveService
 
 internal class JvmVfsPathService : VfsPathService {
     override fun normalizeLocation(location: String): String {

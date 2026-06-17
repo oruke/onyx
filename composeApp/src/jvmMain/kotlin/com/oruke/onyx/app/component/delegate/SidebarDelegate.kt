@@ -3,7 +3,7 @@ package com.oruke.onyx.app.component.delegate
 import com.oruke.onyx.app.component.SidebarTreeNode
 import com.oruke.onyx.app.component.SidebarTreeNodeLoadState
 import com.oruke.onyx.app.component.SidebarTreeState
-import com.oruke.onyx.app.filesystem.FileRepository
+import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
