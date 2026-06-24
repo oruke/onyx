@@ -21,7 +21,6 @@ import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.shared.filesystem.toI18nMessage
-import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
@@ -466,128 +465,6 @@ internal class DefaultPaneComponent(
         clearInlineEdit(activeTab()?.id ?: return)
     }
 
-    fun dismissOperationFeedback() {
-        clearOperationFeedback(activeTab()?.id ?: return)
-    }
-
-    fun showOperationFeedback(
-        kind: PaneOperationFeedbackKind,
-        detail: I18nMessage,
-    ) {
-        updateFailure(
-            tabId = activeTab()?.id ?: return,
-            kind = kind,
-            detail = detail,
-        )
-    }
-
-    fun setViewMode(mode: ViewMode) {
-        val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab ->
-            currentTab.withViewModeState(mode)
-        }
-    }
-
-    fun setFilterQuery(query: String) {
-        val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab ->
-            currentTab.withFilterQueryState(query)
-        }
-    }
-
-    /**
-     * 打开面板内筛选输入框，并递增聚焦请求编号。
-     *
-     * @return 无返回值。
-     */
-    fun showFilterInput() {
-        updatePaneChrome { chrome ->
-            chrome.copy(
-                filterInputVisible = true,
-                filterInputFocusRequestId = chrome.filterInputFocusRequestId + 1,
-            )
-        }
-    }
-
-    /**
-     * 关闭面板内筛选输入框，可按需清空当前标签的筛选条件。
-     *
-     * @param clearQuery 是否同时清空当前标签筛选文本。
-     * @return 无返回值。
-     */
-    fun hideFilterInput(clearQuery: Boolean) {
-        if (clearQuery) {
-            setFilterQuery("")
-        }
-        updatePaneChrome { chrome ->
-            chrome.copy(filterInputVisible = false)
-        }
-    }
-
-    /**
-     * 打开面板内命令面板。
-     *
-     * @return 无返回值。
-     */
-    fun showCommandPalette() {
-        updatePaneChrome { chrome ->
-            chrome.copy(commandPaletteVisible = true)
-        }
-    }
-
-    /**
-     * 关闭面板内命令面板。
-     *
-     * @return 无返回值。
-     */
-    fun hideCommandPalette() {
-        updatePaneChrome { chrome ->
-            chrome.copy(commandPaletteVisible = false)
-        }
-    }
-
-    fun toggleSort(column: DetailsColumn) {
-        val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab ->
-            currentTab.withToggledSortState(column)
-        }
-    }
-
-    fun toggleHiddenItems() {
-        val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab ->
-            currentTab.withToggledHiddenItemsState()
-        }
-    }
-
-    fun toggleColumnVisibility(column: DetailsColumn) {
-        val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab ->
-            currentTab.withToggledColumnVisibilityState(column)
-        }
-    }
-
-    fun setGalleryItemSize(sizeDp: Int) {
-        val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab ->
-            currentTab.withGalleryItemSizeState(sizeDp)
-        }
-    }
-
-    fun resizeDetailsColumn(
-        column: DetailsColumn,
-        nextColumn: DetailsColumn,
-        deltaWeight: Float,
-    ) {
-        val tab = activeTab() ?: return
-        updateTab(tab.id) { currentTab ->
-            currentTab.withResizedDetailsColumnState(
-                column = column,
-                deltaWeight = deltaWeight,
-            )
-        }
-    }
-
     fun selectEntry(
         entryId: String,
         additive: Boolean,
@@ -760,15 +637,6 @@ internal class DefaultPaneComponent(
         }
     }
 
-    fun consumePendingScroll() {
-        val tab = activeTab() ?: return
-        if (tab.pendingScrollToEntryId != null) {
-            updateTab(tab.id) { currentTab ->
-                currentTab.withTabState { current -> current.copy(pendingScrollToEntryId = null) }
-            }
-        }
-    }
-
     private fun loadInlineExpandChildren(location: String, depth: Int) {
         scope.launch {
             fileRepository.list(location).fold(
@@ -910,13 +778,13 @@ internal class DefaultPaneComponent(
         }
     }
 
-    private fun clearOperationFeedback(tabId: String) {
+    internal fun clearOperationFeedback(tabId: String) {
         updateTab(tabId) { currentTab ->
             currentTab.withTabState { current -> current.copy(operationFeedback = null) }
         }
     }
 
-    private fun updateFailure(
+    internal fun updateFailure(
         tabId: String,
         kind: PaneOperationFeedbackKind,
         detail: I18nMessage?,
@@ -940,7 +808,7 @@ internal class DefaultPaneComponent(
         }
     }
 
-    private fun updateTab(
+    internal fun updateTab(
         tabId: String,
         transform: (PaneTabState) -> PaneTabState,
     ) {
@@ -1029,7 +897,7 @@ internal class DefaultPaneComponent(
      * @param transform 基于当前 chrome 状态生成下一状态的转换函数。
      * @return 无返回值。
      */
-    private fun updatePaneChrome(transform: (PaneChromeState) -> PaneChromeState) {
+    internal fun updatePaneChrome(transform: (PaneChromeState) -> PaneChromeState) {
         val currentState = mutableState.value
         mutableState.value = currentState.copy(
             chromeState = transform(currentState.chromeState),
@@ -1043,7 +911,7 @@ internal class DefaultPaneComponent(
             ?.updateState(tab)
     }
 
-    private fun activeTab(): PaneTabState? {
+    internal fun activeTab(): PaneTabState? {
         return tabStack.value.active.instance.state.value
     }
 

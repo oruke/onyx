@@ -67,8 +67,6 @@ import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.RemoteConnectionProfile
-import com.oruke.onyx.core.model.RemoteConnectionProtocol
-import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import androidx.compose.ui.graphics.ImageBitmap
@@ -1576,118 +1574,6 @@ internal class DefaultRootComponent(
     }
 
 
-}
-
-private fun RemoteConnectionProfile.toRemoteConnectionDraft(): RemoteConnectionDraft {
-    return RemoteConnectionDraft(
-        name = name,
-        protocol = protocol,
-        location = location,
-        username = username,
-        domain = domain,
-        savePolicy = savePolicy,
-    )
-}
-
-private fun RemoteConnectionDraft.toRemoteConnectionProfile(
-    id: String,
-    location: String,
-): RemoteConnectionProfile {
-    return RemoteConnectionProfile(
-        id = id,
-        name = name.trim(),
-        protocol = protocol,
-        location = location,
-        username = username.trim(),
-        domain = domain.trim(),
-        savePolicy = savePolicy,
-    )
-}
-
-private fun RemoteConnectionDraft.hasCredentialInput(): Boolean {
-    return username.isNotBlank() || secret.isNotBlank() || domain.isNotBlank()
-}
-
-private fun RemoteConnectionDraft.toAuthContextOrNull(): VfsAuthContext? {
-    if (!hasCredentialInput()) return null
-    return when (protocol) {
-        RemoteConnectionProtocol.S3 -> VfsAuthContext.AwsCredentials(
-            accessKeyId = username.trim(),
-            secretAccessKey = secret,
-            region = domain.trim().ifBlank { null },
-        )
-
-        RemoteConnectionProtocol.SMB,
-        RemoteConnectionProtocol.WEBDAV,
-        RemoteConnectionProtocol.WEBDAVS -> VfsAuthContext.UsernamePassword(
-            username = username.trim(),
-            password = secret,
-            domain = domain.trim().ifBlank { null },
-        )
-    }
-}
-
-private fun RemoteConnectionDraft.normalizedLocation(): String {
-    val trimmed = location.trim()
-    val withScheme = if ("://" in trimmed) {
-        trimmed
-    } else {
-        "${protocol.defaultScheme()}://${trimmed.trimStart('/')}"
-    }
-    return if (withScheme.contains('?') || withScheme.contains('#') || withScheme.endsWith('/')) {
-        withScheme
-    } else {
-        "$withScheme/"
-    }
-}
-
-private fun RemoteConnectionProtocol.defaultScheme(): String {
-    return when (this) {
-        RemoteConnectionProtocol.SMB -> "smb"
-        RemoteConnectionProtocol.WEBDAV -> "webdav"
-        RemoteConnectionProtocol.WEBDAVS -> "webdavs"
-        RemoteConnectionProtocol.S3 -> "s3"
-    }
-}
-
-private fun RemoteConnectionProtocol.toVfsProtocol(): VfsProtocol {
-    return when (this) {
-        RemoteConnectionProtocol.SMB -> VfsProtocol.SMB
-        RemoteConnectionProtocol.WEBDAV,
-        RemoteConnectionProtocol.WEBDAVS -> VfsProtocol.WEBDAV
-        RemoteConnectionProtocol.S3 -> VfsProtocol.S3
-    }
-}
-
-private fun RemoteConnectionSavePolicy.toRemoteCredentialSavePolicy(): RemoteCredentialSavePolicy {
-    return when (this) {
-        RemoteConnectionSavePolicy.DO_NOT_SAVE -> RemoteCredentialSavePolicy.DO_NOT_SAVE
-        RemoteConnectionSavePolicy.SESSION -> RemoteCredentialSavePolicy.SESSION
-        RemoteConnectionSavePolicy.SYSTEM_KEYRING -> RemoteCredentialSavePolicy.SYSTEM_KEYRING
-    }
-}
-
-private fun Throwable.toSearchErrorMessage(): I18nMessage {
-    return toI18nMessage()
-}
-
-private fun PaneComponent.toPaneSessionSnapshot(): PaneSessionSnapshot {
-    return PaneSessionSnapshot(
-        activeTabId = state.value.activeTabId,
-        tabs = tabStatesInDisplayOrder().map { tab -> tab.toTabSnapshot() },
-    )
-}
-
-/**
- * 将文件操作历史委托状态映射为 RootState 使用的公共状态。
- *
- * @return 根组件文件操作历史状态。
- */
-private fun FileOperationHistoryState.toRootOperationHistoryState(): OperationHistoryState {
-    return OperationHistoryState(
-        canUndo = canUndo,
-        canRedo = canRedo,
-    )
 }
 
 /** combine 中间类型 — 布局相关状态切片 */
