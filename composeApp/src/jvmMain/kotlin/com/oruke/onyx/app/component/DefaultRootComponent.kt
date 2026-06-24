@@ -47,8 +47,6 @@ import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.shared.filesystem.toI18nMessage
-import com.oruke.onyx.shared.usecase.FileSearchEvent
-import com.oruke.onyx.shared.usecase.FileSearchRequest
 import com.oruke.onyx.shared.usecase.FileSearchUseCase
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileContentSearchService
@@ -72,10 +70,8 @@ import com.oruke.onyx.core.model.VFileKind
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,6 +89,7 @@ import com.oruke.onyx.app.component.delegate.FileOperationHistoryDelegate
 import com.oruke.onyx.app.component.delegate.FileOperationHistoryState
 import com.oruke.onyx.app.component.delegate.FileTransferDelegate
 import com.oruke.onyx.app.component.delegate.ImageViewerController
+import com.oruke.onyx.app.component.delegate.RootSearchDelegate
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.SidebarDelegate
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
@@ -227,11 +224,15 @@ internal class DefaultRootComponent(
         contentSearchService = fileContentSearchService,
         providerRegistry = providerRegistry,
     )
-    private val searchState = MutableStateFlow(
-        SearchPanelState(rootLocation = fileRepository.defaultLocation()),
+    private val searchDelegate = RootSearchDelegate(
+        scope = scope,
+        fileSearchUseCase = fileSearchUseCase,
+        fileCollectionUseCase = fileCollectionUseCase,
+        paneState = ::paneState,
+        activatePane = ::activatePane,
+        paneComponent = ::paneComponent,
+        getActivePane = { activePane.value },
     )
-    private var searchJob: Job? = null
-    private var searchRunId: String? = null
     private val mutableState = MutableStateFlow(
         RootState(
             layoutMode = layoutMode.value,
@@ -247,7 +248,7 @@ internal class DefaultRootComponent(
             canPaste = clipboardManager.canPaste,
             tasks = taskOrchestrator.tasks.value,
             showPreviewPane = showPreviewPane.value,
-            searchState = searchState.value,
+            searchState = searchDelegate.searchState.value,
             operationHistoryState = fileOperationHistoryDelegate.state.value.toRootOperationHistoryState(),
         )
     )
@@ -270,7 +271,7 @@ internal class DefaultRootComponent(
                     sidebarDelegate.sidebarTreeState, settings, sessionRestoreState,
                 ) { sidebar, stgs, restore -> Triple(sidebar, stgs, restore) },
                 combine(
-                    dialogState, clipboardManager.clipboard, taskOrchestrator.tasks, searchState,
+                    dialogState, clipboardManager.clipboard, taskOrchestrator.tasks, searchDelegate.searchState,
                     fileOperationHistoryDelegate.state,
                 ) { dialog, clipboard, taskList, search, history ->
                     RuntimeContextSlice(
@@ -397,13 +398,13 @@ internal class DefaultRootComponent(
             )
             RootIntent.RefreshActivePane -> refreshActivePane()
             RootIntent.TogglePreviewPane -> togglePreviewPane()
-            RootIntent.ShowSearchPanel -> showSearchPanel()
-            RootIntent.CloseSearchPanel -> closeSearchPanel()
-            is RootIntent.UpdateSearchQuery -> updateSearchQuery(intent.query)
-            RootIntent.ExecuteSearch -> executeSearch()
-            RootIntent.CancelSearch -> cancelSearch()
-            is RootIntent.OpenSearchResult -> openSearchResult(intent.entry)
-            RootIntent.OpenSearchResultsAsCollection -> openSearchResultsAsCollection()
+            RootIntent.ShowSearchPanel -> searchDelegate.showSearchPanel()
+            RootIntent.CloseSearchPanel -> searchDelegate.closeSearchPanel()
+            is RootIntent.UpdateSearchQuery -> searchDelegate.updateSearchQuery(intent.query)
+            RootIntent.ExecuteSearch -> searchDelegate.executeSearch()
+            RootIntent.CancelSearch -> searchDelegate.cancelSearch()
+            is RootIntent.OpenSearchResult -> searchDelegate.openSearchResult(intent.entry)
+            RootIntent.OpenSearchResultsAsCollection -> searchDelegate.openSearchResultsAsCollection()
             is RootIntent.StageCopySelectedInPane -> stageCopySelectedInPane(intent.paneId)
             is RootIntent.StageCutSelectedInPane -> stageCutSelectedInPane(intent.paneId)
             is RootIntent.RequestPasteIntoPane -> requestPasteIntoPane(intent.paneId)
@@ -749,190 +750,6 @@ internal class DefaultRootComponent(
 
     fun togglePreviewPane() {
         showPreviewPane.value = !showPreviewPane.value
-    }
-
-    fun showSearchPanel() {
-        val paneId = activePane.value
-        val location = paneState(paneId).location
-        searchState.value = searchState.value.copy(
-            visible = true,
-            paneId = paneId,
-            rootLocation = location,
-            status = if (searchState.value.status == SearchStatus.RUNNING) {
-                SearchStatus.RUNNING
-            } else {
-                SearchStatus.IDLE
-            },
-            error = null,
-        )
-    }
-
-    fun closeSearchPanel() {
-        val wasRunning = searchState.value.status == SearchStatus.RUNNING
-        if (wasRunning) {
-            searchRunId = null
-            searchJob?.cancel()
-            searchJob = null
-        }
-        searchState.value = searchState.value.copy(
-            visible = false,
-            status = if (wasRunning) SearchStatus.CANCELLED else searchState.value.status,
-        )
-    }
-
-    fun updateSearchQuery(query: String) {
-        if (query != searchState.value.query && searchState.value.status == SearchStatus.RUNNING) {
-            cancelSearch()
-        }
-        searchState.value = searchState.value.copy(
-            query = query,
-            status = SearchStatus.IDLE,
-            results = emptyList(),
-            scannedEntryCount = 0,
-            limitReached = false,
-            error = null,
-        )
-    }
-
-    fun executeSearch() {
-        val current = searchState.value
-        val query = current.query.trim()
-        val paneId = current.paneId
-        val rootLocation = current.rootLocation.ifBlank { paneState(paneId).location }
-        searchJob?.cancel()
-        searchJob = null
-
-        if (query.isBlank()) {
-            searchRunId = null
-            searchState.value = current.copy(
-                visible = true,
-                rootLocation = rootLocation,
-                status = SearchStatus.IDLE,
-                results = emptyList(),
-                scannedEntryCount = 0,
-                limitReached = false,
-                error = null,
-            )
-            return
-        }
-
-        val runId = UUID.randomUUID().toString()
-        searchRunId = runId
-        searchState.value = current.copy(
-            visible = true,
-            rootLocation = rootLocation,
-            status = SearchStatus.RUNNING,
-            results = emptyList(),
-            scannedEntryCount = 0,
-            limitReached = false,
-            error = null,
-        )
-
-        val job = scope.launch(start = CoroutineStart.LAZY) {
-            try {
-                fileSearchUseCase.search(
-                    FileSearchRequest(
-                        rootLocation = rootLocation,
-                        query = query,
-                    )
-                ).collect { event ->
-                    if (searchRunId != runId) {
-                        return@collect
-                    }
-                    reduceSearchEvent(event)
-                }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (failure: Throwable) {
-                if (searchRunId == runId) {
-                    searchState.value = searchState.value.copy(
-                        status = SearchStatus.FAILED,
-                        error = failure.toSearchErrorMessage(),
-                    )
-                }
-            } finally {
-                if (searchRunId == runId) {
-                    searchJob = null
-                }
-            }
-        }
-        searchJob = job
-        job.start()
-    }
-
-    fun cancelSearch() {
-        val wasRunning = searchState.value.status == SearchStatus.RUNNING
-        searchRunId = null
-        searchJob?.cancel()
-        searchJob = null
-        if (wasRunning) {
-            searchState.value = searchState.value.copy(
-                status = SearchStatus.CANCELLED,
-                error = null,
-            )
-        }
-    }
-
-    fun openSearchResult(entry: VFile) {
-        val paneId = searchState.value.paneId
-        activatePane(paneId)
-        paneComponent(paneId).openEntry(entry)
-    }
-
-    /**
-     * 将当前搜索结果保存为虚拟集合并在搜索来源面板打开。
-     *
-     * @return 无返回值。
-     */
-    fun openSearchResultsAsCollection() {
-        val currentSearch = searchState.value
-        if (currentSearch.results.isEmpty()) {
-            return
-        }
-        val collection = fileCollectionUseCase.saveSearchResults(
-            id = searchRunId ?: UUID.randomUUID().toString(),
-            name = currentSearch.query,
-            entries = currentSearch.results,
-        )
-        activatePane(currentSearch.paneId)
-        paneComponent(currentSearch.paneId).createTab(collection.location)
-    }
-
-    private fun reduceSearchEvent(event: FileSearchEvent) {
-        when (event) {
-            is FileSearchEvent.Progress -> {
-                searchState.value = searchState.value.copy(
-                    scannedEntryCount = event.scannedEntryCount,
-                )
-            }
-
-            is FileSearchEvent.Results -> {
-                searchState.value = searchState.value.copy(
-                    status = SearchStatus.RUNNING,
-                    results = event.entries,
-                    scannedEntryCount = event.scannedEntryCount,
-                    limitReached = event.limitReached,
-                    error = null,
-                )
-            }
-
-            is FileSearchEvent.Completed -> {
-                searchState.value = searchState.value.copy(
-                    status = SearchStatus.COMPLETED,
-                    scannedEntryCount = event.scannedEntryCount,
-                    limitReached = event.limitReached,
-                    error = null,
-                )
-            }
-
-            is FileSearchEvent.Failed -> {
-                searchState.value = searchState.value.copy(
-                    status = SearchStatus.FAILED,
-                    scannedEntryCount = event.scannedEntryCount,
-                    error = event.failure.toSearchErrorMessage(),
-                )
-            }
-        }
     }
 
     fun stageCopySelectedInPane(paneId: PaneId) {
