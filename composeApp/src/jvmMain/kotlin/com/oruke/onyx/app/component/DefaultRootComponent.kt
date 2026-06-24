@@ -59,7 +59,6 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
-import com.oruke.onyx.core.model.PaneSessionSnapshot
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import androidx.compose.ui.graphics.ImageBitmap
@@ -79,7 +78,7 @@ import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
 import com.oruke.onyx.app.component.delegate.FileActionDelegateCallbacks
 import com.oruke.onyx.app.component.delegate.FileOperationHistoryDelegate
-import com.oruke.onyx.app.component.delegate.FileOperationHistoryState
+import com.oruke.onyx.app.component.delegate.RootFileOperationHistoryFacade
 import com.oruke.onyx.app.component.delegate.FileTransferDelegate
 import com.oruke.onyx.app.component.delegate.ImageViewerController
 import com.oruke.onyx.app.component.delegate.RootRemoteConnectionManager
@@ -212,6 +211,15 @@ internal class DefaultRootComponent(
         fileCommandService = fileCommandService,
         fileRepository = fileRepository,
         trashService = trashService,
+    )
+    private val fileOperationHistoryFacade = RootFileOperationHistoryFacade(
+        scope = scope,
+        delegate = fileOperationHistoryDelegate,
+        refreshAllPanes = ::refreshAllPanes,
+        showOperationFailure = ::showActivePaneOperationFailure,
+        activePane = { activePane.value },
+        paneState = ::paneState,
+        requestTransferSelectedToDirectory = ::requestTransferSelectedToDirectory,
     )
     private val fileSearchUseCase = FileSearchUseCase(
         fileRepository = fileRepository,
@@ -416,7 +424,7 @@ internal class DefaultRootComponent(
                 targetDirectoryLocation = intent.targetDirectoryLocation,
                 operation = intent.operation,
             )
-            is RootIntent.RequestTransferSourceToDestination -> requestTransferSourceToDestination(intent.operation)
+            is RootIntent.RequestTransferSourceToDestination -> fileOperationHistoryFacade.requestTransferSourceToDestination(intent.operation)
             is RootIntent.RequestDeleteSelectedInPane -> requestDeleteSelectedInPane(intent.paneId)
             is RootIntent.ExtractSelectedInPane -> extractSelectedInPane(intent.paneId)
             is RootIntent.ExtractToDirectoryInPane -> extractToDirectoryInPane(intent.paneId)
@@ -436,8 +444,8 @@ internal class DefaultRootComponent(
             is RootIntent.ResumeTask -> resumeTask(intent.taskId)
             is RootIntent.RetryTask -> retryTask(intent.taskId)
             RootIntent.ClearAllTasks -> clearAllTasks()
-            RootIntent.UndoLastFileOperation -> undoLastFileOperation()
-            RootIntent.RedoLastFileOperation -> redoLastFileOperation()
+            RootIntent.UndoLastFileOperation -> fileOperationHistoryFacade.undoLastFileOperation()
+            RootIntent.RedoLastFileOperation -> fileOperationHistoryFacade.redoLastFileOperation()
             is RootIntent.OpenImageViewer -> openImageViewer(
                 file = intent.file,
                 allImages = intent.allImages,
@@ -757,99 +765,19 @@ internal class DefaultRootComponent(
 
     // ── 文件操作历史 ──────────────────────────────────────────────────────────
 
-    /**
-     * 撤销最近一次可逆文件操作。
-     *
-     * @return 无直接返回值；失败信息会投递到当前活动面板。
-     */
-    fun undoLastFileOperation() {
-        scope.launch {
-            fileOperationHistoryDelegate.undoLast()
-                .onSuccess {
-                    refreshAllPanes()
-                }
-                .onFailure { failure ->
-                    showActivePaneOperationFailure(failure)
-                }
-        }
-    }
+    private fun recordRenameOperation(source: VFile, renamed: VFile) =
+        fileOperationHistoryFacade.recordRenameOperation(source, renamed)
 
-    /**
-     * 按 Source / Destination 角色把源面板选中项传输到目标面板目录。
-     *
-     * @param operation 传输操作类型。
-     * @return 无返回值。
-     */
-    fun requestTransferSourceToDestination(operation: FileTransferOperation) {
-        val roles = PaneRoleState.fromSource(activePane.value)
-        requestTransferSelectedToDirectory(
-            sourcePaneId = roles.sourcePaneId,
-            targetDirectoryLocation = paneState(roles.destinationPaneId).location,
-            operation = operation,
-        )
-    }
+    private fun recordBatchRenameOperation(renameMap: List<Pair<VFile, String>>) =
+        fileOperationHistoryFacade.recordBatchRenameOperation(renameMap)
 
-    /**
-     * 重做最近一次已撤销的文件操作。
-     *
-     * @return 无直接返回值；失败信息会投递到当前活动面板。
-     */
-    fun redoLastFileOperation() {
-        scope.launch {
-            fileOperationHistoryDelegate.redoLast()
-                .onSuccess {
-                    refreshAllPanes()
-                }
-                .onFailure { failure ->
-                    showActivePaneOperationFailure(failure)
-                }
-        }
-    }
-
-    /**
-     * 记录内联重命名产生的可撤销操作。
-     *
-     * @param source 重命名前的文件条目。
-     * @param renamed 重命名后的文件条目。
-     * @return 无返回值。
-     */
-    private fun recordRenameOperation(source: VFile, renamed: VFile) {
-        fileOperationHistoryDelegate.recordRename(source, renamed.name)
-    }
-
-    /**
-     * 记录批量重命名产生的可撤销操作。
-     *
-     * @param renameMap 重命名前条目到目标名称的映射。
-     * @return 无返回值。
-     */
-    private fun recordBatchRenameOperation(renameMap: List<Pair<VFile, String>>) {
-        fileOperationHistoryDelegate.recordBatchRename(renameMap)
-    }
-
-    /**
-     * 记录无冲突移动产生的可撤销操作。
-     *
-     * @param entries 移动前的文件条目。
-     * @param targetDirectoryLocation 移动目标目录。
-     * @return 无返回值。
-     */
     private fun recordMoveOperation(
         entries: List<VFile>,
         targetDirectoryLocation: String,
-    ) {
-        fileOperationHistoryDelegate.recordMove(entries, targetDirectoryLocation)
-    }
+    ) = fileOperationHistoryFacade.recordMoveOperation(entries, targetDirectoryLocation)
 
-    /**
-     * 记录移入回收站产生的可撤销操作。
-     *
-     * @param records 回收站服务返回的恢复记录。
-     * @return 无返回值。
-     */
-    private fun recordTrashDeleteOperation(records: List<TrashMoveRecord>) {
-        fileOperationHistoryDelegate.recordTrashDelete(records)
-    }
+    private fun recordTrashDeleteOperation(records: List<TrashMoveRecord>) =
+        fileOperationHistoryFacade.recordTrashDeleteOperation(records)
 
     // ── 图片查看器 ────────────────────────────────────────────────────────────
 
