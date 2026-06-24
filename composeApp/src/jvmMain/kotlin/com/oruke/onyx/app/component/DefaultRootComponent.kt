@@ -25,8 +25,6 @@ import com.oruke.onyx.app.filesystem.PreviewService
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.vfs.api.RemoteAuthStore
-import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
-import com.oruke.onyx.vfs.api.RemoteCredentialSaveResult
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.SettingsRepository
 import com.oruke.onyx.vfs.api.SystemMenuAction
@@ -37,7 +35,6 @@ import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.TrashMoveRecord
 import com.oruke.onyx.vfs.api.TrashService
-import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
 import com.oruke.onyx.vfs.api.VfsConnectionTestResult
@@ -45,7 +42,6 @@ import com.oruke.onyx.vfs.api.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
-import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.shared.usecase.FileSearchUseCase
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
@@ -64,12 +60,10 @@ import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.PaneSessionSnapshot
-import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -80,7 +74,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
-import java.util.UUID
 import com.oruke.onyx.app.component.delegate.ArchiveActionDelegate
 import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
@@ -89,6 +82,7 @@ import com.oruke.onyx.app.component.delegate.FileOperationHistoryDelegate
 import com.oruke.onyx.app.component.delegate.FileOperationHistoryState
 import com.oruke.onyx.app.component.delegate.FileTransferDelegate
 import com.oruke.onyx.app.component.delegate.ImageViewerController
+import com.oruke.onyx.app.component.delegate.RootRemoteConnectionManager
 import com.oruke.onyx.app.component.delegate.RootSearchDelegate
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.SidebarDelegate
@@ -233,6 +227,15 @@ internal class DefaultRootComponent(
         paneComponent = ::paneComponent,
         getActivePane = { activePane.value },
     )
+    private val remoteConnectionManager = RootRemoteConnectionManager(
+        scope = scope,
+        connectionTestService = connectionTestService,
+        remoteAuthStore = remoteAuthStore,
+        dialogState = dialogState,
+        paneState = ::paneState,
+        paneComponent = ::paneComponent,
+        openLocationInActivePane = ::openLocationInActivePane,
+    )
     private val mutableState = MutableStateFlow(
         RootState(
             layoutMode = layoutMode.value,
@@ -369,13 +372,13 @@ internal class DefaultRootComponent(
             RootIntent.OpenSettings -> openSettings()
             is RootIntent.UpdateSettingsDraft -> updateSettingsDraft(intent.draft)
             RootIntent.CleanupInvalidLocations -> cleanupInvalidLocations()
-            is RootIntent.UpdateRemoteConnectionDraft -> updateRemoteConnectionDraft(intent.draft)
-            is RootIntent.EditRemoteConnection -> editRemoteConnection(intent.profile)
-            RootIntent.NewRemoteConnection -> newRemoteConnection()
-            RootIntent.SaveRemoteConnectionDraft -> saveRemoteConnectionDraft()
-            RootIntent.TestRemoteConnectionDraft -> testRemoteConnectionDraft()
-            is RootIntent.DeleteRemoteConnection -> deleteRemoteConnection(intent.id)
-            is RootIntent.OpenRemoteConnection -> openRemoteConnection(intent.location)
+            is RootIntent.UpdateRemoteConnectionDraft -> remoteConnectionManager.updateRemoteConnectionDraft(intent.draft)
+            is RootIntent.EditRemoteConnection -> remoteConnectionManager.editRemoteConnection(intent.profile)
+            RootIntent.NewRemoteConnection -> remoteConnectionManager.newRemoteConnection()
+            RootIntent.SaveRemoteConnectionDraft -> remoteConnectionManager.saveRemoteConnectionDraft()
+            RootIntent.TestRemoteConnectionDraft -> remoteConnectionManager.testRemoteConnectionDraft()
+            is RootIntent.DeleteRemoteConnection -> remoteConnectionManager.deleteRemoteConnection(intent.id)
+            is RootIntent.OpenRemoteConnection -> remoteConnectionManager.openRemoteConnection(intent.location)
             is RootIntent.ActivatePane -> activatePane(intent.paneId)
             is RootIntent.UpdateSettings -> updateSettings(intent.settings)
             is RootIntent.OpenLocationInActivePane -> openLocationInActivePane(intent.location)
@@ -419,8 +422,8 @@ internal class DefaultRootComponent(
             is RootIntent.ExtractToDirectoryInPane -> extractToDirectoryInPane(intent.paneId)
             is RootIntent.ExtractSmartInPane -> extractSmartInPane(intent.paneId)
             is RootIntent.SubmitArchivePassword -> submitArchivePassword(intent.password)
-            is RootIntent.UpdateRemoteCredentialsDraft -> updateRemoteCredentialsDraft(intent.draft)
-            RootIntent.SubmitRemoteCredentials -> submitRemoteCredentials()
+            is RootIntent.UpdateRemoteCredentialsDraft -> remoteConnectionManager.updateRemoteCredentialsDraft(intent.draft)
+            RootIntent.SubmitRemoteCredentials -> remoteConnectionManager.submitRemoteCredentials()
             is RootIntent.BatchRenameInPane -> batchRenameInPane(intent.paneId)
             is RootIntent.ExecuteBatchRename -> executeBatchRename(
                 paneId = intent.paneId,
@@ -484,146 +487,6 @@ internal class DefaultRootComponent(
         dialogState.value = currentDialog.copy(
             draft = currentDialog.draft.cleanupInvalidLocations(pathService::isLocationAvailable),
         )
-    }
-
-    fun updateRemoteConnectionDraft(draft: RemoteConnectionDraft) {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        dialogState.value = currentDialog.copy(
-            remoteConnectionDraft = draft,
-            remoteConnectionError = null,
-            remoteConnectionTestState = RemoteConnectionTestState.Idle,
-        )
-    }
-
-    fun editRemoteConnection(profile: RemoteConnectionProfile) {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        dialogState.value = currentDialog.copy(
-            editingRemoteConnectionId = profile.id,
-            remoteConnectionDraft = profile.toRemoteConnectionDraft(),
-            remoteConnectionError = null,
-            remoteConnectionTestState = RemoteConnectionTestState.Idle,
-        )
-    }
-
-    fun newRemoteConnection() {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        dialogState.value = currentDialog.copy(
-            editingRemoteConnectionId = null,
-            remoteConnectionDraft = RemoteConnectionDraft(),
-            remoteConnectionError = null,
-            remoteConnectionTestState = RemoteConnectionTestState.Idle,
-        )
-    }
-
-    fun saveRemoteConnectionDraft() {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        val draft = currentDialog.remoteConnectionDraft
-        val name = draft.name.trim()
-        val rawLocation = draft.location.trim()
-        when {
-            name.isEmpty() -> {
-                dialogState.value = currentDialog.copy(remoteConnectionError = RemoteConnectionDialogError.NAME_EMPTY)
-                return
-            }
-
-            rawLocation.isEmpty() -> {
-                dialogState.value = currentDialog.copy(remoteConnectionError = RemoteConnectionDialogError.LOCATION_EMPTY)
-                return
-            }
-
-            draft.hasCredentialInput() && draft.username.trim().isEmpty() -> {
-                dialogState.value = currentDialog.copy(remoteConnectionError = RemoteConnectionDialogError.USERNAME_EMPTY)
-                return
-            }
-        }
-
-        val location = draft.normalizedLocation()
-        val authContext = draft.toAuthContextOrNull()
-        if (authContext != null) {
-            val saveResult = remoteAuthStore.put(
-                protocol = draft.protocol.toVfsProtocol(),
-                location = location,
-                authContext = authContext,
-                savePolicy = draft.savePolicy.toRemoteCredentialSavePolicy(),
-            )
-            if (saveResult == RemoteCredentialSaveResult.UNSUPPORTED) {
-                dialogState.value = currentDialog.copy(
-                    remoteConnectionError = RemoteConnectionDialogError.SYSTEM_KEYRING_UNAVAILABLE,
-                )
-                return
-            }
-        }
-
-        val profile = draft.toRemoteConnectionProfile(
-            id = currentDialog.editingRemoteConnectionId ?: UUID.randomUUID().toString(),
-            location = location,
-        )
-        val nextConnections = currentDialog.draft.remoteConnections
-            .filterNot { existing -> existing.id == profile.id } + profile
-        dialogState.value = currentDialog.copy(
-            draft = currentDialog.draft.copy(remoteConnections = nextConnections),
-            editingRemoteConnectionId = null,
-            remoteConnectionDraft = RemoteConnectionDraft(),
-            remoteConnectionError = null,
-            remoteConnectionTestState = RemoteConnectionTestState.Idle,
-        )
-    }
-
-    fun testRemoteConnectionDraft() {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        val draft = currentDialog.remoteConnectionDraft
-        val rawLocation = draft.location.trim()
-        if (rawLocation.isEmpty()) {
-            dialogState.value = currentDialog.copy(remoteConnectionError = RemoteConnectionDialogError.LOCATION_EMPTY)
-            return
-        }
-        if (draft.hasCredentialInput() && draft.username.trim().isEmpty()) {
-            dialogState.value = currentDialog.copy(remoteConnectionError = RemoteConnectionDialogError.USERNAME_EMPTY)
-            return
-        }
-
-        val request = VfsConnectionTestRequest(
-            protocol = draft.protocol.toVfsProtocol(),
-            location = draft.normalizedLocation(),
-            authContext = draft.toAuthContextOrNull() ?: VfsAuthContext.None,
-        )
-        dialogState.value = currentDialog.copy(
-            remoteConnectionError = null,
-            remoteConnectionTestState = RemoteConnectionTestState.Testing,
-        )
-        scope.launch {
-            val testState = when (val result = connectionTestService.testConnection(request)) {
-                is VfsConnectionTestResult.Reachable -> RemoteConnectionTestState.Reachable(
-                    capabilities = result.capabilities.mapTo(sortedSetOf()) { capability -> capability.name },
-                )
-
-                is VfsConnectionTestResult.Failed -> RemoteConnectionTestState.Failed(
-                    reason = result.error.toI18nMessage(),
-                )
-            }
-            val latestDialog = dialogState.value as? RootDialogState.Settings ?: return@launch
-            dialogState.value = latestDialog.copy(remoteConnectionTestState = testState)
-        }
-    }
-
-    fun deleteRemoteConnection(id: String) {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        val nextDraft = currentDialog.draft.copy(
-            remoteConnections = currentDialog.draft.remoteConnections.filterNot { profile -> profile.id == id },
-        )
-        val editingId = currentDialog.editingRemoteConnectionId
-        dialogState.value = currentDialog.copy(
-            draft = nextDraft,
-            editingRemoteConnectionId = editingId?.takeUnless { it == id },
-            remoteConnectionDraft = if (editingId == id) RemoteConnectionDraft() else currentDialog.remoteConnectionDraft,
-            remoteConnectionError = null,
-            remoteConnectionTestState = RemoteConnectionTestState.Idle,
-        )
-    }
-
-    fun openRemoteConnection(location: String) {
-        dialogState.value = null
-        openLocationInActivePane(location)
     }
 
     fun activatePane(paneId: PaneId) {
@@ -864,43 +727,6 @@ internal class DefaultRootComponent(
     }
 
     fun submitArchivePassword(password: String) = archiveActionDelegate.submitArchivePassword(password)
-
-    fun updateRemoteCredentialsDraft(draft: RemoteCredentialsDraft) {
-        val currentDialog = dialogState.value as? RootDialogState.RemoteCredentials ?: return
-        dialogState.value = currentDialog.copy(
-            draft = draft,
-            rejected = false,
-            error = null,
-        )
-    }
-
-    fun submitRemoteCredentials() {
-        val currentDialog = dialogState.value as? RootDialogState.RemoteCredentials ?: return
-        val username = currentDialog.draft.username.trim()
-        if (username.isEmpty()) {
-            dialogState.value = currentDialog.copy(error = RemoteCredentialsDialogError.USERNAME_EMPTY)
-            return
-        }
-
-        val saveResult = remoteAuthStore.put(
-            protocol = currentDialog.protocol,
-            location = currentDialog.location,
-            authContext = VfsAuthContext.UsernamePassword(
-                username = username,
-                password = currentDialog.draft.password,
-                domain = currentDialog.draft.domain.trim().ifBlank { null },
-            ),
-            savePolicy = currentDialog.draft.savePolicy,
-        )
-        if (saveResult == RemoteCredentialSaveResult.UNSUPPORTED) {
-            dialogState.value = currentDialog.copy(
-                error = RemoteCredentialsDialogError.SYSTEM_KEYRING_UNAVAILABLE,
-            )
-            return
-        }
-        dialogState.value = null
-        paneComponent(currentDialog.paneId).refresh()
-    }
 
     fun batchRenameInPane(paneId: PaneId) {
         val selectedEntries = selectedEntriesInPane(paneId)
@@ -1292,32 +1118,7 @@ internal class DefaultRootComponent(
     private fun requestRemoteCredentials(
         paneId: PaneId,
         error: VfsProviderError,
-    ) {
-        val protocol = error.protocol
-        if (protocol != VfsProtocol.SMB && protocol != VfsProtocol.WEBDAV) {
-            return
-        }
-        val location = error.location ?: paneState(paneId).location
-        val rejected = error is VfsProviderError.AuthenticationRejected
-        val currentDialog = dialogState.value as? RootDialogState.RemoteCredentials
-        if (currentDialog != null &&
-            currentDialog.paneId == paneId &&
-            currentDialog.protocol == protocol &&
-            currentDialog.location == location
-        ) {
-            if (rejected && !currentDialog.rejected) {
-                dialogState.value = currentDialog.copy(rejected = true)
-            }
-            return
-        }
-
-        dialogState.value = RootDialogState.RemoteCredentials(
-            paneId = paneId,
-            protocol = protocol,
-            location = location,
-            rejected = rejected,
-        )
-    }
+    ) = remoteConnectionManager.requestRemoteCredentials(paneId, error)
 
 
     private fun paneState(paneId: PaneId): PaneState {
