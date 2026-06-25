@@ -1,18 +1,13 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -35,10 +30,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.core.model.BackgroundTask
-import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.resolve
 import com.oruke.onyx.ui.theme.taskStatusLabel
 import onyx.composeapp.generated.resources.Res
@@ -270,43 +263,6 @@ private fun JobChip(
     }
 }
 
-// ── 微型进度条 ──────────────────────────────────────────────────────────
-
-@Composable
-internal fun MiniProgressBar(
-    progress: Float?,
-    status: BackgroundTaskStatus,
-    modifier: Modifier = Modifier,
-) {
-    val palette = LocalOnyxPalette.current
-    val targetProgress = (progress ?: 0f).coerceIn(0f, 1f)
-    val animatedProgress by animateFloatAsState(
-        targetValue = targetProgress,
-        animationSpec = tween(durationMillis = 160),
-    )
-
-    val barColor = when (status) {
-        BackgroundTaskStatus.FAILED -> Color(0xFFD74E4E)
-        BackgroundTaskStatus.CANCELLED -> palette.disabledForeground
-        BackgroundTaskStatus.SUCCEEDED -> Color(0xFF4DAA57)
-        BackgroundTaskStatus.PAUSED -> Color(0xFFE8A317)
-        BackgroundTaskStatus.QUEUED, BackgroundTaskStatus.RUNNING -> palette.accent
-    }
-
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(2.dp))
-            .background(palette.outlineVariant),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(animatedProgress)
-                .background(barColor, RoundedCornerShape(2.dp)),
-        )
-    }
-}
-
 // ── 任务详情面板（展开区域） ────────────────────────────────────────────
 
 @Composable
@@ -521,85 +477,5 @@ private fun TaskDetailRow(
                 )
             }
         }
-    }
-}
-
-// ── 完整进度条（详情面板用） ────────────────────────────────────────────
-
-@Composable
-internal fun TaskProgressBar(
-    progress: Float?,
-    status: BackgroundTaskStatus,
-) {
-    val targetProgress = when {
-        progress != null -> progress.coerceIn(0f, 1f)
-        status == BackgroundTaskStatus.SUCCEEDED -> 1f
-        else -> 0f
-    }
-    val animatedProgress by animateFloatAsState(
-        targetValue = targetProgress,
-        animationSpec = tween(durationMillis = 160),
-    )
-    val barColor = when (status) {
-        BackgroundTaskStatus.FAILED -> Color(0xFFD74E4E)
-        BackgroundTaskStatus.CANCELLED -> LocalOnyxPalette.current.disabledForeground
-        BackgroundTaskStatus.SUCCEEDED -> Color(0xFF4DAA57)
-        BackgroundTaskStatus.PAUSED -> Color(0xFFE8A317)
-        BackgroundTaskStatus.QUEUED, BackgroundTaskStatus.RUNNING -> LocalOnyxPalette.current.accent
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(4.dp)
-            .background(LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(2.dp)),
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(animatedProgress)
-                .height(4.dp)
-                .background(barColor, RoundedCornerShape(2.dp)),
-        )
-    }
-}
-
-// ── 工具函数 ────────────────────────────────────────────────────────────
-
-private fun taskKindIcon(kind: BackgroundTaskKind) = when (kind) {
-    BackgroundTaskKind.COPY -> AllIconsKeys.Actions.Copy
-    BackgroundTaskKind.MOVE -> AllIconsKeys.Actions.MenuCut
-    BackgroundTaskKind.DELETE -> AllIconsKeys.General.Delete
-    BackgroundTaskKind.EXTRACT -> AllIconsKeys.Nodes.ExtractedFolder
-    BackgroundTaskKind.RENAME -> AllIconsKeys.Actions.Edit
-    BackgroundTaskKind.EXTERNAL_IMPORT -> AllIconsKeys.Actions.Download
-}
-
-private fun buildProgressLabel(task: BackgroundTask): String = buildString {
-    if (task.totalBytes > 0) {
-        append(formatFileSize(task.processedBytes))
-        append(" / ")
-        append(formatFileSize(task.totalBytes))
-        if (task.totalCount > 1) {
-            append("  (${task.processedCount}/${task.totalCount})")
-        }
-    } else if (task.totalCount > 0) {
-        append("${task.processedCount} / ${task.totalCount}")
-    }
-}
-
-private fun formatSpeed(bytesPerSecond: Double): String {
-    return when {
-        bytesPerSecond >= 1_073_741_824 -> "%.1f GB/s".format(bytesPerSecond / 1_073_741_824)
-        bytesPerSecond >= 1_048_576 -> "%.1f MB/s".format(bytesPerSecond / 1_048_576)
-        bytesPerSecond >= 1_024 -> "%.0f KB/s".format(bytesPerSecond / 1_024)
-        else -> "%.0f B/s".format(bytesPerSecond)
-    }
-}
-
-private fun formatDuration(seconds: Long): String {
-    return when {
-        seconds < 60 -> "${seconds}s"
-        seconds < 3600 -> "${seconds / 60}m ${seconds % 60}s"
-        else -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
     }
 }
