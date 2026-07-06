@@ -1,7 +1,5 @@
 package com.oruke.onyx.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.VerticalScrollbar
@@ -741,14 +739,11 @@ internal fun InlineEditEntryRow(
 ) {
     val focusRequester = remember { FocusRequester() }
     var hasFocused by remember { mutableStateOf(false) }
-    val rowBackground by animateColorAsState(
-        targetValue = when {
-            selected -> LocalOnyxPalette.current.selectionBackground
-            zebra -> LocalOnyxPalette.current.surfaceVariant
-            else -> Color.Transparent
-        },
-        animationSpec = tween(durationMillis = 120),
-    )
+    val rowBackground = when {
+        selected -> LocalOnyxPalette.current.selectionBackground
+        zebra -> LocalOnyxPalette.current.surfaceVariant
+        else -> Color.Transparent
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -1109,16 +1104,13 @@ internal fun EntryRow(
     val coroutineScope = rememberCoroutineScope()
     var renameTimerJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val appearance = LocalOnyxAppearance.current
-    val rowBackground by animateColorAsState(
-        targetValue = when {
-            isDirectoryDropTarget -> LocalOnyxPalette.current.rowHoverBackground
-            selected && paneActive -> LocalOnyxPalette.current.selectionBackground
-            selected && !paneActive -> LocalOnyxPalette.current.inactiveSelectionBackground
-            zebra && appearance.zebraStripeEnabled -> appearance.zebraStripeColor ?: LocalOnyxPalette.current.surfaceVariant
-            else -> Color.Transparent
-        },
-        animationSpec = tween(durationMillis = 120),
-    )
+    val rowBackground = when {
+        isDirectoryDropTarget -> LocalOnyxPalette.current.rowHoverBackground
+        selected && paneActive -> LocalOnyxPalette.current.selectionBackground
+        selected && !paneActive -> LocalOnyxPalette.current.inactiveSelectionBackground
+        zebra && appearance.zebraStripeEnabled -> appearance.zebraStripeColor ?: LocalOnyxPalette.current.surfaceVariant
+        else -> Color.Transparent
+    }
 
     // 判断 Row 本地坐标是否落在展开箭头区域
     fun isInExpandArrow(positionInRow: androidx.compose.ui.geometry.Offset): Boolean {
@@ -1201,6 +1193,14 @@ internal fun EntryRow(
                     while (true) {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val startPos = down.position
+                        if (onToggleInlineExpand != null && isInExpandArrow(startPos)) {
+                            // 展开箭头只负责切换树节点，不能继续进入文件拖拽判断；否则轻微手抖会短暂触发拖放背景高亮。
+                            while (true) {
+                                val releaseEvent = awaitPointerEvent()
+                                if (releaseEvent.changes.none { change -> change.pressed }) break
+                            }
+                            continue
+                        }
                         var dragStarted = false
                         // 在按下瞬间捕获选中状态（避免 onPointerEvent(Press) 先选中后导致误判）
                         val wasSelectedAtPress = currentSelected
