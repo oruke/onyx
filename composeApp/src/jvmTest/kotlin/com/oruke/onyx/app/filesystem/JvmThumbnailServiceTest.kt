@@ -4,11 +4,16 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.archive.ArchiveService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.nio.file.Files
+import java.nio.file.Path
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -39,7 +44,63 @@ class JvmThumbnailServiceTest {
         assertEquals(2, thumbnail.height)
     }
 
+    /**
+     * 校验压缩包内部路径使用反斜杠时，图片查看器仍能按归一化后的 archive:// 路径加载位图。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun loadsThumbnailFromArchiveEntryWithWindowsSeparator() = runBlocking {
+        val archivePath = Files.createTempFile("onyx-thumbnail-", ".epub")
+        try {
+            writeArchiveEntry(
+                archivePath = archivePath,
+                entryName = "Images\\pixel.png",
+                bytes = testPngBytes(),
+            )
+            val archiveService = ArchiveService()
+            val archiveEntryLocation = ArchiveService.archiveLocation(archivePath.toString(), "Images/pixel.png")
+            val extractedBytes = archiveService.extractToBytes(
+                archivePath = archivePath.toString(),
+                innerPath = "Images/pixel.png",
+            ).getOrThrow()
+            assertNotNull(extractedBytes)
+            val thumbnailService = JvmThumbnailService(archiveService = archiveService)
+
+            val thumbnail = thumbnailService.loadThumbnail(
+                location = archiveEntryLocation,
+                maxDimension = 16,
+            )
+
+            assertNotNull(thumbnail)
+            assertEquals(2, thumbnail.width)
+            assertEquals(2, thumbnail.height)
+        } finally {
+            Files.deleteIfExists(archivePath)
+        }
+    }
+
     private companion object {
+        /**
+         * 向测试压缩包写入单个图片条目。
+         *
+         * @param archivePath 压缩包路径。
+         * @param entryName 压缩包内部条目名称。
+         * @param bytes 条目内容字节。
+         * @return 无返回值。
+         */
+        fun writeArchiveEntry(
+            archivePath: Path,
+            entryName: String,
+            bytes: ByteArray,
+        ) {
+            ZipOutputStream(Files.newOutputStream(archivePath)).use { zip ->
+                zip.putNextEntry(ZipEntry(entryName))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
+        }
+
         /**
          * 生成 2x2 PNG 测试图片。
          *

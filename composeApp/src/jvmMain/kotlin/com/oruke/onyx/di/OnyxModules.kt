@@ -221,13 +221,14 @@ val fileModule = module {
     single<ArchiveInfoService> { JvmArchiveInfoService(get()) }
     single<ThumbnailService> {
         JvmThumbnailService(
-            listOf<RoutableVfsContentService>(
+            contentServices = listOf<RoutableVfsContentService>(
                 get<ArchiveVfsProvider>(),
                 get<JvmLocalFileProvider>(),
                 get<SmbVfsProvider>(),
                 get<WebDavVfsProvider>(),
                 get<S3VfsProvider>(),
-            )
+            ),
+            archiveService = get(),
         )
     }
     single<ImageMetadataService> { JvmImageMetadataService(get()) }

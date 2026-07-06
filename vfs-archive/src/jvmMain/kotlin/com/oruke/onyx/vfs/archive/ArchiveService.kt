@@ -373,15 +373,19 @@ class ArchiveService(
      *
      * @param archivePath 压缩包物理路径
      * @param innerPath   压缩包内条目路径
+     * @param maxBytes    允许读取的最大字节数，超过时返回 null；为空表示不限制
      * @return 文件字节数组，如果未找到则返回 null
      */
     suspend fun extractToBytes(
         archivePath: String,
         innerPath: String,
+        maxBytes: Long? = null,
     ): Result<ByteArray?> = withContext(Dispatchers.IO) {
         runCatching {
             if (archivePath.isTarZstdArchive()) {
-                return@runCatching extractTarZstdEntryToBytes(archivePath, innerPath)
+                val bytes = extractTarZstdEntryToBytes(archivePath, innerPath)
+                if (maxBytes != null && bytes != null && bytes.size > maxBytes) return@runCatching null
+                return@runCatching bytes
             }
             openArchive(archivePath).use { handle ->
                 val archive = handle.archive
@@ -397,9 +401,13 @@ class ArchiveService(
                 if (targetIndex < 0) return@runCatching null
 
                 val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
+                if (maxBytes != null && size > maxBytes) return@runCatching null
                 val buffer = ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
                 val callback = MemoryExtractCallback(buffer)
                 archive.extract(intArrayOf(targetIndex), false, callback)
+                if (callback.errors.isNotEmpty()) {
+                    error("解压失败: ${callback.errors.joinToString(", ")}")
+                }
                 buffer.toByteArray()
             }
         }

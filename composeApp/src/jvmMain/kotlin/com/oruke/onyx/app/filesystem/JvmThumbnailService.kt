@@ -26,9 +26,6 @@ import kotlin.math.max
 import kotlin.math.min
 import org.jetbrains.skia.Image as SkiaImage
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
-import com.oruke.onyx.vfs.api.VfsContentSource
-import com.oruke.onyx.vfs.api.VfsProviderCapability
-import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.archive.ArchiveService
 
 /**
@@ -40,9 +37,13 @@ import com.oruke.onyx.vfs.archive.ArchiveService
  *    - 每次缩小一半时使用双线性插值，保证所有原始像素参与混合
  *    - 最后一步使用 Mitchell-Netravali 三次重采样，确保锐度与平滑的最佳平衡
  * 3. 输出：直接转为 Compose ImageBitmap，无跨引擎转码损失
+ *
+ * @param contentServices 可路由内容服务列表，用于读取远程图片内容。
+ * @param archiveService 压缩包服务，用于统一读取 archive:// 内部图片条目。
  */
 internal class JvmThumbnailService(
     private val contentServices: List<RoutableVfsContentService> = emptyList(),
+    private val archiveService: ArchiveService = ArchiveService(),
 ) : ThumbnailService {
 
     private companion object {
@@ -158,7 +159,12 @@ internal class JvmThumbnailService(
                 val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(location)
                     ?: return@withContext null
                 if (innerPath.isBlank()) return@withContext null
-                bytes = extractArchiveEntryBytes(archivePath, innerPath) ?: return@withContext null
+                bytes = archiveService.extractToBytes(
+                    archivePath = archivePath,
+                    innerPath = innerPath,
+                    maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
+                ).getOrNull() ?: return@withContext null
+                if (bytes.isEmpty()) return@withContext null
             } else {
                 val routedBytes = readRoutedContentBytes(location)
                 if (routedBytes != null) {
@@ -243,59 +249,6 @@ internal class JvmThumbnailService(
      * 缩略图远程内容超过读取上限时使用的内部中断信号。
      */
     private class ThumbnailContentTooLargeException : RuntimeException()
-
-    /**
-     * 从压缩包中提取单个条目的字节数据（同步，需在 IO 线程调用）。
-     */
-    private fun extractArchiveEntryBytes(archivePath: String, innerPath: String): ByteArray? {
-        val raf = RandomAccessFile(archivePath, "r")
-        val inStream = RandomAccessFileInStream(raf)
-        val archive = SevenZip.openInArchive(null, inStream)
-        try {
-            val numItems = archive.numberOfItems
-            var targetIndex = -1
-            for (i in 0 until numItems) {
-                val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
-                if (itemPath == innerPath) {
-                    targetIndex = i
-                    break
-                }
-            }
-            if (targetIndex < 0) return null
-
-            val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
-            if (size > MAX_ARCHIVE_IMAGE_BYTES) return null
-            val buffer = ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
-            val idx = targetIndex
-            archive.extract(
-                intArrayOf(idx),
-                false,
-                object : net.sf.sevenzipjbinding.IArchiveExtractCallback {
-                    override fun getStream(
-                        index: Int,
-                        extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode,
-                    ): ISequentialOutStream? {
-                        if (extractAskMode != net.sf.sevenzipjbinding.ExtractAskMode.EXTRACT) return null
-                        if (index != idx) return null
-                        return ISequentialOutStream { data ->
-                            buffer.write(data)
-                            data.size
-                        }
-                    }
-                    override fun prepareOperation(extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode) {}
-                    override fun setOperationResult(result: net.sf.sevenzipjbinding.ExtractOperationResult) {}
-                    override fun setTotal(total: Long) {}
-                    override fun setCompleted(complete: Long) {}
-                },
-            )
-            val result = buffer.toByteArray()
-            return if (result.isEmpty()) null else result
-        } finally {
-            archive.close()
-            inStream.close()
-            raf.close()
-        }
-    }
 
     /**
      * 从压缩包中提取第一张图片，生成缩略图。
