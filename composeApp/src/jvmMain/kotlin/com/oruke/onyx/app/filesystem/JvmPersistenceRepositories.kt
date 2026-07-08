@@ -8,6 +8,7 @@ import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.TaskError
+import com.oruke.onyx.app.storage.OnyxDataDirectories
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -31,7 +32,7 @@ private val PersistenceLineJson = Json {
 }
 
 class JsonSettingsRepository(
-    private val filePath: Path = onyxConfigDirectory().resolve("settings.json"),
+    private val filePath: Path = OnyxDataDirectories.configDirectory().resolve("settings.json"),
 ) : SettingsRepository {
     override suspend fun loadSettings(): Result<OnyxSettings?> = withContext(Dispatchers.IO) {
         runCatching {
@@ -57,7 +58,7 @@ class JsonSettingsRepository(
 }
 
 class JsonSessionRepository(
-    private val filePath: Path = onyxStateDirectory().resolve("session.json"),
+    private val filePath: Path = OnyxDataDirectories.stateDirectory().resolve("session.json"),
 ) : SessionRepository {
     override suspend fun loadSession(): Result<AppSessionSnapshot?> = withContext(Dispatchers.IO) {
         runCatching {
@@ -83,8 +84,8 @@ class JsonSessionRepository(
 }
 
 class JsonTaskPersistenceRepository(
-    private val filePath: Path = onyxStateDirectory().resolve("tasks.json"),
-    private val archivePath: Path = onyxStateDirectory().resolve("tasks-archive.jsonl"),
+    private val filePath: Path = OnyxDataDirectories.stateDirectory().resolve("tasks.json"),
+    private val archivePath: Path = OnyxDataDirectories.stateDirectory().resolve("tasks-archive.jsonl"),
     private val maxArchiveEntries: Int = 1_000,
 ) : TaskPersistenceRepository {
     override suspend fun loadTasks(): Result<List<BackgroundTask>> = withContext(Dispatchers.IO) {
@@ -252,41 +253,5 @@ private fun PersistedMessageArg.toRuntimeArg(): Any {
         "double" -> value.toDoubleOrNull() ?: value
         "boolean" -> value.toBooleanStrictOrNull() ?: value
         else -> value
-    }
-}
-
-private val IS_WINDOWS = System.getProperty("os.name").lowercase().contains("win")
-private val IS_MAC = System.getProperty("os.name").lowercase().contains("mac")
-
-private fun onyxConfigDirectory(): Path {
-    // 优先检查 XDG 环境变量（所有平台通用覆盖）
-    val xdgConfigHome = System.getenv("XDG_CONFIG_HOME")?.takeIf { it.isNotBlank() }
-    if (xdgConfigHome != null) return Path.of(xdgConfigHome).resolve("onyx")
-
-    val userHome = System.getProperty("user.home")
-    return when {
-        IS_WINDOWS -> {
-            val appData = System.getenv("APPDATA")?.takeIf { it.isNotBlank() }
-                ?: Path.of(userHome, "AppData", "Roaming").toString()
-            Path.of(appData).resolve("Onyx")
-        }
-        IS_MAC -> Path.of(userHome, "Library", "Application Support", "Onyx")
-        else -> Path.of(userHome, ".config", "onyx")
-    }
-}
-
-private fun onyxStateDirectory(): Path {
-    val xdgStateHome = System.getenv("XDG_STATE_HOME")?.takeIf { it.isNotBlank() }
-    if (xdgStateHome != null) return Path.of(xdgStateHome).resolve("onyx")
-
-    val userHome = System.getProperty("user.home")
-    return when {
-        IS_WINDOWS -> {
-            val localAppData = System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() }
-                ?: Path.of(userHome, "AppData", "Local").toString()
-            Path.of(localAppData).resolve("Onyx")
-        }
-        IS_MAC -> Path.of(userHome, "Library", "Caches", "Onyx")
-        else -> Path.of(userHome, ".local", "state", "onyx")
     }
 }

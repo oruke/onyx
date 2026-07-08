@@ -51,6 +51,9 @@ kotlin {
             implementation(libs.jna.platform)
             implementation(libs.zoomimage.compose)
             implementation(libs.slf4j.simple)
+            implementation(libs.exposed.core)
+            implementation(libs.exposed.jdbc)
+            implementation(libs.sqlite.jdbc)
         }
         jvmTest.dependencies {
             implementation(libs.kotlin.test)

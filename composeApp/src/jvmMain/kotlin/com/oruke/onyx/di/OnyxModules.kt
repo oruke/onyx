@@ -1,5 +1,14 @@
 package com.oruke.onyx.di
 
+import com.oruke.onyx.app.cache.OnyxLocalDatabaseService
+import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
+import com.oruke.onyx.app.cache.PlatformMenuCacheRepository
+import com.oruke.onyx.app.cache.PlatformMenuCacheService
+import com.oruke.onyx.app.cache.PlatformMenuCacheWarmupService
+import com.oruke.onyx.app.cache.PlatformMenuSourceFingerprintService
+import com.oruke.onyx.app.cache.PlatformMenuSourceWatchService
+import com.oruke.onyx.app.cache.SettingsDatabaseRepository
+import com.oruke.onyx.app.cache.SqliteSettingsRepository
 import com.oruke.onyx.app.component.EntryNameSuggestionService
 import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.archive.ArchiveServiceLogger
@@ -180,7 +189,15 @@ val fileModule = module {
     }
     single<ExternalFileDragService> { JvmExternalFileDragService(get()) }
     single<OpenWithService> { JvmPlatformOpenWithService(get()) }
-    single<SystemMenuService> { JvmSystemMenuService(get()) }
+    single { OnyxLocalDatabaseService() }
+    single { PlatformMenuCacheRepository() }
+    single { PlatformMenuCacheService(get(), get()) }
+    single { PlatformMenuSourceFingerprintService() }
+    single { PlatformMenuSourceWatchService(get<PlatformMenuSourceFingerprintService>()) }
+    single { PlatformMenuCacheWarmupService(get()) }
+    single { PlatformMenuCacheMaintenanceService(get(), get(), get(), get()) }
+    single { SettingsDatabaseRepository() }
+    single<SystemMenuService> { JvmSystemMenuService(get(), get()) }
     single<FileContextMenuService> { JvmFileContextMenuService(get(), get()) }
     single<VfsPathService> { JvmVfsPathService() }
     single<EntryNameSuggestionService> { ResourceEntryNameSuggestionService() }
@@ -232,7 +249,7 @@ val fileModule = module {
         )
     }
     single<ImageMetadataService> { JvmImageMetadataService(get()) }
-    single<SettingsRepository> { JsonSettingsRepository() }
+    single<SettingsRepository> { SqliteSettingsRepository(get(), get(), JsonSettingsRepository()) }
     single<SessionRepository> { JsonSessionRepository() }
     single<TaskPersistenceRepository> { JsonTaskPersistenceRepository() }
 }

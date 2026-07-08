@@ -13,6 +13,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.window.application
+import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.app.platform.ExternalFileDragService
@@ -53,7 +54,14 @@ fun main() = application {
             val rootComponent = rememberRootComponent()
             val koin = getKoin()
             val externalFileDragService = remember { koin.get<ExternalFileDragService>() }
+            val platformMenuCacheMaintenanceService = remember {
+                koin.get<PlatformMenuCacheMaintenanceService>()
+            }
             val state by rootComponent.state.collectAsState()
+
+            LaunchedEffect(platformMenuCacheMaintenanceService) {
+                platformMenuCacheMaintenanceService.runUntilCancelled()
+            }
 
             // ── 主窗口（记忆大小，最小 800×600）──────────────────────────
             val mainWindowState = remember {

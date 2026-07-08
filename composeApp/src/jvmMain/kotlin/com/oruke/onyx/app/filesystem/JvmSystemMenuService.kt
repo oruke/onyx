@@ -1,5 +1,7 @@
 package com.oruke.onyx.app.filesystem
 
+import com.oruke.onyx.app.cache.PlatformMenuCacheScope
+import com.oruke.onyx.app.cache.PlatformMenuCacheService
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
@@ -15,8 +17,9 @@ import com.oruke.onyx.vfs.api.SystemMenuAction
 import com.oruke.onyx.vfs.api.SystemFileMaterializer
 import com.oruke.onyx.vfs.api.VfsProvider
 
-class JvmSystemMenuService(
+internal class JvmSystemMenuService(
     private val materializer: SystemFileMaterializer,
+    private val menuCacheService: PlatformMenuCacheService,
 ) : SystemMenuService {
     /** Windows Shell COM 菜单桥接，优先用于读取 Explorer 同源的动态右键菜单。 */
     private val windowsShellComMenuBridge = JvmWindowsShellComMenuBridge()
@@ -24,9 +27,13 @@ class JvmSystemMenuService(
     override suspend fun listActions(entries: List<VFile>): List<SystemMenuAction> = withContext(Dispatchers.IO) {
         if (entries.isEmpty()) return@withContext emptyList()
         when (currentHostPlatform()) {
-            HostPlatform.LINUX -> listLinuxServiceActions(entries)
-            HostPlatform.WINDOWS -> listWindowsShellActionsWithComFallback(entries)
-            HostPlatform.MACOS -> listMacServiceActions(entries)
+            HostPlatform.LINUX -> listCachedSystemActions(entries, "linux-services") {
+                listLinuxServiceActions(entries)
+            }
+            HostPlatform.WINDOWS -> listWindowsShellActionsWithCache(entries)
+            HostPlatform.MACOS -> listCachedSystemActions(entries, "macos-services") {
+                listMacServiceActions(entries)
+            }
             HostPlatform.OTHER -> emptyList()
         }
     }
@@ -264,16 +271,71 @@ class JvmSystemMenuService(
     }
 
     /**
-     * 优先通过 Windows Shell COM 读取系统右键菜单，失败或超时时回退到注册表静态菜单。
+     * 通过缓存读取 Windows 静态注册表菜单，缓存缺失时同步扫描注册表。
      *
      * @param entries 需要查询系统右键菜单的文件条目。
      * @return 可展示的 Windows 系统菜单动作列表。
      */
-    private suspend fun listWindowsShellActionsWithComFallback(entries: List<VFile>): List<SystemMenuAction> {
+    private suspend fun listWindowsShellActionsWithCache(entries: List<VFile>): List<SystemMenuAction> {
         val targetEntries = entries.materializeEntries() ?: return emptyList()
-        val comActions = windowsShellComMenuBridge.listActions(targetEntries).getOrDefault(emptyList())
-        if (comActions.isNotEmpty()) return comActions
-        return listWindowsShellActions(targetEntries)
+        return listCachedSystemActions(targetEntries, "windows-registry") {
+            listWindowsShellActions(targetEntries)
+        }
+    }
+
+    /**
+     * 按文件类型和选择数量读取平台菜单缓存，缓存缺失时执行真实平台扫描。
+     *
+     * @param entries 当前菜单作用的文件条目。
+     * @param sourceKey 菜单来源标识。
+     * @param loader 缓存缺失时执行的平台菜单扫描函数。
+     * @return 可展示的系统菜单动作列表。
+     */
+    private suspend fun listCachedSystemActions(
+        entries: List<VFile>,
+        sourceKey: String,
+        loader: suspend () -> List<SystemMenuAction>,
+    ): List<SystemMenuAction> {
+        return menuCacheService.cachedOrLoad(entries.toMenuCacheScope(sourceKey), loader)
+    }
+
+    /**
+     * 生成平台菜单缓存作用域。
+     *
+     * @param sourceKey 菜单来源标识。
+     * @return 由平台、来源、选择数量和文件类型组成的缓存作用域。
+     */
+    private fun List<VFile>.toMenuCacheScope(sourceKey: String): PlatformMenuCacheScope {
+        val entrySignature = joinToString(separator = "|") { entry ->
+            val extension = entry.name.substringAfterLast('.', "")
+                .takeIf { value -> value.isNotBlank() }
+                ?.lowercase(Locale.ROOT)
+                .orEmpty()
+            val mimeType = if (entry.kind == VFileKind.DIRECTORY) {
+                "inode/directory"
+            } else {
+                entry.guessSystemMimeType().orEmpty()
+            }
+            "${entry.kind.name}:$extension:$mimeType"
+        }
+        return PlatformMenuCacheScope(
+            platform = currentHostPlatform().toCachePlatform(),
+            scopeKey = "$sourceKey;count=$size;entries=$entrySignature",
+        )
+    }
+
+    /**
+     * 转换为缓存层使用的平台标识。
+     *
+     * @return 缓存表中的平台字符串。
+     */
+    private fun HostPlatform.toCachePlatform(): String {
+        return when (this) {
+            HostPlatform.WINDOWS -> "windows"
+            HostPlatform.MACOS -> "macos"
+            HostPlatform.LINUX -> "linux"
+            HostPlatform.OTHER -> "other"
+        }
     }
 
     private fun listWindowsShellActions(entries: List<VFile>): List<SystemMenuAction> {
