@@ -2,10 +2,12 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -25,9 +27,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogWindow
+import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.RemoteConnectionDialogError
 import com.oruke.onyx.app.component.RemoteConnectionDraft
 import com.oruke.onyx.app.component.RemoteConnectionTestState
+import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
@@ -35,6 +40,7 @@ import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_close_menu
 import onyx.composeapp.generated.resources.action_delete_connection
 import onyx.composeapp.generated.resources.action_edit_connection
 import onyx.composeapp.generated.resources.action_new_connection
@@ -64,8 +70,91 @@ import onyx.composeapp.generated.resources.label_remote_protocol_smb
 import onyx.composeapp.generated.resources.label_remote_protocol_webdav
 import onyx.composeapp.generated.resources.label_remote_protocol_webdavs
 import onyx.composeapp.generated.resources.label_remote_credentials_save_policy
+import onyx.composeapp.generated.resources.label_sidebar_section_connections
 import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
+
+/**
+ * 独立网络位置配置窗口。
+ *
+ * @param state 网络位置编辑窗口状态。
+ * @param connections 当前已保存的网络位置列表。
+ * @param onDraftChange 编辑草稿变化回调。
+ * @param onNew 新建网络位置回调。
+ * @param onEdit 编辑指定网络位置回调。
+ * @param onSave 保存当前草稿回调。
+ * @param onTest 测试当前草稿连接回调。
+ * @param onDelete 删除网络位置回调。
+ * @param onOpen 打开网络位置回调。
+ * @param onDismiss 关闭窗口回调。
+ */
+@Composable
+internal fun RemoteConnectionsDialog(
+    state: RootDialogState.RemoteConnections,
+    connections: List<RemoteConnectionProfile>,
+    onDraftChange: (RemoteConnectionDraft) -> Unit,
+    onNew: () -> Unit,
+    onEdit: (RemoteConnectionProfile) -> Unit,
+    onSave: () -> Unit,
+    onTest: () -> Unit,
+    onDelete: (String) -> Unit,
+    onOpen: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val title = stringResource(Res.string.label_sidebar_section_connections)
+    val dialogState = rememberDialogState(width = 760.dp, height = 520.dp)
+    DialogWindow(
+        onCloseRequest = onDismiss,
+        title = title,
+        state = dialogState,
+        resizable = true,
+    ) {
+        window.minimumSize = java.awt.Dimension(640, 420)
+        IntUiTheme(isDark = isSystemInDarkTheme()) {
+            val palette = LocalOnyxPalette.current
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(palette.appBackground)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = title,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.foreground,
+                )
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    RemoteConnectionsSettings(
+                        connections = connections,
+                        connectionDraft = state.remoteConnectionDraft,
+                        editingConnectionId = state.editingRemoteConnectionId,
+                        testState = state.remoteConnectionTestState,
+                        error = state.remoteConnectionError,
+                        onDraftChange = onDraftChange,
+                        onNew = onNew,
+                        onEdit = onEdit,
+                        onSave = onSave,
+                        onTest = onTest,
+                        onDelete = onDelete,
+                        onOpen = onOpen,
+                        fontSize = 12.sp,
+                        labelFontSize = 11.sp,
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    DialogTextButton(
+                        text = stringResource(Res.string.action_close_menu),
+                        fontSize = 12.sp,
+                        onClick = onDismiss,
+                    )
+                }
+            }
+        }
+    }
+}
 
 @Composable
 internal fun RemoteConnectionsSettings(

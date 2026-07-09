@@ -48,6 +48,7 @@ import com.oruke.onyx.ui.OnyxTooltipOverlay
 import com.oruke.onyx.ui.PaneSidebar
 import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
+import com.oruke.onyx.ui.RemoteConnectionsDialog
 import com.oruke.onyx.ui.RemoteCredentialsDialog
 import com.oruke.onyx.ui.SearchPanel
 import com.oruke.onyx.ui.SettingsDialog
@@ -366,13 +367,6 @@ private fun AppContent(
                 state = dialogState,
                 onDraftChange = { draft -> dispatch(RootIntent.UpdateSettingsDraft(draft)) },
                 onCleanupInvalidLocations = { dispatch(RootIntent.CleanupInvalidLocations) },
-                onRemoteConnectionDraftChange = { draft -> dispatch(RootIntent.UpdateRemoteConnectionDraft(draft)) },
-                onNewRemoteConnection = { dispatch(RootIntent.NewRemoteConnection) },
-                onEditRemoteConnection = { profile -> dispatch(RootIntent.EditRemoteConnection(profile)) },
-                onSaveRemoteConnection = { dispatch(RootIntent.SaveRemoteConnectionDraft) },
-                onTestRemoteConnection = { dispatch(RootIntent.TestRemoteConnectionDraft) },
-                onDeleteRemoteConnection = { id -> dispatch(RootIntent.DeleteRemoteConnection(id)) },
-                onOpenRemoteConnection = { location -> dispatch(RootIntent.OpenRemoteConnection(location)) },
                 onConfirm = { dispatch(RootIntent.ConfirmDialog) },
                 onDismiss = { dispatch(RootIntent.DismissDialog) },
                 initialWidth = state.settings.settingsWindowWidth,
@@ -384,6 +378,21 @@ private fun AppContent(
                         )
                     )
                 },
+            )
+        }
+
+        is RootDialogState.RemoteConnections -> {
+            RemoteConnectionsDialog(
+                state = dialogState,
+                connections = state.settings.remoteConnections,
+                onDraftChange = { draft -> dispatch(RootIntent.UpdateRemoteConnectionDraft(draft)) },
+                onNew = { dispatch(RootIntent.NewRemoteConnection) },
+                onEdit = { profile -> dispatch(RootIntent.EditRemoteConnection(profile)) },
+                onSave = { dispatch(RootIntent.SaveRemoteConnectionDraft) },
+                onTest = { dispatch(RootIntent.TestRemoteConnectionDraft) },
+                onDelete = { id -> dispatch(RootIntent.DeleteRemoteConnection(id)) },
+                onOpen = { location -> dispatch(RootIntent.OpenRemoteConnection(location)) },
+                onDismiss = { dispatch(RootIntent.DismissDialog) },
             )
         }
 
@@ -475,6 +484,8 @@ private fun AppContent(
                                 },
                                 onOpenLocation = { location -> dispatch(RootIntent.OpenLocationInActivePane(location)) },
                                 onToggleFavoriteLocation = toggleFavoriteLocation,
+                                onNewRemoteConnection = { dispatch(RootIntent.NewRemoteConnection) },
+                                onEditRemoteConnection = { profile -> dispatch(RootIntent.EditRemoteConnection(profile)) },
                                 onToggleTreeNode = { location -> dispatch(RootIntent.ToggleSidebarTreeNode(location)) },
                                 onRetryTreeNode = { location -> dispatch(RootIntent.RetrySidebarTreeNode(location)) },
                             )

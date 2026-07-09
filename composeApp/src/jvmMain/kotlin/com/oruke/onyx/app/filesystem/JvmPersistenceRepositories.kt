@@ -6,7 +6,6 @@ import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
-import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.TaskError
 import com.oruke.onyx.app.storage.OnyxDataDirectories
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +17,6 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
-import com.oruke.onyx.vfs.api.SettingsRepository
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.TaskPersistenceRepository
 
@@ -29,32 +27,6 @@ private val PersistenceJson = Json {
 
 private val PersistenceLineJson = Json {
     ignoreUnknownKeys = true
-}
-
-class JsonSettingsRepository(
-    private val filePath: Path = OnyxDataDirectories.configDirectory().resolve("settings.json"),
-) : SettingsRepository {
-    override suspend fun loadSettings(): Result<OnyxSettings?> = withContext(Dispatchers.IO) {
-        runCatching {
-            if (!filePath.exists()) {
-                null
-            } else {
-                val content = filePath.readText().trim()
-                if (content.isBlank()) {
-                    null
-                } else {
-                    PersistenceJson.decodeFromString<OnyxSettings>(content)
-                }
-            }
-        }
-    }
-
-    override suspend fun saveSettings(settings: OnyxSettings): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            ensureParentDirectory(filePath)
-            filePath.writeText(PersistenceJson.encodeToString(settings))
-        }
-    }
 }
 
 class JsonSessionRepository(

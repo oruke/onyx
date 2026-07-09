@@ -240,6 +240,10 @@ internal class DefaultRootComponent(
         connectionTestService = connectionTestService,
         remoteAuthStore = remoteAuthStore,
         dialogState = dialogState,
+        remoteConnections = { settings.value.remoteConnections },
+        replaceRemoteConnections = { connections ->
+            updateSettings(settings.value.copy(remoteConnections = connections))
+        },
         paneState = ::paneState,
         paneComponent = ::paneComponent,
         openLocationInActivePane = ::openLocationInActivePane,
@@ -380,6 +384,7 @@ internal class DefaultRootComponent(
             RootIntent.OpenSettings -> openSettings()
             is RootIntent.UpdateSettingsDraft -> updateSettingsDraft(intent.draft)
             RootIntent.CleanupInvalidLocations -> cleanupInvalidLocations()
+            RootIntent.OpenRemoteConnections -> remoteConnectionManager.openRemoteConnections()
             is RootIntent.UpdateRemoteConnectionDraft -> remoteConnectionManager.updateRemoteConnectionDraft(intent.draft)
             is RootIntent.EditRemoteConnection -> remoteConnectionManager.editRemoteConnection(intent.profile)
             RootIntent.NewRemoteConnection -> remoteConnectionManager.newRemoteConnection()

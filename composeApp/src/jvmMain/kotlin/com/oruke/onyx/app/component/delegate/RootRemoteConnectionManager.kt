@@ -42,13 +42,27 @@ internal class RootRemoteConnectionManager(
     private val connectionTestService: VfsConnectionTestService,
     private val remoteAuthStore: RemoteAuthStore,
     private val dialogState: MutableStateFlow<RootDialogState?>,
+    private val remoteConnections: () -> List<RemoteConnectionProfile>,
+    private val replaceRemoteConnections: (List<RemoteConnectionProfile>) -> Unit,
     private val paneState: (PaneId) -> PaneState,
     private val paneComponent: (PaneId) -> PaneComponent,
     private val openLocationInActivePane: (String) -> Unit,
 ) {
 
+    /**
+     * 打开网络位置管理窗口。
+     */
+    fun openRemoteConnections() {
+        dialogState.value = RootDialogState.RemoteConnections()
+    }
+
+    /**
+     * 更新网络位置编辑草稿。
+     *
+     * @param draft 用户当前输入的网络位置配置草稿。
+     */
     fun updateRemoteConnectionDraft(draft: RemoteConnectionDraft) {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return
         dialogState.value = currentDialog.copy(
             remoteConnectionDraft = draft,
             remoteConnectionError = null,
@@ -56,9 +70,14 @@ internal class RootRemoteConnectionManager(
         )
     }
 
+    /**
+     * 进入指定网络位置的编辑模式。
+     *
+     * @param profile 需要编辑的网络位置配置。
+     */
     fun editRemoteConnection(profile: RemoteConnectionProfile) {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        dialogState.value = currentDialog.copy(
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections
+        dialogState.value = (currentDialog ?: RootDialogState.RemoteConnections()).copy(
             editingRemoteConnectionId = profile.id,
             remoteConnectionDraft = profile.toRemoteConnectionDraft(),
             remoteConnectionError = null,
@@ -66,9 +85,12 @@ internal class RootRemoteConnectionManager(
         )
     }
 
+    /**
+     * 准备新建网络位置。
+     */
     fun newRemoteConnection() {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        dialogState.value = currentDialog.copy(
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections
+        dialogState.value = (currentDialog ?: RootDialogState.RemoteConnections()).copy(
             editingRemoteConnectionId = null,
             remoteConnectionDraft = RemoteConnectionDraft(),
             remoteConnectionError = null,
@@ -76,8 +98,11 @@ internal class RootRemoteConnectionManager(
         )
     }
 
+    /**
+     * 保存当前网络位置草稿，并将非密钥字段写回缓存系统中的连接列表。
+     */
     fun saveRemoteConnectionDraft() {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return
         val draft = currentDialog.remoteConnectionDraft
         val name = draft.name.trim()
         val rawLocation = draft.location.trim()
@@ -119,10 +144,10 @@ internal class RootRemoteConnectionManager(
             id = currentDialog.editingRemoteConnectionId ?: UUID.randomUUID().toString(),
             location = location,
         )
-        val nextConnections = currentDialog.draft.remoteConnections
+        val nextConnections = remoteConnections()
             .filterNot { existing -> existing.id == profile.id } + profile
+        replaceRemoteConnections(nextConnections)
         dialogState.value = currentDialog.copy(
-            draft = currentDialog.draft.copy(remoteConnections = nextConnections),
             editingRemoteConnectionId = null,
             remoteConnectionDraft = RemoteConnectionDraft(),
             remoteConnectionError = null,
@@ -130,8 +155,11 @@ internal class RootRemoteConnectionManager(
         )
     }
 
+    /**
+     * 对当前草稿执行连接可达性测试。
+     */
     fun testRemoteConnectionDraft() {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return
         val draft = currentDialog.remoteConnectionDraft
         val rawLocation = draft.location.trim()
         if (rawLocation.isEmpty()) {
@@ -162,19 +190,21 @@ internal class RootRemoteConnectionManager(
                     reason = result.error.toI18nMessage(),
                 )
             }
-            val latestDialog = dialogState.value as? RootDialogState.Settings ?: return@launch
+            val latestDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return@launch
             dialogState.value = latestDialog.copy(remoteConnectionTestState = testState)
         }
     }
 
+    /**
+     * 删除指定网络位置配置。
+     *
+     * @param id 需要删除的网络位置 ID。
+     */
     fun deleteRemoteConnection(id: String) {
-        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
-        val nextDraft = currentDialog.draft.copy(
-            remoteConnections = currentDialog.draft.remoteConnections.filterNot { profile -> profile.id == id },
-        )
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return
+        replaceRemoteConnections(remoteConnections().filterNot { profile -> profile.id == id })
         val editingId = currentDialog.editingRemoteConnectionId
         dialogState.value = currentDialog.copy(
-            draft = nextDraft,
             editingRemoteConnectionId = editingId?.takeUnless { it == id },
             remoteConnectionDraft = if (editingId == id) RemoteConnectionDraft() else currentDialog.remoteConnectionDraft,
             remoteConnectionError = null,
@@ -182,6 +212,11 @@ internal class RootRemoteConnectionManager(
         )
     }
 
+    /**
+     * 打开网络位置并关闭管理窗口。
+     *
+     * @param location 目标 VFS 位置。
+     */
     fun openRemoteConnection(location: String) {
         dialogState.value = null
         openLocationInActivePane(location)

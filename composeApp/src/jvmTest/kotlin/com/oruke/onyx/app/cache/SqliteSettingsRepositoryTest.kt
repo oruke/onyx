@@ -4,13 +4,15 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
-import com.oruke.onyx.vfs.api.SettingsRepository
 import kotlinx.coroutines.test.runTest
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
-/** SQLite 设置仓储测试，验证完整设置文档、结构化索引和旧 JSON 迁移行为。 */
+/** SQLite 设置仓储测试，验证完整设置文档与结构化索引行为。 */
 class SqliteSettingsRepositoryTest {
     /**
      * 验证保存完整设置时会同步收藏、最近位置和远程连接结构化表。
@@ -22,7 +24,6 @@ class SqliteSettingsRepositoryTest {
         val repository = SqliteSettingsRepository(
             databaseService = databaseService,
             settingsDatabaseRepository = settingsDatabaseRepository,
-            legacyRepository = StaticSettingsRepository(null),
         )
         val settings = sampleSettings()
 
@@ -37,39 +38,37 @@ class SqliteSettingsRepositoryTest {
         val structuredConnections = databaseService.transaction {
             settingsDatabaseRepository.loadRemoteConnections()
         }
+        val settingsJson = databaseService.transaction {
+            settingsDatabaseRepository.loadSettingsJson()
+        }
 
         assertEquals(settings, loaded)
         assertEquals(settings.favoriteLocations, structuredFavorites)
         assertEquals(settings.recentLocations, structuredRecent)
         assertEquals(settings.remoteConnections, structuredConnections)
+        assertNotNull(settingsJson)
+        assertFalse(settingsJson.contains("remote-demo"))
     }
 
     /**
-     * 验证 SQLite 尚无设置时会从旧仓储加载并迁移到 SQLite。
+     * 验证 SQLite 尚无设置时不会读取旧 JSON，调用方会继续使用默认设置。
      */
     @Test
-    fun loadSettingsMigratesLegacyRepositoryWhenDatabaseIsEmpty() = runTest {
+    fun loadSettingsReturnsNullWhenDatabaseIsEmpty() = runTest {
         val databaseService = createDatabaseService()
         val settingsDatabaseRepository = SettingsDatabaseRepository()
-        val settings = sampleSettings()
-        val legacyRepository = StaticSettingsRepository(settings)
         val repository = SqliteSettingsRepository(
             databaseService = databaseService,
             settingsDatabaseRepository = settingsDatabaseRepository,
-            legacyRepository = legacyRepository,
         )
 
         val loaded = repository.loadSettings().getOrThrow()
-        val migratedJson = databaseService.transaction {
+        val settingsJson = databaseService.transaction {
             settingsDatabaseRepository.loadSettingsJson()
         }
 
-        assertEquals(settings, loaded)
-        assertEquals(1, legacyRepository.loadCount)
-        assertEquals(settings.favoriteLocations, databaseService.transaction {
-            settingsDatabaseRepository.loadFavoriteLocations()
-        })
-        kotlin.test.assertNotNull(migratedJson)
+        assertNull(loaded)
+        assertNull(settingsJson)
     }
 
     /**
@@ -105,32 +104,4 @@ class SqliteSettingsRepositoryTest {
         )
     }
 
-    /** 固定返回设置的旧仓储替身，用于验证首次迁移流程。 */
-    private class StaticSettingsRepository(
-        private val settings: OnyxSettings?,
-    ) : SettingsRepository {
-        /** 旧仓储被读取的次数。 */
-        var loadCount: Int = 0
-            private set
-
-        /**
-         * 返回预置设置并记录读取次数。
-         *
-         * @return 预置设置。
-         */
-        override suspend fun loadSettings(): Result<OnyxSettings?> {
-            loadCount += 1
-            return Result.success(settings)
-        }
-
-        /**
-         * 旧仓储在 SQLite 模式下不再接收保存请求。
-         *
-         * @param settings 待保存设置。
-         * @return 操作结果。
-         */
-        override suspend fun saveSettings(settings: OnyxSettings): Result<Unit> {
-            return Result.success(Unit)
-        }
-    }
 }

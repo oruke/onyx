@@ -36,8 +36,11 @@ import com.oruke.onyx.app.component.SidebarTreeState
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_edit_connection
+import onyx.composeapp.generated.resources.action_new_connection
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.label_home
+import onyx.composeapp.generated.resources.label_remote_connection_empty
 import onyx.composeapp.generated.resources.label_sidebar_empty_favorites
 import onyx.composeapp.generated.resources.label_sidebar_empty_recent
 import onyx.composeapp.generated.resources.label_sidebar_section_favorites
@@ -49,6 +52,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 @Composable
@@ -63,6 +67,8 @@ internal fun PaneSidebar(
     onActivate: () -> Unit,
     onOpenLocation: (String) -> Unit,
     onToggleFavoriteLocation: (String) -> Unit,
+    onNewRemoteConnection: () -> Unit,
+    onEditRemoteConnection: (RemoteConnectionProfile) -> Unit,
     onToggleTreeNode: (String) -> Unit,
     onRetryTreeNode: (String) -> Unit,
 ) {
@@ -118,21 +124,36 @@ internal fun PaneSidebar(
             }
         }
 
-        if (remoteConnections.isNotEmpty()) {
-            SidebarSection(
-                title = stringResource(Res.string.label_sidebar_section_connections),
-            ) {
+        SidebarSection(
+            title = stringResource(Res.string.label_sidebar_section_connections),
+            actionIcon = AllIconsKeys.General.Add,
+            actionContentDescription = stringResource(Res.string.action_new_connection),
+            onAction = {
+                onActivate()
+                onNewRemoteConnection()
+            },
+        ) {
+            if (remoteConnections.isEmpty()) {
+                SidebarEmptyState(
+                    text = stringResource(Res.string.label_remote_connection_empty),
+                )
+            } else {
                 remoteConnections.forEach { connection ->
                     SidebarLocationItem(
                         label = connection.name,
                         location = connection.location,
                         selected = location == connection.location,
                         favorite = favoriteLocations.contains(connection.location),
+                        iconKey = AllIconsKeys.General.OpenDisk,
                         onOpen = {
                             onActivate()
                             onOpenLocation(connection.location)
                         },
                         onToggleFavorite = { onToggleFavoriteLocation(connection.location) },
+                        onEdit = {
+                            onActivate()
+                            onEditRemoteConnection(connection)
+                        },
                     )
                 }
             }
@@ -187,15 +208,34 @@ internal fun PaneSidebar(
 @Composable
 internal fun SidebarSection(
     title: String,
+    actionIcon: IconKey? = null,
+    actionContentDescription: String? = null,
+    onAction: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = title,
-            fontSize = 11.sp,
-            color = LocalOnyxPalette.current.mutedForeground,
-            fontWeight = FontWeight.Medium,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                fontSize = 11.sp,
+                color = LocalOnyxPalette.current.mutedForeground,
+                fontWeight = FontWeight.Medium,
+            )
+            if (actionIcon != null && onAction != null) {
+                IconButton(onClick = onAction) {
+                    Icon(
+                        key = actionIcon,
+                        contentDescription = actionContentDescription,
+                        modifier = Modifier.size(12.dp),
+                    )
+                }
+            }
+        }
         content()
     }
 }
@@ -218,8 +258,10 @@ internal fun SidebarLocationItem(
     location: String,
     selected: Boolean,
     favorite: Boolean,
+    iconKey: IconKey? = null,
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
+    onEdit: (() -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
@@ -241,7 +283,7 @@ internal fun SidebarLocationItem(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
-            key = if (location == System.getProperty("user.home")) AllIconsKeys.Nodes.HomeFolder else AllIconsKeys.Nodes.Folder,
+            key = iconKey ?: if (location == System.getProperty("user.home")) AllIconsKeys.Nodes.HomeFolder else AllIconsKeys.Nodes.Folder,
             contentDescription = null,
             modifier = Modifier.size(14.dp),
         )
@@ -259,6 +301,15 @@ internal fun SidebarLocationItem(
             color = if (favorite) Color(0xFFFFC94D) else LocalOnyxPalette.current.disabledForeground,
             modifier = Modifier.clickable(onClick = onToggleFavorite),
         )
+        if (onEdit != null) {
+            IconButton(onClick = onEdit) {
+                Icon(
+                    key = AllIconsKeys.Actions.Edit,
+                    contentDescription = stringResource(Res.string.action_edit_connection),
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
     }
 }
 

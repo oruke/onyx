@@ -23,7 +23,6 @@ import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.app.filesystem.FileTypeService
 import com.oruke.onyx.app.filesystem.JsonSessionRepository
-import com.oruke.onyx.app.filesystem.JsonSettingsRepository
 import com.oruke.onyx.app.filesystem.JsonTaskPersistenceRepository
 import com.oruke.onyx.app.filesystem.JvmDesktopExternalOpenService
 import com.oruke.onyx.app.filesystem.JvmDesktopTrashService
@@ -249,7 +248,7 @@ val fileModule = module {
         )
     }
     single<ImageMetadataService> { JvmImageMetadataService(get()) }
-    single<SettingsRepository> { SqliteSettingsRepository(get(), get(), JsonSettingsRepository()) }
+    single<SettingsRepository> { SqliteSettingsRepository(get(), get()) }
     single<SessionRepository> { JsonSessionRepository() }
     single<TaskPersistenceRepository> { JsonTaskPersistenceRepository() }
 }

@@ -29,14 +29,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.component.RemoteConnectionDraft
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneLayoutMode
-import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
@@ -72,7 +70,6 @@ import onyx.composeapp.generated.resources.label_setting_hide
 import onyx.composeapp.generated.resources.label_setting_show
 import onyx.composeapp.generated.resources.label_settings_appearance
 import onyx.composeapp.generated.resources.label_settings_columns
-import onyx.composeapp.generated.resources.label_settings_connections
 import onyx.composeapp.generated.resources.label_settings_general
 import onyx.composeapp.generated.resources.label_settings_layout
 import onyx.composeapp.generated.resources.label_settings_shortcuts
@@ -88,20 +85,13 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 
-private enum class SettingsCategory { GENERAL, CONNECTIONS, LAYOUT, APPEARANCE, COLUMNS, SHORTCUTS }
+private enum class SettingsCategory { GENERAL, LAYOUT, APPEARANCE, COLUMNS, SHORTCUTS }
 
 @Composable
 internal fun SettingsDialog(
     state: RootDialogState.Settings,
     onDraftChange: (OnyxSettings) -> Unit,
     onCleanupInvalidLocations: () -> Unit,
-    onRemoteConnectionDraftChange: (RemoteConnectionDraft) -> Unit,
-    onNewRemoteConnection: () -> Unit,
-    onEditRemoteConnection: (RemoteConnectionProfile) -> Unit,
-    onSaveRemoteConnection: () -> Unit,
-    onTestRemoteConnection: () -> Unit,
-    onDeleteRemoteConnection: (String) -> Unit,
-    onOpenRemoteConnection: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     initialWidth: Int = 720,
@@ -164,7 +154,6 @@ internal fun SettingsDialog(
                             SettingsNavItem(
                                 text = when (cat) {
                                     SettingsCategory.GENERAL -> stringResource(Res.string.label_settings_general)
-                                    SettingsCategory.CONNECTIONS -> stringResource(Res.string.label_settings_connections)
                                     SettingsCategory.LAYOUT -> stringResource(Res.string.label_settings_layout)
                                     SettingsCategory.APPEARANCE -> stringResource(Res.string.label_settings_appearance)
                                     SettingsCategory.COLUMNS -> stringResource(Res.string.label_settings_columns)
@@ -250,25 +239,6 @@ internal fun SettingsDialog(
                                         )
                                     }
                                 }
-                            }
-
-                            SettingsCategory.CONNECTIONS -> {
-                                RemoteConnectionsSettings(
-                                    connections = draft.remoteConnections,
-                                    connectionDraft = state.remoteConnectionDraft,
-                                    editingConnectionId = state.editingRemoteConnectionId,
-                                    testState = state.remoteConnectionTestState,
-                                    error = state.remoteConnectionError,
-                                    onDraftChange = onRemoteConnectionDraftChange,
-                                    onNew = onNewRemoteConnection,
-                                    onEdit = onEditRemoteConnection,
-                                    onSave = onSaveRemoteConnection,
-                                    onTest = onTestRemoteConnection,
-                                    onDelete = onDeleteRemoteConnection,
-                                    onOpen = onOpenRemoteConnection,
-                                    fontSize = bodyFs,
-                                    labelFontSize = labelFs,
-                                )
                             }
 
                             SettingsCategory.LAYOUT -> {

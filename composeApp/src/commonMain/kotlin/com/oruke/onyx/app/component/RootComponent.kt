@@ -137,6 +137,12 @@ internal sealed interface RootDialogState {
 
     data class Settings(
         val draft: OnyxSettings,
+    ) : RootDialogState
+
+    /**
+     * 网络位置管理窗口状态，独立于应用设置窗口保存远程连接配置。
+     */
+    data class RemoteConnections(
         val remoteConnectionDraft: RemoteConnectionDraft = RemoteConnectionDraft(),
         val editingRemoteConnectionId: String? = null,
         val remoteConnectionTestState: RemoteConnectionTestState = RemoteConnectionTestState.Idle,
@@ -233,6 +239,8 @@ internal sealed interface RootIntent {
     ) : RootIntent
 
     data object CleanupInvalidLocations : RootIntent
+
+    data object OpenRemoteConnections : RootIntent
 
     data class UpdateRemoteConnectionDraft(
         val draft: RemoteConnectionDraft,
@@ -516,6 +524,8 @@ internal fun RootComponent.setPaneSplitFraction(fraction: Float) = dispatch(Root
 internal fun RootComponent.openSettings() = dispatch(RootIntent.OpenSettings)
 
 internal fun RootComponent.updateSettingsDraft(draft: OnyxSettings) = dispatch(RootIntent.UpdateSettingsDraft(draft))
+
+internal fun RootComponent.openRemoteConnections() = dispatch(RootIntent.OpenRemoteConnections)
 
 internal fun RootComponent.updateRemoteConnectionDraft(draft: RemoteConnectionDraft) =
     dispatch(RootIntent.UpdateRemoteConnectionDraft(draft))
