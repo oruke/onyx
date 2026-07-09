@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -15,9 +16,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,6 +31,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.text.style.TextOverflow
@@ -212,6 +216,7 @@ private fun PaneContextMenuItemNode(
             text = text,
             enabled = item.enabled,
             iconKey = iconKey,
+            iconPath = item.iconPath,
             expanded = expanded,
             onPointerEnter = onPointerEnter,
             onExpandedChange = onExpandedChange,
@@ -228,6 +233,7 @@ private fun PaneContextMenuItemNode(
             text = text,
             enabled = item.enabled && command != null,
             iconKey = iconKey,
+            iconPath = item.iconPath,
             command = command?.shortcutCommandOrNull(),
             commandShortcuts = commandShortcuts,
             onPointerEnter = onPointerEnter,
@@ -255,6 +261,7 @@ private fun ContextMenuSubmenuItem(
     text: String,
     enabled: Boolean,
     iconKey: IconKey,
+    iconPath: String? = null,
     expanded: Boolean,
     onPointerEnter: () -> Unit = {},
     onExpandedChange: (Boolean) -> Unit,
@@ -298,6 +305,7 @@ private fun ContextMenuSubmenuItem(
             text = text,
             enabled = enabled,
             iconKey = iconKey,
+            iconPath = iconPath,
             trailingIconKey = AllIconsKeys.General.ArrowRight,
             onClick = { onExpandedChange(!expanded) },
         )
@@ -341,6 +349,7 @@ private fun ContextMenuItem(
     text: String,
     enabled: Boolean,
     iconKey: IconKey,
+    iconPath: String? = null,
     onClick: () -> Unit,
     command: OnyxCommand? = null,
     commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
@@ -365,7 +374,7 @@ private fun ContextMenuItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(key = iconKey, contentDescription = null)
+        ContextMenuLeadingIcon(iconKey = iconKey, iconPath = iconPath)
         Text(
             text = text,
             modifier = Modifier.weight(1f),
@@ -441,7 +450,7 @@ private fun PaneContextMenuText.stringResourceValue(): String {
 /**
  * 将统一菜单图标语义映射到 Jewel 图标。
  *
- * @param iconPath 平台动态图标路径或标识，当前用于保留菜单来源信息。
+ * @param iconPath 平台动态图标路径或标识，用于优先渲染系统菜单图标。
  * @return Jewel 图标键。
  */
 private fun PaneContextMenuIcon.toIconKey(iconPath: String?): IconKey {
@@ -487,6 +496,36 @@ private fun PaneContextMenuCommand.shortcutCommandOrNull(): OnyxCommand? {
 }
 
 /**
+ * 渲染菜单项左侧图标，优先使用平台动态图标，失败时回退到 Jewel 图标。
+ *
+ * @param iconKey 内置 Jewel 图标键。
+ * @param iconPath 平台图标路径或标识。
+ */
+@Composable
+private fun ContextMenuLeadingIcon(
+    iconKey: IconKey,
+    iconPath: String?,
+) {
+    var bitmap by remember(iconPath) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(iconPath) {
+        bitmap = null
+        bitmap = iconPath
+            ?.takeIf { value -> value.isNotBlank() }
+            ?.let { value -> SystemMenuIconBitmapLoader.load(value) }
+    }
+    val resolvedBitmap = bitmap
+    if (resolvedBitmap != null) {
+        Image(
+            bitmap = resolvedBitmap,
+            contentDescription = null,
+            modifier = Modifier.size(CONTEXT_MENU_ICON_SIZE_DP.dp),
+        )
+    } else {
+        Icon(key = iconKey, contentDescription = null)
+    }
+}
+
+/**
  * 级联菜单弹层定位器。
  */
 private object CascadingMenuPositionProvider : PopupPositionProvider {
@@ -521,3 +560,4 @@ private object CascadingMenuPositionProvider : PopupPositionProvider {
 private const val SUBMENU_OVERLAP_PX = 4
 private const val SUBMENU_VERTICAL_OFFSET_PX = 4
 private const val SUBMENU_CLOSE_DELAY_MS = 180L
+private const val CONTEXT_MENU_ICON_SIZE_DP = 16

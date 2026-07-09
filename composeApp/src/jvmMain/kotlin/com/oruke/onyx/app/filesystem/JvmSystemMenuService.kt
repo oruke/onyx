@@ -278,7 +278,7 @@ internal class JvmSystemMenuService(
      */
     private suspend fun listWindowsShellActionsWithCache(entries: List<VFile>): List<SystemMenuAction> {
         val targetEntries = entries.materializeEntries() ?: return emptyList()
-        return listCachedSystemActions(targetEntries, "windows-registry") {
+        return listCachedSystemActions(targetEntries, "windows-registry-icon-v2") {
             listWindowsShellActions(targetEntries)
         }
     }
@@ -389,6 +389,7 @@ internal class JvmSystemMenuService(
         if (!values.shouldIncludeWindowsShellVerb()) return null
         val rawDisplayName = values.namedData("MUIVerb") ?: values.defaultValue()?.data
         val displayName = rawDisplayName.toWindowsMenuLabel() ?: return null
+        val registryIconPath = values.namedData("Icon") ?: queryRegistryDefault("$this\\DefaultIcon")
         val children = if (depth < MAX_SYSTEM_MENU_DEPTH) {
             values.toWindowsShellChildActions(depth + 1)
         } else {
@@ -399,6 +400,7 @@ internal class JvmSystemMenuService(
                 id = "$WINDOWS_ACTION_PREFIX$this",
                 displayName = displayName,
                 command = "",
+                iconPath = registryIconPath,
                 children = children,
             )
         }
@@ -407,6 +409,7 @@ internal class JvmSystemMenuService(
             id = "$WINDOWS_ACTION_PREFIX$this",
             displayName = displayName,
             command = command,
+            iconPath = registryIconPath ?: command.toWindowsExecutableIconPath(),
         )
     }
 
@@ -553,6 +556,21 @@ internal class JvmSystemMenuService(
             }
         }
         return if (hasTargetPlaceholder) commandLine else "$commandLine $quotedTarget"
+    }
+
+    /**
+     * 从 Windows shell command 模板中提取可作为图标来源的 exe 路径。
+     *
+     * @return 可执行文件路径或名称；无法解析时返回 `null`。
+     */
+    private fun String.toWindowsExecutableIconPath(): String? {
+        val value = trim().takeIf { text -> text.isNotBlank() } ?: return null
+        if (value.startsWith("\"")) {
+            return value.substringAfter("\"")
+                .substringBefore("\"")
+                .takeIf { path -> path.endsWith(".exe", ignoreCase = true) }
+        }
+        return WINDOWS_EXE_PREFIX.find(value)?.groupValues?.getOrNull(1)
     }
 
     private fun Map<String, String>.mimeList(): List<String> {
@@ -843,6 +861,8 @@ internal class JvmSystemMenuService(
         const val MAX_SYSTEM_MENU_DEPTH = 4
         /** Windows shell command 常见目标占位符。 */
         val WINDOWS_TARGET_PLACEHOLDERS = listOf("%1", "%L", "%l", "%V", "%v", "%I", "%i")
+        /** 从 Windows shell command 头部提取 exe 路径或名称的正则。 */
+        val WINDOWS_EXE_PREFIX = Regex("""(?i)^(.+?\.exe)\b""")
     }
 }
 

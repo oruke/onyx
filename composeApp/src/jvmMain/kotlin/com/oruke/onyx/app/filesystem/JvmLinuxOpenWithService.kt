@@ -139,9 +139,19 @@ class JvmLinuxOpenWithService(
     }
 }
 
-class JvmPlatformOpenWithService(
+/**
+ * JVM 平台“打开方式”服务调度器，按当前系统委托到 Linux、macOS 或 Windows 实现。
+ *
+ * @param materializer 系统文件物化器，用于把虚拟文件转成本地文件。
+ * @param linuxOpenWithService Linux desktop entry 打开方式服务。
+ * @param windowsAssociationService Windows Shell 关联处理器服务。
+ * @param windowsRegistryResolver Windows 注册表兜底解析器。
+ */
+internal class JvmPlatformOpenWithService(
     private val materializer: SystemFileMaterializer,
     private val linuxOpenWithService: OpenWithService = JvmLinuxOpenWithService(materializer),
+    private val windowsAssociationService: WindowsOpenWithAssociationService = WindowsOpenWithAssociationService(),
+    private val windowsRegistryResolver: WindowsOpenWithRegistryResolver = WindowsOpenWithRegistryResolver(),
 ) : OpenWithService {
     override fun supports(entry: VFile): Boolean {
         return materializer.supports(entry)
@@ -161,7 +171,7 @@ class JvmPlatformOpenWithService(
         return when (currentHostPlatform()) {
             HostPlatform.LINUX -> linuxOpenWithService.openWith(targetEntry, app)
             HostPlatform.MACOS -> runProcess("open", "-a", app.command.ifBlank { app.displayName }, targetEntry.location)
-            HostPlatform.WINDOWS -> runWindowsCommandTemplate(targetEntry.location, app.command)
+            HostPlatform.WINDOWS -> openWindowsWith(targetEntry.location, app)
             HostPlatform.OTHER -> Result.failure(UnsupportedOperationException())
         }
     }
@@ -193,19 +203,6 @@ class JvmPlatformOpenWithService(
                 tell onyxApp to open onyxTarget
             """.trimIndent()
             ProcessBuilder("osascript", "-e", script)
-                .directory(File(location).parentFile ?: File("."))
-                .start()
-            Unit
-        }
-    }
-
-    private suspend fun runWindowsCommandTemplate(
-        location: String,
-        commandTemplate: String,
-    ): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            val command = commandTemplate.toWindowsCommandFor(location)
-            ProcessBuilder("cmd", "/c", command)
                 .directory(File(location).parentFile ?: File("."))
                 .start()
             Unit
@@ -247,263 +244,43 @@ class JvmPlatformOpenWithService(
         )
     }
 
+    /**
+     * 查询 Windows “打开方式”候选应用。
+     *
+     * @param entry 需要查询打开方式的虚拟文件。
+     * @return Shell 关联处理器优先、注册表兜底的应用列表。
+     */
     private suspend fun listWindowsApplications(entry: VFile): List<OpenWithApp> = withContext(Dispatchers.IO) {
-        val extension = File(entry.location).extension
+        val extension = entry.name.substringAfterLast('.', "")
             .takeIf { value -> value.isNotBlank() }
             ?.let { value -> ".$value" }
             ?: return@withContext emptyList()
-        val progIds = linkedSetOf<String>()
-        queryRegistryDefault("HKCR\\$extension")?.let { progIds += it }
-        progIds += queryRegistryValueNames("HKCR\\$extension\\OpenWithProgids")
-        progIds += queryRegistryValueNames(
-            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$extension\\OpenWithProgids"
-        )
-        val applicationExecutables = linkedSetOf<String>()
-        applicationExecutables += queryRegistryOpenWithExecutables("HKCR\\$extension\\OpenWithList")
-        applicationExecutables += queryRegistryOpenWithExecutables(
-            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$extension\\OpenWithList"
-        )
-
-        val progIdApps = progIds
-            .asSequence()
-            .mapNotNull { progId -> progId.toWindowsOpenWithApp() }
-        val applicationApps = applicationExecutables
-            .asSequence()
-            .mapNotNull { executableName -> executableName.toWindowsApplicationOpenWithApp() }
-
-        (progIdApps + applicationApps)
+        val apps = windowsAssociationService.listApps(extension)
+            .ifEmpty { windowsRegistryResolver.listApplications(extension) }
+        apps
             .distinctBy { app -> app.command.lowercase(Locale.ROOT) }
-            .sortedBy { app -> app.displayName.lowercase(Locale.getDefault()) }
             .take(MAX_WINDOWS_APPLICATIONS)
             .toList()
     }
 
-    private fun String.toWindowsOpenWithApp(): OpenWithApp? {
-        if (isWindowsRegistryUnsetValue() || isWindowsRegistryDefaultName()) return null
-        val command = windowsProgIdCommandKeys(this)
-            .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
-            ?: return null
-        val displayName = windowsProgIdDisplayKeys(this)
-            .firstNotNullOfOrNull { key -> queryRegistryDefault(key)?.toWindowsMenuLabel() }
-            ?: this
-        return OpenWithApp(
-            id = this,
-            displayName = displayName,
-            command = command,
-            iconPath = windowsProgIdIconKeys(this).firstNotNullOfOrNull { key -> queryRegistryDefault(key) },
-        )
-    }
-
     /**
-     * 将 Windows `Applications\<exe>` 注册表项转换为“打开方式”应用。
+     * 使用 Windows “打开方式”应用打开本地文件。
      *
-     * @return 注册了 open command 的应用；无命令时返回 `null`。
+     * @param location 需要打开的本地文件路径。
+     * @param app 用户选择的打开方式应用。
+     * @return 打开结果。
      */
-    private fun String.toWindowsApplicationOpenWithApp(): OpenWithApp? {
-        val executableName = trim().takeIf { value -> value.endsWith(".exe", ignoreCase = true) } ?: return null
-        val command = windowsApplicationCommandKeys(executableName)
-            .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
-            ?: return null
-        val displayName = windowsApplicationDisplayKeys(executableName)
-            .firstNotNullOfOrNull { key -> queryRegistryNamedData(key, "FriendlyAppName")?.toWindowsMenuLabel() }
-            ?: executableName.removeSuffix(".exe").replaceFirstChar { char ->
-                if (char.isLowerCase()) char.titlecase(Locale.getDefault()) else char.toString()
+    private suspend fun openWindowsWith(
+        location: String,
+        app: OpenWithApp,
+    ): Result<Unit> {
+        return if (windowsAssociationService.isAssociationCommand(app.command)) {
+            withContext(Dispatchers.IO) {
+                windowsAssociationService.openWith(Path.of(location), app)
             }
-        return OpenWithApp(
-            id = "application:$executableName",
-            displayName = displayName,
-            command = command,
-            iconPath = windowsApplicationIconKeys(executableName)
-                .firstNotNullOfOrNull { key -> queryRegistryDefault(key) },
-        )
-    }
-
-    private fun queryRegistryDefault(key: String): String? {
-        val output = runWindowsRegistryQuery(key, "/ve") ?: return null
-        return output
-            .lineSequence()
-            .mapNotNull { line -> line.toRegistryValue()?.data }
-            .firstOrNull { value -> !value.isWindowsRegistryUnsetValue() }
-    }
-
-    /**
-     * 查询指定注册表值的数据。
-     *
-     * @param key 注册表路径。
-     * @param name 值名称。
-     * @return 非空且非系统占位的数据。
-     */
-    private fun queryRegistryNamedData(
-        key: String,
-        name: String,
-    ): String? {
-        val output = runWindowsRegistryQuery(key, "/v", name) ?: return null
-        return output
-            .lineSequence()
-            .mapNotNull { line -> line.toRegistryValue() }
-            .firstOrNull { value -> value.name.equals(name, ignoreCase = true) }
-            ?.data
-            ?.takeUnless { value -> value.isWindowsRegistryUnsetValue() }
-    }
-
-    private fun queryRegistryValueNames(key: String): List<String> {
-        val output = runWindowsRegistryQuery(key) ?: return emptyList()
-        return output
-            .lineSequence()
-            .mapNotNull { line -> line.toRegistryValue()?.name }
-            .filter { name -> !name.isWindowsRegistryUnsetValue() && !name.isWindowsRegistryDefaultName() }
-            .distinct()
-            .toList()
-    }
-
-    /**
-     * 查询 Windows `OpenWithList` 中记录的可执行文件名。
-     *
-     * @param key `OpenWithList` 注册表路径。
-     * @return 去重后的 exe 名称列表。
-     */
-    private fun queryRegistryOpenWithExecutables(key: String): List<String> {
-        val output = runWindowsRegistryQuery(key) ?: return emptyList()
-        return output
-            .lineSequence()
-            .mapNotNull { line -> line.toRegistryValue() }
-            .filterNot { value -> value.name.equals("MRUList", ignoreCase = true) }
-            .map { value -> value.data.trim() }
-            .filter { value -> value.endsWith(".exe", ignoreCase = true) && !value.isWindowsRegistryUnsetValue() }
-            .distinctBy { value -> value.lowercase(Locale.ROOT) }
-            .toList()
-    }
-
-    private fun runWindowsRegistryQuery(vararg args: String): String? {
-        return runCatching {
-            val process = ProcessBuilder(listOf("reg", "query") + args.toList())
-                .redirectErrorStream(true)
-                .start()
-            val output = process.inputStream.readBytes().decodePlatformProcessOutput()
-            if (process.waitFor() == 0) output else null
-        }.getOrNull()
-    }
-
-    private fun String.toRegistryValue(): RegistryValue? {
-        val trimmed = trim()
-        if (trimmed.isBlank() || trimmed.startsWith("HKEY", ignoreCase = true)) return null
-        val parts = trimmed.split(Regex("\\s{2,}"), limit = 3)
-        if (parts.size < 2 || !parts[1].startsWith("REG_", ignoreCase = true)) return null
-        return RegistryValue(
-            name = parts[0],
-            type = parts[1],
-            data = parts.getOrNull(2)?.trim().orEmpty(),
-        )
-    }
-
-    private fun String.toWindowsCommandFor(location: String): String {
-        val target = "\"${location.replace("\"", "")}\""
-        val hadPlaceholder = WINDOWS_TARGET_PLACEHOLDERS.any { placeholder -> contains(placeholder) }
-        val command = WINDOWS_TARGET_PLACEHOLDERS.fold(this) { current, placeholder ->
-            current.replace(placeholder, target)
+        } else {
+            windowsRegistryResolver.runCommandTemplate(location, app.command)
         }
-        return if (hadPlaceholder) command else "$command $target"
-    }
-
-    private fun String?.toWindowsMenuLabel(): String? {
-        val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        if (value.isWindowsRegistryUnsetValue()) return null
-        if (value.startsWith("@")) return null
-        return value.replace("&", "").takeIf { it.isNotBlank() }
-    }
-
-    private fun String.isWindowsRegistryUnsetValue(): Boolean {
-        return isBlank() ||
-            contains("value not set", ignoreCase = true) ||
-            contains("not set", ignoreCase = true) ||
-            contains("未设置") ||
-            contains("数值未设置") ||
-            contains("未設定") ||
-            contains("値が設定されていません")
-    }
-
-    private fun String.isWindowsRegistryDefaultName(): Boolean {
-        return equals("(Default)", ignoreCase = true) ||
-            equals("(默认)", ignoreCase = true) ||
-            equals("(預設)", ignoreCase = true)
-    }
-
-    /**
-     * 返回 ProgId 打开命令的注册表搜索路径，先查用户级关联，再查系统级关联。
-     *
-     * @param progId 文件类型 ProgId。
-     * @return 注册表键路径列表。
-     */
-    private fun windowsProgIdCommandKeys(progId: String): List<String> {
-        return listOf(
-            "HKCU\\Software\\Classes\\$progId\\shell\\open\\command",
-            "HKCR\\$progId\\shell\\open\\command",
-        )
-    }
-
-    /**
-     * 返回 ProgId 显示名称的注册表搜索路径。
-     *
-     * @param progId 文件类型 ProgId。
-     * @return 注册表键路径列表。
-     */
-    private fun windowsProgIdDisplayKeys(progId: String): List<String> {
-        return listOf(
-            "HKCU\\Software\\Classes\\$progId",
-            "HKCR\\$progId",
-        )
-    }
-
-    /**
-     * 返回 ProgId 图标的注册表搜索路径。
-     *
-     * @param progId 文件类型 ProgId。
-     * @return 注册表键路径列表。
-     */
-    private fun windowsProgIdIconKeys(progId: String): List<String> {
-        return listOf(
-            "HKCU\\Software\\Classes\\$progId\\DefaultIcon",
-            "HKCR\\$progId\\DefaultIcon",
-        )
-    }
-
-    /**
-     * 返回 Windows Applications 打开命令的注册表搜索路径。
-     *
-     * @param executableName 可执行文件名，例如 `notepad.exe`。
-     * @return 注册表键路径列表。
-     */
-    private fun windowsApplicationCommandKeys(executableName: String): List<String> {
-        return listOf(
-            "HKCU\\Software\\Classes\\Applications\\$executableName\\shell\\open\\command",
-            "HKCR\\Applications\\$executableName\\shell\\open\\command",
-        )
-    }
-
-    /**
-     * 返回 Windows Applications 显示名称的注册表搜索路径。
-     *
-     * @param executableName 可执行文件名。
-     * @return 注册表键路径列表。
-     */
-    private fun windowsApplicationDisplayKeys(executableName: String): List<String> {
-        return listOf(
-            "HKCU\\Software\\Classes\\Applications\\$executableName",
-            "HKCR\\Applications\\$executableName",
-        )
-    }
-
-    /**
-     * 返回 Windows Applications 图标的注册表搜索路径。
-     *
-     * @param executableName 可执行文件名。
-     * @return 注册表键路径列表。
-     */
-    private fun windowsApplicationIconKeys(executableName: String): List<String> {
-        return listOf(
-            "HKCU\\Software\\Classes\\Applications\\$executableName\\DefaultIcon",
-            "HKCR\\Applications\\$executableName\\DefaultIcon",
-        )
     }
 
     private fun currentHostPlatform(): HostPlatform {
@@ -527,16 +304,9 @@ class JvmPlatformOpenWithService(
         OTHER,
     }
 
-    private data class RegistryValue(
-        val name: String,
-        val type: String,
-        val data: String,
-    )
-
     private companion object {
         const val MAC_APP_SCAN_DEPTH = 2
         const val MAX_MAC_APPLICATIONS = 120
         const val MAX_WINDOWS_APPLICATIONS = 120
-        val WINDOWS_TARGET_PLACEHOLDERS = listOf("%1", "%L", "%l")
     }
 }
