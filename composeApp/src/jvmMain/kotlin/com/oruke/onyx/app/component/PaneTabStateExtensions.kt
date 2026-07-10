@@ -76,14 +76,23 @@ internal fun PaneTabState.toTabSnapshot(): TabSnapshot {
     )
 }
 
+/**
+ * 将持久化标签快照恢复为运行时状态，并统一规范化当前位置和导航历史。
+ *
+ * @param pathService VFS 路径规范化服务。
+ * @return 已恢复的标签运行时状态。
+ */
 internal fun TabSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabState {
+    val normalizedLocation = pathService.normalizeLocation(location)
+    val normalizedBackStack = backStack.map(pathService::normalizeLocation)
+    val normalizedForwardStack = forwardStack.map(pathService::normalizeLocation)
     return PaneTabState(
         id = id,
-        title = pathService.title(location),
+        title = pathService.title(normalizedLocation),
         tabState = TabState(
-            location = location,
-            canGoBack = backStack.isNotEmpty(),
-            canGoForward = forwardStack.isNotEmpty(),
+            location = normalizedLocation,
+            canGoBack = normalizedBackStack.isNotEmpty(),
+            canGoForward = normalizedForwardStack.isNotEmpty(),
             detailsColumns = detailsColumns,
             detailsColumnWeights = if (detailsColumnWeights.values.all { it < 2f }) {
                 defaultDetailsColumnWeights()
@@ -106,8 +115,8 @@ internal fun TabSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabSta
             entriesState = PaneEntriesState.Idle,
         ),
         allEntries = emptyList(),
-        backStack = backStack,
-        forwardStack = forwardStack,
+        backStack = normalizedBackStack,
+        forwardStack = normalizedForwardStack,
     )
 }
 

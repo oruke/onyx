@@ -20,6 +20,7 @@
     <string name="action_new_directory">新規フォルダー</string>
     <string name="action_copy_path">パスをコピー</string>
     <string name="action_close_menu">メニューを閉じる</string>
+    <string name="action_close_window">閉じる</string>
     <string name="action_new_tab">新規タブ</string>
     <string name="action_close_tab">タブを閉じる</string>
     <string name="action_toggle_hidden_files">隠し項目を表示</string>
@@ -100,6 +101,12 @@
     <string name="label_remote_credentials_rejected">認証に失敗しました。ユーザー名、パスワード、ドメインを確認してください。</string>
     <string name="label_remote_credentials_error_username_required">ユーザー名を入力してください。</string>
     <string name="label_remote_connection_empty">リモート接続はまだありません</string>
+    <string name="label_remote_connections_title">ネットワークの場所</string>
+    <string name="label_remote_connection_new_title">新しい接続</string>
+    <string name="label_remote_connection_edit_title">接続を編集</string>
+    <string name="label_remote_connection_details_section">接続情報</string>
+    <string name="label_remote_connection_credentials_section">認証情報</string>
+    <string name="label_remote_connection_not_configured">未設定</string>
     <string name="label_remote_connection_name">名前</string>
     <string name="label_remote_connection_protocol">プロトコル</string>
     <string name="label_remote_connection_location">場所</string>

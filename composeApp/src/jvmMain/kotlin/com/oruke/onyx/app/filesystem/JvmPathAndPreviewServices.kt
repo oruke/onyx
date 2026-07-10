@@ -231,7 +231,7 @@ internal class JvmVfsPathService : VfsPathService {
                     else -> path
                 }
             }
-        return URI(scheme.lowercase(), null, host, port, normalizedPath, null, null).toASCIIString()
+        return URI(scheme.lowercase(), null, host, port, normalizedPath, null, null).toString()
     }
 
     private fun URI.remoteParentLocation(): String? {
@@ -240,7 +240,7 @@ internal class JvmVfsPathService : VfsPathService {
         val parentPath = segments.dropLast(1)
             .joinToString(separator = "/", prefix = "/")
             .let { path -> if (path == "/") path else path.withTrailingSlash() }
-        return URI(scheme.lowercase(), null, host, port, parentPath, null, null).toASCIIString()
+        return URI(scheme.lowercase(), null, host, port, parentPath, null, null).toString()
     }
 
     private fun URI.remoteBaseName(): String? {
@@ -253,7 +253,7 @@ internal class JvmVfsPathService : VfsPathService {
         val breadcrumbs = mutableListOf(
             VfsBreadcrumb(
                 label = host,
-                location = URI(scheme.lowercase(), null, host, port, "/", null, null).toASCIIString(),
+                location = URI(scheme.lowercase(), null, host, port, "/", null, null).toString(),
             )
         )
         val segments = remotePathSegments()
@@ -268,7 +268,7 @@ internal class JvmVfsPathService : VfsPathService {
                 currentPath.withTrailingSlash(),
                 null,
                 null,
-            ).toASCIIString()
+            ).toString()
             breadcrumbs += VfsBreadcrumb(
                 label = segment,
                 location = location,

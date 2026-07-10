@@ -20,6 +20,7 @@
     <string name="action_new_directory">新建文件夹</string>
     <string name="action_copy_path">复制路径</string>
     <string name="action_close_menu">关闭菜单</string>
+    <string name="action_close_window">关闭</string>
     <string name="action_new_tab">新建标签页</string>
     <string name="action_close_tab">关闭标签页</string>
     <string name="action_toggle_hidden_files">显示隐藏项</string>
@@ -100,6 +101,12 @@
     <string name="label_remote_credentials_rejected">认证失败，请检查用户名、密码或域。</string>
     <string name="label_remote_credentials_error_username_required">请输入用户名。</string>
     <string name="label_remote_connection_empty">还没有远程连接</string>
+    <string name="label_remote_connections_title">网络位置</string>
+    <string name="label_remote_connection_new_title">新建连接</string>
+    <string name="label_remote_connection_edit_title">编辑连接</string>
+    <string name="label_remote_connection_details_section">连接信息</string>
+    <string name="label_remote_connection_credentials_section">访问凭据</string>
+    <string name="label_remote_connection_not_configured">尚未配置</string>
     <string name="label_remote_connection_name">名称</string>
     <string name="label_remote_connection_protocol">协议</string>
     <string name="label_remote_connection_location">地址</string>

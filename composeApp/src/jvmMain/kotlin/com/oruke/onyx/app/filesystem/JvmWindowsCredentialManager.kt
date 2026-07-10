@@ -97,6 +97,8 @@ internal class JvmWindowsCredentialManager {
 
     /**
      * Windows `CREDENTIALW` 结构体映射。
+     *
+     * JNA 会从 `Structure` 包外反射访问字段，因此声明类不能使用 JVM 私有可见性。
      */
     @Structure.FieldOrder(
         "Flags",
@@ -112,7 +114,7 @@ internal class JvmWindowsCredentialManager {
         "TargetAlias",
         "UserName",
     )
-    private class Credential : Structure {
+    internal class Credential : Structure {
         @JvmField var Flags: Int = 0
         @JvmField var Type: Int = CRED_TYPE_GENERIC
         @JvmField var TargetName: WString? = null

@@ -83,7 +83,11 @@ internal fun DialogTextButton(
     val bg by animateColorAsState(
         if (hovered || focused) baseBg.copy(alpha = baseBg.alpha * 0.85f) else baseBg, tween(120),
     )
-    val contentColor = if (emphasized) Color.White else palette.foreground
+    val contentColor = when {
+        emphasized -> Color.White
+        destructive -> Color(0xFFD74E4E)
+        else -> palette.foreground
+    }
     val focusBorder = if (focused) Modifier.border(1.5.dp, palette.accent, RoundedCornerShape(6.dp)) else Modifier
     Box(
         modifier = Modifier

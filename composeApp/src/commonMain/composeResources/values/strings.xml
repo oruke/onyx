@@ -20,6 +20,7 @@
     <string name="action_new_directory">New Directory</string>
     <string name="action_copy_path">Copy Path</string>
     <string name="action_close_menu">Close Menu</string>
+    <string name="action_close_window">Close</string>
     <string name="action_new_tab">New Tab</string>
     <string name="action_close_tab">Close Tab</string>
     <string name="action_toggle_hidden_files">Show Hidden</string>
@@ -100,6 +101,12 @@
     <string name="label_remote_credentials_rejected">Authentication failed. Check the username, password, or domain.</string>
     <string name="label_remote_credentials_error_username_required">Username is required.</string>
     <string name="label_remote_connection_empty">No remote connections yet</string>
+    <string name="label_remote_connections_title">Network Locations</string>
+    <string name="label_remote_connection_new_title">New connection</string>
+    <string name="label_remote_connection_edit_title">Edit connection</string>
+    <string name="label_remote_connection_details_section">Connection details</string>
+    <string name="label_remote_connection_credentials_section">Credentials</string>
+    <string name="label_remote_connection_not_configured">Not configured</string>
     <string name="label_remote_connection_name">Name</string>
     <string name="label_remote_connection_protocol">Protocol</string>
     <string name="label_remote_connection_location">Location</string>
