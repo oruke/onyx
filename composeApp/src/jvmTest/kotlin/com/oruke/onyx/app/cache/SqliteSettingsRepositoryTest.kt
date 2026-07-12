@@ -88,6 +88,8 @@ class SqliteSettingsRepositoryTest {
      */
     private fun sampleSettings(): OnyxSettings {
         return OnyxSettings(
+            imageViewerWindowWidth = 1440,
+            imageViewerWindowHeight = 900,
             favoriteLocations = listOf("local:/workspace", "smb://server/share"),
             recentLocations = listOf("s3://bucket/library", "local:/workspace"),
             remoteConnections = listOf(

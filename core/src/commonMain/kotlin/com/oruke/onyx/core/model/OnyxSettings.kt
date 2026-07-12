@@ -47,6 +47,10 @@ data class OnyxSettings(
     val mainWindowWidth: Int = 1200,
     /** 主窗口高度。 */
     val mainWindowHeight: Int = 800,
+    /** 图片查看器窗口宽度。 */
+    val imageViewerWindowWidth: Int = 1200,
+    /** 图片查看器窗口高度。 */
+    val imageViewerWindowHeight: Int = 800,
     /** 设置窗口宽度。 */
     val settingsWindowWidth: Int = 720,
     /** 设置窗口高度。 */
