@@ -3,11 +3,15 @@ package com.oruke.onyx.vfs.local
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.FileRepository
-import com.oruke.onyx.vfs.api.RoutableFileCommandService
+import com.oruke.onyx.vfs.api.FileTransferProgressSink
+import com.oruke.onyx.vfs.api.ProgressAwareRoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsContentSource
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
@@ -21,7 +25,7 @@ import kotlin.io.path.pathString
 /**
  * 基于 `java.nio.file` 的本地文件仓库与命令 Provider。
  */
-class JvmLocalFileProvider : FileRepository, RoutableFileCommandService, RoutableVfsContentService {
+class JvmLocalFileProvider : FileRepository, ProgressAwareRoutableFileCommandService, RoutableVfsContentService {
     /**
      * 判断位置是否属于本地文件系统。
      *
@@ -86,11 +90,17 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService, Routabl
      * @param conflictStrategy 名称冲突处理策略。
      * @return 复制结果。
      */
-    override suspend fun copy(
+    override suspend fun copyWithProgress(
         entries: List<VFile>,
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        val taskJob = currentCoroutineContext()[Job]
+        val cancellationAwareSink = FileTransferProgressSink { byteCount ->
+            taskJob?.ensureActive()
+            progressSink.onBytesTransferred(byteCount)
+        }
         runCatching {
             val targetDirectory = LocalPathOperations.resolveTargetDirectory(targetDirectoryLocation)
             entries.forEach { entry ->
@@ -98,6 +108,7 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService, Routabl
                     source = Path.of(entry.location),
                     targetDirectory = targetDirectory,
                     conflictStrategy = conflictStrategy,
+                    progressSink = cancellationAwareSink,
                 )
             }
         }.mapLocalError()
@@ -111,11 +122,17 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService, Routabl
      * @param conflictStrategy 名称冲突处理策略。
      * @return 移动结果。
      */
-    override suspend fun move(
+    override suspend fun moveWithProgress(
         entries: List<VFile>,
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        val taskJob = currentCoroutineContext()[Job]
+        val cancellationAwareSink = FileTransferProgressSink { byteCount ->
+            taskJob?.ensureActive()
+            progressSink.onBytesTransferred(byteCount)
+        }
         runCatching {
             val targetDirectory = LocalPathOperations.resolveTargetDirectory(targetDirectoryLocation)
             entries.forEach { entry ->
@@ -123,6 +140,7 @@ class JvmLocalFileProvider : FileRepository, RoutableFileCommandService, Routabl
                     source = Path.of(entry.location),
                     targetDirectory = targetDirectory,
                     conflictStrategy = conflictStrategy,
+                    progressSink = cancellationAwareSink,
                 )
             }
         }.mapLocalError()

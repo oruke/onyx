@@ -227,9 +227,21 @@
     <string name="label_task_status_failed">失败</string>
     <string name="label_task_status_cancelled">已取消</string>
     <string name="label_task_errors_count">%1$d 个错误</string>
+    <string name="label_task_overall_progress">总进度</string>
+    <string name="label_task_recent">最近任务</string>
+    <string name="label_task_running_count">%1$d 个运行中</string>
+    <string name="label_task_queued_count">%1$d 个排队中</string>
+    <string name="label_task_paused_count">%1$d 个已暂停</string>
+    <string name="label_task_remaining_time">剩余 %1$s</string>
+    <string name="label_task_item_progress">%1$d / %2$d 项</string>
+    <string name="format_duration_seconds">%1$d 秒</string>
+    <string name="format_duration_minutes_seconds">%1$d 分 %2$d 秒</string>
+    <string name="format_duration_hours_minutes">%1$d 小时 %2$d 分</string>
     <string name="action_pause_task">暂停</string>
     <string name="action_resume_task">恢复</string>
     <string name="action_retry_task">重试</string>
+    <string name="action_remove_task">移除</string>
+    <string name="action_clear_finished_tasks">清除已完成任务</string>
 
     <string name="label_directory_badge">文件夹</string>
     <string name="label_file_badge">文件</string>

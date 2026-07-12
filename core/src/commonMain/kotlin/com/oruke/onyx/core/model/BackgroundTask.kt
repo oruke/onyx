@@ -12,6 +12,8 @@ data class BackgroundTask(
     val title: I18nMessage,
     /** 当前状态。 */
     val status: BackgroundTaskStatus,
+    /** 当前执行器是否支持暂停与恢复。 */
+    val canPause: Boolean = false,
     /** 当前阶段详情。 */
     val detail: I18nMessage,
     /** 0 到 1 的可选进度。 */
@@ -26,6 +28,10 @@ data class BackgroundTask(
     val processedBytes: Long = 0L,
     /** 总字节数。 */
     val totalBytes: Long = 0L,
+    /** 最近采样窗口内的传输速度，单位为字节每秒。 */
+    val bytesPerSecond: Long? = null,
+    /** 按当前速度估算的剩余秒数。 */
+    val estimatedRemainingSeconds: Long? = null,
     /** 任务开始时间 epoch millis。 */
     val startTimeMillis: Long = 0L,
     /** 任务期间记录的文件错误。 */

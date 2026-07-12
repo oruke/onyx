@@ -11,8 +11,13 @@ internal fun DefaultRootComponent.extractSelectedInPane(paneId: PaneId) {
         selectedEntries = selectedEntriesInPane(paneId),
         currentLocation = paneState(paneId).location,
         taskTitle = I18nMessage(MessageKey.ACTION_EXTRACT_HERE),
-    ) { entry, location, password ->
-        archiveService.extract(entry.location, location, password = password)
+    ) { entry, location, password, progressSink ->
+        archiveService.extract(
+            archivePath = entry.location,
+            targetDirectory = location,
+            password = password,
+            progressSink = progressSink,
+        )
     }
 }
 
@@ -22,8 +27,13 @@ internal fun DefaultRootComponent.extractToDirectoryInPane(paneId: PaneId) {
         selectedEntries = selectedEntriesInPane(paneId),
         currentLocation = paneState(paneId).location,
         taskTitle = I18nMessage(MessageKey.ACTION_EXTRACT_TO_DIRECTORY),
-    ) { entry, location, password ->
-        archiveService.extractToDirectory(entry.location, location, password)
+    ) { entry, location, password, progressSink ->
+        archiveService.extractToDirectory(
+            archivePath = entry.location,
+            targetDirectory = location,
+            password = password,
+            progressSink = progressSink,
+        )
     }
 }
 
@@ -33,8 +43,13 @@ internal fun DefaultRootComponent.extractSmartInPane(paneId: PaneId) {
         selectedEntries = selectedEntriesInPane(paneId),
         currentLocation = paneState(paneId).location,
         taskTitle = I18nMessage(MessageKey.ACTION_EXTRACT_SMART),
-    ) { entry, location, password ->
-        archiveService.extractSmart(entry.location, location, password)
+    ) { entry, location, password, progressSink ->
+        archiveService.extractSmart(
+            archivePath = entry.location,
+            targetDirectory = location,
+            password = password,
+            progressSink = progressSink,
+        )
     }
 }
 

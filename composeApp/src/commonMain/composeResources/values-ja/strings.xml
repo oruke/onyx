@@ -229,9 +229,21 @@
     <string name="label_task_status_failed">失敗</string>
     <string name="label_task_status_cancelled">キャンセル済み</string>
     <string name="label_task_errors_count">%1$d 件エラー</string>
+    <string name="label_task_overall_progress">全体の進捗</string>
+    <string name="label_task_recent">最近のジョブ</string>
+    <string name="label_task_running_count">実行中 %1$d 件</string>
+    <string name="label_task_queued_count">待機中 %1$d 件</string>
+    <string name="label_task_paused_count">一時停止 %1$d 件</string>
+    <string name="label_task_remaining_time">残り %1$s</string>
+    <string name="label_task_item_progress">%1$d / %2$d 項目</string>
+    <string name="format_duration_seconds">%1$d 秒</string>
+    <string name="format_duration_minutes_seconds">%1$d 分 %2$d 秒</string>
+    <string name="format_duration_hours_minutes">%1$d 時間 %2$d 分</string>
     <string name="action_pause_task">一時停止</string>
     <string name="action_resume_task">再開</string>
     <string name="action_retry_task">再試行</string>
+    <string name="action_remove_task">削除</string>
+    <string name="action_clear_finished_tasks">完了したジョブを消去</string>
 
     <string name="label_directory_badge">フォルダー</string>
     <string name="label_file_badge">ファイル</string>

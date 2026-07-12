@@ -194,12 +194,20 @@ class ArchiveService(
 
     /**
      * 解压全部或指定内部路径到目标目录。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param targetDirectory 解压目标目录。
+     * @param innerPath 可选压缩包内部路径。
+     * @param password 可选解压密码。
+     * @param progressSink 解压字节进度接收器；外部 tar 运行时可能无法回调。
+     * @return 解压结果。
      */
     suspend fun extract(
         archivePath: String,
         targetDirectory: String,
         innerPath: String = "",
         password: String? = null,
+        progressSink: ArchiveProgressSink = ArchiveProgressSink.NoOp,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             if (archivePath.isTarZstdArchive()) {
@@ -221,7 +229,13 @@ class ArchiveService(
                     }
                 }
 
-                val callback = FileExtractCallback(archive, targetDir, prefix, password)
+                val callback = FileExtractCallback(
+                    archive = archive,
+                    targetDirectory = targetDir,
+                    prefix = prefix,
+                    password = password,
+                    progressSink = progressSink,
+                )
                 archive.extract(
                     indicesToExtract.toIntArray(),
                     false,
@@ -235,27 +249,44 @@ class ArchiveService(
     }
 
     /**
-     * 解压到独立目录：在 targetDirectory 下创建与压缩包同名（去扩展名）的子目录，解压到其中。
+     * 在目标目录下创建与压缩包同名的子目录并解压到其中。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param targetDirectory 解压目标父目录。
+     * @param password 可选解压密码。
+     * @param progressSink 解压字节进度接收器。
+     * @return 解压结果。
      */
     suspend fun extractToDirectory(
         archivePath: String,
         targetDirectory: String,
         password: String? = null,
+        progressSink: ArchiveProgressSink = ArchiveProgressSink.NoOp,
     ): Result<Unit> {
         val archiveName = File(archivePath).nameWithoutExtension
         val subDir = File(targetDirectory, archiveName).absolutePath
-        return extract(archivePath, subDir, password = password)
+        return extract(
+            archivePath = archivePath,
+            targetDirectory = subDir,
+            password = password,
+            progressSink = progressSink,
+        )
     }
 
     /**
-     * 智能解压到独立目录：
-     * - 如果压缩包根目录恰好只有一个子目录，则直接解压到 targetDirectory（避免多余嵌套）
-     * - 否则，行为等同于 extractToDirectory（在 targetDirectory 下创建同名子目录）
+     * 按压缩包根结构选择直接解压或创建同名子目录。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param targetDirectory 解压目标父目录。
+     * @param password 可选解压密码。
+     * @param progressSink 解压字节进度接收器。
+     * @return 解压结果。
      */
     suspend fun extractSmart(
         archivePath: String,
         targetDirectory: String,
         password: String? = null,
+        progressSink: ArchiveProgressSink = ArchiveProgressSink.NoOp,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             // 先检查根目录结构
@@ -263,10 +294,20 @@ class ArchiveService(
             val hasSingleRootDir = rootEntries.size == 1 && rootEntries[0].kind == VFileKind.DIRECTORY
             if (hasSingleRootDir) {
                 // 单一根目录 → 直接解压到 targetDirectory，保持原有目录名
-                extract(archivePath, targetDirectory, password = password).getOrThrow()
+                extract(
+                    archivePath = archivePath,
+                    targetDirectory = targetDirectory,
+                    password = password,
+                    progressSink = progressSink,
+                ).getOrThrow()
             } else {
                 // 多个根条目 → 创建同名子目录
-                extractToDirectory(archivePath, targetDirectory, password = password).getOrThrow()
+                extractToDirectory(
+                    archivePath = archivePath,
+                    targetDirectory = targetDirectory,
+                    password = password,
+                    progressSink = progressSink,
+                ).getOrThrow()
             }
         }
     }
@@ -335,16 +376,19 @@ class ArchiveService(
     /**
      * 将压缩包内指定条目解压到临时目录（用于拖放到外部应用）。
      *
-     * @param archivePath 压缩包物理路径
-     * @param entryPaths  要解压的条目路径列表
-     * @param targetDir   解压目标目录
-     * @param password    解压密码（可选）
+     * @param archivePath 压缩包物理路径。
+     * @param entryPaths 要解压的条目路径列表。
+     * @param targetDir 解压目标目录。
+     * @param password 可选解压密码。
+     * @param progressSink 解压字节进度接收器。
+     * @return 解压结果。
      */
     suspend fun extractEntriesToTemp(
         archivePath: String,
         entryPaths: List<String>,
         targetDir: String,
         password: String? = null,
+        progressSink: ArchiveProgressSink = ArchiveProgressSink.NoOp,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             if (archivePath.isTarZstdArchive()) {
@@ -390,6 +434,7 @@ class ArchiveService(
                     targetDirectory = targetDirectory,
                     prefix = parentPrefix,
                     password = password,
+                    progressSink = progressSink,
                 )
                 archive.extract(targetIndices.toIntArray(), false, callback)
                 if (callback.errors.isNotEmpty()) {

@@ -10,6 +10,7 @@ import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.shared.usecase.FileTransferUseCase
 import com.oruke.onyx.shared.usecase.TaskProgress
@@ -250,6 +251,7 @@ internal class FileTransferDelegate(
                 kind = taskKind,
                 title = taskTitleFor(operation, entries.size),
                 status = BackgroundTaskStatus.QUEUED,
+                canPause = canPauseTransfer(entries, targetDirectoryLocation),
                 detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
                 progress = 0f,
                 totalCount = entries.size,
@@ -282,6 +284,7 @@ internal class FileTransferDelegate(
                             delay(TRANSFER_PAUSE_POLL_INTERVAL_MS)
                         }
                     },
+                    isPaused = { pauseFlag.value },
                 ).collect { progress ->
                     applyTaskProgress(taskId, progress)
                 }
@@ -369,6 +372,8 @@ internal class FileTransferDelegate(
             processedCount = progress.processedCount,
             processedBytes = progress.processedBytes,
             totalBytes = progress.totalBytes,
+            bytesPerSecond = progress.bytesPerSecond,
+            estimatedRemainingSeconds = progress.estimatedRemainingSeconds,
         )
         progress.currentFileName?.let { fileName ->
             taskOrchestrator.updateTaskFields(taskId) { task ->
@@ -413,6 +418,28 @@ internal class FileTransferDelegate(
             FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
             FileTransferOperation.EXTRACT -> BackgroundTaskKind.EXTRACT
         }
+    }
+
+    /**
+     * 判断当前传输是否能在内容块或顶层条目边界可靠暂停。
+     *
+     * 同一远端 Provider 的单项服务端复制没有字节回调，因此不暴露无效暂停按钮。
+     *
+     * @param entries 待传输条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @return 能可靠暂停时返回 true。
+     */
+    private fun canPauseTransfer(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+    ): Boolean {
+        if (entries.size > 1) return true
+        val sourceProtocol = entries.firstOrNull()
+            ?.let { entry -> providerRegistry.providerFor(entry.location).getOrNull()?.protocol }
+            ?: return false
+        val targetProtocol = providerRegistry.providerFor(targetDirectoryLocation).getOrNull()?.protocol
+            ?: return false
+        return sourceProtocol == VfsProtocol.LOCAL || sourceProtocol != targetProtocol
     }
 
     private fun taskTitleFor(

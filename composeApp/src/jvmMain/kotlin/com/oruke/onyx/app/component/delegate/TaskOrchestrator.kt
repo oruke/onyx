@@ -1,6 +1,5 @@
 package com.oruke.onyx.app.component.delegate
 
-import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.vfs.api.TaskPersistenceRepository
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
@@ -13,9 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 
 /**
@@ -26,7 +23,7 @@ import kotlinx.coroutines.sync.withPermit
  */
 class TaskOrchestrator(
     private val scope: CoroutineScope,
-    private val taskRepository: TaskPersistenceRepository? = null,
+    taskRepository: TaskPersistenceRepository? = null,
 ) {
     private val _tasks = MutableStateFlow<List<BackgroundTask>>(emptyList())
     val tasks: StateFlow<List<BackgroundTask>> = _tasks.asStateFlow()
@@ -43,10 +40,13 @@ class TaskOrchestrator(
     /** 后台任务并发许可，保证 QUEUED 状态不是只用于展示。 */
     private val taskConcurrency = Semaphore(MAX_CONCURRENT_RUNNING_TASKS)
 
-    private val persistenceMutex = Mutex()
+    /** 任务缓存读写协调器；未配置仓储时保持纯内存模式。 */
+    private val taskPersistence = taskRepository?.let { repository ->
+        TaskPersistenceCoordinator(scope, repository)
+    }
 
     init {
-        restorePersistedTasks()
+        taskPersistence?.restore(::mergePersistedTasks)
     }
 
     /**
@@ -68,6 +68,8 @@ class TaskOrchestrator(
      * @param processedCount 可选已处理条目数。
      * @param processedBytes 可选已处理字节数。
      * @param totalBytes 可选总字节数。
+     * @param bytesPerSecond 最近采样窗口内的传输速度。
+     * @param estimatedRemainingSeconds 按当前速度估算的剩余秒数。
      */
     fun updateTask(
         taskId: String,
@@ -77,6 +79,8 @@ class TaskOrchestrator(
         processedCount: Int? = null,
         processedBytes: Long? = null,
         totalBytes: Long? = null,
+        bytesPerSecond: Long? = null,
+        estimatedRemainingSeconds: Long? = null,
     ) {
         replaceTasks(_tasks.value.map { task ->
             if (task.id == taskId) {
@@ -87,6 +91,8 @@ class TaskOrchestrator(
                     processedCount = processedCount ?: task.processedCount,
                     processedBytes = processedBytes ?: task.processedBytes,
                     totalBytes = totalBytes ?: task.totalBytes,
+                    bytesPerSecond = bytesPerSecond,
+                    estimatedRemainingSeconds = estimatedRemainingSeconds,
                 )
             } else {
                 task
@@ -190,7 +196,7 @@ class TaskOrchestrator(
         taskJobs.remove(taskId)?.cancel()
         taskPauseFlags.remove(taskId)
         taskRetryHandlers.remove(taskId)
-        archiveTasks(listOfNotNull(removedTask))
+        taskPersistence?.archive(listOfNotNull(removedTask))
         replaceTasks(_tasks.value.filterNot { task -> task.id == taskId })
     }
 
@@ -209,9 +215,14 @@ class TaskOrchestrator(
      * @param taskId 任务 id。
      */
     fun pauseTask(taskId: String) {
-        taskPauseFlags[taskId]?.value = true
+        val pauseFlag = taskPauseFlags[taskId] ?: return
+        pauseFlag.value = true
         updateTaskFields(taskId) { task ->
-            task.copy(status = BackgroundTaskStatus.PAUSED)
+            task.copy(
+                status = BackgroundTaskStatus.PAUSED,
+                bytesPerSecond = null,
+                estimatedRemainingSeconds = null,
+            )
         }
     }
 
@@ -221,9 +232,14 @@ class TaskOrchestrator(
      * @param taskId 任务 id。
      */
     fun resumeTask(taskId: String) {
-        taskPauseFlags[taskId]?.value = false
+        val pauseFlag = taskPauseFlags[taskId] ?: return
+        pauseFlag.value = false
         updateTaskFields(taskId) { task ->
-            task.copy(status = BackgroundTaskStatus.RUNNING)
+            task.copy(
+                status = BackgroundTaskStatus.RUNNING,
+                bytesPerSecond = null,
+                estimatedRemainingSeconds = null,
+            )
         }
     }
 
@@ -247,7 +263,7 @@ class TaskOrchestrator(
         taskJobs.clear()
         taskPauseFlags.clear()
         taskRetryHandlers.clear()
-        archiveTasks(removedTasks)
+        taskPersistence?.archive(removedTasks)
         replaceTasks(emptyList())
     }
 
@@ -260,7 +276,7 @@ class TaskOrchestrator(
             taskRetryHandlers.remove(taskId)
             val task = _tasks.value.firstOrNull { current -> current.id == taskId }
             if (task != null) {
-                archiveTasks(listOf(task.withArchivedStatus()))
+                taskPersistence?.archive(listOf(task.withArchivedStatus()))
                 replaceTasks(_tasks.value.filterNot { current -> current.id == taskId })
             }
         }
@@ -268,52 +284,22 @@ class TaskOrchestrator(
 
     private fun replaceTasks(tasks: List<BackgroundTask>) {
         _tasks.value = tasks
-        persistTasks()
+        taskPersistence?.schedule(tasks.take(MAX_PERSISTED_TASKS))
     }
 
-    private fun restorePersistedTasks() {
-        val repository = taskRepository ?: return
-        scope.launch {
-            repository.loadTasks().fold(
-                onSuccess = { persistedTasks ->
-                    if (persistedTasks.isEmpty()) return@fold
-                    val currentIds = _tasks.value.map { task -> task.id }.toSet()
-                    val restoredTasks = persistedTasks
-                        .map { task -> task.withRestoredStatus() }
-                        .filterNot { task -> task.id in currentIds }
-                    if (restoredTasks.isNotEmpty()) {
-                        replaceTasks((restoredTasks + _tasks.value).take(MAX_PERSISTED_TASKS))
-                    }
-                },
-                onFailure = { failure ->
-                    OnyxLogger.warn("TaskOrchestrator", "任务历史恢复失败", failure)
-                },
-            )
-        }
-    }
-
-    private fun persistTasks() {
-        val repository = taskRepository ?: return
-        val snapshot = _tasks.value.take(MAX_PERSISTED_TASKS)
-        scope.launch {
-            persistenceMutex.withLock {
-                repository.saveTasks(snapshot).onFailure { failure ->
-                    OnyxLogger.warn("TaskOrchestrator", "任务历史保存失败", failure)
-                }
-            }
-        }
-    }
-
-    private fun archiveTasks(tasks: List<BackgroundTask>) {
-        val repository = taskRepository ?: return
-        val terminalTasks = tasks.filter { task -> task.status.isTerminal() }
-        if (terminalTasks.isEmpty()) return
-        scope.launch {
-            persistenceMutex.withLock {
-                repository.archiveTasks(terminalTasks).onFailure { failure ->
-                    OnyxLogger.warn("TaskOrchestrator", "任务历史归档失败", failure)
-                }
-            }
+    /**
+     * 合并缓存恢复的任务，并把上次异常退出时的活动状态收敛为已取消。
+     *
+     * @param persistedTasks 缓存中的任务快照。
+     */
+    private fun mergePersistedTasks(persistedTasks: List<BackgroundTask>) {
+        if (persistedTasks.isEmpty()) return
+        val currentIds = _tasks.value.map { task -> task.id }.toSet()
+        val restoredTasks = persistedTasks
+            .map { task -> task.withRestoredStatus() }
+            .filterNot { task -> task.id in currentIds }
+        if (restoredTasks.isNotEmpty()) {
+            replaceTasks((restoredTasks + _tasks.value).take(MAX_PERSISTED_TASKS))
         }
     }
 
@@ -325,6 +311,8 @@ class TaskOrchestrator(
                 status = BackgroundTaskStatus.CANCELLED,
                 detail = I18nMessage(MessageKey.MSG_CANCELLED),
                 progress = null,
+                bytesPerSecond = null,
+                estimatedRemainingSeconds = null,
             )
 
             else -> this
@@ -337,6 +325,8 @@ class TaskOrchestrator(
                 status = BackgroundTaskStatus.CANCELLED,
                 detail = I18nMessage(MessageKey.MSG_CANCELLED),
                 progress = null,
+                bytesPerSecond = null,
+                estimatedRemainingSeconds = null,
             )
         } else {
             this
@@ -347,10 +337,6 @@ class TaskOrchestrator(
         return this == BackgroundTaskStatus.QUEUED ||
             this == BackgroundTaskStatus.RUNNING ||
             this == BackgroundTaskStatus.PAUSED
-    }
-
-    private fun BackgroundTaskStatus.isTerminal(): Boolean {
-        return !isActive()
     }
 
     private companion object {

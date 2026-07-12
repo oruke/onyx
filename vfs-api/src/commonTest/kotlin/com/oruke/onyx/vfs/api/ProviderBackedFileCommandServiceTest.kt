@@ -16,6 +16,48 @@ import kotlin.test.assertTrue
  */
 class ProviderBackedFileCommandServiceTest {
     /**
+     * 校验跨 Provider 内容流会把实际消费的字节增量传递给任务层。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun reportsBytesWhileCopyingAcrossProviders() = runBlocking {
+        val sourceEntry = file(
+            name = "payload.txt",
+            location = "$SOURCE_PREFIX/payload.txt",
+            content = "progress",
+        )
+        val sourceProvider = FakeProvider(
+            protocol = VfsProtocol.LOCAL,
+            locationPrefix = SOURCE_PREFIX,
+            entries = emptyMap(),
+        )
+        val targetProvider = FakeProvider(
+            protocol = VfsProtocol.WEBDAV,
+            locationPrefix = TARGET_PREFIX,
+            entries = emptyMap(),
+        )
+        val sourceContentService = FakeContentService(SOURCE_PREFIX)
+        sourceContentService.seed(sourceEntry.location, "progress")
+        val commandService = ProviderBackedFileCommandService(
+            services = listOf(FakeCommandService(SOURCE_PREFIX), FakeCommandService(TARGET_PREFIX)),
+            contentServices = listOf(sourceContentService, FakeContentService(TARGET_PREFIX)),
+            providerRegistry = VfsProviderRegistry(listOf(sourceProvider, targetProvider)),
+        )
+        var reportedBytes = 0L
+
+        val result = commandService.copyWithProgress(
+            entries = listOf(sourceEntry),
+            targetDirectoryLocation = "$TARGET_PREFIX/dest",
+            conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+            progressSink = { byteCount -> reportedBytes += byteCount },
+        )
+
+        assertTrue(result.isSuccess)
+        assertEquals("progress".encodeToByteArray().size.toLong(), reportedBytes)
+    }
+
+    /**
      * 校验跨 provider 复制目录时会递归创建目录并写入子文件。
      *
      * @return 无返回值。

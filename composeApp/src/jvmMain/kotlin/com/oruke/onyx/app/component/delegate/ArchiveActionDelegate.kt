@@ -6,6 +6,7 @@ import com.oruke.onyx.shared.usecase.ArchiveExtractionUseCase
 import com.oruke.onyx.shared.usecase.TaskProgress
 import com.oruke.onyx.shared.usecase.buildTaskDetail
 import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.archive.ArchiveProgressSink
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskKind
@@ -127,7 +128,7 @@ internal class ArchiveActionDelegate(
         selectedEntries: List<VFile>,
         currentLocation: String,
         taskTitle: I18nMessage,
-        extractAction: suspend (VFile, String, String?) -> Result<Unit>,
+        extractAction: suspend (VFile, String, String?, ArchiveProgressSink) -> Result<Unit>,
     ) {
         val archiveEntries = selectedEntries.filter { entry ->
             entry.kind == VFileKind.FILE && ArchiveService.isArchive(entry.name)
@@ -235,7 +236,8 @@ internal class ArchiveActionDelegate(
         targetLocation: String,
         taskId: String,
         taskTitle: I18nMessage,
-        extractAction: suspend (VFile, String, String?) -> Result<Unit> = { _, _, _ -> Result.success(Unit) },
+        extractAction: suspend (VFile, String, String?, ArchiveProgressSink) -> Result<Unit> =
+            { _, _, _, _ -> Result.success(Unit) },
     ): String {
         var errorMsg: I18nMessage? = null
         while (true) {
@@ -270,7 +272,7 @@ internal class ArchiveActionDelegate(
         val currentLocation: String,
         val taskId: String,
         val taskTitle: I18nMessage,
-        val extractAction: suspend (VFile, String, String?) -> Result<Unit>,
+        val extractAction: suspend (VFile, String, String?, ArchiveProgressSink) -> Result<Unit>,
         val passwordDeferred: CompletableDeferred<String>,
     )
 
@@ -286,6 +288,8 @@ internal class ArchiveActionDelegate(
             processedCount = progress.processedCount,
             processedBytes = progress.processedBytes,
             totalBytes = progress.totalBytes,
+            bytesPerSecond = progress.bytesPerSecond,
+            estimatedRemainingSeconds = progress.estimatedRemainingSeconds,
         )
         progress.currentFileName?.let { fileName ->
             taskOrchestrator.updateTaskFields(taskId) { task ->

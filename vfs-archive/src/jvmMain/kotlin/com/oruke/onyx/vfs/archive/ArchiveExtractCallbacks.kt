@@ -18,12 +18,14 @@ import java.io.FileOutputStream
  * @param targetDirectory 解压目标目录。
  * @param prefix 需要从归档条目中移除的路径前缀。
  * @param password 可选归档密码。
+ * @param progressSink 解压字节进度接收器。
  */
 internal class FileExtractCallback(
     private val archive: IInArchive,
     private val targetDirectory: File,
     private val prefix: String,
     private val password: String? = null,
+    private val progressSink: ArchiveProgressSink = ArchiveProgressSink.NoOp,
 ) : IArchiveExtractCallback, ICryptoGetTextPassword {
     /** 当前条目的输出流。 */
     private var currentOutputStream: FileOutputStream? = null
@@ -33,6 +35,9 @@ internal class FileExtractCallback(
 
     /** 解压过程中收到的条目错误。 */
     val errors = mutableListOf<String>()
+
+    /** 7-Zip 当前解压批次声明的总字节数。 */
+    private var totalBytes: Long = 0L
 
     override fun getStream(
         index: Int,
@@ -86,8 +91,27 @@ internal class FileExtractCallback(
         currentOutputFile = null
     }
 
-    override fun setTotal(total: Long) = Unit
-    override fun setCompleted(complete: Long) = Unit
+    /**
+     * 记录当前批次总字节数并发布初始进度。
+     *
+     * @param total 当前批次总字节数。
+     */
+    override fun setTotal(total: Long) {
+        totalBytes = total.coerceAtLeast(0L)
+        progressSink.onProgress(0L, totalBytes)
+    }
+
+    /**
+     * 发布 7-Zip 已完成的绝对字节数。
+     *
+     * @param complete 当前已完成字节数。
+     */
+    override fun setCompleted(complete: Long) {
+        progressSink.onProgress(
+            completedBytes = complete.coerceAtLeast(0L),
+            totalBytes = totalBytes,
+        )
+    }
     override fun cryptoGetTextPassword(): String = password ?: ""
 }
 

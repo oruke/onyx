@@ -17,6 +17,37 @@ import kotlin.test.assertTrue
  */
 class ArchiveServiceTest {
     /**
+     * 7-Zip 解压应把原生完成字节回调传递给任务进度接收器。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun reportsExtractionByteProgress() = runBlocking {
+        val content = ByteArray(EXTRACTION_TEST_SIZE) { index -> (index % TEST_BYTE_RANGE).toByte() }
+        val archive = createZipArchive(mapOf("payload.bin" to content))
+        val targetDirectory = Files.createTempDirectory("onyx-archive-progress")
+        val events = mutableListOf<Pair<Long, Long>>()
+        try {
+            val result = ArchiveService().extract(
+                archivePath = archive.toString(),
+                targetDirectory = targetDirectory.toString(),
+                progressSink = { completedBytes, totalBytes ->
+                    events += completedBytes to totalBytes
+                },
+            )
+
+            assertTrue(result.isSuccess)
+            assertTrue(events.isNotEmpty())
+            assertTrue(events.last().first > 0L)
+            assertEquals(content.size.toLong(), events.last().second)
+            assertTrue(Files.exists(targetDirectory.resolve("payload.bin")))
+        } finally {
+            archive.toFile().delete()
+            targetDirectory.toFile().deleteRecursively()
+        }
+    }
+
+    /**
      * 校验 zstd tar 复合扩展名能进入压缩包 provider。
      *
      * @return 无返回值。
@@ -141,6 +172,13 @@ class ArchiveServiceTest {
 
         assertTrue(failure is ArchiveRuntimeException)
         assertTrue(failure.message?.contains("系统 tar 不可用") == true)
+    }
+
+    private companion object {
+        /** 让原生解压产生多次进度采样的测试内容大小。 */
+        const val EXTRACTION_TEST_SIZE = 2 * 1024 * 1024
+        /** 生成稳定二进制内容的取值范围。 */
+        const val TEST_BYTE_RANGE = 251
     }
 }
 

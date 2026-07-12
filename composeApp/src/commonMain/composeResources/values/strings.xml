@@ -229,9 +229,21 @@
     <string name="label_task_status_failed">Failed</string>
     <string name="label_task_status_cancelled">Cancelled</string>
     <string name="label_task_errors_count">%1$d error(s)</string>
+    <string name="label_task_overall_progress">Overall progress</string>
+    <string name="label_task_recent">Recent jobs</string>
+    <string name="label_task_running_count">%1$d running</string>
+    <string name="label_task_queued_count">%1$d queued</string>
+    <string name="label_task_paused_count">%1$d paused</string>
+    <string name="label_task_remaining_time">%1$s left</string>
+    <string name="label_task_item_progress">%1$d / %2$d items</string>
+    <string name="format_duration_seconds">%1$ds</string>
+    <string name="format_duration_minutes_seconds">%1$dm %2$ds</string>
+    <string name="format_duration_hours_minutes">%1$dh %2$dm</string>
     <string name="action_pause_task">Pause</string>
     <string name="action_resume_task">Resume</string>
     <string name="action_retry_task">Retry</string>
+    <string name="action_remove_task">Remove</string>
+    <string name="action_clear_finished_tasks">Clear finished tasks</string>
 
     <string name="label_directory_badge">Folder</string>
     <string name="label_file_badge">File</string>

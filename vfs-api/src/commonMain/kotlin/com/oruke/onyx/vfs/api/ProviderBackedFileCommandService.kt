@@ -1,32 +1,32 @@
 package com.oruke.onyx.vfs.api
 
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileKind
-import kotlinx.coroutines.ensureActive
-import kotlin.coroutines.cancellation.CancellationException
-import kotlin.coroutines.coroutineContext
 
 /**
- * 基于 VFS provider 路由的文件命令服务。
+ * 基于 VFS Provider 路由的文件命令服务。
  *
- * 该服务负责在多个 provider 之间选择具体命令实现，并在 provider 边界不一致时通过内容流执行跨 provider 复制或移动。
- *
- * @param services 可路由文件命令服务列表。
- * @param contentServices 可路由内容读写服务列表。
- * @param providerRegistry provider 注册表，用于目录递归与错误语义构建。
- * @param progressSink 跨 provider 传输进度接收器。
+ * 同 Provider 操作优先调用其原生命令；跨 Provider 操作交给内容流传输服务执行。
  */
 class ProviderBackedFileCommandService(
+    /** 可路由文件命令服务列表。 */
     services: List<RoutableFileCommandService>,
+    /** 可路由内容读写服务列表。 */
     contentServices: List<RoutableVfsContentService> = emptyList(),
+    /** Provider 注册表，用于目录递归与错误语义构建。 */
     private val providerRegistry: VfsProviderRegistry? = null,
-    private val progressSink: CrossProviderTransferProgressSink = CrossProviderTransferProgressSink.NoOp,
-) : FileCommandService {
-    /** 按构造入参固定下来的命令服务快照，避免运行期外部列表变化影响路由。 */
+    /** 跨 Provider 阶段进度接收器。 */
+    progressSink: CrossProviderTransferProgressSink = CrossProviderTransferProgressSink.NoOp,
+) : ProgressAwareFileCommandService {
+    /** 固定的命令服务快照，避免运行期外部列表变化影响路由。 */
     private val services = services.toList()
 
-    /** 按构造入参固定下来的内容服务快照，用于跨 provider 读写。 */
-    private val contentServices = contentServices.toList()
+    /** 跨 Provider 内容流传输实现。 */
+    private val crossProviderTransferService = CrossProviderFileTransferService(
+        commandServices = this.services,
+        contentServices = contentServices,
+        providerRegistry = providerRegistry,
+        progressSink = progressSink,
+    )
 
     init {
         require(this.services.isNotEmpty()) {
@@ -35,26 +35,29 @@ class ProviderBackedFileCommandService(
     }
 
     /**
-     * 复制文件或目录到目标目录。
+     * 复制文件或目录并上报可观测的字节增量。
      *
      * @param entries 待复制条目。
      * @param targetDirectoryLocation 目标目录位置。
      * @param conflictStrategy 名称冲突处理策略。
+     * @param progressSink 字节进度接收器。
      * @return 操作结果。
      */
-    override suspend fun copy(
+    override suspend fun copyWithProgress(
         entries: List<VFile>,
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
     ): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         return runCatching {
             entries.groupByCommandService(VfsProviderCapability.COPY).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    val copied = copyAcrossProviders(
+                    val copied = crossProviderTransferService.copy(
                         entries = serviceEntries,
                         targetDirectoryLocation = targetDirectoryLocation,
                         conflictStrategy = conflictStrategy,
+                        byteProgressSink = progressSink,
                     ).getOrThrow()
                     if (!copied) {
                         throw crossProviderUnsupportedFor(
@@ -63,39 +66,43 @@ class ProviderBackedFileCommandService(
                             capability = VfsProviderCapability.COPY,
                         )
                     }
-                    return@forEach
+                } else {
+                    service.copyWithOptionalProgress(
+                        entries = serviceEntries,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                        conflictStrategy = conflictStrategy,
+                        progressSink = progressSink,
+                    ).getOrThrow()
                 }
-                service.copy(
-                    entries = serviceEntries,
-                    targetDirectoryLocation = targetDirectoryLocation,
-                    conflictStrategy = conflictStrategy,
-                ).getOrThrow()
             }
         }
     }
 
     /**
-     * 移动文件或目录到目标目录。
+     * 移动文件或目录，并在回退为内容复制时上报字节增量。
      *
      * @param entries 待移动条目。
      * @param targetDirectoryLocation 目标目录位置。
      * @param conflictStrategy 名称冲突处理策略。
+     * @param progressSink 字节进度接收器。
      * @return 操作结果。
      */
-    override suspend fun move(
+    override suspend fun moveWithProgress(
         entries: List<VFile>,
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
     ): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         return runCatching {
             entries.groupByCommandService(VfsProviderCapability.MOVE).forEach { (service, serviceEntries) ->
                 if (!service.supports(targetDirectoryLocation)) {
-                    val moved = moveAcrossProviders(
+                    val moved = crossProviderTransferService.move(
                         sourceCommandService = service,
                         entries = serviceEntries,
                         targetDirectoryLocation = targetDirectoryLocation,
                         conflictStrategy = conflictStrategy,
+                        byteProgressSink = progressSink,
                     ).getOrThrow()
                     if (!moved) {
                         throw crossProviderUnsupportedFor(
@@ -104,13 +111,14 @@ class ProviderBackedFileCommandService(
                             capability = VfsProviderCapability.MOVE,
                         )
                     }
-                    return@forEach
+                } else {
+                    service.moveWithOptionalProgress(
+                        entries = serviceEntries,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                        conflictStrategy = conflictStrategy,
+                        progressSink = progressSink,
+                    ).getOrThrow()
                 }
-                service.move(
-                    entries = serviceEntries,
-                    targetDirectoryLocation = targetDirectoryLocation,
-                    conflictStrategy = conflictStrategy,
-                ).getOrThrow()
             }
         }
     }
@@ -184,7 +192,7 @@ class ProviderBackedFileCommandService(
     /**
      * 按源条目位置把条目分配到具体命令服务。
      *
-     * @param capability 当前操作需要的 provider 能力。
+     * @param capability 当前操作需要的 Provider 能力。
      * @return 命令服务到条目列表的映射。
      */
     private fun List<VFile>.groupByCommandService(
@@ -194,10 +202,54 @@ class ProviderBackedFileCommandService(
     }
 
     /**
+     * 在 Provider 支持进度契约时调用其进度版本，否则保留原生命令语义。
+     *
+     * @param entries 待复制条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @param progressSink 字节进度接收器。
+     * @return 操作结果。
+     */
+    private suspend fun RoutableFileCommandService.copyWithOptionalProgress(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
+    ): Result<Unit> {
+        return if (this is ProgressAwareFileCommandService) {
+            copyWithProgress(entries, targetDirectoryLocation, conflictStrategy, progressSink)
+        } else {
+            copy(entries, targetDirectoryLocation, conflictStrategy)
+        }
+    }
+
+    /**
+     * 在 Provider 支持进度契约时调用其进度版本，否则保留原生命令语义。
+     *
+     * @param entries 待移动条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @param progressSink 字节进度接收器。
+     * @return 操作结果。
+     */
+    private suspend fun RoutableFileCommandService.moveWithOptionalProgress(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
+    ): Result<Unit> {
+        return if (this is ProgressAwareFileCommandService) {
+            moveWithProgress(entries, targetDirectoryLocation, conflictStrategy, progressSink)
+        } else {
+            move(entries, targetDirectoryLocation, conflictStrategy)
+        }
+    }
+
+    /**
      * 查找能处理指定位置的命令服务。
      *
      * @param location VFS 位置。
-     * @param capability 当前操作需要的 provider 能力。
+     * @param capability 当前操作需要的 Provider 能力。
      * @return 命令服务或明确错误。
      */
     private fun serviceFor(
@@ -213,351 +265,10 @@ class ProviderBackedFileCommandService(
     }
 
     /**
-     * 使用内容服务执行跨 provider 复制。
-     *
-     * @param entries 待复制条目。
-     * @param targetDirectoryLocation 目标目录位置。
-     * @param conflictStrategy 名称冲突处理策略。
-     * @return true 表示已完成跨 provider 复制，false 表示当前配置不支持该路径。
-     */
-    private suspend fun copyAcrossProviders(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        conflictStrategy: TransferConflictStrategy,
-    ): Result<Boolean> {
-        val hasDirectories = entries.any { entry -> entry.kind == VFileKind.DIRECTORY }
-        val canCopyAcrossProviders = contentServices.isNotEmpty() && (!hasDirectories || providerRegistry != null)
-        return if (!canCopyAcrossProviders) {
-            Result.success(false)
-        } else {
-            copyAcrossProvidersWithContentService(
-                entries = entries,
-                targetDirectoryLocation = targetDirectoryLocation,
-                conflictStrategy = conflictStrategy,
-                hasDirectories = hasDirectories,
-            )
-        }
-    }
-
-    /**
-     * 使用目标内容服务执行已经通过前置能力检查的跨 Provider 复制。
-     *
-     * @param entries 待复制条目。
-     * @param targetDirectoryLocation 目标目录位置。
-     * @param conflictStrategy 名称冲突处理策略。
-     * @param hasDirectories 待复制条目中是否包含目录。
-     * @return 跨 Provider 复制结果。
-     */
-    private suspend fun copyAcrossProvidersWithContentService(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        conflictStrategy: TransferConflictStrategy,
-        hasDirectories: Boolean,
-    ): Result<Boolean> {
-        return contentServiceFor(targetDirectoryLocation, VfsProviderCapability.WRITE_CONTENT).fold(
-            onSuccess = { targetContentService ->
-                runCatching {
-                    val targetCommandService = if (hasDirectories) {
-                        serviceFor(targetDirectoryLocation, VfsProviderCapability.CREATE_DIRECTORY).getOrThrow()
-                    } else {
-                        null
-                    }
-                    val recorder = CrossProviderTransferRecorder(progressSink)
-                    entries.forEach { entry ->
-                        coroutineContext.ensureActive()
-                        runCatching {
-                            copyEntryAcrossProviders(
-                                entry = entry,
-                                targetDirectoryLocation = targetDirectoryLocation,
-                                targetContentService = targetContentService,
-                                targetCommandService = targetCommandService,
-                                conflictStrategy = conflictStrategy,
-                                recorder = recorder,
-                            )
-                        }.onFailure { failure ->
-                            failure.throwIfCancellation()
-                            recorder.recordFailure(
-                                sourceLocation = entry.location,
-                                targetLocation = targetDirectoryLocation,
-                                cause = failure,
-                            )
-                        }
-                    }
-                    recorder.throwIfFailed()
-                    true
-                }
-            },
-            onFailure = { failure ->
-                if (failure is VfsProviderNotFoundException) {
-                    Result.success(false)
-                } else {
-                    Result.failure(failure)
-                }
-            },
-        )
-    }
-
-    /**
-     * 递归复制一个跨 provider 条目。
-     *
-     * 目录需要依赖 provider 注册表列出子项，否则无法在不泄漏底层路径的前提下完成递归复制。
-     *
-     * @param entry 当前源条目。
-     * @param targetDirectoryLocation 目标父目录位置。
-     * @param targetContentService 目标 provider 内容写入服务。
-     * @param targetCommandService 目标 provider 目录创建服务。
-     * @param conflictStrategy 名称冲突处理策略。
-     * @param recorder 跨 provider 传输记录器。
-     */
-    private suspend fun copyEntryAcrossProviders(
-        entry: VFile,
-        targetDirectoryLocation: String,
-        targetContentService: RoutableVfsContentService,
-        targetCommandService: RoutableFileCommandService?,
-        conflictStrategy: TransferConflictStrategy,
-        recorder: CrossProviderTransferRecorder,
-    ) {
-        coroutineContext.ensureActive()
-        when (entry.kind) {
-            VFileKind.FILE -> copyFileAcrossProviders(
-                entry = entry,
-                targetDirectoryLocation = targetDirectoryLocation,
-                targetContentService = targetContentService,
-                conflictStrategy = conflictStrategy,
-                recorder = recorder,
-            )
-
-            VFileKind.DIRECTORY -> {
-                val directoryService = directoryServiceForCrossProviderCopy(
-                    targetCommandService = targetCommandService,
-                    targetDirectoryLocation = targetDirectoryLocation,
-                )
-                val targetDirectory = resolveTargetDirectoryAcrossProviders(
-                    entry = entry,
-                    targetDirectoryLocation = targetDirectoryLocation,
-                    directoryService = directoryService,
-                    conflictStrategy = conflictStrategy,
-                    recorder = recorder,
-                ) ?: return
-                val children = childrenForCrossProviderCopy(entry, targetDirectoryLocation)
-                children.forEach { child ->
-                    coroutineContext.ensureActive()
-                    runCatching {
-                        copyEntryAcrossProviders(
-                            entry = child,
-                            targetDirectoryLocation = targetDirectory.location,
-                            targetContentService = targetContentService,
-                            targetCommandService = targetCommandService,
-                            conflictStrategy = conflictStrategy,
-                            recorder = recorder,
-                        )
-                    }.onFailure { failure ->
-                        failure.throwIfCancellation()
-                        recorder.recordFailure(
-                            sourceLocation = child.location,
-                            targetLocation = targetDirectory.location,
-                            cause = failure,
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 取得跨 Provider 目录复制所需的目标目录命令服务。
-     *
-     * @param targetCommandService 已路由的目标命令服务。
-     * @param targetDirectoryLocation 目标父目录位置。
-     * @return 可创建目录的目标命令服务。
-     */
-    private fun directoryServiceForCrossProviderCopy(
-        targetCommandService: RoutableFileCommandService?,
-        targetDirectoryLocation: String,
-    ): RoutableFileCommandService {
-        return targetCommandService
-            ?: throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.CREATE_DIRECTORY)
-    }
-
-    /**
-     * 通过 Provider 注册表列出跨 Provider 目录复制的子项。
-     *
-     * @param entry 当前源目录。
-     * @param targetDirectoryLocation 目标父目录位置，用于构建失败语义。
-     * @return 当前源目录的直接子项。
-     */
-    private suspend fun childrenForCrossProviderCopy(
-        entry: VFile,
-        targetDirectoryLocation: String,
-    ): List<VFile> {
-        return providerRegistry
-            ?.list(entry.location)
-            ?.getOrThrow()
-            ?: throw crossProviderUnsupportedFor(
-                sourceLocation = entry.location,
-                targetLocation = targetDirectoryLocation,
-                capability = VfsProviderCapability.COPY,
-            )
-    }
-
-    /**
-     * 复制单个跨 provider 文件。
-     *
-     * @param entry 当前源文件。
-     * @param targetDirectoryLocation 目标父目录位置。
-     * @param targetContentService 目标 provider 内容写入服务。
-     * @param conflictStrategy 名称冲突处理策略。
-     * @param recorder 跨 provider 传输记录器。
-     */
-    private suspend fun copyFileAcrossProviders(
-        entry: VFile,
-        targetDirectoryLocation: String,
-        targetContentService: RoutableVfsContentService,
-        conflictStrategy: TransferConflictStrategy,
-        recorder: CrossProviderTransferRecorder,
-    ) {
-        val sourceContentService = contentServiceFor(
-            location = entry.location,
-            capability = VfsProviderCapability.READ_CONTENT,
-        ).getOrThrow()
-        val source = sourceContentService.readFile(entry).getOrThrow()
-        val written = targetContentService.writeFile(
-            parentLocation = targetDirectoryLocation,
-            name = source.name,
-            chunks = source.chunks,
-            conflictStrategy = conflictStrategy,
-        ).getOrThrow()
-        if (written == null) {
-            recorder.recordSkipped(
-                sourceLocation = entry.location,
-                targetLocation = targetFileLocation(targetDirectoryLocation, source.name),
-            )
-        } else {
-            recorder.recordCopiedFile(
-                sourceLocation = entry.location,
-                targetLocation = written.location,
-            )
-        }
-    }
-
-    /**
-     * 按统一冲突策略解析跨 provider 目录复制的目标目录。
-     *
-     * @param entry 当前源目录。
-     * @param targetDirectoryLocation 目标父目录位置。
-     * @param directoryService 目标 provider 目录命令服务。
-     * @param conflictStrategy 名称冲突处理策略。
-     * @param recorder 跨 provider 传输记录器。
-     * @return 目标目录；按 SKIP 跳过时返回 null。
-     */
-    private suspend fun resolveTargetDirectoryAcrossProviders(
-        entry: VFile,
-        targetDirectoryLocation: String,
-        directoryService: RoutableFileCommandService,
-        conflictStrategy: TransferConflictStrategy,
-        recorder: CrossProviderTransferRecorder,
-    ): VFile? {
-        val existingEntries = providerRegistry
-            ?.list(targetDirectoryLocation)
-            ?.getOrThrow()
-            ?: throw crossProviderUnsupportedFor(
-                sourceLocation = entry.location,
-                targetLocation = targetDirectoryLocation,
-                capability = VfsProviderCapability.COPY,
-            )
-        val existingByName = existingEntries.associateBy { candidate -> candidate.name }
-        val existing = existingByName[entry.name]
-        val targetDirectory = when {
-            existing == null -> directoryService.createDirectory(targetDirectoryLocation, entry.name).getOrThrow()
-            conflictStrategy == TransferConflictStrategy.SKIP -> {
-                recorder.recordSkipped(
-                    sourceLocation = entry.location,
-                    targetLocation = existing.location,
-                )
-                return null
-            }
-            conflictStrategy == TransferConflictStrategy.OVERWRITE && existing.kind == VFileKind.DIRECTORY -> existing
-            conflictStrategy == TransferConflictStrategy.OVERWRITE -> {
-                directoryService.delete(listOf(existing)).getOrThrow()
-                directoryService.createDirectory(targetDirectoryLocation, entry.name).getOrThrow()
-            }
-            else -> {
-                val targetName = entry.name.nextDirectoryCopyName(existingByName.keys)
-                directoryService.createDirectory(targetDirectoryLocation, targetName).getOrThrow()
-            }
-        }
-        recorder.recordDirectory(
-            sourceLocation = entry.location,
-            targetLocation = targetDirectory.location,
-        )
-        return targetDirectory
-    }
-
-    /**
-     * 拼接目标文件位置，仅用于写入服务返回空结果时补齐进度位置。
-     *
-     * @param parentLocation 目标父目录位置。
-     * @param name 目标文件名。
-     * @return 目标文件位置。
-     */
-    private fun targetFileLocation(
-        parentLocation: String,
-        name: String,
-    ): String {
-        return "${parentLocation.trimEnd('/')}/$name"
-    }
-
-    /**
-     * 使用“复制成功后删除源条目”的语义执行跨 provider 移动。
-     *
-     * @param sourceCommandService 源 provider 命令服务。
-     * @param entries 待移动条目。
-     * @param targetDirectoryLocation 目标目录位置。
-     * @param conflictStrategy 名称冲突处理策略。
-     * @return true 表示完成跨 provider 移动，false 表示当前配置不支持。
-     */
-    private suspend fun moveAcrossProviders(
-        sourceCommandService: RoutableFileCommandService,
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        conflictStrategy: TransferConflictStrategy,
-    ): Result<Boolean> {
-        return copyAcrossProviders(
-            entries = entries,
-            targetDirectoryLocation = targetDirectoryLocation,
-            conflictStrategy = conflictStrategy,
-        ).mapCatching { copied ->
-            if (copied) {
-                sourceCommandService.delete(entries).getOrThrow()
-            }
-            copied
-        }
-    }
-
-    /**
-     * 查找能处理指定位置的内容服务。
-     *
-     * @param location VFS 位置。
-     * @param capability 当前操作需要的 provider 能力。
-     * @return 内容服务或明确错误。
-     */
-    private fun contentServiceFor(
-        location: String,
-        capability: VfsProviderCapability,
-    ): Result<RoutableVfsContentService> {
-        val service = contentServices.firstOrNull { candidate -> candidate.supports(location) }
-        return if (service != null) {
-            Result.success(service)
-        } else {
-            Result.failure(unsupportedFor(location, capability))
-        }
-    }
-
-    /**
      * 构建指定位置不支持当前能力的错误。
      *
      * @param location VFS 位置。
-     * @param capability 当前操作需要的 provider 能力。
+     * @param capability 当前操作需要的 Provider 能力。
      * @return 语义化 VFS 错误。
      */
     private fun unsupportedFor(
@@ -579,11 +290,11 @@ class ProviderBackedFileCommandService(
     }
 
     /**
-     * 构建跨 provider 传输不支持的错误。
+     * 构建跨 Provider 传输不支持的错误。
      *
      * @param sourceLocation 源位置。
      * @param targetLocation 目标位置。
-     * @param capability 当前操作需要的 provider 能力。
+     * @param capability 当前操作需要的 Provider 能力。
      * @return 语义化 VFS 错误。
      */
     private fun crossProviderUnsupportedFor(
@@ -607,11 +318,4 @@ class ProviderBackedFileCommandService(
             unsupportedFor(targetLocation, capability)
         }
     }
-}
-
-/**
- * 在聚合失败前重新抛出协程取消，避免把取消误报为传输失败。
- */
-private fun Throwable.throwIfCancellation() {
-    if (this is CancellationException) throw this
 }

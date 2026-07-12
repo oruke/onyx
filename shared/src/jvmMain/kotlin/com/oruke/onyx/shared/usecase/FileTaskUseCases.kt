@@ -1,12 +1,9 @@
 package com.oruke.onyx.shared.usecase
 
-import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.archive.ArchiveProgressSink
 import com.oruke.onyx.vfs.api.FileCommandService
-import com.oruke.onyx.vfs.api.TransferConflictStrategy
-import com.oruke.onyx.vfs.api.TrashMoveRecord
 import com.oruke.onyx.vfs.api.TrashService
-import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
@@ -14,131 +11,9 @@ import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.flow
 import java.io.File
-
-/** 后台文件任务向 UI 发送的进度快照。 */
-data class TaskProgress(
-    /** 当前任务状态。 */
-    val status: BackgroundTaskStatus,
-    /** 当前阶段的国际化详情。 */
-    val detail: I18nMessage,
-    /** 0 到 1 的可选总体进度。 */
-    val progress: Float? = null,
-    /** 当前处理文件名。 */
-    val currentFileName: String? = null,
-    /** 已处理条目数。 */
-    val processedCount: Int? = null,
-    /** 已处理字节数。 */
-    val processedBytes: Long? = null,
-    /** 总字节数。 */
-    val totalBytes: Long? = null,
-    /** 当前步骤产生的回收站记录。 */
-    val trashRecords: List<TrashMoveRecord> = emptyList(),
-)
-
-/** 按条目执行跨 provider 复制、移动或提取的后台任务用例。 */
-class FileTransferUseCase(
-    /** 统一文件命令服务。 */
-    private val fileCommandService: FileCommandService,
-    /** 用于计算跨 provider 条目总大小的注册表。 */
-    private val providerRegistry: VfsProviderRegistry,
-) {
-    /**
-     * 顺序传输条目并按文件与字节数发送进度。
-     *
-     * @param request 传输条目、目标、操作和冲突策略。
-     * @param awaitReady 每个条目开始前等待任务调度器放行的回调。
-     * @return 任务进度冷流。
-     */
-    fun execute(
-        request: FileTransferRequest,
-        awaitReady: suspend () -> Unit,
-    ): Flow<TaskProgress> = flow {
-        val entryBytesById = request.entries.associate { entry ->
-            entry.id to providerRegistry.totalSizeBytes(listOf(entry)).getOrThrow()
-        }
-        val totalBytes = entryBytesById.values.sum()
-        emit(
-            TaskProgress(
-                status = BackgroundTaskStatus.RUNNING,
-                detail = I18nMessage(
-                    MessageKey.MSG_STRING_LITERAL,
-                    buildTransferTaskDetail(request.entries, request.targetDirectoryLocation),
-                ),
-                progress = 0f,
-                totalBytes = totalBytes,
-            )
-        )
-
-        var accumulatedBytes = 0L
-        request.entries.forEachIndexed { index, entry ->
-            currentCoroutineContext().ensureActive()
-            awaitReady()
-
-            val entryBytes = entryBytesById[entry.id] ?: entry.sizeBytes ?: 0L
-            val conflictStrategy = request.conflictStrategies[entry.id] ?: TransferConflictStrategy.KEEP_BOTH
-            emit(
-                TaskProgress(
-                    status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
-                    progress = progressValue(index, request.entries.size),
-                    currentFileName = entry.name,
-                    processedCount = index,
-                    processedBytes = accumulatedBytes,
-                    totalBytes = totalBytes,
-                )
-            )
-
-            when (request.operation) {
-                FileTransferOperation.COPY,
-                FileTransferOperation.EXTRACT -> fileCommandService.copy(
-                    entries = listOf(entry),
-                    targetDirectoryLocation = request.targetDirectoryLocation,
-                    conflictStrategy = conflictStrategy,
-                )
-
-                FileTransferOperation.MOVE -> fileCommandService.move(
-                    entries = listOf(entry),
-                    targetDirectoryLocation = request.targetDirectoryLocation,
-                    conflictStrategy = conflictStrategy,
-                )
-            }.getOrThrow()
-
-            accumulatedBytes += entryBytes
-            emit(
-                TaskProgress(
-                    status = BackgroundTaskStatus.RUNNING,
-                    detail = I18nMessage(
-                        MessageKey.MSG_STRING_LITERAL,
-                        "${entry.name} -> ${request.targetDirectoryLocation}",
-                    ),
-                    progress = if (totalBytes > 0L) {
-                        accumulatedBytes.toFloat() / totalBytes
-                    } else {
-                        progressValue(index + 1, request.entries.size)
-                    },
-                    currentFileName = entry.name,
-                    processedCount = index + 1,
-                    processedBytes = accumulatedBytes,
-                    totalBytes = totalBytes,
-                )
-            )
-        }
-    }
-
-    /** 文件传输请求。 */
-    data class FileTransferRequest(
-        /** 待传输条目。 */
-        val entries: List<VFile>,
-        /** 目标目录位置。 */
-        val targetDirectoryLocation: String,
-        /** 复制、移动或提取操作。 */
-        val operation: FileTransferOperation,
-        /** 按条目 ID 指定的冲突策略。 */
-        val conflictStrategies: Map<String, TransferConflictStrategy>,
-    )
-}
 
 /** 永久删除或移入系统回收站的后台任务用例。 */
 class DeleteEntriesUseCase(
@@ -248,12 +123,12 @@ class ArchiveExtractionUseCase(
     fun extractEntriesToDirectory(
         request: ArchiveEntryExtractionRequest,
         resolvePassword: suspend (ArchivePasswordRequest) -> String,
-    ): Flow<TaskProgress> = flow {
-        emit(
+    ): Flow<TaskProgress> = channelFlow {
+        send(
             TaskProgress(
                 status = BackgroundTaskStatus.RUNNING,
                 detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, request.targetDirectoryLocation),
-                progress = 0f,
+                progress = null,
             )
         )
 
@@ -270,11 +145,12 @@ class ArchiveExtractionUseCase(
             if (innerPaths.isEmpty()) continue
 
             val archiveName = File(archivePath).name
-            emit(
+            send(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, group.first().third.name),
-                    progress = progressValue(processedCount, request.entries.size),
+                    progress = processedCount.takeIf { count -> count > 0 }
+                        ?.let { count -> progressValue(count, request.entries.size) },
                     currentFileName = archiveName,
                     processedCount = processedCount,
                 )
@@ -285,15 +161,25 @@ class ArchiveExtractionUseCase(
             } else {
                 null
             }
+            val progressReporter = ArchiveTaskProgressReporter(
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, archiveName),
+                currentFileName = archiveName,
+                completedUnits = processedCount,
+                currentUnitWeight = group.size,
+                totalUnits = request.entries.size,
+                exposeByteTotals = grouped.size == 1,
+                onTaskProgress = { progress -> trySend(progress) },
+            )
             archiveService.extractEntriesToTemp(
                 archivePath = archivePath,
                 entryPaths = innerPaths,
                 targetDir = request.targetDirectoryLocation,
                 password = password,
+                progressSink = progressReporter,
             ).getOrThrow()
 
             processedCount += group.size
-            emit(
+            send(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, archiveName),
@@ -315,21 +201,22 @@ class ArchiveExtractionUseCase(
     fun extractArchiveFiles(
         request: ArchiveFileExtractionRequest,
         resolvePassword: suspend (ArchivePasswordRequest) -> String,
-    ): Flow<TaskProgress> = flow {
-        emit(
+    ): Flow<TaskProgress> = channelFlow {
+        send(
             TaskProgress(
                 status = BackgroundTaskStatus.RUNNING,
                 detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(request.archiveEntries)),
-                progress = 0f,
+                progress = null,
             )
         )
         request.archiveEntries.forEachIndexed { index, entry ->
             currentCoroutineContext().ensureActive()
-            emit(
+            send(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
-                    progress = progressValue(index, request.archiveEntries.size),
+                    progress = index.takeIf { processed -> processed > 0 }
+                        ?.let { processed -> progressValue(processed, request.archiveEntries.size) },
                     currentFileName = entry.name,
                     processedCount = index,
                 )
@@ -340,8 +227,22 @@ class ArchiveExtractionUseCase(
             } else {
                 null
             }
-            request.extractAction(entry, request.currentLocation, password).getOrThrow()
-            emit(
+            val progressReporter = ArchiveTaskProgressReporter(
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
+                currentFileName = entry.name,
+                completedUnits = index,
+                currentUnitWeight = 1,
+                totalUnits = request.archiveEntries.size,
+                exposeByteTotals = request.archiveEntries.size == 1,
+                onTaskProgress = { progress -> trySend(progress) },
+            )
+            request.extractAction(
+                entry,
+                request.currentLocation,
+                password,
+                progressReporter,
+            ).getOrThrow()
+            send(
                 TaskProgress(
                     status = BackgroundTaskStatus.RUNNING,
                     detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
@@ -368,7 +269,7 @@ class ArchiveExtractionUseCase(
         /** 面板当前目录。 */
         val currentLocation: String,
         /** 单个压缩文件的实际提取动作。 */
-        val extractAction: suspend (VFile, String, String?) -> Result<Unit>,
+        val extractAction: suspend (VFile, String, String?, ArchiveProgressSink) -> Result<Unit>,
     )
 
     /** 加密压缩包的密码请求上下文。 */
@@ -387,7 +288,7 @@ class ArchiveExtractionUseCase(
  * @param totalCount 总数量。
  * @return 归一化进度；总数非正时返回 1。
  */
-private fun progressValue(
+internal fun progressValue(
     processedCount: Int,
     totalCount: Int,
 ): Float {

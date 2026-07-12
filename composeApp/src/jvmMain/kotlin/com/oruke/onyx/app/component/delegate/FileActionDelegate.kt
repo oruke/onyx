@@ -396,6 +396,8 @@ internal class FileActionDelegate(
             processedCount = progress.processedCount,
             processedBytes = progress.processedBytes,
             totalBytes = progress.totalBytes,
+            bytesPerSecond = progress.bytesPerSecond,
+            estimatedRemainingSeconds = progress.estimatedRemainingSeconds,
         )
         progress.currentFileName?.let { fileName ->
             taskOrchestrator.updateTaskFields(taskId) { task ->
