@@ -18,6 +18,11 @@ class ClipboardManager {
     /** 当前是否有待粘贴内容。 */
     val canPaste: Boolean get() = _clipboard.value != null
 
+    /**
+     * 暂存复制条目并同步到系统剪贴板。
+     *
+     * @param entries 待复制条目。
+     */
     fun stageCopy(entries: List<VFile>) {
         if (entries.isEmpty()) return
         _clipboard.value = ClipboardPayload(
@@ -27,6 +32,11 @@ class ClipboardManager {
         writeToSystemClipboard(entries, isCut = false)
     }
 
+    /**
+     * 暂存剪切条目并同步到系统剪贴板。
+     *
+     * @param entries 待剪切条目。
+     */
     fun stageCut(entries: List<VFile>) {
         if (entries.isEmpty()) return
         _clipboard.value = ClipboardPayload(
@@ -36,14 +46,25 @@ class ClipboardManager {
         writeToSystemClipboard(entries, isCut = true)
     }
 
+    /**
+     * 读取当前内部剪贴板内容。
+     *
+     * @return 当前剪贴板载荷；没有内容时返回 `null`。
+     */
     fun consume(): ClipboardPayload? = _clipboard.value
 
+    /**
+     * 在当前载荷为剪切操作时清空内部剪贴板。
+     */
     fun clearIfCut() {
         if (_clipboard.value?.operation == ClipboardOperation.CUT) {
             _clipboard.value = null
         }
     }
 
+    /**
+     * 无条件清空内部剪贴板。
+     */
     fun clear() {
         _clipboard.value = null
     }
@@ -64,17 +85,30 @@ class ClipboardManager {
                     transferable, null,
                 )
             }
-        } catch (e: Exception) {
+        } catch (e: IllegalStateException) {
             // 剪切板写入失败不应阻断内部操作
             OnyxLogger.warn("ClipboardManager", "系统剪切板写入失败", e)
+        } catch (e: java.awt.HeadlessException) {
+            OnyxLogger.warn("ClipboardManager", "当前环境没有系统剪切板", e)
+        } catch (e: SecurityException) {
+            OnyxLogger.warn("ClipboardManager", "系统剪切板访问被拒绝", e)
         }
     }
 
+    /**
+     * 内部文件剪贴板载荷。
+     */
     data class ClipboardPayload(
+        /** 剪贴板操作类型。 */
         val operation: ClipboardOperation,
+
+        /** 暂存的文件条目。 */
         val entries: List<VFile>,
     )
 
+    /**
+     * 内部文件剪贴板操作类型。
+     */
     enum class ClipboardOperation {
         COPY,
         CUT,

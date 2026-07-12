@@ -147,6 +147,7 @@ internal sealed interface RootDialogState {
         val editingRemoteConnectionId: String? = null,
         val remoteConnectionTestState: RemoteConnectionTestState = RemoteConnectionTestState.Idle,
         val remoteConnectionError: RemoteConnectionDialogError? = null,
+        val saving: Boolean = false,
     ) : RootDialogState
 
     data class BatchRename(
@@ -173,6 +174,7 @@ internal sealed interface RootDialogState {
         val draft: RemoteCredentialsDraft = RemoteCredentialsDraft(),
         val rejected: Boolean = false,
         val error: RemoteCredentialsDialogError? = null,
+        val submitting: Boolean = false,
     ) : RootDialogState
 }
 
@@ -190,15 +192,26 @@ internal data class RemoteCredentialsDraft(
 internal enum class RemoteCredentialsDialogError {
     USERNAME_EMPTY,
     SYSTEM_KEYRING_UNAVAILABLE,
+    CREDENTIAL_SAVE_FAILED,
 }
 
+/** 网络位置编辑草稿，密钥仅保留在当前窗口内存中。 */
 internal data class RemoteConnectionDraft(
+    /** 用户可见连接名称。 */
     val name: String = "",
+    /** 连接协议。 */
     val protocol: RemoteConnectionProtocol = RemoteConnectionProtocol.SMB,
+    /** 远程位置。 */
     val location: String = "",
+    /** 用户名或 S3 Access Key ID。 */
     val username: String = "",
+    /** 密码或 S3 Secret Access Key。 */
     val secret: String = "",
+    /** 用户是否实际修改过密钥字段，用于区分“保持原密码”和“写入空密码”。 */
+    val secretChanged: Boolean = false,
+    /** SMB 域或 S3 Region。 */
     val domain: String = "",
+    /** 凭据保存策略。 */
     val savePolicy: RemoteConnectionSavePolicy = RemoteConnectionSavePolicy.SESSION,
 )
 
@@ -221,6 +234,7 @@ internal enum class RemoteConnectionDialogError {
     LOCATION_EMPTY,
     USERNAME_EMPTY,
     SYSTEM_KEYRING_UNAVAILABLE,
+    CREDENTIAL_SAVE_FAILED,
 }
 
 internal sealed interface RootIntent {
@@ -468,16 +482,8 @@ internal sealed interface RootIntent {
     ) : RootIntent
 }
 
-internal interface RootComponent {
-    val state: StateFlow<RootState>
-    val imageViewerState: StateFlow<ImageViewerState>
-    val primaryPane: PaneComponent
-    val secondaryPane: PaneComponent
-
-    fun dispatch(intent: RootIntent)
-
-    // ── 打开方式 ──────────────────────────────────────────────────────────
-
+/** 平台菜单、打开方式、拖放和连接测试能力。 */
+internal interface RootPlatformServices {
     suspend fun listOpenWithApps(entry: VFile): List<OpenWithApp>
 
     fun supportsOpenWith(entry: VFile): Boolean
@@ -490,6 +496,11 @@ internal interface RootComponent {
 
     fun prepareExternalDrag(entries: List<VFile>): Boolean
 
+    suspend fun testRemoteConnection(request: VfsConnectionTestRequest): VfsConnectionTestResult
+}
+
+/** 路径展示、文件类型识别和预览读取能力。 */
+internal interface RootPresentationServices {
     fun isArchiveFileName(fileName: String): Boolean
 
     fun isImageFileName(fileName: String): Boolean
@@ -501,8 +512,6 @@ internal interface RootComponent {
     fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>
 
     fun resolveTransferOperation(sourceLocation: String, targetLocation: String): FileTransferOperation
-
-    suspend fun testRemoteConnection(request: VfsConnectionTestRequest): VfsConnectionTestResult
 
     suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult
 
@@ -517,173 +526,13 @@ internal interface RootComponent {
     suspend fun readImageSize(entry: VFile): IntSize?
 }
 
-internal fun RootComponent.setLayoutMode(mode: PaneLayoutMode) = dispatch(RootIntent.SetLayoutMode(mode))
-
-internal fun RootComponent.setPaneSplitFraction(fraction: Float) = dispatch(RootIntent.SetPaneSplitFraction(fraction))
-
-internal fun RootComponent.openSettings() = dispatch(RootIntent.OpenSettings)
-
-internal fun RootComponent.updateSettingsDraft(draft: OnyxSettings) = dispatch(RootIntent.UpdateSettingsDraft(draft))
-
-internal fun RootComponent.openRemoteConnections() = dispatch(RootIntent.OpenRemoteConnections)
-
-internal fun RootComponent.updateRemoteConnectionDraft(draft: RemoteConnectionDraft) =
-    dispatch(RootIntent.UpdateRemoteConnectionDraft(draft))
-
-internal fun RootComponent.editRemoteConnection(profile: RemoteConnectionProfile) =
-    dispatch(RootIntent.EditRemoteConnection(profile))
-
-internal fun RootComponent.newRemoteConnection() = dispatch(RootIntent.NewRemoteConnection)
-
-internal fun RootComponent.saveRemoteConnectionDraft() = dispatch(RootIntent.SaveRemoteConnectionDraft)
-
-internal fun RootComponent.testRemoteConnectionDraft() = dispatch(RootIntent.TestRemoteConnectionDraft)
-
-internal fun RootComponent.deleteRemoteConnection(id: String) = dispatch(RootIntent.DeleteRemoteConnection(id))
-
-internal fun RootComponent.openRemoteConnection(location: String) = dispatch(RootIntent.OpenRemoteConnection(location))
-
-internal fun RootComponent.activatePane(paneId: PaneId) = dispatch(RootIntent.ActivatePane(paneId))
-
-internal fun RootComponent.updateSettings(settings: OnyxSettings) = dispatch(RootIntent.UpdateSettings(settings))
-
-internal fun RootComponent.openLocationInActivePane(location: String) = dispatch(RootIntent.OpenLocationInActivePane(location))
-
-internal fun RootComponent.toggleFavoriteLocation(location: String) = dispatch(RootIntent.ToggleFavoriteLocation(location))
-
-internal fun RootComponent.toggleSidebarTreeNode(location: String) = dispatch(RootIntent.ToggleSidebarTreeNode(location))
-
-internal fun RootComponent.retrySidebarTreeNode(location: String) = dispatch(RootIntent.RetrySidebarTreeNode(location))
-
-internal fun RootComponent.beginCreateDirectoriesInPane(paneId: PaneId) =
-    dispatch(RootIntent.BeginCreateDirectoriesInPane(paneId))
-
-internal fun RootComponent.updateCreateDirectoriesDraft(draft: String) =
-    dispatch(RootIntent.UpdateCreateDirectoriesDraft(draft))
-
-internal fun RootComponent.confirmDialog() = dispatch(RootIntent.ConfirmDialog)
-
-internal fun RootComponent.dismissDialog() = dispatch(RootIntent.DismissDialog)
-
-internal fun RootComponent.resolveConflict(
-    strategy: TransferConflictStrategy,
-    applyToAll: Boolean,
-) = dispatch(RootIntent.ResolveConflict(strategy, applyToAll))
-
-internal fun RootComponent.moveTab(
-    sourcePaneId: PaneId,
-    tabId: String,
-    targetPaneId: PaneId,
-    targetIndex: Int,
-) = dispatch(RootIntent.MoveTab(sourcePaneId, tabId, targetPaneId, targetIndex))
-
-internal fun RootComponent.refreshActivePane() = dispatch(RootIntent.RefreshActivePane)
-
-internal fun RootComponent.togglePreviewPane() = dispatch(RootIntent.TogglePreviewPane)
-
-internal fun RootComponent.showSearchPanel() = dispatch(RootIntent.ShowSearchPanel)
-
-internal fun RootComponent.closeSearchPanel() = dispatch(RootIntent.CloseSearchPanel)
-
-internal fun RootComponent.updateSearchQuery(query: String) = dispatch(RootIntent.UpdateSearchQuery(query))
-
-internal fun RootComponent.executeSearch() = dispatch(RootIntent.ExecuteSearch)
-
-internal fun RootComponent.cancelSearch() = dispatch(RootIntent.CancelSearch)
-
-internal fun RootComponent.openSearchResult(entry: VFile) = dispatch(RootIntent.OpenSearchResult(entry))
-
-internal fun RootComponent.openSearchResultsAsCollection() = dispatch(RootIntent.OpenSearchResultsAsCollection)
-
-internal fun RootComponent.stageCopySelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCopySelectedInPane(paneId))
-
-internal fun RootComponent.stageCutSelectedInPane(paneId: PaneId) = dispatch(RootIntent.StageCutSelectedInPane(paneId))
-
-internal fun RootComponent.requestPasteIntoPane(paneId: PaneId) = dispatch(RootIntent.RequestPasteIntoPane(paneId))
-
-internal fun RootComponent.requestTransferSelectedToDirectory(
-    sourcePaneId: PaneId,
-    targetDirectoryLocation: String,
-    operation: FileTransferOperation,
-) = dispatch(RootIntent.RequestTransferSelectedToDirectory(sourcePaneId, targetDirectoryLocation, operation))
-
-internal fun RootComponent.requestTransferSourceToDestination(
-    operation: FileTransferOperation,
-) = dispatch(RootIntent.RequestTransferSourceToDestination(operation))
-
-internal fun RootComponent.requestDeleteSelectedInPane(paneId: PaneId) = dispatch(RootIntent.RequestDeleteSelectedInPane(paneId))
-
-internal fun RootComponent.extractSelectedInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSelectedInPane(paneId))
-
-internal fun RootComponent.extractToDirectoryInPane(paneId: PaneId) = dispatch(RootIntent.ExtractToDirectoryInPane(paneId))
-
-internal fun RootComponent.extractSmartInPane(paneId: PaneId) = dispatch(RootIntent.ExtractSmartInPane(paneId))
-
-internal fun RootComponent.submitArchivePassword(password: String) = dispatch(RootIntent.SubmitArchivePassword(password))
-
-internal fun RootComponent.updateRemoteCredentialsDraft(draft: RemoteCredentialsDraft) =
-    dispatch(RootIntent.UpdateRemoteCredentialsDraft(draft))
-
-internal fun RootComponent.submitRemoteCredentials() = dispatch(RootIntent.SubmitRemoteCredentials)
-
-internal fun RootComponent.batchRenameInPane(paneId: PaneId) = dispatch(RootIntent.BatchRenameInPane(paneId))
-
-internal fun RootComponent.executeBatchRename(
-    paneId: PaneId,
-    renameMap: List<Pair<VFile, String>>,
-) = dispatch(RootIntent.ExecuteBatchRename(paneId, renameMap))
-
-internal fun RootComponent.resetBatchRenameForContinue(paneId: PaneId) =
-    dispatch(RootIntent.ResetBatchRenameForContinue(paneId))
-
-internal fun RootComponent.dismissTask(taskId: String) = dispatch(RootIntent.DismissTask(taskId))
-
-internal fun RootComponent.cancelTask(taskId: String) = dispatch(RootIntent.CancelTask(taskId))
-
-internal fun RootComponent.pauseTask(taskId: String) = dispatch(RootIntent.PauseTask(taskId))
-
-internal fun RootComponent.resumeTask(taskId: String) = dispatch(RootIntent.ResumeTask(taskId))
-
-internal fun RootComponent.retryTask(taskId: String) = dispatch(RootIntent.RetryTask(taskId))
-
-internal fun RootComponent.clearAllTasks() = dispatch(RootIntent.ClearAllTasks)
-
-internal fun RootComponent.undoLastFileOperation() = dispatch(RootIntent.UndoLastFileOperation)
-
-internal fun RootComponent.redoLastFileOperation() = dispatch(RootIntent.RedoLastFileOperation)
-
-internal fun RootComponent.openImageViewer(
-    file: VFile,
-    allImages: List<VFile>,
-) = dispatch(RootIntent.OpenImageViewer(file, allImages))
-
-internal fun RootComponent.closeImageViewer() = dispatch(RootIntent.CloseImageViewer)
-
-internal fun RootComponent.imageViewerNext() = dispatch(RootIntent.ImageViewerNext)
-
-internal fun RootComponent.imageViewerPrevious() = dispatch(RootIntent.ImageViewerPrevious)
-
-internal fun RootComponent.imageViewerSetZoom(factor: Float) = dispatch(RootIntent.ImageViewerSetZoom(factor))
-
-internal fun RootComponent.imageViewerSetFitMode(mode: ImageFitMode) = dispatch(RootIntent.ImageViewerSetFitMode(mode))
-
-internal fun RootComponent.imageViewerRotate(clockwise: Boolean) = dispatch(RootIntent.ImageViewerRotate(clockwise))
-
-internal fun RootComponent.openWithApp(
-    entry: VFile,
-    app: OpenWithApp,
-) = dispatch(RootIntent.OpenWithApp(entry, app))
-
-internal fun RootComponent.openWithChooser(entry: VFile) = dispatch(RootIntent.OpenWithChooser(entry))
-
-internal fun RootComponent.executeSystemMenuAction(
-    action: SystemMenuAction,
-    entries: List<VFile>,
-) = dispatch(RootIntent.ExecuteSystemMenuAction(action, entries))
-
-internal fun RootComponent.executeFileContextMenuCommand(
-    command: FileContextMenuCommand,
-    entries: List<VFile>,
-) = dispatch(RootIntent.ExecuteFileContextMenuCommand(command, entries))
-
-internal fun RootComponent.openTerminalAt(location: String) = dispatch(RootIntent.OpenTerminalAt(location))
+/** 根组件状态、子面板和统一意图入口。 */
+internal interface RootComponent : RootPlatformServices, RootPresentationServices {
+    val state: StateFlow<RootState>
+    val imageViewerState: StateFlow<ImageViewerState>
+    val primaryPane: PaneComponent
+    val secondaryPane: PaneComponent
+
+    fun dispatch(intent: RootIntent)
+
+}

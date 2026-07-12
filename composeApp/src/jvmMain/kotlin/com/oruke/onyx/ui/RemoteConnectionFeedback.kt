@@ -24,6 +24,8 @@ import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_remote_connection_error_location_required
 import onyx.composeapp.generated.resources.label_remote_connection_error_name_required
 import onyx.composeapp.generated.resources.label_remote_connection_error_username_required
+import onyx.composeapp.generated.resources.label_remote_connection_error_credential_save_failed
+import onyx.composeapp.generated.resources.label_remote_connection_saving
 import onyx.composeapp.generated.resources.label_remote_connection_test_failed
 import onyx.composeapp.generated.resources.label_remote_connection_test_ready
 import onyx.composeapp.generated.resources.label_remote_connection_test_success
@@ -37,17 +39,22 @@ import org.jetbrains.jewel.ui.component.Text
  *
  * @param testState 当前连接测试状态。
  * @param error 当前表单校验错误。
+ * @param saving 是否正在保存连接与凭据。
  */
 @Composable
 internal fun RemoteConnectionFeedback(
     testState: RemoteConnectionTestState,
     error: RemoteConnectionDialogError?,
+    saving: Boolean,
 ) {
     val palette = LocalOnyxPalette.current
-    val feedback = if (error != null) {
-        RemoteConnectionFeedbackValue(remoteConnectionErrorText(error), REMOTE_ERROR_COLOR)
-    } else {
-        when (testState) {
+    val feedback = when {
+        error != null -> RemoteConnectionFeedbackValue(remoteConnectionErrorText(error), REMOTE_ERROR_COLOR)
+        saving -> RemoteConnectionFeedbackValue(
+            text = stringResource(Res.string.label_remote_connection_saving),
+            color = palette.accent,
+        )
+        else -> when (testState) {
             RemoteConnectionTestState.Idle -> RemoteConnectionFeedbackValue(
                 text = stringResource(Res.string.label_remote_connection_test_ready),
                 color = palette.mutedForeground,
@@ -111,6 +118,8 @@ private fun remoteConnectionErrorText(error: RemoteConnectionDialogError): Strin
             stringResource(Res.string.label_remote_connection_error_username_required)
         RemoteConnectionDialogError.SYSTEM_KEYRING_UNAVAILABLE ->
             stringResource(Res.string.label_remote_credentials_system_keyring_unavailable)
+        RemoteConnectionDialogError.CREDENTIAL_SAVE_FAILED ->
+            stringResource(Res.string.label_remote_connection_error_credential_save_failed)
     }
 }
 

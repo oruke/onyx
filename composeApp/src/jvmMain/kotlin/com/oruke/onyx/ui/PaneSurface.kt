@@ -2,7 +2,6 @@ package com.oruke.onyx.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -11,9 +10,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,57 +21,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
-import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.app.component.PaneCommand
-import com.oruke.onyx.app.component.PaneCommandController
-import com.oruke.onyx.app.component.PaneCommandExecutionContext
-import com.oruke.onyx.app.component.PaneCommandExternalActions
-import com.oruke.onyx.app.component.PaneComponent
-import com.oruke.onyx.app.component.PaneContextMenuBuildInput
-import com.oruke.onyx.app.component.PaneContextMenuCommandController
-import com.oruke.onyx.app.component.PaneContextMenuExternalActions
-import com.oruke.onyx.app.component.PaneContextMenuModelBuilder
-import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
-import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.tabStatesInDisplayOrder
-import com.oruke.onyx.app.filesystem.VfsBreadcrumb
-import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
-import com.oruke.onyx.app.filesystem.ArchiveInfoResult
-import com.oruke.onyx.app.filesystem.FileHashRequest
-import com.oruke.onyx.app.filesystem.FileHashResult
-import com.oruke.onyx.vfs.api.FileContextMenuSection
-import com.oruke.onyx.ui.theme.FileDropTarget
-import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.windowBounds
-import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileKind
+import kotlinx.coroutines.delay
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_filter
 import onyx.composeapp.generated.resources.action_go_back
@@ -89,626 +60,447 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
-// ── Pane surface ───────────────────────────────────────────────────────────
+/** 面板操作反馈自动消失前的展示时长。 */
+private const val OPERATION_FEEDBACK_DURATION_MS = 3_000L
 
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+/** 可由面板键盘焦点直接执行的统一命令。 */
+private val PANE_SHORTCUT_COMMANDS = listOf(
+    OnyxCommand.CommandPalette,
+    OnyxCommand.OpenSelection,
+    OnyxCommand.RenameSelection,
+    OnyxCommand.NewDirectory,
+    OnyxCommand.NewFile,
+    OnyxCommand.CopySelection,
+    OnyxCommand.CutSelection,
+    OnyxCommand.Paste,
+    OnyxCommand.UndoLastOperation,
+    OnyxCommand.RedoLastOperation,
+    OnyxCommand.DeleteSelection,
+    OnyxCommand.SelectAll,
+    OnyxCommand.Filter,
+    OnyxCommand.ToggleFavorite,
+    OnyxCommand.Refresh,
+    OnyxCommand.GoUp,
+    OnyxCommand.OpenSettings,
+)
+
+/**
+ * 渲染单个文件面板，并连接键盘、标签、工具栏、条目视图和检查器。
+ *
+ * @param model 面板状态与跨组件动作模型。
+ * @param dragBindings 标签及文件拖放绑定。
+ * @param services 文件预览与路径服务。
+ * @param modifier 面板布局修饰符。
+ */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun PaneSurface(
-    state: PaneState,
-    active: Boolean,
-    component: PaneComponent,
-    actions: PaneActions,
-    commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
+    model: PaneSurfaceModel,
+    dragBindings: PaneDragBindings,
+    services: PaneSurfaceServices,
     modifier: Modifier = Modifier,
-    onActivate: () -> Unit,
-    canPaste: Boolean,
-    favoriteLocations: List<String>,
-    // ── 拖放相关 ──
-    onDropTab: (PaneId, String, IntOffset) -> Unit,
-    onTabDragPositionChange: (IntOffset) -> Unit,
-    onTabDragEnd: () -> Unit,
-    onTabDropZoneChange: (PaneId, TabDropZone) -> Unit,
-    tabDropIndicatorIndex: Int?,
-    onFileDragStart: (PaneId, FileTransferOperation) -> Unit,
-    onFileDragPositionChange: (IntOffset) -> Unit,
-    onFileDragEnd: (IntOffset?) -> Unit,
-    onFileDropZoneChange: (FileDropZone) -> Unit,
-    fileDropTarget: FileDropTarget?,
-    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
-    loadArchiveThumbnail: suspend (String, Int) -> ImageBitmap?,
-    readFileHash: suspend (FileHashRequest) -> FileHashResult,
-    readArchiveInfo: suspend (ArchiveInfoRequest) -> ArchiveInfoResult,
-    buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
 ) {
-    // ── 从 state / component / actions 派生，消除冗余参数 ──
-    val filterQuery = state.filterQuery
-    val inlineEditState = state.inlineEditState
-    val inlineEditActive = inlineEditState != null
-    val focusRequester = remember { FocusRequester() }
-    val filterFocusRequester = remember { FocusRequester() }
-    var showContextMenu by remember { mutableStateOf(false) }
-    var addressBarEditing by remember { mutableStateOf(false) }
-    var filterFocused by remember { mutableStateOf(false) }
-    var inlineEditWasActive by remember { mutableStateOf(inlineEditActive) }
-    var contextMenuOffset by remember { mutableStateOf(IntOffset.Zero) }
-    var contextMenuEntryIds by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var contextMenuQueryToken by remember { mutableStateOf(0) }
-    var contextMenuSections by remember { mutableStateOf<List<FileContextMenuSection>>(emptyList()) }
-    var paneBounds by remember { mutableStateOf<IntRect?>(null) }
-    var tabBarDropZone by remember { mutableStateOf<TabDropZone?>(null) }
-    val tabStack by component.tabStack.subscribeAsState()
-    val tabOrder by component.tabOrder.collectAsState()
-    val orderedTabs = component.tabStatesInDisplayOrder()
-    val filterOverlayVisible = state.filterInputVisible || filterQuery.isNotEmpty()
-    val textInputOwnsKeyboard = addressBarEditing || filterFocused || state.commandPaletteVisible
-    val coroutineScope = rememberCoroutineScope()
-    val tabBarState = PaneTabBarState(
-        activeTabId = state.activeTabId,
-        tabs = orderedTabs.map { tab ->
-            PaneTabItemState(
-                id = tab.id,
-                title = tab.title,
-            )
-        },
-    )
-    val paneCommands = PaneCommandController(
-        state = state,
-        component = component,
-        executionContext = PaneCommandExecutionContext(
-            canPaste = canPaste,
-            canUndo = actions.canUndo,
-            canRedo = actions.canRedo,
-        ),
-        externalActions = PaneCommandExternalActions(
-            onBeginCreateDirectory = actions.onBeginCreateDirectory,
-            onCopySelection = actions.onCopySelection,
-            onCutSelection = actions.onCutSelection,
-            onPaste = actions.onPaste,
-            onUndo = actions.onUndo,
-            onRedo = actions.onRedo,
-            onDeleteSelection = actions.onDeleteSelection,
-            onToggleFavoriteLocation = actions.onToggleFavoriteLocation,
-            onOpenSettings = actions.onOpenSettings,
-        ),
-    )
-    val dispatch = paneCommands::dispatch
-    val openFilterInput = paneCommands::openFilterInput
-    val closeFilterInput = {
-        paneCommands.closeFilterInput()
-        filterFocused = false
-        focusRequester.requestFocus()
-    }
-    val executePaneCommand: (OnyxCommand) -> Boolean = { command ->
-        command.toPaneCommand()?.let { paneCommand -> paneCommands.execute(paneCommand) } == true
-    }
-    val isPaneCommandEnabled: (OnyxCommand) -> Boolean = { command ->
-        command.toPaneCommand()?.let { paneCommand -> paneCommands.isEnabled(paneCommand) } == true
-    }
-    val paneMenuCommands = PaneContextMenuCommandController(
-        paneCommandController = paneCommands,
-        externalActions = PaneContextMenuExternalActions(
-            onBatchRename = actions.onBatchRename,
-            onExtractSelection = actions.onExtractSelection,
-            onExtractToDirectory = actions.onExtractToDirectory,
-            onExtractSmart = actions.onExtractSmart,
-            onFileContextMenuCommand = actions.onFileContextMenuCommand,
-            onOpenTerminal = actions.onOpenTerminal,
-        ),
-    )
-    val contextMenuPlatformActionLoader = PaneContextMenuPlatformActionLoader(
-        coroutineScope = coroutineScope,
-        actions = actions,
-        onShowContextMenu = { showContextMenu = true },
-        isLatestToken = { token -> contextMenuQueryToken == token },
-        onSectionsLoaded = { sections -> contextMenuSections = sections },
-    )
+    val runtime = rememberPaneSurfaceRuntime(model, dragBindings, services)
+    PaneSurfaceFocusEffects(runtime)
+    val interactionSource = remember { MutableInteractionSource() }
+    val palette = LocalOnyxPalette.current
     val paneDropBackground by animateColorAsState(
-        targetValue = if (fileDropTarget?.paneId == state.paneId &&
-            fileDropTarget.directoryEntryId == null &&
-            fileDropTarget.targetDirectoryLocation == state.location
-        ) {
-            LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.28f)
-        } else {
-            Color.Transparent
-        },
+        targetValue = paneDropBackground(runtime),
         animationSpec = tween(durationMillis = 120),
     )
-
-    fun reportPaneDropZone() {
-        val tabDropZone = tabBarDropZone ?: return
-        onTabDropZoneChange(
-            state.paneId,
-            tabDropZone.copy(bounds = paneBounds ?: tabDropZone.bounds),
-        )
-    }
-
-    LaunchedEffect(active) {
-        if (active) focusRequester.requestFocus()
-    }
-
-    LaunchedEffect(active, inlineEditActive, textInputOwnsKeyboard) {
-        val inlineEditFinished = inlineEditWasActive && !inlineEditActive
-        inlineEditWasActive = inlineEditActive
-        if (active && inlineEditFinished && !textInputOwnsKeyboard) {
-            focusRequester.requestFocus()
-        }
-    }
-
     Column(
         modifier = modifier
-            .border(
-                width = 1.dp,
-                color = if (active) LocalOnyxPalette.current.outline else LocalOnyxPalette.current.outlineVariant,
-            )
-            .background(LocalOnyxPalette.current.surface)
+            .border(1.dp, if (model.active) palette.outline else palette.outlineVariant)
+            .background(palette.surface)
             .onGloballyPositioned { coordinates ->
-                paneBounds = coordinates.windowBounds()
-                reportPaneDropZone()
+                runtime.ui.paneBounds = coordinates.windowBounds()
+                runtime.reportTabDropZone()
             }
-            .focusRequester(focusRequester)
+            .focusRequester(runtime.focusRequester)
             .focusable()
-            .onPreviewKeyEvent { event ->
-                if (!active || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                if (textInputOwnsKeyboard) {
-                    return@onPreviewKeyEvent false
-                }
-                if (inlineEditState != null) {
-                    return@onPreviewKeyEvent when (event.key) {
-                        Key.Enter -> {
-                            dispatch(PaneIntent.ConfirmInlineEdit)
-                            true
-                        }
-
-                        Key.Escape -> {
-                            dispatch(PaneIntent.CancelInlineEdit)
-                            true
-                        }
-
-                        // 内联编辑期间，其他所有按键交给 BasicTextField 处理
-                        else -> false
-                    }
-                }
-
-                when {
-                    event.matchesCommand(OnyxCommand.CommandPalette, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.CommandPalette)
-                    }
-
-                    event.matchesCommand(OnyxCommand.OpenSelection, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.OpenSelection)
-                    }
-
-                    event.matchesCommand(OnyxCommand.RenameSelection, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.RenameSelection)
-                    }
-
-                    event.matchesCommand(OnyxCommand.NewDirectory, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.NewDirectory)
-                    }
-
-                    event.matchesCommand(OnyxCommand.NewFile, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.NewFile)
-                    }
-
-                    event.matchesCommand(OnyxCommand.CopySelection, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.CopySelection)
-                    }
-
-                    event.matchesCommand(OnyxCommand.CutSelection, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.CutSelection)
-                    }
-
-                    event.matchesCommand(OnyxCommand.Paste, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.Paste)
-                    }
-
-                    event.matchesCommand(OnyxCommand.UndoLastOperation, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.UndoLastOperation)
-                    }
-
-                    event.matchesCommand(OnyxCommand.RedoLastOperation, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.RedoLastOperation)
-                    }
-
-                    event.key == Key.DirectionDown -> {
-                        dispatch(PaneIntent.MoveSelection(offset = 1, extendSelection = event.isShiftPressed))
-                        true
-                    }
-
-                    event.key == Key.DirectionUp -> {
-                        dispatch(PaneIntent.MoveSelection(offset = -1, extendSelection = event.isShiftPressed))
-                        true
-                    }
-
-                    event.matchesCommand(OnyxCommand.DeleteSelection, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.DeleteSelection)
-                    }
-
-                    event.matchesCommand(OnyxCommand.SelectAll, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.SelectAll)
-                    }
-
-                    event.key == Key.Escape -> {
-                        if (showContextMenu) {
-                            showContextMenu = false
-                        } else if (filterOverlayVisible) {
-                            closeFilterInput()
-                        } else {
-                            dispatch(PaneIntent.ClearSelection)
-                        }
-                        true
-                    }
-
-                    event.matchesCommand(OnyxCommand.Filter, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.Filter)
-                    }
-
-                    event.matchesCommand(OnyxCommand.ToggleFavorite, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.ToggleFavorite)
-                    }
-
-                    event.matchesCommand(OnyxCommand.Refresh, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.Refresh)
-                    }
-
-                    event.matchesCommand(OnyxCommand.GoUp, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.GoUp)
-                    }
-
-                    event.matchesCommand(OnyxCommand.OpenSettings, commandShortcuts) -> {
-                        executePaneCommand(OnyxCommand.OpenSettings)
-                    }
-
-                    else -> false
-                }
-            }
+            .onPreviewKeyEvent { event -> handlePaneKeyEvent(event, runtime) }
             .clickable(
                 indication = null,
-                interactionSource = remember { MutableInteractionSource() },
-                onClick = onActivate
+                interactionSource = interactionSource,
+                onClick = model.onActivate,
             ),
     ) {
-        val readyEntries = (state.entriesState as? PaneEntriesState.Ready)
-            ?.entries
-            .orEmpty()
-        val selectedEntries = readyEntries.filter { entry -> state.selectedEntryIds.contains(entry.id) }
-        val contextMenuEntries = readyEntries.filter { entry -> contextMenuEntryIds.contains(entry.id) }
-        val singleSelectedEntry = selectedEntries.singleOrNull()
-        val currentLocationFavorite = favoriteLocations.contains(state.location)
-        if (state.commandPaletteVisible) {
-            val commandItems = OnyxCommandRegistry
-                .paneCommandStates(commandShortcuts, isPaneCommandEnabled)
-                .filterNot { commandState -> commandState.spec.command == OnyxCommand.CommandPalette }
-                .map { commandState ->
-                    CommandPaletteItem(
-                        command = commandState.spec.command,
-                        label = stringResource(commandState.spec.label),
-                        shortcut = onyxShortcutHint(commandState.shortcut),
-                        iconKey = commandState.spec.iconKey,
-                        enabled = commandState.enabled,
-                    )
-                }
-            CommandPalettePopup(
-                items = commandItems,
-                onExecute = { command ->
-                    if (executePaneCommand(command)) {
-                        dispatch(PaneIntent.HideCommandPalette)
-                    }
-                },
-                onClose = { dispatch(PaneIntent.HideCommandPalette) },
-            )
-        }
-        PaneTabBar(
-            state = tabBarState,
-            active = active,
-            onActivate = onActivate,
-            onSelectTab = { tabId -> dispatch(PaneIntent.SelectTab(tabId)) },
-            onCloseTab = { tabId -> dispatch(PaneIntent.CloseTab(tabId)) },
-            onCreateTab = { dispatch(PaneIntent.CreateTab()) },
-            onDropTab = { tabId, position -> onDropTab(state.paneId, tabId, position) },
-            onDragPositionChange = onTabDragPositionChange,
-            onDragEnd = onTabDragEnd,
-            onDropZoneChange = { zone ->
-                tabBarDropZone = zone
-                reportPaneDropZone()
-            },
-            dropIndicatorIndex = tabDropIndicatorIndex,
-        )
+        PaneSurfaceContent(runtime, paneDropBackground)
+    }
+}
 
-        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+/**
+ * 计算面板作为文件放置目标时的背景色。
+ *
+ * @param runtime 面板运行时控制器。
+ * @return 当前放置状态对应的背景色。
+ */
+@Composable
+private fun paneDropBackground(runtime: PaneSurfaceRuntime): Color {
+    val target = runtime.dragBindings.fileDropTarget
+    val state = runtime.state
+    val paneTargeted = target?.paneId == state.paneId &&
+        target.directoryEntryId == null &&
+        target.targetDirectoryLocation == state.location
+    return if (paneTargeted) {
+        LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.28f)
+    } else {
+        Color.Transparent
+    }
+}
 
-        // ── Navigation toolbar ─────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(LocalOnyxPalette.current.headerBackground)
-                .height(28.dp)
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(1.dp),
-        ) {
-            ToolbarIconButton(
-                enabled = state.canGoBack,
-                onClick = { onActivate(); dispatch(PaneIntent.GoBack) },
-                tooltip = stringResource(Res.string.action_go_back),
-            ) {
-                Icon(key = AllIconsKeys.Actions.Back, contentDescription = stringResource(Res.string.action_go_back))
-            }
-            ToolbarIconButton(
-                enabled = state.canGoForward,
-                onClick = { onActivate(); dispatch(PaneIntent.GoForward) },
-                tooltip = stringResource(Res.string.action_go_forward),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.Forward,
-                    contentDescription = stringResource(Res.string.action_go_forward),
-                )
-            }
-            ToolbarIconButton(
-                enabled = true,
-                onClick = { onActivate(); paneCommands.execute(PaneCommand.GO_UP) },
-                tooltip = stringResource(Res.string.action_go_up),
-            ) {
-                Icon(key = AllIconsKeys.General.ArrowUp, contentDescription = stringResource(Res.string.action_go_up))
-            }
-            ToolbarIconButton(
-                enabled = true,
-                onClick = { onActivate(); dispatch(PaneIntent.OpenDirectory(System.getProperty("user.home"))) },
-                tooltip = stringResource(Res.string.action_go_home),
-            ) {
-                Icon(key = AllIconsKeys.Nodes.HomeFolder, contentDescription = stringResource(Res.string.action_go_home))
-            }
-
-            ToolbarIconButton(
-                enabled = true,
-                onClick = { onActivate(); paneCommands.execute(PaneCommand.TOGGLE_FAVORITE) },
-                tooltip = stringResource(Res.string.action_toggle_favorite),
-                selected = currentLocationFavorite,
-            ) {
-                Text(
-                    text = if (currentLocationFavorite) "★" else "☆",
-                    fontSize = 11.sp,
-                    color = if (currentLocationFavorite) Color(0xFFFFC94D) else LocalOnyxPalette.current.foreground,
-                )
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // ── Address bar ─────────────────────────────────────────────
-            Box(modifier = Modifier.weight(1f)) {
-                HybridAddressBar(
-                    location = state.location,
-                    onActivate = onActivate,
-                    onOpenLocation = { location -> dispatch(PaneIntent.OpenDirectory(location)) },
-                    buildBreadcrumbs = buildBreadcrumbs,
-                    onEditingChange = { editing -> addressBarEditing = editing },
-                )
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            ToolbarIconButton(
-                enabled = true,
-                onClick = {
-                    onActivate()
-                    if (filterOverlayVisible) {
-                        closeFilterInput()
-                    } else {
-                        openFilterInput()
-                    }
-                },
-                tooltip = onyxCommandTooltip(
-                    label = stringResource(Res.string.action_filter),
-                    command = OnyxCommand.Filter,
-                    shortcuts = commandShortcuts,
-                ),
-                selected = filterOverlayVisible,
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.Find,
-                    contentDescription = stringResource(Res.string.action_filter),
-                )
-            }
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            ToolbarIconButton(
-                enabled = true,
-                onClick = { onActivate(); paneCommands.execute(PaneCommand.REFRESH) },
-                tooltip = stringResource(Res.string.action_refresh_active),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.Refresh,
-                    contentDescription = stringResource(Res.string.action_refresh_active),
-                )
-            }
-            ToolbarIconButton(
-                enabled = true,
-                onClick = { onActivate(); dispatch(PaneIntent.ToggleHiddenItems) },
-                tooltip = stringResource(Res.string.action_toggle_hidden_files),
-                selected = state.showHiddenItems,
-            ) {
-                Icon(
-                    key = if (state.showHiddenItems) AllIconsKeys.General.Show else AllIconsKeys.Actions.ToggleVisibility,
-                    contentDescription = stringResource(Res.string.action_toggle_hidden_files),
-                )
-            }
-        }
-
-        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-
-        state.operationFeedback?.let { feedback ->
-            // 3 秒后自动消失
-            LaunchedEffect(feedback) {
-                kotlinx.coroutines.delay(3000)
-                dispatch(PaneIntent.DismissOperationFeedback)
-            }
-            OperationFeedbackBar(
-                feedback = feedback,
-                onDismiss = { dispatch(PaneIntent.DismissOperationFeedback) },
-            )
-            Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-        }
-
-        // ── File list & Inspector ─────────────────────────────────
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .onGloballyPositioned { coordinates ->
-                        onFileDropZoneChange(
-                            FileDropZone(
-                                paneId = state.paneId,
-                                targetDirectoryLocation = state.location,
-                                bounds = coordinates.windowBounds(),
-                            )
-                        )
-                    }
-                    .background(paneDropBackground)
-                    .clickable(
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = {
-                            onActivate()
-                            showContextMenu = false
-                        }
-                    ),
-            ) {
-                PaneEntriesContent(
-                    viewMode = state.viewMode,
-                    columns = state.detailsColumns,
-                    columnWeights = state.detailsColumnWeights,
-                    hiddenColumns = state.hiddenColumns,
-                    sort = state.detailsSort,
-                    selectedEntryIds = state.selectedEntryIds,
-                    state = state.entriesState,
-                    paneActive = active,
-                    contextMenuVisible = showContextMenu,
-                    onActivate = onActivate,
-                    onOpenEntry = { entry -> dispatch(PaneIntent.OpenEntry(entry)) },
-                    onToggleSort = { column -> dispatch(PaneIntent.ToggleSort(column)) },
-                    onResizeColumn = { column, nextColumn, deltaWeight ->
-                        dispatch(PaneIntent.ResizeDetailsColumn(column, nextColumn, deltaWeight))
-                    },
-                    onToggleColumnVisibility = { column -> dispatch(PaneIntent.ToggleColumnVisibility(column)) },
-                    onSelectEntry = { entryId, additive, range ->
-                        dispatch(PaneIntent.SelectEntry(entryId, additive, range))
-                    },
-                    paneId = state.paneId,
-                    fileDropTarget = fileDropTarget,
-                    onStartFileDrag = onFileDragStart,
-                    onFileDragPositionChange = onFileDragPositionChange,
-                    onFileDragEnd = onFileDragEnd,
-                    onFileDropZoneChange = onFileDropZoneChange,
-                    inlineEditState = inlineEditState,
-                    onUpdateInlineEditDraft = { draft -> dispatch(PaneIntent.UpdateInlineEditDraft(draft)) },
-                    onConfirmInlineEdit = { dispatch(PaneIntent.ConfirmInlineEdit) },
-                    onCancelInlineEdit = { dispatch(PaneIntent.CancelInlineEdit) },
-                    onShowContextMenu = { entryId, entrySelected, pointerPosition ->
-                        onActivate()
-                        showContextMenu = false
-                        contextMenuOffset = pointerPosition
-                        val targetEntryIds = if (entrySelected && state.selectedEntryIds.isNotEmpty()) {
-                            state.selectedEntryIds
-                        } else {
-                            setOf(entryId)
-                        }
-                        contextMenuEntryIds = targetEntryIds
-                        contextMenuSections = emptyList()
-                        val nextToken = contextMenuQueryToken + 1
-                        contextMenuQueryToken = nextToken
-                        contextMenuPlatformActionLoader.load(
-                            targetEntries = readyEntries.filter { entry -> targetEntryIds.contains(entry.id) },
-                            token = nextToken,
-                        )
-                        if (!entrySelected) dispatch(PaneIntent.SelectEntry(entryId))
-                    },
-                    onDismissContextMenu = { showContextMenu = false },
-                    onBeginRename = { dispatch(PaneIntent.BeginRename) },
-                    galleryItemSizeDp = state.galleryItemSizeDp,
-                    onSelectEntries = { entryIds -> dispatch(PaneIntent.SelectEntries(entryIds)) },
-                    inlineExpandedLocations = state.inlineExpandedLocations,
-                    inlineExpandedEntries = state.inlineExpandedEntries,
-                    onToggleInlineExpand = { location ->
-                        onActivate()
-                        dispatch(PaneIntent.ToggleInlineExpand(location))
-                    },
-                    pendingScrollToEntryId = state.pendingScrollToEntryId,
-                    onConsumeScroll = { dispatch(PaneIntent.ConsumePendingScroll) },
-                    onBlankAreaContextMenu = { pointerPosition ->
-                        showContextMenu = false
-                        contextMenuOffset = pointerPosition
-                        contextMenuEntryIds = emptySet()
-                        contextMenuSections = emptyList()
-                        contextMenuQueryToken += 1
-                        showContextMenu = true
-                    },
-                    loadThumbnail = loadThumbnail,
-                    loadArchiveThumbnail = loadArchiveThumbnail,
-                    isImageFileName = actions.isImageFileName,
-                    isArchiveFileName = actions.isArchiveFileName,
-                )
-
-                if (filterOverlayVisible) {
-                    FloatingFilterInput(
-                        query = filterQuery,
-                        focusRequester = filterFocusRequester,
-                        focusRequestId = state.filterInputFocusRequestId,
-                        onQueryChange = { dispatch(PaneIntent.SetFilterQuery(it)) },
-                        onFocusChanged = { focused ->
-                            filterFocused = focused
-                            if (focused) {
-                                onActivate()
-                            }
-                        },
-                        onClose = { closeFilterInput() },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 8.dp, end = 8.dp),
-                    )
-                }
-
-                if (showContextMenu) {
-                    val selectedCount = contextMenuEntries.size
-                    val menuModel = PaneContextMenuModelBuilder.build(
-                        PaneContextMenuBuildInput(
-                            entries = contextMenuEntries,
-                            canPaste = canPaste,
-                            canUndo = actions.canUndo,
-                            canRedo = actions.canRedo,
-                            canExtractSelection = selectedCount > 0 && contextMenuEntries.any { entry ->
-                                entry.kind == VFileKind.FILE && actions.isArchiveFileName(entry.name)
-                            },
-                            contextMenuSections = contextMenuSections,
-                        )
-                    )
-                    PaneContextMenu(
-                        anchorOffset = contextMenuOffset,
-                        model = menuModel,
-                        onCommand = { command ->
-                            if (paneMenuCommands.execute(command, contextMenuEntries, state.location)) {
-                                showContextMenu = false
-                            }
-                        },
-                        commandShortcuts = commandShortcuts,
-                        onClose = { showContextMenu = false },
-                    )
-                }
-            }
-
-            if (state.inspectorState.previewVisible || state.inspectorState.detailsVisible) {
-                Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
-                InspectorPanel(
-                    entry = singleSelectedEntry,
-                    state = state.inspectorState,
-                    loadThumbnail = loadThumbnail,
-                    readFileHash = readFileHash,
-                    readArchiveInfo = readArchiveInfo,
-                    isImageFileName = actions.isImageFileName,
-                    isArchiveFileName = actions.isArchiveFileName,
-                )
-            }
+/**
+ * 在活动面板与内联编辑切换时恢复正确的键盘焦点。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
+    val inlineEditActive = runtime.state.inlineEditState != null
+    val textInputOwnsKeyboard = runtime.ui.addressBarEditing ||
+        runtime.ui.filterFocused ||
+        runtime.state.commandPaletteVisible
+    LaunchedEffect(runtime.model.active) {
+        if (runtime.model.active) runtime.focusRequester.requestFocus()
+    }
+    LaunchedEffect(runtime.model.active, inlineEditActive, textInputOwnsKeyboard) {
+        val inlineEditFinished = runtime.ui.inlineEditWasActive && !inlineEditActive
+        runtime.ui.inlineEditWasActive = inlineEditActive
+        if (runtime.model.active && inlineEditFinished && !textInputOwnsKeyboard) {
+            runtime.focusRequester.requestFocus()
         }
     }
+}
+
+/**
+ * 处理文件面板预览阶段的键盘事件。
+ *
+ * @param event 键盘事件。
+ * @param runtime 面板运行时控制器。
+ * @return 事件已消费时返回 `true`。
+ */
+private fun handlePaneKeyEvent(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
+    if (!runtime.model.active || event.type != KeyEventType.KeyDown) return false
+    val textInputOwnsKeyboard = runtime.ui.addressBarEditing ||
+        runtime.ui.filterFocused ||
+        runtime.state.commandPaletteVisible
+    return when {
+        textInputOwnsKeyboard -> false
+        runtime.state.inlineEditState != null -> handleInlineEditKey(event, runtime)
+        else -> handleRegularPaneKey(event, runtime)
+    }
+}
+
+/**
+ * 处理非文本编辑状态下的可配置命令和导航按键。
+ *
+ * @param event 键盘事件。
+ * @param runtime 面板运行时控制器。
+ * @return 事件已消费时返回 `true`。
+ */
+private fun handleRegularPaneKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
+    val shortcutCommand = PANE_SHORTCUT_COMMANDS.firstOrNull { command ->
+        event.matchesCommand(command, runtime.model.commandShortcuts)
+    }
+    if (shortcutCommand != null) return runtime.executeCommand(shortcutCommand)
+    return handlePaneNavigationKey(event, runtime)
+}
+
+/**
+ * 处理内联编辑期间仅由面板拦截的确认与取消按键。
+ *
+ * @param event 键盘事件。
+ * @param runtime 面板运行时控制器。
+ * @return 事件已消费时返回 `true`。
+ */
+private fun handleInlineEditKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
+    return when (event.key) {
+        Key.Enter -> {
+            runtime.dispatch(PaneIntent.ConfirmInlineEdit)
+            true
+        }
+        Key.Escape -> {
+            runtime.dispatch(PaneIntent.CancelInlineEdit)
+            true
+        }
+        else -> false
+    }
+}
+
+/**
+ * 处理方向键与 Escape 等不属于可配置命令的导航按键。
+ *
+ * @param event 键盘事件。
+ * @param runtime 面板运行时控制器。
+ * @return 事件已消费时返回 `true`。
+ */
+private fun handlePaneNavigationKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
+    return when (event.key) {
+        Key.DirectionDown -> {
+            runtime.dispatch(PaneIntent.MoveSelection(1, event.isShiftPressed))
+            true
+        }
+        Key.DirectionUp -> {
+            runtime.dispatch(PaneIntent.MoveSelection(-1, event.isShiftPressed))
+            true
+        }
+        Key.Escape -> {
+            closePaneOverlay(runtime)
+            true
+        }
+        else -> false
+    }
+}
+
+/**
+ * 按优先级关闭右键菜单、过滤框或当前选择。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+private fun closePaneOverlay(runtime: PaneSurfaceRuntime) {
+    val filterVisible = runtime.state.filterInputVisible || runtime.state.filterQuery.isNotEmpty()
+    when {
+        runtime.ui.contextMenuVisible -> runtime.ui.contextMenuVisible = false
+        filterVisible -> runtime.closeFilterInput()
+        else -> runtime.dispatch(PaneIntent.ClearSelection)
+    }
+}
+
+/**
+ * 按垂直顺序渲染面板各区域。
+ *
+ * @param runtime 面板运行时控制器。
+ * @param paneDropBackground 文件放置目标背景色。
+ */
+@Composable
+private fun ColumnScope.PaneSurfaceContent(runtime: PaneSurfaceRuntime, paneDropBackground: Color) {
+    PaneCommandPalette(runtime)
+    PaneSurfaceTabBar(runtime)
+    Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+    PaneNavigationToolbar(runtime)
+    Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+    PaneOperationFeedback(runtime)
+    PaneFileArea(runtime, paneDropBackground, Modifier.weight(1f))
+}
+
+/**
+ * 渲染当前面板命令面板。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneCommandPalette(runtime: PaneSurfaceRuntime) {
+    if (!runtime.state.commandPaletteVisible) return
+    val items = OnyxCommandRegistry
+        .paneCommandStates(runtime.model.commandShortcuts, runtime::isCommandEnabled)
+        .filterNot { commandState -> commandState.spec.command == OnyxCommand.CommandPalette }
+        .map { commandState ->
+            CommandPaletteItem(
+                command = commandState.spec.command,
+                label = stringResource(commandState.spec.label),
+                shortcut = onyxShortcutHint(commandState.shortcut),
+                iconKey = commandState.spec.iconKey,
+                enabled = commandState.enabled,
+            )
+        }
+    CommandPalettePopup(
+        items = items,
+        onExecute = { command ->
+            if (runtime.executeCommand(command)) runtime.dispatch(PaneIntent.HideCommandPalette)
+        },
+        onClose = { runtime.dispatch(PaneIntent.HideCommandPalette) },
+    )
+}
+
+/**
+ * 渲染面板标签栏并注册标签放置区域。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneSurfaceTabBar(runtime: PaneSurfaceRuntime) {
+    val tabStack by runtime.model.component.tabStack.subscribeAsState()
+    val tabOrder by runtime.model.component.tabOrder.collectAsState()
+    val orderedTabs = remember(tabStack, tabOrder) { runtime.model.component.tabStatesInDisplayOrder() }
+    val state = PaneTabBarState(
+        activeTabId = runtime.state.activeTabId,
+        tabs = orderedTabs.map { tab -> PaneTabItemState(tab.id, tab.title) },
+    )
+    PaneTabBar(
+        state = state,
+        active = runtime.model.active,
+        onActivate = runtime.model.onActivate,
+        onSelectTab = { tabId -> runtime.dispatch(PaneIntent.SelectTab(tabId)) },
+        onCloseTab = { tabId -> runtime.dispatch(PaneIntent.CloseTab(tabId)) },
+        onCreateTab = { runtime.dispatch(PaneIntent.CreateTab()) },
+        onDropTab = { tabId, position ->
+            runtime.dragBindings.onTabDrop(runtime.state.paneId, tabId, position)
+        },
+        onDragPositionChange = runtime.dragBindings.onTabDragPositionChange,
+        onDragEnd = runtime.dragBindings.onTabDragEnd,
+        onDropZoneChange = { zone ->
+            runtime.ui.tabBarDropZone = zone
+            runtime.reportTabDropZone()
+        },
+        dropIndicatorIndex = runtime.dragBindings.tabDropTarget
+            ?.takeIf { target -> target.paneId == runtime.state.paneId }
+            ?.index,
+    )
+}
+
+/**
+ * 渲染面板导航工具栏。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneNavigationToolbar(runtime: PaneSurfaceRuntime) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(LocalOnyxPalette.current.headerBackground)
+            .height(28.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        PaneHistoryButtons(runtime)
+        PaneLocationButtons(runtime)
+        Spacer(modifier = Modifier.width(4.dp))
+        Box(modifier = Modifier.weight(1f)) {
+            HybridAddressBar(
+                location = runtime.state.location,
+                onActivate = runtime.model.onActivate,
+                onOpenLocation = { location -> runtime.dispatch(PaneIntent.OpenDirectory(location)) },
+                buildBreadcrumbs = runtime.services.buildBreadcrumbs,
+                onEditingChange = { editing -> runtime.ui.addressBarEditing = editing },
+            )
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        PaneViewButtons(runtime)
+    }
+}
+
+/**
+ * 渲染后退与前进按钮。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneHistoryButtons(runtime: PaneSurfaceRuntime) {
+    ToolbarIconButton(
+        enabled = runtime.state.canGoBack,
+        onClick = { runtime.model.onActivate(); runtime.dispatch(PaneIntent.GoBack) },
+        tooltip = stringResource(Res.string.action_go_back),
+    ) {
+        Icon(AllIconsKeys.Actions.Back, stringResource(Res.string.action_go_back))
+    }
+    ToolbarIconButton(
+        enabled = runtime.state.canGoForward,
+        onClick = { runtime.model.onActivate(); runtime.dispatch(PaneIntent.GoForward) },
+        tooltip = stringResource(Res.string.action_go_forward),
+    ) {
+        Icon(AllIconsKeys.Actions.Forward, stringResource(Res.string.action_go_forward))
+    }
+}
+
+/**
+ * 渲染上级、主页与收藏按钮。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneLocationButtons(runtime: PaneSurfaceRuntime) {
+    val favorite = runtime.state.location in runtime.model.favoriteLocations
+    ToolbarIconButton(
+        enabled = true,
+        onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.GO_UP) },
+        tooltip = stringResource(Res.string.action_go_up),
+    ) {
+        Icon(AllIconsKeys.General.ArrowUp, stringResource(Res.string.action_go_up))
+    }
+    ToolbarIconButton(
+        enabled = true,
+        onClick = {
+            runtime.model.onActivate()
+            runtime.dispatch(PaneIntent.OpenDirectory(System.getProperty("user.home")))
+        },
+        tooltip = stringResource(Res.string.action_go_home),
+    ) {
+        Icon(AllIconsKeys.Nodes.HomeFolder, stringResource(Res.string.action_go_home))
+    }
+    ToolbarIconButton(
+        enabled = true,
+        onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.TOGGLE_FAVORITE) },
+        tooltip = stringResource(Res.string.action_toggle_favorite),
+        selected = favorite,
+    ) {
+        Text(
+            text = if (favorite) "★" else "☆",
+            fontSize = 11.sp,
+            color = if (favorite) LocalOnyxPalette.current.favorite else LocalOnyxPalette.current.foreground,
+        )
+    }
+}
+
+/**
+ * 渲染过滤、刷新与隐藏文件按钮。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneViewButtons(runtime: PaneSurfaceRuntime) {
+    val filterVisible = runtime.state.filterInputVisible || runtime.state.filterQuery.isNotEmpty()
+    ToolbarIconButton(
+        enabled = true,
+        onClick = {
+            runtime.model.onActivate()
+            if (filterVisible) runtime.closeFilterInput() else runtime.openFilterInput()
+        },
+        tooltip = onyxCommandTooltip(
+            stringResource(Res.string.action_filter),
+            OnyxCommand.Filter,
+            runtime.model.commandShortcuts,
+        ),
+        selected = filterVisible,
+    ) {
+        Icon(AllIconsKeys.Actions.Find, stringResource(Res.string.action_filter))
+    }
+    Spacer(modifier = Modifier.width(4.dp))
+    ToolbarIconButton(
+        enabled = true,
+        onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.REFRESH) },
+        tooltip = stringResource(Res.string.action_refresh_active),
+    ) {
+        Icon(AllIconsKeys.Actions.Refresh, stringResource(Res.string.action_refresh_active))
+    }
+    ToolbarIconButton(
+        enabled = true,
+        onClick = { runtime.model.onActivate(); runtime.dispatch(PaneIntent.ToggleHiddenItems) },
+        tooltip = stringResource(Res.string.action_toggle_hidden_files),
+        selected = runtime.state.showHiddenItems,
+    ) {
+        val icon = if (runtime.state.showHiddenItems) {
+            AllIconsKeys.General.Show
+        } else {
+            AllIconsKeys.Actions.ToggleVisibility
+        }
+        Icon(icon, stringResource(Res.string.action_toggle_hidden_files))
+    }
+}
+
+/**
+ * 渲染短时操作反馈并安排自动关闭。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+@Composable
+private fun PaneOperationFeedback(runtime: PaneSurfaceRuntime) {
+    val feedback = runtime.state.operationFeedback ?: return
+    LaunchedEffect(feedback) {
+        delay(OPERATION_FEEDBACK_DURATION_MS)
+        runtime.dispatch(PaneIntent.DismissOperationFeedback)
+    }
+    OperationFeedbackBar(
+        feedback = feedback,
+        onDismiss = { runtime.dispatch(PaneIntent.DismissOperationFeedback) },
+    )
+    Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
 }

@@ -13,6 +13,11 @@ import com.oruke.onyx.vfs.api.ExternalOpenService
 import com.oruke.onyx.vfs.api.SystemFileMaterializer
 import com.oruke.onyx.vfs.api.VfsProtocol
 
+/**
+ * 基于 Linux desktop entry 和 `xdg-open` 的打开方式服务。
+ *
+ * @param materializer 将 VFS 条目转换为系统可访问文件的服务。
+ */
 class JvmLinuxOpenWithService(
     private val materializer: SystemFileMaterializer,
 ) : OpenWithService {
@@ -170,7 +175,12 @@ internal class JvmPlatformOpenWithService(
         val targetEntry = materializer.materialize(entry).getOrElse { failure -> return Result.failure(failure) }
         return when (currentHostPlatform()) {
             HostPlatform.LINUX -> linuxOpenWithService.openWith(targetEntry, app)
-            HostPlatform.MACOS -> runProcess("open", "-a", app.command.ifBlank { app.displayName }, targetEntry.location)
+            HostPlatform.MACOS -> runProcess(
+                "open",
+                "-a",
+                app.command.ifBlank { app.displayName },
+                targetEntry.location,
+            )
             HostPlatform.WINDOWS -> openWindowsWith(targetEntry.location, app)
             HostPlatform.OTHER -> Result.failure(UnsupportedOperationException())
         }

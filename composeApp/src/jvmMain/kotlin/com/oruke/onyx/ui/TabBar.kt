@@ -65,6 +65,42 @@ internal data class PaneTabItemState(
     val title: String,
 )
 
+/**
+ * 单个标签项的显示状态。
+ */
+private data class PaneTabChipState(
+    /** 标签唯一标识。 */
+    val id: String,
+    /** 标签显示标题。 */
+    val title: String,
+    /** 标签是否被选中。 */
+    val selected: Boolean,
+    /** 是否允许关闭标签。 */
+    val closeEnabled: Boolean,
+    /** 标签所属面板是否为活动面板。 */
+    val activePane: Boolean,
+)
+
+/**
+ * 单个标签项的交互回调。
+ */
+private data class PaneTabChipActions(
+    /** 激活标签所属面板。 */
+    val onActivate: () -> Unit,
+    /** 选中当前标签。 */
+    val onSelect: () -> Unit,
+    /** 关闭当前标签。 */
+    val onClose: () -> Unit,
+    /** 在指定窗口坐标完成标签放置。 */
+    val onDropTab: (IntOffset) -> Unit,
+    /** 更新标签拖拽窗口坐标。 */
+    val onDragPositionChange: (IntOffset) -> Unit,
+    /** 结束标签拖拽。 */
+    val onDragEnd: () -> Unit,
+    /** 上报标签窗口边界。 */
+    val onBoundsChanged: (IntRect) -> Unit,
+)
+
 @Composable
 internal fun PaneTabBar(
     state: PaneTabBarState,
@@ -113,21 +149,25 @@ internal fun PaneTabBar(
                 visible = dropIndicatorIndex == index,
             )
             PaneTabChip(
-                tabId = tab.id,
-                title = tab.title,
-                selected = tab.id == state.activeTabId,
-                closeEnabled = state.tabs.size > 1,
-                activePane = active,
-                onActivate = onActivate,
-                onSelect = { onSelectTab(tab.id) },
-                onClose = { onCloseTab(tab.id) },
-                onDropTab = { position -> onDropTab(tab.id, position) },
-                onDragPositionChange = onDragPositionChange,
-                onDragEnd = onDragEnd,
-                onBoundsChanged = { bounds ->
-                    tabBounds[tab.id] = bounds
-                    reportDropZone()
-                },
+                state = PaneTabChipState(
+                    id = tab.id,
+                    title = tab.title,
+                    selected = tab.id == state.activeTabId,
+                    closeEnabled = state.tabs.size > 1,
+                    activePane = active,
+                ),
+                actions = PaneTabChipActions(
+                    onActivate = onActivate,
+                    onSelect = { onSelectTab(tab.id) },
+                    onClose = { onCloseTab(tab.id) },
+                    onDropTab = { position -> onDropTab(tab.id, position) },
+                    onDragPositionChange = onDragPositionChange,
+                    onDragEnd = onDragEnd,
+                    onBoundsChanged = { bounds ->
+                        tabBounds[tab.id] = bounds
+                        reportDropZone()
+                    },
+                ),
             )
         }
         TabDropIndicator(
@@ -190,72 +230,62 @@ internal fun TabDropIndicator(
 }
 
 @Composable
-internal fun PaneTabChip(
-    tabId: String,
-    title: String,
-    selected: Boolean,
-    closeEnabled: Boolean,
-    activePane: Boolean,
-    onActivate: () -> Unit,
-    onSelect: () -> Unit,
-    onClose: () -> Unit,
-    onDropTab: (IntOffset) -> Unit,
-    onDragPositionChange: (IntOffset) -> Unit,
-    onDragEnd: () -> Unit,
-    onBoundsChanged: (IntRect) -> Unit,
+private fun PaneTabChip(
+    state: PaneTabChipState,
+    actions: PaneTabChipActions,
 ) {
     var coordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var dragPosition by remember { mutableStateOf<IntOffset?>(null) }
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     val background = when {
-        selected && activePane -> LocalOnyxPalette.current.surface
-        selected -> LocalOnyxPalette.current.surfaceVariant
+        state.selected && state.activePane -> LocalOnyxPalette.current.surface
+        state.selected -> LocalOnyxPalette.current.surfaceVariant
         isHovered -> LocalOnyxPalette.current.titleBarHoverBackground
         else -> Color.Transparent
     }
 
-    OnyxTooltip(text = title) {
+    OnyxTooltip(text = state.title) {
         Row(
             modifier = Modifier
                 .fillMaxHeight()
                 .widthIn(max = 148.dp)
                 .onGloballyPositioned { layoutCoordinates ->
                     coordinates = layoutCoordinates
-                    onBoundsChanged(layoutCoordinates.windowBounds())
+                    actions.onBoundsChanged(layoutCoordinates.windowBounds())
                 }
                 .background(background, RoundedCornerShape(4.dp))
                 .border(
                     width = 1.dp,
-                    color = if (selected) LocalOnyxPalette.current.outline else Color.Transparent,
+                    color = if (state.selected) LocalOnyxPalette.current.outline else Color.Transparent,
                     shape = RoundedCornerShape(4.dp),
                 )
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = {
-                        onActivate()
-                        onSelect()
+                        actions.onActivate()
+                        actions.onSelect()
                     },
                 )
-                .pointerInput(tabId) {
+                .pointerInput(state.id) {
                     detectDragGestures(
                         onDragStart = { offset ->
                             dragPosition = coordinates?.localToWindow(offset)?.toIntOffset()
-                            dragPosition?.let(onDragPositionChange)
+                            dragPosition?.let(actions.onDragPositionChange)
                         },
                         onDragCancel = {
                             dragPosition = null
-                            onDragEnd()
+                            actions.onDragEnd()
                         },
                         onDragEnd = {
-                            dragPosition?.let(onDropTab)
+                            dragPosition?.let(actions.onDropTab)
                             dragPosition = null
-                            onDragEnd()
+                            actions.onDragEnd()
                         },
                         onDrag = { change, _ ->
                             dragPosition = coordinates?.localToWindow(change.position)?.toIntOffset()
-                            dragPosition?.let(onDragPositionChange)
+                            dragPosition?.let(actions.onDragPositionChange)
                         },
                     )
                 }
@@ -264,14 +294,18 @@ internal fun PaneTabChip(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = title,
-                modifier = Modifier.widthIn(max = if (closeEnabled) 112.dp else 132.dp),
+                text = state.title,
+                modifier = Modifier.widthIn(max = if (state.closeEnabled) 112.dp else 132.dp),
                 fontSize = 12.sp,
-                color = if (selected) LocalOnyxPalette.current.foreground else LocalOnyxPalette.current.mutedForeground,
+                color = if (state.selected) {
+                    LocalOnyxPalette.current.foreground
+                } else {
+                    LocalOnyxPalette.current.mutedForeground
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (closeEnabled) {
+            if (state.closeEnabled) {
                 val closeTabTooltip = stringResource(Res.string.action_close_tab)
                 OnyxTooltip(text = closeTabTooltip) {
                     Box(
@@ -281,8 +315,8 @@ internal fun PaneTabChip(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = {
-                                    onActivate()
-                                    onClose()
+                                    actions.onActivate()
+                                    actions.onClose()
                                 },
                             ),
                         contentAlignment = Alignment.Center,

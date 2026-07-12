@@ -40,34 +40,56 @@ class FileLabelRuleUseCase {
  * @return `true` 表示条目满足条件。
  */
 fun FileLabelMatcher.matches(entry: VFile): Boolean {
-    if (kind != null && entry.kind != kind) {
-        return false
-    }
     val normalizedName = entry.name.lowercase()
-    val normalizedNameContains = nameContains?.trim()?.lowercase()
-    val normalizedExtensionInput = extension?.trim()
-    val minSize = minSizeBytes
-    val maxSize = maxSizeBytes
-    if (!normalizedNameContains.isNullOrBlank() && normalizedNameContains !in normalizedName) {
-        return false
-    }
-    if (!normalizedExtensionInput.isNullOrBlank() && entry.kind != VFileKind.FILE) {
-        return false
-    }
-    if (!normalizedExtensionInput.isNullOrBlank()) {
-        val normalizedExtension = normalizedExtensionInput.normalizeExtension()
-        if (!normalizedName.endsWith(".$normalizedExtension")) {
-            return false
-        }
-    }
-    val size = entry.sizeBytes
-    if (minSize != null && (size == null || size < minSize)) {
-        return false
-    }
-    if (maxSize != null && (size == null || size > maxSize)) {
-        return false
-    }
-    return true
+    return matchesKind(entry) &&
+        matchesName(normalizedName) &&
+        matchesExtension(entry, normalizedName) &&
+        matchesSize(entry.sizeBytes)
+}
+
+/**
+ * 检查条目类型条件。
+ *
+ * @param entry 待匹配条目。
+ * @return 类型匹配或未配置类型时返回 true。
+ */
+private fun FileLabelMatcher.matchesKind(entry: VFile): Boolean = kind == null || entry.kind == kind
+
+/**
+ * 检查文件名包含条件。
+ *
+ * @param normalizedName 小写文件名。
+ * @return 名称匹配或未配置名称时返回 true。
+ */
+private fun FileLabelMatcher.matchesName(normalizedName: String): Boolean {
+    val expected = nameContains?.trim()?.lowercase()
+    return expected.isNullOrBlank() || expected in normalizedName
+}
+
+/**
+ * 检查扩展名条件，并确保扩展名只匹配文件。
+ *
+ * @param entry 待匹配条目。
+ * @param normalizedName 小写文件名。
+ * @return 扩展名匹配或未配置扩展名时返回 true。
+ */
+private fun FileLabelMatcher.matchesExtension(entry: VFile, normalizedName: String): Boolean {
+    val expected = extension?.trim()
+    return expected.isNullOrBlank() ||
+        entry.kind == VFileKind.FILE && normalizedName.endsWith(".${expected.normalizeExtension()}")
+}
+
+/**
+ * 检查文件大小范围。
+ *
+ * @param size 文件大小；未知时为空。
+ * @return 大小条件全部满足时返回 true。
+ */
+private fun FileLabelMatcher.matchesSize(size: Long?): Boolean {
+    val minimum = minSizeBytes
+    val maximum = maxSizeBytes
+    return (minimum == null || size != null && size >= minimum) &&
+        (maximum == null || size != null && size <= maximum)
 }
 
 /**

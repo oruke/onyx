@@ -162,15 +162,16 @@ class WebDavVfsProvider(
     override suspend fun delete(entries: List<VFile>): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
-        if (unsupported != null) {
-            return Result.failure(VfsProviderNotFoundException(unsupported.location))
-        }
-        return runCatching {
-            entries
-                .groupBy { entry -> authRepository.authContext(entry.location) }
-                .forEach { (authContext, groupedEntries) ->
-                    client.delete(groupedEntries, authContext)
-                }
+        return if (unsupported != null) {
+            Result.failure(VfsProviderNotFoundException(unsupported.location))
+        } else {
+            runCatching {
+                entries
+                    .groupBy { entry -> authRepository.authContext(entry.location) }
+                    .forEach { (authContext, groupedEntries) ->
+                        client.delete(groupedEntries, authContext)
+                    }
+            }
         }
     }
 
@@ -200,7 +201,11 @@ class WebDavVfsProvider(
         name: String,
     ): Result<VFile> {
         return runCatching {
-            client.createDirectory(parentLocation.withVfsTrailingSlash(), name, authRepository.authContext(parentLocation))
+            client.createDirectory(
+                parentLocation.withVfsTrailingSlash(),
+                name,
+                authRepository.authContext(parentLocation),
+            )
         }
     }
 
@@ -240,29 +245,26 @@ class WebDavVfsProvider(
         block: suspend (VfsAuthContext) -> Unit,
     ): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
-        if (!supports(targetDirectoryLocation)) {
-            return Result.failure(VfsProviderNotFoundException(targetDirectoryLocation))
+        val unsupportedLocation = if (!supports(targetDirectoryLocation)) {
+            targetDirectoryLocation
+        } else {
+            entries.firstOrNull { entry -> !supports(entry.location) }?.location
         }
-        val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
-        if (unsupported != null) {
-            return Result.failure(VfsProviderNotFoundException(unsupported.location))
-        }
-
-        val targetEndpoint = webDavEndpointKey(targetDirectoryLocation)
-        val hasDifferentEndpoint = targetEndpoint == null ||
-            entries.any { entry -> webDavEndpointKey(entry.location) != targetEndpoint }
-        if (hasDifferentEndpoint) {
-            return Result.failure(unsupported(targetDirectoryLocation, capability))
-        }
-
-        val targetAuthContext = authRepository.authContext(targetDirectoryLocation)
-        val hasDifferentSourceAuth = entries.any { entry -> authRepository.authContext(entry.location) != targetAuthContext }
-        if (hasDifferentSourceAuth) {
-            return Result.failure(unsupported(targetDirectoryLocation, capability))
-        }
-
-        return runCatching {
-            block(targetAuthContext)
+        return if (unsupportedLocation != null) {
+            Result.failure(VfsProviderNotFoundException(unsupportedLocation))
+        } else {
+            val targetEndpoint = webDavEndpointKey(targetDirectoryLocation)
+            val hasDifferentEndpoint = targetEndpoint == null ||
+                entries.any { entry -> webDavEndpointKey(entry.location) != targetEndpoint }
+            val targetAuthContext = authRepository.authContext(targetDirectoryLocation)
+            val hasDifferentSourceAuth = entries.any { entry ->
+                authRepository.authContext(entry.location) != targetAuthContext
+            }
+            if (hasDifferentEndpoint || hasDifferentSourceAuth) {
+                Result.failure(unsupported(targetDirectoryLocation, capability))
+            } else {
+                runCatching { block(targetAuthContext) }
+            }
         }
     }
 

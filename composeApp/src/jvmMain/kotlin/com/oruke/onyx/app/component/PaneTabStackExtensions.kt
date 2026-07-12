@@ -79,29 +79,28 @@ internal fun List<PaneTabState>.withDetachedTab(
     replacementTab: PaneTabState?,
 ): PaneTabDetachUpdate? {
     val tabIndex = indexOfFirst { it.id == tabId }
-    if (tabIndex == -1) return null
-
-    val detachedTab = this[tabIndex]
-    if (size == 1) {
-        replacementTab ?: return null
-        return PaneTabDetachUpdate(
-            tabs = listOf(replacementTab),
-            activeTab = replacementTab,
+    val detachedTab = getOrNull(tabIndex) ?: return null
+    return if (size == 1) {
+        replacementTab?.let { replacement ->
+            PaneTabDetachUpdate(
+                tabs = listOf(replacement),
+                activeTab = replacement,
+                detachedTabSnapshot = detachedTab.toTabSnapshot(),
+            )
+        }
+    } else {
+        val nextTabs = filterNot { it.id == tabId }
+        val nextActiveTab = if (activeTabId == tabId) {
+            nextTabs.getOrNull(tabIndex.coerceAtMost(nextTabs.lastIndex)) ?: nextTabs.first()
+        } else {
+            nextTabs.first { it.id == activeTabId }
+        }
+        PaneTabDetachUpdate(
+            tabs = nextTabs,
+            activeTab = nextActiveTab,
             detachedTabSnapshot = detachedTab.toTabSnapshot(),
         )
     }
-
-    val nextTabs = filterNot { it.id == tabId }
-    val nextActiveTab = if (activeTabId == tabId) {
-        nextTabs.getOrNull(tabIndex.coerceAtMost(nextTabs.lastIndex)) ?: nextTabs.first()
-    } else {
-        nextTabs.first { it.id == activeTabId }
-    }
-    return PaneTabDetachUpdate(
-        tabs = nextTabs,
-        activeTab = nextActiveTab,
-        detachedTabSnapshot = detachedTab.toTabSnapshot(),
-    )
 }
 
 internal fun List<PaneTabState>.withAttachedTab(

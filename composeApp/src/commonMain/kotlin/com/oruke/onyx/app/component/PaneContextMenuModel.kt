@@ -263,193 +263,95 @@ internal object PaneContextMenuModelBuilder {
             section.kind == FileContextMenuSectionKind.SYSTEM && section.items.isNotEmpty()
         }
 
-        return PaneContextMenuModel(
-            nodes = buildList {
-                add(
-                    paneItem(
-                        id = "open",
-                        text = PaneContextMenuText.OPEN,
-                        icon = PaneContextMenuIcon.OPEN,
-                        command = PaneCommand.OPEN_SELECTION,
-                        enabled = selectedCount == 1,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "open-new-tab",
-                        text = PaneContextMenuText.OPEN_IN_NEW_TAB,
-                        icon = PaneContextMenuIcon.OPEN_IN_NEW_TAB,
-                        command = PaneCommand.OPEN_SELECTION_IN_NEW_TAB,
-                        enabled = singleEntry?.kind == VFileKind.DIRECTORY,
-                    )
-                )
-                if (openWithSection != null) {
-                    add(
-                        PaneContextMenuNode.Item(
-                            id = "open-with",
-                            text = PaneContextMenuText.OPEN_WITH,
-                            icon = PaneContextMenuIcon.OPEN_WITH,
-                            children = openWithSection.items.map { item -> item.toPaneMenuNode() },
-                        )
-                    )
-                }
-                if (selectedCount > 0 && systemSection != null) {
-                    add(PaneContextMenuNode.Divider)
-                    addAll(systemSection.items.map { item -> item.toPaneMenuNode() })
-                }
-                add(
-                    paneItem(
-                        id = "rename",
-                        text = PaneContextMenuText.RENAME,
-                        icon = PaneContextMenuIcon.EDIT,
-                        command = PaneCommand.RENAME_SELECTION,
-                        enabled = selectedCount == 1,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "new-file",
-                        text = PaneContextMenuText.NEW_FILE,
-                        icon = PaneContextMenuIcon.FILE,
-                        command = PaneCommand.NEW_FILE,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "new-directory",
-                        text = PaneContextMenuText.NEW_DIRECTORY,
-                        icon = PaneContextMenuIcon.FOLDER,
-                        command = PaneCommand.NEW_DIRECTORY,
-                    )
-                )
-                add(PaneContextMenuNode.Divider)
-                add(
-                    paneItem(
-                        id = "delete",
-                        text = PaneContextMenuText.DELETE_SELECTED,
-                        icon = PaneContextMenuIcon.DELETE,
-                        command = PaneCommand.DELETE_SELECTION,
-                        enabled = selectedCount > 0,
-                    )
-                )
-                if (input.canExtractSelection) {
-                    add(
-                        externalItem(
-                            id = "extract-here",
-                            text = PaneContextMenuText.EXTRACT_HERE,
-                            icon = PaneContextMenuIcon.EXTRACT,
-                            command = PaneContextMenuCommand.ExtractSelection,
-                        )
-                    )
-                    add(
-                        externalItem(
-                            id = "extract-to-directory",
-                            text = PaneContextMenuText.EXTRACT_TO_DIRECTORY,
-                            icon = PaneContextMenuIcon.EXTRACT,
-                            command = PaneContextMenuCommand.ExtractToDirectory,
-                        )
-                    )
-                    add(
-                        externalItem(
-                            id = "extract-smart",
-                            text = PaneContextMenuText.EXTRACT_SMART,
-                            icon = PaneContextMenuIcon.EXTRACT,
-                            command = PaneContextMenuCommand.ExtractSmart,
-                        )
-                    )
-                }
-                if (selectedCount >= 2) {
-                    add(
-                        externalItem(
-                            id = "batch-rename",
-                            text = PaneContextMenuText.BATCH_RENAME,
-                            icon = PaneContextMenuIcon.EDIT,
-                            command = PaneContextMenuCommand.BatchRename,
-                        )
-                    )
-                }
-                add(
-                    externalItem(
-                        id = "copy-path",
-                        text = PaneContextMenuText.COPY_PATH,
-                        icon = PaneContextMenuIcon.COPY,
-                        command = PaneContextMenuCommand.CopyPath,
-                        enabled = selectedCount > 0,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "copy",
-                        text = PaneContextMenuText.COPY,
-                        icon = PaneContextMenuIcon.COPY,
-                        command = PaneCommand.COPY_SELECTION,
-                        enabled = selectedCount > 0,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "cut",
-                        text = PaneContextMenuText.CUT,
-                        icon = PaneContextMenuIcon.CUT,
-                        command = PaneCommand.CUT_SELECTION,
-                        enabled = selectedCount > 0,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "paste",
-                        text = PaneContextMenuText.PASTE,
-                        icon = PaneContextMenuIcon.PASTE,
-                        command = PaneCommand.PASTE,
-                        enabled = input.canPaste,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "undo",
-                        text = PaneContextMenuText.UNDO,
-                        icon = PaneContextMenuIcon.UNDO,
-                        command = PaneCommand.UNDO_LAST_OPERATION,
-                        enabled = input.canUndo,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "redo",
-                        text = PaneContextMenuText.REDO,
-                        icon = PaneContextMenuIcon.REDO,
-                        command = PaneCommand.REDO_LAST_OPERATION,
-                        enabled = input.canRedo,
-                    )
-                )
-                add(PaneContextMenuNode.Divider)
-                add(
-                    paneItem(
-                        id = "refresh",
-                        text = PaneContextMenuText.REFRESH,
-                        icon = PaneContextMenuIcon.REFRESH,
-                        command = PaneCommand.REFRESH,
-                    )
-                )
-                add(
-                    externalItem(
-                        id = "open-terminal",
-                        text = PaneContextMenuText.OPEN_TERMINAL,
-                        icon = PaneContextMenuIcon.TERMINAL,
-                        command = PaneContextMenuCommand.OpenTerminal,
-                    )
-                )
-                add(
-                    paneItem(
-                        id = "close",
-                        text = PaneContextMenuText.CLOSE_MENU,
-                        icon = PaneContextMenuIcon.CLOSE,
-                        command = PaneCommand.CLOSE_MENU,
-                    )
-                )
-            },
-        )
+        val nodes = buildList {
+            addAll(openNodes(selectedCount, singleEntry, openWithSection, systemSection))
+            addAll(fileOperationNodes(input, selectedCount))
+            addAll(clipboardNodes(input, selectedCount))
+            addAll(utilityNodes())
+        }
+        return PaneContextMenuModel(nodes)
     }
+
+    /** 构建打开、打开方式和系统扩展菜单节点。 */
+    private fun openNodes(
+        selectedCount: Int,
+        singleEntry: VFile?,
+        openWithSection: FileContextMenuSection?,
+        systemSection: FileContextMenuSection?,
+    ): List<PaneContextMenuNode> = buildList {
+        add(paneItem("open", PaneContextMenuText.OPEN, PaneContextMenuIcon.OPEN, PaneCommand.OPEN_SELECTION,
+            selectedCount == 1))
+        add(paneItem("open-new-tab", PaneContextMenuText.OPEN_IN_NEW_TAB, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
+            PaneCommand.OPEN_SELECTION_IN_NEW_TAB, singleEntry?.kind == VFileKind.DIRECTORY))
+        openWithSection?.let { section ->
+            add(
+                PaneContextMenuNode.Item(
+                    id = "open-with",
+                    text = PaneContextMenuText.OPEN_WITH,
+                    icon = PaneContextMenuIcon.OPEN_WITH,
+                    children = section.items.map { item -> item.toPaneMenuNode() },
+                )
+            )
+        }
+        if (selectedCount > 0 && systemSection != null) {
+            add(PaneContextMenuNode.Divider)
+            addAll(systemSection.items.map { item -> item.toPaneMenuNode() })
+        }
+    }
+
+    /** 构建重命名、新建、删除、解压和路径复制节点。 */
+    private fun fileOperationNodes(
+        input: PaneContextMenuBuildInput,
+        selectedCount: Int,
+    ): List<PaneContextMenuNode> = buildList {
+        add(paneItem("rename", PaneContextMenuText.RENAME, PaneContextMenuIcon.EDIT,
+            PaneCommand.RENAME_SELECTION, selectedCount == 1))
+        add(paneItem("new-file", PaneContextMenuText.NEW_FILE, PaneContextMenuIcon.FILE, PaneCommand.NEW_FILE))
+        add(paneItem("new-directory", PaneContextMenuText.NEW_DIRECTORY, PaneContextMenuIcon.FOLDER,
+            PaneCommand.NEW_DIRECTORY))
+        add(PaneContextMenuNode.Divider)
+        add(paneItem("delete", PaneContextMenuText.DELETE_SELECTED, PaneContextMenuIcon.DELETE,
+            PaneCommand.DELETE_SELECTION, selectedCount > 0))
+        if (input.canExtractSelection) {
+            add(externalItem("extract-here", PaneContextMenuText.EXTRACT_HERE, PaneContextMenuIcon.EXTRACT,
+                PaneContextMenuCommand.ExtractSelection))
+            add(externalItem("extract-to-directory", PaneContextMenuText.EXTRACT_TO_DIRECTORY,
+                PaneContextMenuIcon.EXTRACT, PaneContextMenuCommand.ExtractToDirectory))
+            add(externalItem("extract-smart", PaneContextMenuText.EXTRACT_SMART, PaneContextMenuIcon.EXTRACT,
+                PaneContextMenuCommand.ExtractSmart))
+        }
+        if (selectedCount >= 2) {
+            add(externalItem("batch-rename", PaneContextMenuText.BATCH_RENAME, PaneContextMenuIcon.EDIT,
+                PaneContextMenuCommand.BatchRename))
+        }
+        add(externalItem("copy-path", PaneContextMenuText.COPY_PATH, PaneContextMenuIcon.COPY,
+            PaneContextMenuCommand.CopyPath, selectedCount > 0))
+    }
+
+    /** 构建剪贴板和撤销历史节点。 */
+    private fun clipboardNodes(
+        input: PaneContextMenuBuildInput,
+        selectedCount: Int,
+    ): List<PaneContextMenuNode> = listOf(
+        paneItem("copy", PaneContextMenuText.COPY, PaneContextMenuIcon.COPY,
+            PaneCommand.COPY_SELECTION, selectedCount > 0),
+        paneItem("cut", PaneContextMenuText.CUT, PaneContextMenuIcon.CUT,
+            PaneCommand.CUT_SELECTION, selectedCount > 0),
+        paneItem("paste", PaneContextMenuText.PASTE, PaneContextMenuIcon.PASTE, PaneCommand.PASTE, input.canPaste),
+        paneItem("undo", PaneContextMenuText.UNDO, PaneContextMenuIcon.UNDO,
+            PaneCommand.UNDO_LAST_OPERATION, input.canUndo),
+        paneItem("redo", PaneContextMenuText.REDO, PaneContextMenuIcon.REDO,
+            PaneCommand.REDO_LAST_OPERATION, input.canRedo),
+    )
+
+    /** 构建刷新、终端和关闭节点。 */
+    private fun utilityNodes(): List<PaneContextMenuNode> = listOf(
+        PaneContextMenuNode.Divider,
+        paneItem("refresh", PaneContextMenuText.REFRESH, PaneContextMenuIcon.REFRESH, PaneCommand.REFRESH),
+        externalItem("open-terminal", PaneContextMenuText.OPEN_TERMINAL, PaneContextMenuIcon.TERMINAL,
+            PaneContextMenuCommand.OpenTerminal),
+        paneItem("close", PaneContextMenuText.CLOSE_MENU, PaneContextMenuIcon.CLOSE, PaneCommand.CLOSE_MENU),
+    )
 
     /**
      * 创建面板命令菜单项。

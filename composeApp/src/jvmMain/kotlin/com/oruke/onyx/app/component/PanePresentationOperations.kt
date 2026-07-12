@@ -107,6 +107,7 @@ internal fun DefaultPaneComponent.resizeDetailsColumn(
     updateTab(tab.id) { currentTab ->
         currentTab.withResizedDetailsColumnState(
             column = column,
+            nextColumn = nextColumn,
             deltaWeight = deltaWeight,
         )
     }

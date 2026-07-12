@@ -68,11 +68,11 @@ internal class PlatformMenuSourceWatchService(
      * @return `true` 表示监听到目录变化，`false` 表示超时或当前平台无可用文件监听源。
      */
     suspend fun awaitChange(timeoutMillis: Long): Boolean {
-        if (timeoutMillis <= 0L) return false
-        if (platformProvider() == PLATFORM_WINDOWS) {
-            return awaitRegistryChange(timeoutMillis)
+        return when {
+            timeoutMillis <= 0L -> false
+            platformProvider() == PLATFORM_WINDOWS -> awaitRegistryChange(timeoutMillis)
+            else -> awaitDirectoryChange(timeoutMillis)
         }
-        return awaitDirectoryChange(timeoutMillis)
     }
 
     /**
@@ -132,24 +132,38 @@ internal class PlatformMenuSourceWatchService(
         sourceDirectories: List<Path>,
         timeoutMillis: Long,
     ): Boolean? {
-        FileSystems.getDefault().newWatchService().use { watchService ->
+        return FileSystems.getDefault().newWatchService().use { watchService ->
             val registeredCount = registerWatchDirectories(watchService, sourceDirectories)
-            if (registeredCount == 0) return null
+            if (registeredCount == 0) null else waitForWatchEvent(watchService, timeoutMillis)
+        }
+    }
 
-            val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
-            while (currentCoroutineContext().isActive) {
-                val remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
-                if (remainingMillis <= 0L) return false
-                val key = watchService.poll(
-                    min(remainingMillis, WATCH_POLL_SLICE_MILLIS),
-                    TimeUnit.MILLISECONDS,
-                ) ?: continue
-                val changed = key.pollEvents().any { event -> event.kind() != OVERFLOW }
+    /**
+     * 在已注册目录的 WatchService 上等待变更或超时。
+     *
+     * @param watchService 已注册来源目录的监听器。
+     * @param timeoutMillis 最长等待时间。
+     * @return 监听到有效事件时返回 true。
+     */
+    private suspend fun waitForWatchEvent(
+        watchService: WatchService,
+        timeoutMillis: Long,
+    ): Boolean {
+        val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        var changed = false
+        while (currentCoroutineContext().isActive && !changed) {
+            val remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
+            if (remainingMillis <= 0L) break
+            val key = watchService.poll(
+                min(remainingMillis, WATCH_POLL_SLICE_MILLIS),
+                TimeUnit.MILLISECONDS,
+            )
+            if (key != null) {
+                changed = key.pollEvents().any { event -> event.kind() != OVERFLOW }
                 key.reset()
-                if (changed) return true
             }
         }
-        return false
+        return changed
     }
 
     /**
@@ -171,27 +185,52 @@ internal class PlatformMenuSourceWatchService(
             if (registrations.isEmpty()) return null
 
             val eventHandles = registrations.map { registration -> registration.eventHandle }.toTypedArray()
-            val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
-            while (currentCoroutineContext().isActive) {
-                val remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
-                if (remainingMillis <= 0L) return false
+            return waitForRegistryEvent(eventHandles, timeoutMillis)
+        } finally {
+            registrations.forEach(WindowsRegistryWatchRegistration::close)
+        }
+    }
+
+    /**
+     * 等待任意已注册 Windows 事件句柄变化。
+     *
+     * @param eventHandles 注册表通知事件句柄。
+     * @param timeoutMillis 最长等待时间。
+     * @return 变化为 true，超时为 false，Win32 等待失败为空。
+     */
+    private suspend fun waitForRegistryEvent(
+        eventHandles: Array<WinNT.HANDLE>,
+        timeoutMillis: Long,
+    ): Boolean? {
+        val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
+        var outcome = RegistryWatchOutcome.WAITING
+        while (currentCoroutineContext().isActive && outcome == RegistryWatchOutcome.WAITING) {
+            val remainingMillis = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime())
+            if (remainingMillis <= 0L) {
+                outcome = RegistryWatchOutcome.TIMED_OUT
+            } else {
                 val waitResult = Kernel32.INSTANCE.WaitForMultipleObjects(
                     eventHandles.size,
                     eventHandles,
                     false,
                     min(remainingMillis, WATCH_POLL_SLICE_MILLIS).toInt(),
                 )
-                when {
-                    waitResult in WinBase.WAIT_OBJECT_0 until WinBase.WAIT_OBJECT_0 + eventHandles.size -> return true
-                    waitResult == WinError.WAIT_TIMEOUT -> continue
-                    waitResult == WinBase.WAIT_FAILED -> return null
-                    else -> return null
+                outcome = when {
+                    waitResult in WinBase.WAIT_OBJECT_0 until WinBase.WAIT_OBJECT_0 + eventHandles.size -> {
+                        RegistryWatchOutcome.CHANGED
+                    }
+
+                    waitResult == WinError.WAIT_TIMEOUT -> RegistryWatchOutcome.WAITING
+                    else -> RegistryWatchOutcome.FAILED
                 }
             }
-        } finally {
-            registrations.forEach(WindowsRegistryWatchRegistration::close)
         }
-        return false
+        return when (outcome) {
+            RegistryWatchOutcome.CHANGED -> true
+            RegistryWatchOutcome.WAITING,
+            RegistryWatchOutcome.TIMED_OUT -> false
+            RegistryWatchOutcome.FAILED -> null
+        }
     }
 
     /**
@@ -209,26 +248,32 @@ internal class PlatformMenuSourceWatchService(
             WinNT.KEY_NOTIFY,
             keyReference,
         )
-        if (openResult != WinError.ERROR_SUCCESS) return null
-        val keyHandle = keyReference.value
-        val eventHandle = Kernel32.INSTANCE.CreateEvent(null, false, false, null)
-        if (eventHandle == null) {
-            Advapi32.INSTANCE.RegCloseKey(keyHandle)
-            return null
+        val registration = if (openResult == WinError.ERROR_SUCCESS) {
+            val keyHandle = keyReference.value
+            val eventHandle = Kernel32.INSTANCE.CreateEvent(null, false, false, null)
+            if (eventHandle == null) {
+                Advapi32.INSTANCE.RegCloseKey(keyHandle)
+                null
+            } else {
+                val notifyResult = Advapi32.INSTANCE.RegNotifyChangeKeyValue(
+                    keyHandle,
+                    true,
+                    WINDOWS_REGISTRY_NOTIFY_FILTER,
+                    eventHandle,
+                    true,
+                )
+                if (notifyResult == WinError.ERROR_SUCCESS) {
+                    WindowsRegistryWatchRegistration(keyHandle = keyHandle, eventHandle = eventHandle)
+                } else {
+                    Advapi32.INSTANCE.RegCloseKey(keyHandle)
+                    Kernel32.INSTANCE.CloseHandle(eventHandle)
+                    null
+                }
+            }
+        } else {
+            null
         }
-        val notifyResult = Advapi32.INSTANCE.RegNotifyChangeKeyValue(
-            keyHandle,
-            true,
-            WINDOWS_REGISTRY_NOTIFY_FILTER,
-            eventHandle,
-            true,
-        )
-        if (notifyResult != WinError.ERROR_SUCCESS) {
-            Advapi32.INSTANCE.RegCloseKey(keyHandle)
-            Kernel32.INSTANCE.CloseHandle(eventHandle)
-            return null
-        }
-        return WindowsRegistryWatchRegistration(keyHandle = keyHandle, eventHandle = eventHandle)
+        return registration
     }
 
     /**
@@ -322,6 +367,14 @@ internal class PlatformMenuSourceWatchService(
         /** 根键下的相对路径。 */
         val subKey: String,
     )
+
+    /** 单轮 Windows 注册表等待结果。 */
+    private enum class RegistryWatchOutcome {
+        WAITING,
+        CHANGED,
+        TIMED_OUT,
+        FAILED,
+    }
 
     /**
      * 已注册的 Windows 注册表监听句柄组。

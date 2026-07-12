@@ -6,6 +6,11 @@ import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
 
+/**
+ * 将结构化 VFS 错误映射为可延迟本地化的界面消息。
+ *
+ * @return 保留协议、位置或能力参数的国际化消息。
+ */
 fun VfsProviderError.toI18nMessage(): I18nMessage {
     return when (this) {
         is VfsProviderError.AuthenticationRequired -> I18nMessage(
@@ -58,6 +63,12 @@ fun VfsProviderError.toI18nMessage(): I18nMessage {
     }
 }
 
+/**
+ * 将异常映射为可延迟本地化的界面消息。
+ *
+ * @param fallback 异常没有可展示详情时使用的消息键。
+ * @return provider 异常的结构化消息或普通异常详情。
+ */
 fun Throwable.toI18nMessage(
     fallback: MessageKey = MessageKey.MSG_UNKNOWN_ERROR,
 ): I18nMessage {
@@ -74,6 +85,13 @@ fun Throwable.toI18nMessage(
     }
 }
 
+/**
+ * 选择当前详情、备用详情或协议名。
+ *
+ * @param fallback 当前详情为空时使用的备用详情。
+ * @param protocol 最终兜底协议。
+ * @return 非空展示详情。
+ */
 private fun String?.detailOrFallback(
     fallback: String?,
     protocol: VfsProtocol,
@@ -82,6 +100,12 @@ private fun String?.detailOrFallback(
         ?: fallback.detailOrProtocol(protocol)
 }
 
+/**
+ * 选择当前详情或协议名。
+ *
+ * @param protocol 当前详情为空时使用的协议。
+ * @return 非空展示详情。
+ */
 private fun String?.detailOrProtocol(protocol: VfsProtocol): String {
     return takeIf { !it.isNullOrBlank() } ?: protocol.name
 }

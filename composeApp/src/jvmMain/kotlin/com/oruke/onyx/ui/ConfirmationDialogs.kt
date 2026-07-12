@@ -198,7 +198,9 @@ internal fun ConflictResolutionDialog(
                                     0 -> onDismiss()
                                     1 -> onResolve(TransferConflictStrategy.SKIP, applyToAll)
                                     2 -> onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll)
-                                    3 -> onResolve(TransferConflictStrategy.OVERWRITE, applyToAll)
+                                    LAST_CONFLICT_ACTION_INDEX -> {
+                                        onResolve(TransferConflictStrategy.OVERWRITE, applyToAll)
+                                    }
                                 }
                                 true
                             }
@@ -207,7 +209,7 @@ internal fun ConflictResolutionDialog(
                                 true
                             }
                             Key.DirectionRight, Key.Tab -> {
-                                focusedButton = (focusedButton + 1).coerceAtMost(3)
+                                focusedButton = (focusedButton + 1).coerceAtMost(LAST_CONFLICT_ACTION_INDEX)
                                 true
                             }
                             else -> false
@@ -244,35 +246,60 @@ internal fun ConflictResolutionDialog(
                         )
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_close_menu),
-                        onClick = onDismiss,
-                        focused = focusedButton == 0,
-                    )
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_skip),
-                        onClick = { onResolve(TransferConflictStrategy.SKIP, applyToAll) },
-                        focused = focusedButton == 1,
-                    )
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_keep_both),
-                        onClick = { onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll) },
-                        focused = focusedButton == 2,
-                    )
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_overwrite),
-                        emphasized = true,
-                        onClick = { onResolve(TransferConflictStrategy.OVERWRITE, applyToAll) },
-                        focused = focusedButton == 3,
-                    )
-                }
+                ConflictResolutionActions(
+                    focusedButton = focusedButton,
+                    applyToAll = applyToAll,
+                    onResolve = onResolve,
+                    onDismiss = onDismiss,
+                )
             }
             LaunchedEffect(Unit) { focusRequester.requestFocus() }
         }
     }
 }
+
+/**
+ * 绘制冲突解决窗口的四个动作按钮。
+ *
+ * @param focusedButton 当前键盘焦点按钮索引。
+ * @param applyToAll 是否应用到剩余冲突。
+ * @param onResolve 冲突策略回调。
+ * @param onDismiss 关闭回调。
+ */
+@Composable
+private fun ConflictResolutionActions(
+    focusedButton: Int,
+    applyToAll: Boolean,
+    onResolve: (TransferConflictStrategy, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        DialogTextButton(
+            text = stringResource(Res.string.action_close_menu),
+            onClick = onDismiss,
+            focused = focusedButton == 0,
+        )
+        DialogTextButton(
+            text = stringResource(Res.string.action_skip),
+            onClick = { onResolve(TransferConflictStrategy.SKIP, applyToAll) },
+            focused = focusedButton == 1,
+        )
+        DialogTextButton(
+            text = stringResource(Res.string.action_keep_both),
+            onClick = { onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll) },
+            focused = focusedButton == 2,
+        )
+        DialogTextButton(
+            text = stringResource(Res.string.action_overwrite),
+            emphasized = true,
+            onClick = { onResolve(TransferConflictStrategy.OVERWRITE, applyToAll) },
+            focused = focusedButton == LAST_CONFLICT_ACTION_INDEX,
+        )
+    }
+}
+
+private const val LAST_CONFLICT_ACTION_INDEX = 3

@@ -85,7 +85,7 @@ class JcifsSmbClient : SmbClient {
         val targetDirectory = requireDirectory(targetDirectoryLocation, context)
         entries.forEach { entry ->
             val source = SmbFile(entry.location, context)
-            val target = resolveTransferTarget(
+            val target = resolveSmbTransferTarget(
                 source = source,
                 targetDirectory = targetDirectory,
                 conflictStrategy = conflictStrategy,
@@ -107,7 +107,7 @@ class JcifsSmbClient : SmbClient {
         val targetDirectory = requireDirectory(targetDirectoryLocation, context)
         entries.forEach { entry ->
             val source = SmbFile(entry.location, context)
-            val target = resolveTransferTarget(
+            val target = resolveSmbTransferTarget(
                 source = source,
                 targetDirectory = targetDirectory,
                 conflictStrategy = conflictStrategy,
@@ -118,9 +118,14 @@ class JcifsSmbClient : SmbClient {
             }
             try {
                 source.renameTo(target)
-            } catch (_: SmbException) {
-                source.copyTo(target)
-                source.delete()
+            } catch (renameFailure: SmbException) {
+                runCatching {
+                    source.copyTo(target)
+                    source.delete()
+                }.getOrElse { fallbackFailure ->
+                    fallbackFailure.addSuppressed(renameFailure)
+                    throw fallbackFailure
+                }
             }
         }
     }
@@ -274,24 +279,27 @@ class JcifsSmbClient : SmbClient {
                         location = errorLocation,
                         reason = failure.message,
                     )
-                }
+                },
+                failure,
             )
         } catch (failure: SmbException) {
-            throw VfsProviderException(failure.toProviderError(errorLocation))
+            throw VfsProviderException(failure.toProviderError(errorLocation), failure)
         } catch (failure: UnknownHostException) {
             throw VfsProviderException(
                 VfsProviderError.NetworkFailure(
                     protocol = VfsProtocol.SMB,
                     location = errorLocation,
                     reason = failure.message,
-                )
+                ),
+                failure,
             )
         } catch (failure: MalformedURLException) {
             throw VfsProviderException(
                 VfsProviderError.NotFound(
                     protocol = VfsProtocol.SMB,
                     location = errorLocation,
-                )
+                ),
+                failure,
             )
         }
     }
@@ -336,72 +344,6 @@ class JcifsSmbClient : SmbClient {
             )
         }
         return directory
-    }
-
-    private fun resolveTransferTarget(
-        source: SmbFile,
-        targetDirectory: SmbFile,
-        conflictStrategy: TransferConflictStrategy,
-    ): SmbFile? {
-        if (!source.exists()) {
-            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, source.canonicalPath))
-        }
-
-        val sourceName = source.name.trimEnd('/')
-        val directTarget = SmbFile(targetDirectory, sourceName.withDirectoryMarker(source.isDirectory))
-        if (directTarget.canonicalPath == source.canonicalPath) {
-            throw VfsProviderException(
-                VfsProviderError.UnsupportedOperation(
-                    protocol = VfsProtocol.SMB,
-                    location = source.canonicalPath,
-                    capability = null,
-                )
-            )
-        }
-        if (source.isDirectory && targetDirectory.canonicalPath.withVfsTrailingSlash()
-                .startsWith(source.canonicalPath.withVfsTrailingSlash())
-        ) {
-            throw VfsProviderException(
-                VfsProviderError.UnsupportedOperation(
-                    protocol = VfsProtocol.SMB,
-                    location = targetDirectory.canonicalPath,
-                    capability = null,
-                )
-            )
-        }
-
-        return when {
-            !directTarget.exists() -> directTarget
-            conflictStrategy == TransferConflictStrategy.KEEP_BOTH -> availableTarget(
-                source = source,
-                targetDirectory = targetDirectory,
-            )
-
-            conflictStrategy == TransferConflictStrategy.OVERWRITE -> directTarget
-            conflictStrategy == TransferConflictStrategy.SKIP -> null
-            else -> directTarget
-        }
-    }
-
-    private fun availableTarget(
-        source: SmbFile,
-        targetDirectory: SmbFile,
-    ): SmbFile {
-        val originalName = source.name.trimEnd('/')
-        val directory = source.isDirectory
-        val dotIndex = originalName.lastIndexOf('.')
-        val hasExtension = !directory && dotIndex > 0 && dotIndex < originalName.lastIndex
-        val baseName = if (hasExtension) originalName.substring(0, dotIndex) else originalName
-        val extension = if (hasExtension) originalName.substring(dotIndex) else ""
-
-        var copyIndex = 1
-        var candidate = SmbFile(targetDirectory, originalName.withDirectoryMarker(directory))
-        while (candidate.exists()) {
-            val suffix = if (copyIndex == 1) " copy" else " copy $copyIndex"
-            candidate = SmbFile(targetDirectory, "$baseName$suffix$extension".withDirectoryMarker(directory))
-            copyIndex += 1
-        }
-        return candidate
     }
 
     private fun resolveContentTarget(

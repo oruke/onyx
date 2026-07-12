@@ -165,7 +165,9 @@ private fun OnyxSettings.withCommandShortcut(
     if (shortcut != null) {
         OnyxCommandRegistry.paneCommands
             .map { spec -> spec.command }
-            .filter { existingCommand -> existingCommand != command && currentMap.shortcutFor(existingCommand) == shortcut }
+            .filter { existingCommand ->
+                existingCommand != command && currentMap.shortcutFor(existingCommand) == shortcut
+            }
             .forEach { conflictingCommand ->
                 overrides.removeAll { override -> override.command == conflictingCommand.name }
                 overrides += conflictingCommand.toShortcutOverride(shortcut = null)

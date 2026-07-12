@@ -102,16 +102,15 @@ internal class WindowsOpenWithAssociationService {
         app: OpenWithApp,
     ) {
         val handlerName = app.command.removePrefix(WINDOWS_ASSOC_COMMAND_PREFIX).takeIf { value -> value.isNotBlank() }
-            ?: throw IllegalArgumentException("Invalid Windows association command: ${app.command}")
+        requireNotNull(handlerName) { "Invalid Windows association command: ${app.command}" }
         withComApartment {
-            val handler = findHandler(target.extensionForAssociation(), handlerName)
-                ?: throw IllegalStateException("Windows association handler is not available: ${app.displayName}")
+            val handler = checkNotNull(findHandler(target.extensionForAssociation(), handlerName)) {
+                "Windows association handler is not available: ${app.displayName}"
+            }
             try {
                 withShellDataObject(target) { dataObject ->
                     val result = handler.invoke(dataObject)
-                    if (!result.succeeded()) {
-                        throw IllegalStateException("IAssocHandler.Invoke failed: ${result.toInt()}")
-                    }
+                    check(result.succeeded()) { "IAssocHandler.Invoke failed: ${result.toInt()}" }
                 }
             } finally {
                 handler.Release()
@@ -166,13 +165,17 @@ internal class WindowsOpenWithAssociationService {
         if (!result.succeeded() || enumRef.value == null) return null
         val enumerator = WindowsAssocHandlers(enumRef.value)
         return try {
-            while (true) {
-                val handler = enumerator.nextHandler() ?: return null
+            var matchingHandler: WindowsAssocHandler? = null
+            while (matchingHandler == null) {
+                val handler = enumerator.nextHandler() ?: break
                 val nameMatches = handler.name()?.equals(handlerName, ignoreCase = true) == true
-                if (nameMatches) return handler
-                handler.Release()
+                if (nameMatches) {
+                    matchingHandler = handler
+                } else {
+                    handler.Release()
+                }
             }
-            null
+            matchingHandler
         } finally {
             enumerator.Release()
         }
@@ -202,11 +205,11 @@ internal class WindowsOpenWithAssociationService {
                 parentFolderRef,
                 childPidlRef,
             )
-            if (!bindResult.succeeded()) {
-                throw IllegalStateException("SHBindToParent failed: ${bindResult.toInt()}")
-            }
+            check(bindResult.succeeded()) { "SHBindToParent failed: ${bindResult.toInt()}" }
             parentFolder = IShellFolder.Converter.PointerToIShellFolder(parentFolderRef)
-            val childPidl = childPidlRef.value ?: throw IllegalStateException("SHBindToParent returned null child PIDL")
+            val childPidl = checkNotNull(childPidlRef.value) {
+                "SHBindToParent returned null child PIDL"
+            }
             val dataObjectRef = PointerByReference()
             val childPidlArray = listOf(childPidl).toPointerArray()
             val uiObjectResult = parentFolder.GetUIObjectOf(
@@ -217,10 +220,10 @@ internal class WindowsOpenWithAssociationService {
                 null,
                 dataObjectRef,
             )
-            if (!uiObjectResult.succeeded()) {
-                throw IllegalStateException("IShellFolder.GetUIObjectOf(IDataObject) failed: ${uiObjectResult.toInt()}")
+            check(uiObjectResult.succeeded()) {
+                "IShellFolder.GetUIObjectOf(IDataObject) failed: ${uiObjectResult.toInt()}"
             }
-            dataObject = WindowsDataObject(dataObjectRef.value ?: throw IllegalStateException("IDataObject is null"))
+            dataObject = WindowsDataObject(checkNotNull(dataObjectRef.value) { "IDataObject is null" })
             block(dataObject.rawPointer())
         } finally {
             dataObject?.Release()
@@ -241,8 +244,8 @@ internal class WindowsOpenWithAssociationService {
             Ole32.COINIT_APARTMENTTHREADED or Ole32.COINIT_DISABLE_OLE1DDE,
         )
         val comInitialized = initializeResult.succeeded()
-        if (!comInitialized && initializeResult.toInt() != RPC_E_CHANGED_MODE) {
-            throw IllegalStateException("CoInitializeEx failed: ${initializeResult.toInt()}")
+        check(comInitialized || initializeResult.toInt() == RPC_E_CHANGED_MODE) {
+            "CoInitializeEx failed: ${initializeResult.toInt()}"
         }
         return try {
             block()
@@ -310,10 +313,8 @@ internal class WindowsOpenWithAssociationService {
             0,
             null,
         )
-        if (!result.succeeded()) {
-            throw IllegalStateException("SHParseDisplayName failed for $path: ${result.toInt()}")
-        }
-        return pidlRef.value ?: throw IllegalStateException("SHParseDisplayName returned null PIDL")
+        check(result.succeeded()) { "SHParseDisplayName failed for $path: ${result.toInt()}" }
+        return checkNotNull(pidlRef.value) { "SHParseDisplayName returned null PIDL" }
     }
 
     /**
@@ -393,7 +394,7 @@ internal class WindowsOpenWithAssociationService {
             val handlerRef = PointerByReference()
             val fetchedRef = IntByReference()
             val result = _invokeNativeObject(
-                3,
+                ENUM_ASSOC_HANDLERS_NEXT_VTABLE_INDEX,
                 arrayOf(pointer, WinDef.ULONG(1), handlerRef, fetchedRef),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
@@ -414,7 +415,7 @@ internal class WindowsOpenWithAssociationService {
          * @return Shell 处理器名称；失败时返回 `null`。
          */
         fun name(): String? {
-            return readStringResult(3)
+            return readStringResult(ASSOC_HANDLER_GET_NAME_VTABLE_INDEX)
         }
 
         /**
@@ -424,7 +425,7 @@ internal class WindowsOpenWithAssociationService {
          */
         fun toInfo(): WindowsAssociationHandlerInfo? {
             val name = name() ?: return null
-            val uiName = readStringResult(4)
+            val uiName = readStringResult(ASSOC_HANDLER_GET_UI_NAME_VTABLE_INDEX)
                 ?.toWindowsAssociationLabel()
                 ?: name.fallbackAssociationName()
             val iconPath = iconLocation()
@@ -444,13 +445,14 @@ internal class WindowsOpenWithAssociationService {
             val pathRef = PointerByReference()
             val indexRef = IntByReference()
             val result = _invokeNativeObject(
-                5,
+                ASSOC_HANDLER_GET_ICON_LOCATION_VTABLE_INDEX,
                 arrayOf(pointer, pathRef, indexRef),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
-            if (!result.succeeded()) return null
-            val path = readCoTaskString(pathRef.value) ?: return null
-            return if (indexRef.value == 0) path else "$path,${indexRef.value}"
+            val path = if (result.succeeded()) readCoTaskString(pathRef.value) else null
+            return path?.let { value ->
+                if (indexRef.value == 0) value else "$value,${indexRef.value}"
+            }
         }
 
         /**
@@ -461,7 +463,7 @@ internal class WindowsOpenWithAssociationService {
          */
         fun invoke(dataObject: Pointer): WinNT.HRESULT {
             return _invokeNativeObject(
-                8,
+                ASSOC_HANDLER_INVOKE_VTABLE_INDEX,
                 arrayOf(pointer, dataObject),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
@@ -595,6 +597,21 @@ internal class WindowsOpenWithAssociationService {
         /** Shell 关联处理器执行超时。 */
         const val WINDOWS_ASSOC_EXECUTE_TIMEOUT_MS = 5_000L
 
+        /** `IEnumAssocHandlers.Next` 在 COM vtable 中的索引。 */
+        const val ENUM_ASSOC_HANDLERS_NEXT_VTABLE_INDEX = 3
+
+        /** `IAssocHandler.GetName` 在 COM vtable 中的索引。 */
+        const val ASSOC_HANDLER_GET_NAME_VTABLE_INDEX = 3
+
+        /** `IAssocHandler.GetUIName` 在 COM vtable 中的索引。 */
+        const val ASSOC_HANDLER_GET_UI_NAME_VTABLE_INDEX = 4
+
+        /** `IAssocHandler.GetIconLocation` 在 COM vtable 中的索引。 */
+        const val ASSOC_HANDLER_GET_ICON_LOCATION_VTABLE_INDEX = 5
+
+        /** `IAssocHandler.Invoke` 在 COM vtable 中的索引。 */
+        const val ASSOC_HANDLER_INVOKE_VTABLE_INDEX = 8
+
         /** `IDataObject` 接口 ID。 */
         val IID_I_DATA_OBJECT = Guid.IID("{0000010E-0000-0000-C000-000000000046}")
 
@@ -604,9 +621,10 @@ internal class WindowsOpenWithAssociationService {
          * @return 可显示名称；空值或资源引用返回 `null`。
          */
         fun String.toWindowsAssociationLabel(): String? {
-            val value = trim().takeIf { text -> text.isNotBlank() } ?: return null
-            if (value.startsWith("@")) return null
-            return value.replace("&", "").takeIf { text -> text.isNotBlank() }
+            return trim()
+                .takeIf { text -> text.isNotBlank() && !text.startsWith("@") }
+                ?.replace("&", "")
+                ?.takeIf { text -> text.isNotBlank() }
         }
 
         /**

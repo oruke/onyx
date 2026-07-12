@@ -100,6 +100,8 @@
     <string name="label_remote_credentials_system_keyring_unavailable">System keyring storage is not available yet.</string>
     <string name="label_remote_credentials_rejected">Authentication failed. Check the username, password, or domain.</string>
     <string name="label_remote_credentials_error_username_required">Username is required.</string>
+    <string name="label_remote_credentials_error_save_failed">Unable to save credentials. Check the system keyring and try again.</string>
+    <string name="label_remote_credentials_saving">Saving credentials...</string>
     <string name="label_remote_connection_empty">No remote connections yet</string>
     <string name="label_remote_connections_title">Network Locations</string>
     <string name="label_remote_connection_new_title">New connection</string>
@@ -107,6 +109,8 @@
     <string name="label_remote_connection_details_section">Connection details</string>
     <string name="label_remote_connection_credentials_section">Credentials</string>
     <string name="label_remote_connection_not_configured">Not configured</string>
+    <string name="label_remote_connection_saving">Saving connection...</string>
+    <string name="label_remote_connection_error_credential_save_failed">Unable to save or remove credentials.</string>
     <string name="label_remote_connection_name">Name</string>
     <string name="label_remote_connection_protocol">Protocol</string>
     <string name="label_remote_connection_location">Location</string>
@@ -258,6 +262,7 @@
     <string name="msg_extract_failed">Extract failed</string>
     <string name="msg_delete_items">Delete %1$d item(s)</string>
     <string name="msg_deleted_items">Deleted %1$d item(s)</string>
+    <string name="msg_deleted_items_without_undo">Deleted %1$d item(s); %2$d item(s) cannot be undone because recycle bin metadata was unavailable</string>
     <string name="msg_delete_failed">Delete failed</string>
     <string name="msg_create_folders">Create %1$d folder(s)</string>
     <string name="msg_created_folders">Created %1$d folder(s)</string>

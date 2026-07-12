@@ -369,7 +369,7 @@ private fun ContextMenuItem(
             .onPointerEvent(PointerEventType.Enter) { onPointerEnter() }
             .background(background, RoundedCornerShape(4.dp))
             .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick)
-            .alpha(if (enabled) 1f else 0.55f)
+            .alpha(if (enabled) 1f else DISABLED_CONTEXT_MENU_ALPHA)
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -411,6 +411,7 @@ private fun PaneContextMenuNode.Item.contextMenuText(): String {
  *
  * @return 字符串资源。
  */
+@Suppress("CyclomaticComplexMethod") // 穷举菜单文案到资源键的声明式映射。
 private fun PaneContextMenuText.stringResourceKey(): StringResource {
     return when (this) {
         PaneContextMenuText.OPEN -> Res.string.action_open
@@ -453,6 +454,7 @@ private fun PaneContextMenuText.stringResourceValue(): String {
  * @param iconPath 平台动态图标路径或标识，用于优先渲染系统菜单图标。
  * @return Jewel 图标键。
  */
+@Suppress("CyclomaticComplexMethod") // 穷举菜单图标到 Jewel 图标的声明式映射。
 private fun PaneContextMenuIcon.toIconKey(iconPath: String?): IconKey {
     return when (this) {
         PaneContextMenuIcon.OPEN -> AllIconsKeys.Actions.MenuOpen
@@ -561,3 +563,6 @@ private const val SUBMENU_OVERLAP_PX = 4
 private const val SUBMENU_VERTICAL_OFFSET_PX = 4
 private const val SUBMENU_CLOSE_DELAY_MS = 180L
 private const val CONTEXT_MENU_ICON_SIZE_DP = 16
+
+/** 禁用菜单项的显示透明度。 */
+private const val DISABLED_CONTEXT_MENU_ALPHA = 0.55f

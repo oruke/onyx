@@ -100,6 +100,8 @@
     <string name="label_remote_credentials_system_keyring_unavailable">システムキーリング保存はまだ利用できません。</string>
     <string name="label_remote_credentials_rejected">認証に失敗しました。ユーザー名、パスワード、ドメインを確認してください。</string>
     <string name="label_remote_credentials_error_username_required">ユーザー名を入力してください。</string>
+    <string name="label_remote_credentials_error_save_failed">認証情報を保存できません。システムキーチェーンを確認して再試行してください。</string>
+    <string name="label_remote_credentials_saving">認証情報を保存しています...</string>
     <string name="label_remote_connection_empty">リモート接続はまだありません</string>
     <string name="label_remote_connections_title">ネットワークの場所</string>
     <string name="label_remote_connection_new_title">新しい接続</string>
@@ -107,6 +109,8 @@
     <string name="label_remote_connection_details_section">接続情報</string>
     <string name="label_remote_connection_credentials_section">認証情報</string>
     <string name="label_remote_connection_not_configured">未設定</string>
+    <string name="label_remote_connection_saving">接続を保存しています...</string>
+    <string name="label_remote_connection_error_credential_save_failed">接続の認証情報を保存または削除できません。</string>
     <string name="label_remote_connection_name">名前</string>
     <string name="label_remote_connection_protocol">プロトコル</string>
     <string name="label_remote_connection_location">場所</string>
@@ -258,6 +262,7 @@
     <string name="msg_extract_failed">解凍に失敗しました</string>
     <string name="msg_delete_items">%1$d 個のアイテムを削除</string>
     <string name="msg_deleted_items">%1$d 個のアイテムを削除しました</string>
+    <string name="msg_deleted_items_without_undo">%1$d 個を削除しました。うち %2$d 個はごみ箱メタデータを取得できず元に戻せません</string>
     <string name="msg_delete_failed">削除に失敗しました</string>
     <string name="msg_create_folders">%1$d 個のフォルダーを作成</string>
     <string name="msg_created_folders">%1$d 個のフォルダーを作成しました</string>

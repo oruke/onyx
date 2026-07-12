@@ -145,6 +145,7 @@ internal class PaneCommandController(
      * @param command 待执行的面板命令。
      * @return 命令已处理时返回 `true`。
      */
+    @Suppress("CyclomaticComplexMethod") // 穷举命令到单一动作的路由表，不包含嵌套业务分支。
     fun execute(command: PaneCommand): Boolean {
         return when (command) {
             PaneCommand.OPEN_SELECTION -> executeIfEnabled(command) {

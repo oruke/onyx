@@ -112,15 +112,15 @@ class JvmFileContextMenuService(
     ): Result<Unit> {
         return when (command) {
             is FileContextMenuCommand.OpenWith -> {
-                val entry = entries.singleOrNull()
-                    ?: return Result.failure(IllegalStateException("Open with requires a single entry"))
-                openWithService.openWith(entry, command.app)
+                entries.singleOrNull()?.let { entry ->
+                    openWithService.openWith(entry, command.app)
+                } ?: Result.failure(IllegalStateException("Open with requires a single entry"))
             }
 
             FileContextMenuCommand.OpenWithChooser -> {
-                val entry = entries.singleOrNull()
-                    ?: return Result.failure(IllegalStateException("Open with chooser requires a single entry"))
-                openWithService.openWithChooser(entry)
+                entries.singleOrNull()?.let { entry ->
+                    openWithService.openWithChooser(entry)
+                } ?: Result.failure(IllegalStateException("Open with chooser requires a single entry"))
             }
 
             is FileContextMenuCommand.SystemAction -> {

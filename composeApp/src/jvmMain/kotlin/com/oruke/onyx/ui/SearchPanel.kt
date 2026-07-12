@@ -28,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -67,6 +66,12 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+/** 搜索结果名称列占用的宽度权重。 */
+private const val SEARCH_NAME_COLUMN_WEIGHT = 0.42f
+
+/** 搜索结果路径列占用的宽度权重。 */
+private const val SEARCH_PATH_COLUMN_WEIGHT = 0.58f
+
 @Composable
 internal fun SearchPanel(
     state: SearchPanelState,
@@ -95,128 +100,151 @@ internal fun SearchPanel(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(26.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                key = AllIconsKeys.Actions.Find,
-                contentDescription = stringResource(Res.string.label_search_title),
-                modifier = Modifier.size(14.dp),
-            )
-            Text(
-                text = stringResource(Res.string.label_search_title),
-                color = palette.foreground,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = stringResource(Res.string.label_search_scope, locationLabel(state.rootLocation)),
-                color = palette.mutedForeground,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(260.dp),
-            )
-            SearchInput(
-                query = state.query,
-                enabled = state.status != SearchStatus.RUNNING,
-                focusRequester = focusRequester,
-                onQueryChange = onQueryChange,
-                onSubmit = {
-                    if (canSearch) {
-                        onSearch()
-                    }
-                },
-                onClose = {
-                    if (state.status == SearchStatus.RUNNING) {
-                        onCancel()
-                    } else {
-                        onClose()
-                    }
-                },
-                modifier = Modifier.weight(1f),
-            )
-            ToolbarIconButton(
-                enabled = canSearch,
-                onClick = onSearch,
-                tooltip = stringResource(Res.string.action_search),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.Find,
-                    contentDescription = stringResource(Res.string.action_search),
-                    modifier = Modifier.size(13.dp),
-                )
-            }
-            if (state.status == SearchStatus.RUNNING) {
-                ToolbarIconButton(
-                    enabled = true,
-                    onClick = onCancel,
-                    tooltip = stringResource(Res.string.action_cancel_task),
-                ) {
-                    Icon(
-                        key = AllIconsKeys.Actions.Close,
-                        contentDescription = stringResource(Res.string.action_cancel_task),
-                        modifier = Modifier.size(13.dp),
-                    )
-                }
-            }
-            ToolbarIconButton(
-                enabled = true,
-                onClick = onClose,
-                tooltip = stringResource(Res.string.action_close_search_panel),
-            ) {
-                Icon(
-                    key = AllIconsKeys.Actions.Close,
-                    contentDescription = stringResource(Res.string.action_close_search_panel),
-                    modifier = Modifier.size(13.dp),
-                )
-            }
-        }
+        SearchPanelHeader(
+            state = state,
+            locationLabel = locationLabel,
+            focusRequester = focusRequester,
+            canSearch = canSearch,
+            onQueryChange = onQueryChange,
+            onSearch = onSearch,
+            onCancel = onCancel,
+            onClose = onClose,
+        )
 
         Text(
             text = searchSummary(state),
-            color = if (state.status == SearchStatus.FAILED) Color(0xFFD74E4E) else palette.mutedForeground,
+            color = if (state.status == SearchStatus.FAILED) palette.error else palette.mutedForeground,
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(170.dp)
-                .background(palette.appBackground),
-        ) {
-            if (state.results.isEmpty()) {
-                Text(
-                    text = emptySearchText(state),
-                    color = palette.disabledForeground,
-                    fontSize = 11.sp,
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-                ) {
-                    items(
-                        items = state.results,
-                        key = { entry -> entry.id },
-                    ) { entry ->
-                        SearchResultRow(
-                            entry = entry,
-                            locationLabel = locationLabel,
-                            onOpen = { onOpenResult(entry) },
-                        )
-                    }
+        SearchResults(state, listState, locationLabel, onOpenResult)
+    }
+}
+
+/**
+ * 渲染搜索范围、输入框与搜索控制按钮。
+ *
+ * @param state 当前搜索状态。
+ * @param locationLabel 位置展示名称转换函数。
+ * @param focusRequester 输入框焦点请求器。
+ * @param canSearch 当前是否允许开始搜索。
+ * @param onQueryChange 查询文本变化回调。
+ * @param onSearch 开始搜索回调。
+ * @param onCancel 取消搜索回调。
+ * @param onClose 关闭面板回调。
+ */
+@Composable
+private fun SearchPanelHeader(
+    state: SearchPanelState,
+    locationLabel: (String) -> String,
+    focusRequester: FocusRequester,
+    canSearch: Boolean,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    onCancel: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    Row(
+        modifier = Modifier.fillMaxWidth().height(26.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(AllIconsKeys.Actions.Find, stringResource(Res.string.label_search_title), Modifier.size(14.dp))
+        Text(
+            text = stringResource(Res.string.label_search_title),
+            color = palette.foreground,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = stringResource(Res.string.label_search_scope, locationLabel(state.rootLocation)),
+            color = palette.mutedForeground,
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(260.dp),
+        )
+        SearchInput(
+            query = state.query,
+            enabled = state.status != SearchStatus.RUNNING,
+            focusRequester = focusRequester,
+            onQueryChange = onQueryChange,
+            onSubmit = { if (canSearch) onSearch() },
+            onClose = { if (state.status == SearchStatus.RUNNING) onCancel() else onClose() },
+            modifier = Modifier.weight(1f),
+        )
+        SearchToolbarButton(canSearch, onSearch, Res.string.action_search, AllIconsKeys.Actions.Find)
+        if (state.status == SearchStatus.RUNNING) {
+            SearchToolbarButton(true, onCancel, Res.string.action_cancel_task, AllIconsKeys.Actions.Close)
+        }
+        SearchToolbarButton(true, onClose, Res.string.action_close_search_panel, AllIconsKeys.Actions.Close)
+    }
+}
+
+/**
+ * 渲染一个搜索工具栏图标按钮。
+ *
+ * @param enabled 是否允许点击。
+ * @param onClick 点击回调。
+ * @param label 按钮文案资源。
+ * @param icon Jewel 图标键。
+ */
+@Composable
+private fun SearchToolbarButton(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    label: org.jetbrains.compose.resources.StringResource,
+    icon: org.jetbrains.jewel.ui.icon.IconKey,
+) {
+    val text = stringResource(label)
+    ToolbarIconButton(enabled = enabled, onClick = onClick, tooltip = text) {
+        Icon(key = icon, contentDescription = text, modifier = Modifier.size(13.dp))
+    }
+}
+
+/**
+ * 渲染搜索结果列表或空状态。
+ *
+ * @param state 当前搜索状态。
+ * @param listState 结果列表滚动状态。
+ * @param locationLabel 位置展示名称转换函数。
+ * @param onOpenResult 打开结果回调。
+ */
+@Composable
+private fun SearchResults(
+    state: SearchPanelState,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    locationLabel: (String) -> String,
+    onOpenResult: (VFile) -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    Box(
+        modifier = Modifier.fillMaxWidth().height(170.dp).background(palette.appBackground),
+    ) {
+        if (state.results.isEmpty()) {
+            Text(
+                text = emptySearchText(state),
+                color = palette.disabledForeground,
+                fontSize = 11.sp,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        } else {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
+                items(items = state.results, key = { entry -> entry.id }) { entry ->
+                    SearchResultRow(
+                        entry = entry,
+                        locationLabel = locationLabel,
+                        onOpen = { onOpenResult(entry) },
+                    )
                 }
-                VerticalScrollbar(
-                    adapter = rememberScrollbarAdapter(listState),
-                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-                )
             }
+            VerticalScrollbar(
+                adapter = rememberScrollbarAdapter(listState),
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            )
         }
     }
 }
@@ -311,7 +339,7 @@ private fun SearchResultRow(
             fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(0.42f),
+            modifier = Modifier.weight(SEARCH_NAME_COLUMN_WEIGHT),
         )
         Text(
             text = locationLabel(parent),
@@ -319,7 +347,7 @@ private fun SearchResultRow(
             fontSize = 10.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(0.58f),
+            modifier = Modifier.weight(SEARCH_PATH_COLUMN_WEIGHT),
         )
     }
 }

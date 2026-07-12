@@ -5,39 +5,11 @@ import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.encodeVfsSpaces
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.header
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpMethod
-import io.ktor.http.contentType
-import io.ktor.http.content.OutgoingContent
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
 import org.w3c.dom.Element
+import org.w3c.dom.NodeList
 import org.xml.sax.InputSource
-import java.io.IOException
 import java.io.StringReader
 import java.net.URI
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import java.util.Base64
-import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
@@ -64,49 +36,94 @@ class WebDavMultiStatusParser {
         val document = documentBuilderFactory().newDocumentBuilder()
             .parse(InputSource(StringReader(xml)))
         val responses = document.getElementsByTagNameNS("*", "response")
-        return buildList {
-            for (index in 0 until responses.length) {
-                val response = responses.item(index) as? Element ?: continue
-                val href = response.childText("href") ?: continue
-                val hrefUri = requestUri.resolve(href.encodeVfsSpaces())
-                val hrefPath = hrefUri.path.ifBlank { "/" }
-                if (hrefPath.withVfsTrailingSlash() == requestPath) {
-                    continue
-                }
-                val prop = response.successProp() ?: continue
-                val directory = prop.hasCollectionType()
-                val displayName = prop.childText("displayname")
-                    ?.takeIf { value -> value.isNotBlank() }
-                    ?: hrefPath.trimEnd('/').substringAfterLast('/').urlDecode()
-                val location = hrefUri.toWebDavLocation(requestLocationUri.scheme, directory)
-                add(
-                    VFile(
-                        id = location,
-                        name = displayName.trimEnd('/'),
-                        location = location,
-                        parentLocation = parentLocation,
-                        kind = if (directory) VFileKind.DIRECTORY else VFileKind.FILE,
-                        sizeBytes = if (directory) null else prop.childText("getcontentlength")?.toLongOrNull(),
-                        modifiedAtEpochMillis = prop.childText("getlastmodified")?.toEpochMillisOrNull(),
-                        hidden = displayName.startsWith("."),
-                        capabilities = buildSet {
-                            add(VFileCapability.READ_METADATA)
-                            add(VFileCapability.RENAME)
-                            add(VFileCapability.DELETE)
-                            if (directory) {
-                                add(VFileCapability.LIST_CHILDREN)
-                            } else {
-                                add(VFileCapability.READ_CONTENT)
-                                add(VFileCapability.WRITE_CONTENT)
-                            }
-                        },
-                    )
-                )
-            }
+        return responses.mapElements { response ->
+            response.toWebDavVFile(
+                requestUri = requestUri,
+                requestPath = requestPath,
+                sourceScheme = requestLocationUri.scheme,
+                parentLocation = parentLocation,
+            )
         }.sortedWith(
             compareByDescending<VFile> { entry -> entry.kind == VFileKind.DIRECTORY }
                 .thenBy { entry -> entry.name.lowercase() }
         )
+    }
+
+    /**
+     * 将单个 WebDAV response 节点转换为 VFS 文件。
+     *
+     * @param requestUri 请求 HTTP 地址。
+     * @param requestPath 请求目录路径。
+     * @param sourceScheme 原始 WebDAV VFS scheme。
+     * @param parentLocation 父目录 VFS 位置。
+     * @return 当前目录直接子条目；无效或表示当前目录时返回 `null`。
+     */
+    private fun Element.toWebDavVFile(
+        requestUri: URI,
+        requestPath: String,
+        sourceScheme: String,
+        parentLocation: String,
+    ): VFile? {
+        val hrefUri = childText("href")?.let { href -> requestUri.resolve(href.encodeVfsSpaces()) }
+        val hrefPath = hrefUri?.path?.ifBlank { "/" }
+        val prop = successProp()
+        val completeResponse = hrefUri != null && hrefPath != null && prop != null
+        val representsRequestDirectory = hrefPath?.withVfsTrailingSlash() == requestPath
+        return if (completeResponse && !representsRequestDirectory) {
+            checkNotNull(hrefUri)
+            checkNotNull(hrefPath)
+            checkNotNull(prop)
+            val directory = prop.hasCollectionType()
+            val displayName = prop.childText("displayname")
+                ?.takeIf { value -> value.isNotBlank() }
+                ?: hrefPath.trimEnd('/').substringAfterLast('/').urlDecode()
+            val location = hrefUri.toWebDavLocation(sourceScheme, directory)
+            VFile(
+                id = location,
+                name = displayName.trimEnd('/'),
+                location = location,
+                parentLocation = parentLocation,
+                kind = if (directory) VFileKind.DIRECTORY else VFileKind.FILE,
+                sizeBytes = if (directory) null else prop.childText("getcontentlength")?.toLongOrNull(),
+                modifiedAtEpochMillis = prop.childText("getlastmodified")?.toEpochMillisOrNull(),
+                hidden = displayName.startsWith("."),
+                capabilities = prop.toCapabilities(directory),
+            )
+        } else {
+            null
+        }
+    }
+
+    /**
+     * 构建 WebDAV 条目能力集合。
+     *
+     * @param directory 是否为目录。
+     * @return VFS 条目能力集合。
+     */
+    private fun Element.toCapabilities(directory: Boolean): Set<VFileCapability> {
+        return buildSet {
+            add(VFileCapability.READ_METADATA)
+            add(VFileCapability.RENAME)
+            add(VFileCapability.DELETE)
+            if (directory) {
+                add(VFileCapability.LIST_CHILDREN)
+            } else {
+                add(VFileCapability.READ_CONTENT)
+                add(VFileCapability.WRITE_CONTENT)
+            }
+        }
+    }
+
+    /**
+     * 映射 XML 元素节点并过滤无效结果。
+     *
+     * @param transform 元素转换函数。
+     * @return 转换后的有效结果。
+     */
+    private inline fun <T> NodeList.mapElements(transform: (Element) -> T?): List<T> {
+        return (0 until length)
+            .mapNotNull { index -> item(index) as? Element }
+            .mapNotNull(transform)
     }
 
     private fun documentBuilderFactory(): DocumentBuilderFactory {

@@ -147,16 +147,9 @@ internal class SidebarDelegate(
 
 internal fun SidebarTreeState.findNode(location: String): SidebarTreeNode? {
     fun List<SidebarTreeNode>.search(): SidebarTreeNode? {
-        for (node in this) {
-            if (node.location == location) {
-                return node
-            }
-            val nestedNode = node.children.search()
-            if (nestedNode != null) {
-                return nestedNode
-            }
+        return firstNotNullOfOrNull { node ->
+            node.takeIf { it.location == location } ?: node.children.search()
         }
-        return null
     }
 
     return roots.search()

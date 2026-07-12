@@ -14,11 +14,17 @@ import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.InMemoryRemoteAuthStore
 
+/**
+ * 组合会话凭据与操作系统安全凭据存储的 JVM 远程认证仓库。
+ *
+ * @param sessionStore 当前应用会话凭据存储。
+ */
 class JvmRemoteAuthStore(
     private val sessionStore: RemoteAuthStore = InMemoryRemoteAuthStore(),
 ) : RemoteKeyringAuthStore {
     private val hostPlatform: HostPlatform by lazy { detectHostPlatform() }
     private val windowsCredentialManager: JvmWindowsCredentialManager by lazy { JvmWindowsCredentialManager() }
+    private val macOsKeychainManager: JvmMacOsKeychainManager by lazy { JvmMacOsKeychainManager() }
     private val systemKeyringAvailable: Boolean by lazy { detectSystemKeyringAvailable() }
 
     override fun authContext(
@@ -26,14 +32,15 @@ class JvmRemoteAuthStore(
         location: String,
     ): VfsAuthContext {
         val sessionContext = sessionStore.authContext(protocol, location)
-        if (sessionContext != VfsAuthContext.None) {
-            return sessionContext
+        return if (sessionContext != VfsAuthContext.None) {
+            sessionContext
+        } else if (isSystemKeyringAvailable()) {
+            lookupSecret(remoteCredentialKey(protocol, location))
+                ?.let(::decodeAuthContext)
+                ?: VfsAuthContext.None
+        } else {
+            VfsAuthContext.None
         }
-        if (!isSystemKeyringAvailable()) {
-            return VfsAuthContext.None
-        }
-        val secret = lookupSecret(remoteCredentialKey(protocol, location)) ?: return VfsAuthContext.None
-        return decodeAuthContext(secret) ?: VfsAuthContext.None
     }
 
     override fun put(
@@ -52,23 +59,21 @@ class JvmRemoteAuthStore(
             )
 
             RemoteCredentialSavePolicy.SYSTEM_KEYRING -> {
-                if (!isSystemKeyringAvailable()) {
-                    return RemoteCredentialSaveResult.UNSUPPORTED
-                }
-                val stored = storeSecret(
+                val stored = isSystemKeyringAvailable() && storeSecret(
                     key = remoteCredentialKey(protocol, location),
                     secret = encodeAuthContext(authContext),
                 )
-                if (!stored) {
-                    return RemoteCredentialSaveResult.UNSUPPORTED
+                if (stored) {
+                    sessionStore.put(
+                        protocol = protocol,
+                        location = location,
+                        authContext = authContext,
+                        savePolicy = RemoteCredentialSavePolicy.SESSION,
+                    )
+                    RemoteCredentialSaveResult.STORED_IN_SYSTEM_KEYRING
+                } else {
+                    RemoteCredentialSaveResult.UNSUPPORTED
                 }
-                sessionStore.put(
-                    protocol = protocol,
-                    location = location,
-                    authContext = authContext,
-                    savePolicy = RemoteCredentialSavePolicy.SESSION,
-                )
-                RemoteCredentialSaveResult.STORED_IN_SYSTEM_KEYRING
             }
         }
     }
@@ -94,7 +99,7 @@ class JvmRemoteAuthStore(
     private fun detectSystemKeyringAvailable(): Boolean {
         return when (hostPlatform) {
             HostPlatform.LINUX -> commandSucceeds(listOf("secret-tool", "--help"))
-            HostPlatform.MACOS -> commandSucceeds(listOf("security", "help"))
+            HostPlatform.MACOS -> macOsKeychainManager.isAvailable()
             HostPlatform.WINDOWS -> windowsCredentialManager.isAvailable()
             HostPlatform.OTHER -> false
         }
@@ -117,17 +122,10 @@ class JvmRemoteAuthStore(
                 )
             ).takeIf { it.exitCode == 0 }?.output?.trimEnd()
 
-            HostPlatform.MACOS -> runCommand(
-                listOf(
-                    "security",
-                    "find-generic-password",
-                    "-a",
-                    key.authority,
-                    "-s",
-                    key.serviceName,
-                    "-w",
-                )
-            ).takeIf { it.exitCode == 0 }?.output?.trimEnd()
+            HostPlatform.MACOS -> macOsKeychainManager.read(
+                serviceName = key.serviceName,
+                accountName = key.authority,
+            )
 
             HostPlatform.WINDOWS -> windowsCredentialManager.read(key.windowsTargetName)
             HostPlatform.OTHER -> null
@@ -157,19 +155,11 @@ class JvmRemoteAuthStore(
                 input = secret,
             ).exitCode == 0
 
-            HostPlatform.MACOS -> runCommand(
-                listOf(
-                    "security",
-                    "add-generic-password",
-                    "-a",
-                    key.authority,
-                    "-s",
-                    key.serviceName,
-                    "-w",
-                    secret,
-                    "-U",
-                )
-            ).exitCode == 0
+            HostPlatform.MACOS -> macOsKeychainManager.write(
+                serviceName = key.serviceName,
+                accountName = key.authority,
+                secret = secret,
+            )
 
             HostPlatform.WINDOWS -> windowsCredentialManager.write(
                 targetName = key.windowsTargetName,
@@ -198,16 +188,10 @@ class JvmRemoteAuthStore(
                 )
             ).exitCode == 0
 
-            HostPlatform.MACOS -> runCommand(
-                listOf(
-                    "security",
-                    "delete-generic-password",
-                    "-a",
-                    key.authority,
-                    "-s",
-                    key.serviceName,
-                )
-            ).exitCode == 0
+            HostPlatform.MACOS -> macOsKeychainManager.delete(
+                serviceName = key.serviceName,
+                accountName = key.authority,
+            )
 
             HostPlatform.WINDOWS -> windowsCredentialManager.delete(key.windowsTargetName)
             HostPlatform.OTHER -> false

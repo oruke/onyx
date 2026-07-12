@@ -69,11 +69,8 @@ private const val REMOTE_LOCATION_FIELD_WEIGHT = 3f
  * @param editingConnectionId 当前编辑的连接 ID，空值表示新建模式。
  * @param testState 当前连接测试状态。
  * @param error 当前表单校验错误。
- * @param onDraftChange 编辑草稿变化回调。
- * @param onSave 保存当前草稿回调。
- * @param onTest 测试当前草稿连接回调。
- * @param onDelete 删除网络位置回调。
- * @param onOpen 打开网络位置回调。
+ * @param saving 是否正在保存连接与凭据。
+ * @param actions 网络位置用户操作集合。
  * @param fontSize 正文字号。
  * @param labelFontSize 标签字号。
  * @param modifier 布局修饰符。
@@ -84,11 +81,8 @@ internal fun RemoteConnectionEditorPane(
     editingConnectionId: String?,
     testState: RemoteConnectionTestState,
     error: RemoteConnectionDialogError?,
-    onDraftChange: (RemoteConnectionDraft) -> Unit,
-    onSave: () -> Unit,
-    onTest: () -> Unit,
-    onDelete: (String) -> Unit,
-    onOpen: (String) -> Unit,
+    saving: Boolean,
+    actions: RemoteConnectionUiActions,
     fontSize: TextUnit,
     labelFontSize: TextUnit,
     modifier: Modifier = Modifier,
@@ -113,15 +107,17 @@ internal fun RemoteConnectionEditorPane(
             ) {
                 RemoteConnectionDetailsSection(
                     connectionDraft = connectionDraft,
-                    onDraftChange = onDraftChange,
+                    onDraftChange = actions.onDraftChange,
                     fontSize = fontSize,
                     labelFontSize = labelFontSize,
+                    enabled = !saving,
                 )
                 RemoteConnectionCredentialsSection(
                     connectionDraft = connectionDraft,
-                    onDraftChange = onDraftChange,
+                    onDraftChange = actions.onDraftChange,
                     fontSize = fontSize,
                     labelFontSize = labelFontSize,
+                    enabled = !saving,
                 )
             }
             VerticalScrollbar(
@@ -135,10 +131,11 @@ internal fun RemoteConnectionEditorPane(
             connectionDraft = connectionDraft,
             testState = testState,
             error = error,
-            onSave = onSave,
-            onTest = onTest,
-            onDelete = onDelete,
-            onOpen = onOpen,
+            saving = saving,
+            onSave = actions.onSave,
+            onTest = actions.onTest,
+            onDelete = actions.onDelete,
+            onOpen = actions.onOpen,
             fontSize = fontSize,
         )
     }
@@ -196,6 +193,7 @@ private fun RemoteConnectionEditorHeader(
  * @param onDraftChange 编辑草稿变化回调。
  * @param fontSize 正文字号。
  * @param labelFontSize 标签字号。
+ * @param enabled 是否允许编辑。
  */
 @Composable
 private fun RemoteConnectionDetailsSection(
@@ -203,6 +201,7 @@ private fun RemoteConnectionDetailsSection(
     onDraftChange: (RemoteConnectionDraft) -> Unit,
     fontSize: TextUnit,
     labelFontSize: TextUnit,
+    enabled: Boolean,
 ) {
     RemoteConnectionFormSection(
         title = stringResource(Res.string.label_remote_connection_details_section),
@@ -215,7 +214,9 @@ private fun RemoteConnectionDetailsSection(
                     selected = connectionDraft.protocol == protocol,
                     text = remoteProtocolLabel(protocol),
                     fontSize = labelFontSize,
-                    onClick = { onDraftChange(connectionDraft.copy(protocol = protocol)) },
+                    onClick = {
+                        if (enabled) onDraftChange(connectionDraft.copy(protocol = protocol))
+                    },
                 )
             }
         }
@@ -225,6 +226,7 @@ private fun RemoteConnectionDetailsSection(
                 value = connectionDraft.name,
                 onValueChange = { value -> onDraftChange(connectionDraft.copy(name = value)) },
                 fontSize = fontSize,
+                enabled = enabled,
                 modifier = Modifier.weight(REMOTE_NAME_FIELD_WEIGHT),
             )
             RemoteConnectionField(
@@ -232,6 +234,7 @@ private fun RemoteConnectionDetailsSection(
                 value = connectionDraft.location,
                 onValueChange = { value -> onDraftChange(connectionDraft.copy(location = value)) },
                 fontSize = fontSize,
+                enabled = enabled,
                 modifier = Modifier.weight(REMOTE_LOCATION_FIELD_WEIGHT),
             )
         }
@@ -245,6 +248,7 @@ private fun RemoteConnectionDetailsSection(
  * @param onDraftChange 编辑草稿变化回调。
  * @param fontSize 正文字号。
  * @param labelFontSize 标签字号。
+ * @param enabled 是否允许编辑。
  */
 @Composable
 private fun RemoteConnectionCredentialsSection(
@@ -252,6 +256,7 @@ private fun RemoteConnectionCredentialsSection(
     onDraftChange: (RemoteConnectionDraft) -> Unit,
     fontSize: TextUnit,
     labelFontSize: TextUnit,
+    enabled: Boolean,
 ) {
     RemoteConnectionFormSection(
         title = stringResource(Res.string.label_remote_connection_credentials_section),
@@ -263,14 +268,18 @@ private fun RemoteConnectionCredentialsSection(
                 value = connectionDraft.username,
                 onValueChange = { value -> onDraftChange(connectionDraft.copy(username = value)) },
                 fontSize = fontSize,
+                enabled = enabled,
                 modifier = Modifier.weight(1f),
             )
             RemoteConnectionField(
                 label = stringResource(Res.string.label_remote_connection_secret),
                 value = connectionDraft.secret,
-                onValueChange = { value -> onDraftChange(connectionDraft.copy(secret = value)) },
+                onValueChange = { value ->
+                    onDraftChange(connectionDraft.copy(secret = value, secretChanged = true))
+                },
                 fontSize = fontSize,
                 password = true,
+                enabled = enabled,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -279,6 +288,7 @@ private fun RemoteConnectionCredentialsSection(
             value = connectionDraft.domain,
             onValueChange = { value -> onDraftChange(connectionDraft.copy(domain = value)) },
             fontSize = fontSize,
+            enabled = enabled,
         )
         RemoteConnectionFieldLabel(stringResource(Res.string.label_remote_credentials_save_policy))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -287,7 +297,9 @@ private fun RemoteConnectionCredentialsSection(
                     selected = connectionDraft.savePolicy == policy,
                     text = remoteSavePolicyLabel(policy),
                     fontSize = labelFontSize,
-                    onClick = { onDraftChange(connectionDraft.copy(savePolicy = policy)) },
+                    onClick = {
+                        if (enabled) onDraftChange(connectionDraft.copy(savePolicy = policy))
+                    },
                 )
             }
         }
@@ -345,6 +357,7 @@ private fun RemoteConnectionFieldLabel(text: String) {
  * @param fontSize 输入文字字号。
  * @param modifier 布局修饰符。
  * @param password 是否以密码模式显示。
+ * @param enabled 是否允许输入。
  */
 @Composable
 private fun RemoteConnectionField(
@@ -354,6 +367,7 @@ private fun RemoteConnectionField(
     fontSize: TextUnit,
     modifier: Modifier = Modifier,
     password: Boolean = false,
+    enabled: Boolean = true,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         RemoteConnectionFieldLabel(label)
@@ -363,6 +377,7 @@ private fun RemoteConnectionField(
             modifier = Modifier.fillMaxWidth(),
             fontSize = fontSize,
             password = password,
+            enabled = enabled,
         )
     }
 }
@@ -374,6 +389,7 @@ private fun RemoteConnectionField(
  * @param connectionDraft 当前网络位置编辑草稿。
  * @param testState 当前连接测试状态。
  * @param error 当前表单校验错误。
+ * @param saving 是否正在保存连接与凭据。
  * @param onSave 保存当前草稿回调。
  * @param onTest 测试当前草稿连接回调。
  * @param onDelete 删除网络位置回调。
@@ -386,6 +402,7 @@ private fun RemoteConnectionEditorFooter(
     connectionDraft: RemoteConnectionDraft,
     testState: RemoteConnectionTestState,
     error: RemoteConnectionDialogError?,
+    saving: Boolean,
     onSave: () -> Unit,
     onTest: () -> Unit,
     onDelete: (String) -> Unit,
@@ -400,7 +417,7 @@ private fun RemoteConnectionEditorFooter(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        RemoteConnectionFeedback(testState = testState, error = error)
+        RemoteConnectionFeedback(testState = testState, error = error, saving = saving)
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -409,6 +426,7 @@ private fun RemoteConnectionEditorFooter(
                 DialogTextButton(
                     text = stringResource(Res.string.action_delete_connection),
                     destructive = true,
+                    enabled = !saving,
                     fontSize = fontSize,
                     onClick = { onDelete(connectionId) },
                 )
@@ -417,18 +435,21 @@ private fun RemoteConnectionEditorFooter(
             if (editingConnectionId != null) {
                 DialogTextButton(
                     text = stringResource(Res.string.action_open),
+                    enabled = !saving,
                     fontSize = fontSize,
                     onClick = { onOpen(connectionDraft.location) },
                 )
             }
             DialogTextButton(
                 text = stringResource(Res.string.action_test_connection),
+                enabled = !saving && testState !is RemoteConnectionTestState.Testing,
                 fontSize = fontSize,
                 onClick = onTest,
             )
             DialogTextButton(
                 text = stringResource(Res.string.action_save_connection),
                 emphasized = true,
+                enabled = !saving,
                 fontSize = fontSize,
                 onClick = onSave,
             )

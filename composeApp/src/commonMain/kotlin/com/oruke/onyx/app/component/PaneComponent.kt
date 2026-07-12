@@ -354,7 +354,8 @@ internal fun PaneComponent.setFilterQuery(query: String) = dispatch(PaneIntent.S
 
 internal fun PaneComponent.showFilterInput() = dispatch(PaneIntent.ShowFilterInput)
 
-internal fun PaneComponent.hideFilterInput(clearQuery: Boolean = true) = dispatch(PaneIntent.HideFilterInput(clearQuery))
+internal fun PaneComponent.hideFilterInput(clearQuery: Boolean = true) =
+    dispatch(PaneIntent.HideFilterInput(clearQuery))
 
 internal fun PaneComponent.showCommandPalette() = dispatch(PaneIntent.ShowCommandPalette)
 
@@ -364,7 +365,8 @@ internal fun PaneComponent.toggleSort(column: DetailsColumn) = dispatch(PaneInte
 
 internal fun PaneComponent.toggleHiddenItems() = dispatch(PaneIntent.ToggleHiddenItems)
 
-internal fun PaneComponent.toggleColumnVisibility(column: DetailsColumn) = dispatch(PaneIntent.ToggleColumnVisibility(column))
+internal fun PaneComponent.toggleColumnVisibility(column: DetailsColumn) =
+    dispatch(PaneIntent.ToggleColumnVisibility(column))
 
 internal fun PaneComponent.setGalleryItemSize(sizeDp: Int) = dispatch(PaneIntent.SetGalleryItemSize(sizeDp))
 

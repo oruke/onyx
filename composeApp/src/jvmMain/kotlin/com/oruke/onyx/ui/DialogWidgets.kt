@@ -23,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
@@ -69,6 +70,7 @@ internal fun DialogTextButton(
     emphasized: Boolean = false,
     destructive: Boolean = false,
     focused: Boolean = false,
+    enabled: Boolean = true,
     fontSize: TextUnit = 12.sp,
     onClick: () -> Unit,
 ) {
@@ -76,7 +78,7 @@ internal fun DialogTextButton(
     val src = remember { MutableInteractionSource() }
     val hovered by src.collectIsHoveredAsState()
     val baseBg = when {
-        destructive && emphasized -> Color(0xFFD74E4E)
+        destructive && emphasized -> palette.error
         emphasized -> palette.accent
         else -> palette.surfaceVariant
     }
@@ -84,24 +86,28 @@ internal fun DialogTextButton(
         if (hovered || focused) baseBg.copy(alpha = baseBg.alpha * 0.85f) else baseBg, tween(120),
     )
     val contentColor = when {
+        !enabled -> palette.disabledForeground
         emphasized -> Color.White
-        destructive -> Color(0xFFD74E4E)
+        destructive -> palette.error
         else -> palette.foreground
     }
     val focusBorder = if (focused) Modifier.border(1.5.dp, palette.accent, RoundedCornerShape(6.dp)) else Modifier
     Box(
         modifier = Modifier
             .padding(start = 8.dp)
-            .hoverable(src)
+            .hoverable(src, enabled = enabled)
+            .then(if (enabled) Modifier else Modifier.alpha(DISABLED_CONTROL_ALPHA))
             .background(bg, RoundedCornerShape(6.dp))
             .then(focusBorder)
-            .clickable(src, null, onClick = onClick)
+            .clickable(src, null, enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = text, fontSize = fontSize, color = contentColor)
     }
 }
+
+private const val DISABLED_CONTROL_ALPHA = 0.62f
 
 @Composable
 internal fun ApplyToAllToggle(

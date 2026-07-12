@@ -225,13 +225,35 @@ class ProviderBackedFileCommandService(
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
     ): Result<Boolean> {
-        if (contentServices.isEmpty()) {
-            return Result.success(false)
-        }
         val hasDirectories = entries.any { entry -> entry.kind == VFileKind.DIRECTORY }
-        if (hasDirectories && providerRegistry == null) {
-            return Result.success(false)
+        val canCopyAcrossProviders = contentServices.isNotEmpty() && (!hasDirectories || providerRegistry != null)
+        return if (!canCopyAcrossProviders) {
+            Result.success(false)
+        } else {
+            copyAcrossProvidersWithContentService(
+                entries = entries,
+                targetDirectoryLocation = targetDirectoryLocation,
+                conflictStrategy = conflictStrategy,
+                hasDirectories = hasDirectories,
+            )
         }
+    }
+
+    /**
+     * 使用目标内容服务执行已经通过前置能力检查的跨 Provider 复制。
+     *
+     * @param entries 待复制条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @param conflictStrategy 名称冲突处理策略。
+     * @param hasDirectories 待复制条目中是否包含目录。
+     * @return 跨 Provider 复制结果。
+     */
+    private suspend fun copyAcrossProvidersWithContentService(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        conflictStrategy: TransferConflictStrategy,
+        hasDirectories: Boolean,
+    ): Result<Boolean> {
         return contentServiceFor(targetDirectoryLocation, VfsProviderCapability.WRITE_CONTENT).fold(
             onSuccess = { targetContentService ->
                 runCatching {
@@ -253,7 +275,7 @@ class ProviderBackedFileCommandService(
                                 recorder = recorder,
                             )
                         }.onFailure { failure ->
-                            if (failure is CancellationException) throw failure
+                            failure.throwIfCancellation()
                             recorder.recordFailure(
                                 sourceLocation = entry.location,
                                 targetLocation = targetDirectoryLocation,
@@ -306,8 +328,10 @@ class ProviderBackedFileCommandService(
             )
 
             VFileKind.DIRECTORY -> {
-                val directoryService = targetCommandService
-                    ?: throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.CREATE_DIRECTORY)
+                val directoryService = directoryServiceForCrossProviderCopy(
+                    targetCommandService = targetCommandService,
+                    targetDirectoryLocation = targetDirectoryLocation,
+                )
                 val targetDirectory = resolveTargetDirectoryAcrossProviders(
                     entry = entry,
                     targetDirectoryLocation = targetDirectoryLocation,
@@ -315,14 +339,7 @@ class ProviderBackedFileCommandService(
                     conflictStrategy = conflictStrategy,
                     recorder = recorder,
                 ) ?: return
-                val children = providerRegistry
-                    ?.list(entry.location)
-                    ?.getOrThrow()
-                    ?: throw crossProviderUnsupportedFor(
-                        sourceLocation = entry.location,
-                        targetLocation = targetDirectoryLocation,
-                        capability = VfsProviderCapability.COPY,
-                    )
+                val children = childrenForCrossProviderCopy(entry, targetDirectoryLocation)
                 children.forEach { child ->
                     coroutineContext.ensureActive()
                     runCatching {
@@ -335,7 +352,7 @@ class ProviderBackedFileCommandService(
                             recorder = recorder,
                         )
                     }.onFailure { failure ->
-                        if (failure is CancellationException) throw failure
+                        failure.throwIfCancellation()
                         recorder.recordFailure(
                             sourceLocation = child.location,
                             targetLocation = targetDirectory.location,
@@ -345,6 +362,42 @@ class ProviderBackedFileCommandService(
                 }
             }
         }
+    }
+
+    /**
+     * 取得跨 Provider 目录复制所需的目标目录命令服务。
+     *
+     * @param targetCommandService 已路由的目标命令服务。
+     * @param targetDirectoryLocation 目标父目录位置。
+     * @return 可创建目录的目标命令服务。
+     */
+    private fun directoryServiceForCrossProviderCopy(
+        targetCommandService: RoutableFileCommandService?,
+        targetDirectoryLocation: String,
+    ): RoutableFileCommandService {
+        return targetCommandService
+            ?: throw unsupportedFor(targetDirectoryLocation, VfsProviderCapability.CREATE_DIRECTORY)
+    }
+
+    /**
+     * 通过 Provider 注册表列出跨 Provider 目录复制的子项。
+     *
+     * @param entry 当前源目录。
+     * @param targetDirectoryLocation 目标父目录位置，用于构建失败语义。
+     * @return 当前源目录的直接子项。
+     */
+    private suspend fun childrenForCrossProviderCopy(
+        entry: VFile,
+        targetDirectoryLocation: String,
+    ): List<VFile> {
+        return providerRegistry
+            ?.list(entry.location)
+            ?.getOrThrow()
+            ?: throw crossProviderUnsupportedFor(
+                sourceLocation = entry.location,
+                targetLocation = targetDirectoryLocation,
+                capability = VfsProviderCapability.COPY,
+            )
     }
 
     /**
@@ -557,157 +610,8 @@ class ProviderBackedFileCommandService(
 }
 
 /**
- * 跨 provider 传输记录器，负责统一统计进度和聚合失败。
- *
- * @property progressSink 进度事件接收器。
+ * 在聚合失败前重新抛出协程取消，避免把取消误报为传输失败。
  */
-private class CrossProviderTransferRecorder(
-    private val progressSink: CrossProviderTransferProgressSink,
-) {
-    /** 已成功复制的文件数量。 */
-    private var copiedFiles = 0
-
-    /** 已成功创建或复用的目录数量。 */
-    private var createdDirectories = 0
-
-    /** 已按冲突策略跳过的条目数量。 */
-    private var skippedEntries = 0
-
-    /** 已聚合的条目级失败列表。 */
-    private val failures = mutableListOf<CrossProviderTransferFailure>()
-
-    /**
-     * 记录文件复制成功事件。
-     *
-     * @param sourceLocation 源文件位置。
-     * @param targetLocation 目标文件位置。
-     */
-    fun recordCopiedFile(
-        sourceLocation: String,
-        targetLocation: String,
-    ) {
-        copiedFiles += 1
-        emit(
-            stage = CrossProviderTransferStage.FILE_COPIED,
-            sourceLocation = sourceLocation,
-            targetLocation = targetLocation,
-        )
-    }
-
-    /**
-     * 记录目录创建或复用事件。
-     *
-     * @param sourceLocation 源目录位置。
-     * @param targetLocation 目标目录位置。
-     */
-    fun recordDirectory(
-        sourceLocation: String,
-        targetLocation: String,
-    ) {
-        createdDirectories += 1
-        emit(
-            stage = CrossProviderTransferStage.DIRECTORY_CREATED,
-            sourceLocation = sourceLocation,
-            targetLocation = targetLocation,
-        )
-    }
-
-    /**
-     * 记录按冲突策略跳过的条目。
-     *
-     * @param sourceLocation 源条目位置。
-     * @param targetLocation 已存在或推导出的目标位置。
-     */
-    fun recordSkipped(
-        sourceLocation: String,
-        targetLocation: String,
-    ) {
-        skippedEntries += 1
-        emit(
-            stage = CrossProviderTransferStage.ENTRY_SKIPPED,
-            sourceLocation = sourceLocation,
-            targetLocation = targetLocation,
-        )
-    }
-
-    /**
-     * 记录单项传输失败。
-     *
-     * @param sourceLocation 源条目位置。
-     * @param targetLocation 目标父目录或目标条目位置。
-     * @param cause 导致失败的异常。
-     */
-    fun recordFailure(
-        sourceLocation: String,
-        targetLocation: String,
-        cause: Throwable,
-    ) {
-        failures += CrossProviderTransferFailure(
-            sourceLocation = sourceLocation,
-            targetLocation = targetLocation,
-            cause = cause,
-        )
-    }
-
-    /**
-     * 如果存在已聚合失败则抛出汇总异常。
-     */
-    fun throwIfFailed() {
-        if (failures.isNotEmpty()) {
-            throw CrossProviderTransferException(snapshot())
-        }
-    }
-
-    /**
-     * 生成当前传输报告快照。
-     *
-     * @return 不可变传输报告。
-     */
-    private fun snapshot(): CrossProviderTransferReport {
-        return CrossProviderTransferReport(
-            copiedFiles = copiedFiles,
-            createdDirectories = createdDirectories,
-            skippedEntries = skippedEntries,
-            failures = failures.toList(),
-        )
-    }
-
-    /**
-     * 发出传输进度事件。
-     *
-     * @param stage 当前传输阶段。
-     * @param sourceLocation 源条目位置。
-     * @param targetLocation 目标条目位置。
-     */
-    private fun emit(
-        stage: CrossProviderTransferStage,
-        sourceLocation: String,
-        targetLocation: String,
-    ) {
-        progressSink.onProgress(
-            CrossProviderTransferProgress(
-                stage = stage,
-                sourceLocation = sourceLocation,
-                targetLocation = targetLocation,
-                copiedFiles = copiedFiles,
-                createdDirectories = createdDirectories,
-                skippedEntries = skippedEntries,
-            )
-        )
-    }
-}
-
-/**
- * 生成目录 KEEP_BOTH 冲突策略下的下一个可用副本名称。
- *
- * @param existingNames 当前目标目录已有名称集合。
- * @return 不与已有名称冲突的目录名。
- */
-private fun String.nextDirectoryCopyName(existingNames: Set<String>): String {
-    var index = 1
-    while (true) {
-        val candidate = withVfsCopySuffix(index)
-        if (candidate !in existingNames) return candidate
-        index += 1
-    }
+private fun Throwable.throwIfCancellation() {
+    if (this is CancellationException) throw this
 }

@@ -29,6 +29,7 @@ internal fun OnyxTextInput(
     fontSize: TextUnit = 12.sp,
     height: Dp = 28.dp,
     password: Boolean = false,
+    enabled: Boolean = true,
 ) {
     var fieldValue by remember {
         mutableStateOf(TextFieldValue(value, TextRange(value.length)))
@@ -42,6 +43,7 @@ internal fun OnyxTextInput(
 
     TextField(
         value = fieldValue,
+        enabled = enabled,
         onValueChange = { nextValue ->
             fieldValue = nextValue
             if (nextValue.text != value) {

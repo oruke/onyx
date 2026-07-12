@@ -12,42 +12,72 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 
+/** 文件递归搜索请求。 */
 data class FileSearchRequest(
+    /** 搜索根位置。 */
     val rootLocation: String,
+    /** 用户输入的名称或结构化过滤表达式。 */
     val query: String,
+    /** 普通名称匹配是否包含目录。 */
     val includeDirectories: Boolean = true,
+    /** 单次搜索允许返回的最大结果数。 */
     val maxResults: Int = 500,
+    /** 内容搜索允许读取的单文件最大字节数。 */
     val maxContentBytes: Long = 1_048_576L,
 )
 
+/** 文件搜索期间按顺序发送的状态事件。 */
 sealed interface FileSearchEvent {
+    /** 搜索扫描进度。 */
     data class Progress(
+        /** 已扫描条目数量。 */
         val scannedEntryCount: Int,
+        /** 已匹配条目数量。 */
         val matchedCount: Int,
     ) : FileSearchEvent
 
+    /** 当前完整结果快照。 */
     data class Results(
+        /** 当前已匹配条目。 */
         val entries: List<VFile>,
+        /** 已扫描条目数量。 */
         val scannedEntryCount: Int,
+        /** 是否已达到结果上限。 */
         val limitReached: Boolean,
     ) : FileSearchEvent
 
+    /** 搜索正常结束事件。 */
     data class Completed(
+        /** 最终扫描条目数量。 */
         val scannedEntryCount: Int,
+        /** 是否因结果上限提前结束。 */
         val limitReached: Boolean,
     ) : FileSearchEvent
 
+    /** 搜索失败事件。 */
     data class Failed(
+        /** 失败前已扫描条目数量。 */
         val scannedEntryCount: Int,
+        /** 导致搜索停止的异常。 */
         val failure: Throwable,
     ) : FileSearchEvent
 }
 
+/** 跨 VFS provider 的递归文件搜索用例。 */
 class FileSearchUseCase(
+    /** 统一文件读取仓储。 */
     private val fileRepository: FileRepository,
+    /** 文件内容检索服务。 */
     private val contentSearchService: FileContentSearchService = UnsupportedFileContentSearchService,
+    /** 用于检查 provider 内容读取能力的注册表。 */
     private val providerRegistry: VfsProviderRegistry? = null,
 ) {
+    /**
+     * 递归扫描根位置并持续发送结果快照、进度和最终状态。
+     *
+     * @param request 搜索根位置、表达式和容量限制。
+     * @return 冷流；收集时在默认调度器执行搜索。
+     */
     fun search(request: FileSearchRequest): Flow<FileSearchEvent> = flow {
         val matcher = SearchMatcher(request.query.trim())
         if (!matcher.isValid) {
@@ -55,10 +85,13 @@ class FileSearchUseCase(
             return@flow
         }
         if (matcher.requiresContent && !supportsContentSearch(request.rootLocation)) {
+            val failure = UnsupportedOperationException(
+                "Content search is not supported for ${request.rootLocation}"
+            )
             emit(
                 FileSearchEvent.Failed(
                     scannedEntryCount = 0,
-                    failure = UnsupportedOperationException("Content search is not supported for ${request.rootLocation}"),
+                    failure = failure,
                 )
             )
             return@flow
@@ -74,30 +107,8 @@ class FileSearchUseCase(
         while (directories.isNotEmpty() && !limitReached) {
             currentCoroutineContext().ensureActive()
             val currentLocation = directories.removeFirst()
-            if (!visitedDirectories.add(currentLocation)) {
-                continue
-            }
-
-            val entries = fileRepository.list(currentLocation).getOrElse { failure ->
-                emit(
-                    FileSearchEvent.Failed(
-                        scannedEntryCount = scannedEntryCount,
-                        failure = failure,
-                    )
-                )
-                return@flow
-            }
-
-            scannedEntryCount += entries.size
-            for (entry in entries) {
-                currentCoroutineContext().ensureActive()
-                if (entry.kind == VFileKind.DIRECTORY) {
-                    directories.add(entry.location)
-                }
-                if (entry.kind == VFileKind.DIRECTORY && !request.includeDirectories && !matcher.requiresDirectories) {
-                    continue
-                }
-                val matches = matcher.matches(entry, contentSearchService, request.maxContentBytes).getOrElse { failure ->
+            if (visitedDirectories.add(currentLocation)) {
+                val entries = fileRepository.list(currentLocation).getOrElse { failure ->
                     emit(
                         FileSearchEvent.Failed(
                             scannedEntryCount = scannedEntryCount,
@@ -106,28 +117,51 @@ class FileSearchUseCase(
                     )
                     return@flow
                 }
-                if (matches) {
-                    results.add(entry)
-                    if (results.size >= request.maxResults) {
-                        limitReached = true
-                        break
+
+                scannedEntryCount += entries.size
+                for (entry in entries) {
+                    currentCoroutineContext().ensureActive()
+                    if (!limitReached) {
+                        if (entry.kind == VFileKind.DIRECTORY) directories.add(entry.location)
+                        val shouldMatch = entry.kind != VFileKind.DIRECTORY ||
+                            request.includeDirectories ||
+                            matcher.requiresDirectories
+                        if (shouldMatch) {
+                            val matches = matcher.matches(
+                                entry,
+                                contentSearchService,
+                                request.maxContentBytes,
+                            ).getOrElse { failure ->
+                                emit(
+                                    FileSearchEvent.Failed(
+                                        scannedEntryCount = scannedEntryCount,
+                                        failure = failure,
+                                    )
+                                )
+                                return@flow
+                            }
+                            if (matches) {
+                                results.add(entry)
+                                limitReached = results.size >= request.maxResults
+                            }
+                        }
                     }
                 }
-            }
 
-            emit(
-                FileSearchEvent.Results(
-                    entries = results.toList(),
-                    scannedEntryCount = scannedEntryCount,
-                    limitReached = limitReached,
+                emit(
+                    FileSearchEvent.Results(
+                        entries = results.toList(),
+                        scannedEntryCount = scannedEntryCount,
+                        limitReached = limitReached,
+                    )
                 )
-            )
-            emit(
-                FileSearchEvent.Progress(
-                    scannedEntryCount = scannedEntryCount,
-                    matchedCount = results.size,
+                emit(
+                    FileSearchEvent.Progress(
+                        scannedEntryCount = scannedEntryCount,
+                        matchedCount = results.size,
+                    )
                 )
-            )
+            }
         }
 
         emit(
@@ -138,12 +172,28 @@ class FileSearchUseCase(
         )
     }.flowOn(Dispatchers.Default)
 
+    /** 组合元数据与文件内容条件的单条目匹配器。 */
     private class SearchMatcher(rawQuery: String) {
-        private val criteria = SearchCriteria.parse(rawQuery)
+        /** 解析后的稳定搜索条件。 */
+        private val criteria = FileSearchCriteria.parse(rawQuery)
+
+        /** 查询是否至少包含一个有效条件。 */
         val isValid: Boolean = criteria.isValid
+
+        /** 查询是否显式只匹配目录。 */
         val requiresDirectories: Boolean = criteria.kind == VFileKind.DIRECTORY
+
+        /** 查询是否需要读取文件内容。 */
         val requiresContent: Boolean = criteria.requiresContent
 
+        /**
+         * 匹配单个条目的元数据与可选内容条件。
+         *
+         * @param entry 待匹配条目。
+         * @param contentSearchService 内容检索服务。
+         * @param maxContentBytes 可读取的最大内容字节数。
+         * @return 成功时携带是否匹配，读取失败时携带异常。
+         */
         suspend fun matches(
             entry: VFile,
             contentSearchService: FileContentSearchService,
@@ -156,6 +206,12 @@ class FileSearchUseCase(
         }
     }
 
+    /**
+     * 检查根位置 provider 与内容服务是否同时支持内容搜索。
+     *
+     * @param rootLocation 搜索根位置。
+     * @return 可以执行内容搜索时返回 true。
+     */
     private fun supportsContentSearch(rootLocation: String): Boolean {
         val providerSupportsContent = providerRegistry
             ?.providerFor(rootLocation)
@@ -167,11 +223,32 @@ class FileSearchUseCase(
     }
 }
 
+/** 文件内容搜索平台服务。 */
 interface FileContentSearchService {
+    /**
+     * 检查服务是否支持指定位置空间。
+     *
+     * @param location VFS 位置。
+     * @return 支持时返回 true。
+     */
     fun supportsLocation(location: String): Boolean = true
 
+    /**
+     * 检查服务是否能够读取指定条目内容。
+     *
+     * @param entry 待检查条目。
+     * @return 支持时返回 true。
+     */
     fun supports(entry: VFile): Boolean
 
+    /**
+     * 在最大读取限制内检查文件内容是否包含查询文本。
+     *
+     * @param entry 待检索文件。
+     * @param query 已规范化的小写查询文本。
+     * @param maxBytes 最大读取字节数。
+     * @return 成功时携带是否包含，读取失败时携带异常。
+     */
     suspend fun contains(
         entry: VFile,
         query: String,
@@ -179,265 +256,40 @@ interface FileContentSearchService {
     ): Result<Boolean>
 }
 
+/** 不支持文件内容读取时使用的显式空实现。 */
 object UnsupportedFileContentSearchService : FileContentSearchService {
+    /**
+     * 明确拒绝所有位置的内容搜索。
+     *
+     * @param location 待检查位置。
+     * @return 始终返回 false。
+     */
     override fun supportsLocation(location: String): Boolean = false
 
+    /**
+     * 明确拒绝所有条目的内容搜索。
+     *
+     * @param entry 待检查条目。
+     * @return 始终返回 false。
+     */
     override fun supports(entry: VFile): Boolean = false
 
+    /**
+     * 返回内容搜索不受支持错误。
+     *
+     * @param entry 待检索文件。
+     * @param query 查询文本。
+     * @param maxBytes 最大读取字节数。
+     * @return 固定失败结果。
+     */
     override suspend fun contains(
         entry: VFile,
         query: String,
         maxBytes: Long,
     ): Result<Boolean> {
-        return Result.failure(UnsupportedOperationException("Content search is not supported for ${entry.location}"))
+        val failure = UnsupportedOperationException(
+            "Content search is not supported for ${entry.location}"
+        )
+        return Result.failure(failure)
     }
 }
-
-private data class SearchCriteria(
-    val nameQuery: String,
-    val extensionQuery: String?,
-    val kind: VFileKind?,
-    val minSizeBytes: Long?,
-    val maxSizeBytes: Long?,
-    val modifiedAfterEpochMillis: Long?,
-    val modifiedBeforeEpochMillis: Long?,
-    val contentQuery: String?,
-) {
-    val requiresContent: Boolean
-        get() = contentQuery != null
-
-    val isValid: Boolean
-        get() = nameQuery.isNotBlank() ||
-            extensionQuery != null ||
-            kind != null ||
-            minSizeBytes != null ||
-            maxSizeBytes != null ||
-            modifiedAfterEpochMillis != null ||
-            modifiedBeforeEpochMillis != null ||
-            contentQuery != null
-
-    fun matchesMetadata(entry: VFile): Boolean {
-        if (kind != null && entry.kind != kind) {
-            return false
-        }
-        val normalizedName = entry.name.lowercase()
-        if (extensionQuery != null && !normalizedName.endsWith(extensionQuery)) {
-            return false
-        }
-        if (nameQuery.isNotBlank() && !normalizedName.contains(nameQuery)) {
-            return false
-        }
-        val size = entry.sizeBytes
-        if (minSizeBytes != null && (size == null || size < minSizeBytes)) {
-            return false
-        }
-        if (maxSizeBytes != null && (size == null || size > maxSizeBytes)) {
-            return false
-        }
-        val modified = entry.modifiedAtEpochMillis
-        if (modifiedAfterEpochMillis != null && (modified == null || modified < modifiedAfterEpochMillis)) {
-            return false
-        }
-        if (modifiedBeforeEpochMillis != null && (modified == null || modified > modifiedBeforeEpochMillis)) {
-            return false
-        }
-        return true
-    }
-
-    suspend fun matchesContent(
-        entry: VFile,
-        contentSearchService: FileContentSearchService,
-        maxContentBytes: Long,
-    ): Result<Boolean> {
-        val query = contentQuery ?: return Result.success(true)
-        if (entry.kind != VFileKind.FILE) {
-            return Result.success(false)
-        }
-        if (!contentSearchService.supports(entry)) {
-            return Result.failure(UnsupportedOperationException("Content search is not supported for ${entry.location}"))
-        }
-        return contentSearchService.contains(entry, query, maxContentBytes)
-    }
-
-    companion object {
-        fun parse(rawQuery: String): SearchCriteria {
-            var extensionQuery: String? = null
-            var kind: VFileKind? = null
-            var minSizeBytes: Long? = null
-            var maxSizeBytes: Long? = null
-            var modifiedAfterEpochMillis: Long? = null
-            var modifiedBeforeEpochMillis: Long? = null
-            var contentQuery: String? = null
-            val nameTokens = mutableListOf<String>()
-
-            rawQuery
-                .trim()
-                .split(Regex("\\s+"))
-                .filter { token -> token.isNotBlank() }
-                .forEach { token ->
-                    val normalized = token.lowercase()
-                    when {
-                        normalized.startsWith(".") && normalized.length > 1 -> {
-                            extensionQuery = normalized
-                        }
-
-                        normalized.startsWith("type:") || normalized.startsWith("kind:") -> {
-                            kind = parseKind(normalized.substringAfter(':'))
-                        }
-
-                        normalized.startsWith("size") -> {
-                            parseSizeFilter(normalized)?.let { filter ->
-                                when (filter.operator) {
-                                    FilterOperator.GREATER_THAN,
-                                    FilterOperator.GREATER_THAN_OR_EQUALS -> minSizeBytes = filter.value
-
-                                    FilterOperator.LESS_THAN,
-                                    FilterOperator.LESS_THAN_OR_EQUALS -> maxSizeBytes = filter.value
-                                }
-                            }
-                        }
-
-                        normalized.startsWith("modified") || normalized.startsWith("mtime") -> {
-                            parseDateFilter(normalized)?.let { filter ->
-                                when (filter.operator) {
-                                    FilterOperator.GREATER_THAN,
-                                    FilterOperator.GREATER_THAN_OR_EQUALS -> modifiedAfterEpochMillis = filter.value
-
-                                    FilterOperator.LESS_THAN,
-                                    FilterOperator.LESS_THAN_OR_EQUALS -> modifiedBeforeEpochMillis = filter.value
-                                }
-                            }
-                        }
-
-                        normalized.startsWith("content:") || normalized.startsWith("contains:") -> {
-                            token.substringAfter(':').trim().takeIf { value -> value.isNotBlank() }?.let { value ->
-                                contentQuery = value.lowercase()
-                            }
-                        }
-
-                        else -> nameTokens += normalized
-                    }
-                }
-
-            return SearchCriteria(
-                nameQuery = nameTokens.joinToString(" "),
-                extensionQuery = extensionQuery,
-                kind = kind,
-                minSizeBytes = minSizeBytes,
-                maxSizeBytes = maxSizeBytes,
-                modifiedAfterEpochMillis = modifiedAfterEpochMillis,
-                modifiedBeforeEpochMillis = modifiedBeforeEpochMillis,
-                contentQuery = contentQuery,
-            )
-        }
-
-        private fun parseKind(value: String): VFileKind? {
-            return when (value) {
-                "file", "files" -> VFileKind.FILE
-                "dir", "dirs", "directory", "directories", "folder", "folders" -> VFileKind.DIRECTORY
-                else -> null
-            }
-        }
-
-        private fun parseSizeFilter(token: String): NumericFilter? {
-            val parsed = parseFilterExpression(token.removePrefix("size")) ?: return null
-            val bytes = parseSizeBytes(parsed.value) ?: return null
-            return NumericFilter(parsed.operator, bytes)
-        }
-
-        private fun parseDateFilter(token: String): NumericFilter? {
-            val prefix = if (token.startsWith("modified")) "modified" else "mtime"
-            val parsed = parseFilterExpression(token.removePrefix(prefix)) ?: return null
-            val epochMillis = parseDateEpochMillis(parsed.value) ?: return null
-            val adjusted = when (parsed.operator) {
-                FilterOperator.LESS_THAN,
-                FilterOperator.LESS_THAN_OR_EQUALS -> epochMillis + MILLIS_PER_DAY - 1
-
-                FilterOperator.GREATER_THAN,
-                FilterOperator.GREATER_THAN_OR_EQUALS -> epochMillis
-            }
-            return NumericFilter(parsed.operator, adjusted)
-        }
-
-        private fun parseFilterExpression(value: String): ParsedFilterExpression? {
-            val operator = when {
-                value.startsWith(">=") -> FilterOperator.GREATER_THAN_OR_EQUALS
-                value.startsWith("<=") -> FilterOperator.LESS_THAN_OR_EQUALS
-                value.startsWith(">") -> FilterOperator.GREATER_THAN
-                value.startsWith("<") -> FilterOperator.LESS_THAN
-                else -> return null
-            }
-            val operand = value.removePrefix(operator.symbol).trim()
-            if (operand.isBlank()) {
-                return null
-            }
-            return ParsedFilterExpression(operator, operand)
-        }
-
-        private fun parseSizeBytes(value: String): Long? {
-            val number = value.dropLastWhile { char -> char.isLetter() }
-            val suffix = value.removePrefix(number).lowercase()
-            val amount = number.toDoubleOrNull() ?: return null
-            val multiplier = when (suffix) {
-                "", "b" -> 1L
-                "k", "kb" -> 1_024L
-                "m", "mb" -> 1_048_576L
-                "g", "gb" -> 1_073_741_824L
-                "t", "tb" -> 1_099_511_627_776L
-                else -> return null
-            }
-            return (amount * multiplier).toLong()
-        }
-
-        private fun parseDateEpochMillis(value: String): Long? {
-            val parts = value.split('-')
-            if (parts.size != 3) {
-                return null
-            }
-            val year = parts[0].toIntOrNull() ?: return null
-            val month = parts[1].toIntOrNull() ?: return null
-            val day = parts[2].toIntOrNull() ?: return null
-            if (month !in 1..12 || day !in 1..31) {
-                return null
-            }
-            val adjustedYear = if (month <= 2) year - 1 else year
-            val era = adjustedYear.floorDiv(400)
-            val yearOfEra = adjustedYear - era * 400
-            val adjustedMonth = month + if (month > 2) -3 else 9
-            val dayOfYear = (153 * adjustedMonth + 2) / 5 + day - 1
-            val dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
-            val epochDay = era * 146_097 + dayOfEra - DAYS_FROM_CIVIL_TO_EPOCH
-            return epochDay * MILLIS_PER_DAY
-        }
-
-        private fun Int.floorDiv(other: Int): Int {
-            var result = this / other
-            if ((this xor other) < 0 && result * other != this) {
-                result--
-            }
-            return result
-        }
-    }
-}
-
-private enum class FilterOperator(
-    val symbol: String,
-) {
-    GREATER_THAN(">"),
-    GREATER_THAN_OR_EQUALS(">="),
-    LESS_THAN("<"),
-    LESS_THAN_OR_EQUALS("<="),
-}
-
-private data class ParsedFilterExpression(
-    val operator: FilterOperator,
-    val value: String,
-)
-
-private data class NumericFilter(
-    val operator: FilterOperator,
-    val value: Long,
-)
-
-private const val MILLIS_PER_DAY = 86_400_000L
-private const val DAYS_FROM_CIVIL_TO_EPOCH = 719_468

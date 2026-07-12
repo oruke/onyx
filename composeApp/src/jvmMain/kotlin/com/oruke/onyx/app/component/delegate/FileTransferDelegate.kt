@@ -30,6 +30,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+/** 文件任务暂停期间检查恢复状态的轮询间隔。 */
+private const val TRANSFER_PAUSE_POLL_INTERVAL_MS = 200L
+
 /**
  * 文件传输委托 — 负责复制 / 移动 / 冲突检测 / 进度追踪。
  *
@@ -55,6 +58,7 @@ internal class FileTransferDelegate(
     /**
      * 请求文件传输 — 检测冲突后决定直接执行或弹出冲突对话框。
      */
+    @Suppress("TooGenericExceptionCaught") // 冲突预检边界统一将 Provider 异常转换为失败任务。
     fun requestTransferEntriesToDirectory(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -73,7 +77,7 @@ internal class FileTransferDelegate(
                     entries = entries,
                     targetDirectoryLocation = targetDirectoryLocation,
                 )
-            } catch (failure: Throwable) {
+            } catch (failure: Exception) {
                 OnyxLogger.error("FileTransferDelegate", "冲突检测失败 (${operation.name})", failure)
                 appendFailedTransferTask(
                     entries = entries,
@@ -121,57 +125,96 @@ internal class FileTransferDelegate(
         applyToAll: Boolean,
     ) {
         val pendingRequest = pendingTransferRequest ?: return
-        val currentConflict = pendingRequest.conflictingEntries.getOrNull(pendingRequest.nextConflictIndex) ?: run {
+        val currentConflict = pendingRequest.conflictingEntries.getOrNull(pendingRequest.nextConflictIndex)
+        if (currentConflict == null) {
             pendingTransferRequest = null
             dialogState.value = null
-            return
+        } else {
+            val nextResolvedStrategies = pendingRequest.resolveConflictStrategies(
+                currentConflict = currentConflict,
+                strategy = strategy,
+                applyToAll = applyToAll,
+            )
+            val nextConflictIndex = if (applyToAll) {
+                pendingRequest.conflictingEntries.size
+            } else {
+                pendingRequest.nextConflictIndex + 1
+            }
+            if (nextConflictIndex >= pendingRequest.conflictingEntries.size) {
+                finishPendingTransfer(pendingRequest, nextResolvedStrategies)
+            } else {
+                showNextConflict(pendingRequest, nextResolvedStrategies, nextConflictIndex)
+            }
         }
-        val nextResolvedStrategies = pendingRequest.resolvedStrategies.toMutableMap().apply {
-            put(currentConflict.id, strategy)
-        }
+    }
+
+    /**
+     * 合并当前选择，并按需应用到尚未处理的全部冲突。
+     *
+     * @param currentConflict 当前正在处理的冲突条目。
+     * @param strategy 用户选择的冲突策略。
+     * @param applyToAll 是否将策略应用到剩余冲突。
+     * @return 合并后的条目策略表。
+     */
+    private fun PendingTransferRequest.resolveConflictStrategies(
+        currentConflict: VFile,
+        strategy: TransferConflictStrategy,
+        applyToAll: Boolean,
+    ): Map<String, TransferConflictStrategy> {
+        val nextStrategies = resolvedStrategies.toMutableMap()
+        nextStrategies[currentConflict.id] = strategy
         if (applyToAll) {
-            pendingRequest.conflictingEntries
-                .drop(pendingRequest.nextConflictIndex + 1)
-                .forEach { entry ->
-                    nextResolvedStrategies[entry.id] = strategy
-                }
-            pendingTransferRequest = null
-            dialogState.value = null
-            launchTransferTask(
-                entries = pendingRequest.entries,
-                targetDirectoryLocation = pendingRequest.targetDirectoryLocation,
-                operation = pendingRequest.operation,
-                clearClipboardOnSuccess = pendingRequest.clearClipboardOnSuccess,
-                conflictStrategies = nextResolvedStrategies,
-            )
-            return
+            conflictingEntries.drop(nextConflictIndex + 1).forEach { entry ->
+                nextStrategies[entry.id] = strategy
+            }
         }
+        return nextStrategies
+    }
 
-        val nextConflictIndex = pendingRequest.nextConflictIndex + 1
-        if (nextConflictIndex >= pendingRequest.conflictingEntries.size) {
-            pendingTransferRequest = null
-            dialogState.value = null
-            launchTransferTask(
-                entries = pendingRequest.entries,
-                targetDirectoryLocation = pendingRequest.targetDirectoryLocation,
-                operation = pendingRequest.operation,
-                clearClipboardOnSuccess = pendingRequest.clearClipboardOnSuccess,
-                conflictStrategies = nextResolvedStrategies,
-            )
-            return
-        }
+    /**
+     * 关闭冲突对话框并使用已选策略启动传输。
+     *
+     * @param request 原始待处理传输请求。
+     * @param strategies 每个冲突条目最终采用的处理策略。
+     */
+    private fun finishPendingTransfer(
+        request: PendingTransferRequest,
+        strategies: Map<String, TransferConflictStrategy>,
+    ) {
+        pendingTransferRequest = null
+        dialogState.value = null
+        launchTransferTask(
+            entries = request.entries,
+            targetDirectoryLocation = request.targetDirectoryLocation,
+            operation = request.operation,
+            clearClipboardOnSuccess = request.clearClipboardOnSuccess,
+            conflictStrategies = strategies,
+        )
+    }
 
-        val nextConflict = pendingRequest.conflictingEntries[nextConflictIndex]
-        pendingTransferRequest = pendingRequest.copy(
-            resolvedStrategies = nextResolvedStrategies,
+    /**
+     * 保存当前冲突进度并展示下一条冲突。
+     *
+     * @param request 原始待处理传输请求。
+     * @param strategies 当前已经确定的条目策略。
+     * @param nextConflictIndex 下一条冲突在列表中的索引。
+     */
+    private fun showNextConflict(
+        request: PendingTransferRequest,
+        strategies: Map<String, TransferConflictStrategy>,
+        nextConflictIndex: Int,
+    ) {
+        val nextConflict = request.conflictingEntries[nextConflictIndex]
+        pendingTransferRequest = request.copy(
+            resolvedStrategies = strategies,
             nextConflictIndex = nextConflictIndex,
         )
         dialogState.value = RootDialogState.ConflictResolution(
             sourceName = nextConflict.name,
-            targetLocation = pendingRequest.targetDirectoryLocation,
-            operation = pendingRequest.operation,
+            targetLocation = request.targetDirectoryLocation,
+            operation = request.operation,
             currentIndex = nextConflictIndex + 1,
-            total = pendingRequest.conflictingEntries.size,
+            total = request.conflictingEntries.size,
         )
     }
 
@@ -185,6 +228,7 @@ internal class FileTransferDelegate(
     /**
      * 启动文件传输后台任务。
      */
+    @Suppress("TooGenericExceptionCaught") // 传输任务边界统一将 Provider 异常写入任务中心。
     private fun launchTransferTask(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -235,7 +279,7 @@ internal class FileTransferDelegate(
                     awaitReady = {
                         while (pauseFlag.value) {
                             ensureActive()
-                            delay(200)
+                            delay(TRANSFER_PAUSE_POLL_INTERVAL_MS)
                         }
                     },
                 ).collect { progress ->
@@ -273,7 +317,7 @@ internal class FileTransferDelegate(
                 }
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
-            } catch (_: CancellationException) {
+            } catch (failure: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -282,7 +326,8 @@ internal class FileTransferDelegate(
                     progress = null,
                 )
                 onRefreshAllPanes()
-            } catch (failure: Throwable) {
+                throw failure
+            } catch (failure: Exception) {
                 OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
@@ -391,15 +436,13 @@ internal class FileTransferDelegate(
 
     private fun Throwable.toTransferFailureMessage(operation: FileTransferOperation): I18nMessage {
         val providerError = (this as? VfsProviderException)?.error
-        if (providerError is VfsProviderError.CrossProviderTransferUnsupported) {
-            return providerError.toI18nMessage()
+        return when (providerError) {
+            is VfsProviderError.CrossProviderTransferUnsupported -> providerError.toI18nMessage()
+            null -> message?.takeIf { it.isNotBlank() }?.let { detail ->
+                I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)
+            } ?: failureMessageFor(operation)
+            else -> providerError.toI18nMessage()
         }
-        if (providerError != null) {
-            return providerError.toI18nMessage()
-        }
-        return message?.takeIf { it.isNotBlank() }?.let { detail ->
-            I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)
-        } ?: failureMessageFor(operation)
     }
 
     private fun Throwable.toTaskErrors(

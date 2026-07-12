@@ -29,6 +29,11 @@ private val PersistenceLineJson = Json {
     ignoreUnknownKeys = true
 }
 
+/**
+ * 使用 JSON 文件持久化应用会话快照。
+ *
+ * @param filePath 会话文件路径。
+ */
 class JsonSessionRepository(
     private val filePath: Path = OnyxDataDirectories.stateDirectory().resolve("session.json"),
 ) : SessionRepository {
@@ -55,6 +60,13 @@ class JsonSessionRepository(
     }
 }
 
+/**
+ * 使用 JSON 与 JSONL 文件持久化活动任务和任务归档。
+ *
+ * @param filePath 活动任务文件路径。
+ * @param archivePath 已归档任务文件路径。
+ * @param maxArchiveEntries 最大归档条目数。
+ */
 class JsonTaskPersistenceRepository(
     private val filePath: Path = OnyxDataDirectories.stateDirectory().resolve("tasks.json"),
     private val archivePath: Path = OnyxDataDirectories.stateDirectory().resolve("tasks-archive.jsonl"),

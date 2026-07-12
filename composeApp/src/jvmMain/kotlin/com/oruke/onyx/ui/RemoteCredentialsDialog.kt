@@ -50,6 +50,7 @@ import onyx.composeapp.generated.resources.action_confirm
 import onyx.composeapp.generated.resources.label_remote_credentials_do_not_save_hint
 import onyx.composeapp.generated.resources.label_remote_credentials_domain
 import onyx.composeapp.generated.resources.label_remote_credentials_error_username_required
+import onyx.composeapp.generated.resources.label_remote_credentials_error_save_failed
 import onyx.composeapp.generated.resources.label_remote_credentials_hint
 import onyx.composeapp.generated.resources.label_remote_credentials_password
 import onyx.composeapp.generated.resources.label_remote_credentials_rejected
@@ -59,6 +60,7 @@ import onyx.composeapp.generated.resources.label_remote_credentials_save_session
 import onyx.composeapp.generated.resources.label_remote_credentials_save_system_keyring
 import onyx.composeapp.generated.resources.label_remote_credentials_session_only
 import onyx.composeapp.generated.resources.label_remote_credentials_system_keyring_unavailable
+import onyx.composeapp.generated.resources.label_remote_credentials_saving
 import onyx.composeapp.generated.resources.label_remote_credentials_title
 import onyx.composeapp.generated.resources.label_remote_credentials_username
 
@@ -83,87 +85,22 @@ internal fun RemoteCredentialsDialog(
         state = rememberDialogState(width = 540.dp, height = 460.dp),
         resizable = true,
     ) {
-        window.minimumSize = java.awt.Dimension(480, 360)
+        window.minimumSize = java.awt.Dimension(
+            REMOTE_CREDENTIAL_MIN_WIDTH_PX,
+            REMOTE_CREDENTIAL_MIN_HEIGHT_PX,
+        )
         IntUiTheme(isDark = isSystemInDarkTheme()) {
             DialogFrame(
                 title = title,
                 body = {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scrollState)
-                            .padding(end = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        RemoteCredentialHeader(
-                            location = state.location,
-                            hint = stringResource(Res.string.label_remote_credentials_hint, state.protocol.name),
-                        )
-                        CredentialInputField(
-                            label = stringResource(Res.string.label_remote_credentials_username),
-                            value = state.draft.username,
-                            onValueChange = { value -> onDraftChange(state.draft.copy(username = value)) },
-                            focusRequester = focusRequester,
-                            onConfirm = onConfirm,
-                            onDismiss = onDismiss,
-                        )
-                        CredentialInputField(
-                            label = stringResource(Res.string.label_remote_credentials_password),
-                            value = state.draft.password,
-                            onValueChange = { value -> onDraftChange(state.draft.copy(password = value)) },
-                            password = true,
-                            onConfirm = onConfirm,
-                            onDismiss = onDismiss,
-                        )
-                        CredentialInputField(
-                            label = stringResource(Res.string.label_remote_credentials_domain),
-                            value = state.draft.domain,
-                            onValueChange = { value -> onDraftChange(state.draft.copy(domain = value)) },
-                            onConfirm = onConfirm,
-                            onDismiss = onDismiss,
-                        )
-                        CredentialSavePolicySelector(
-                            selected = state.draft.savePolicy,
-                            onSelected = { savePolicy ->
-                                onDraftChange(state.draft.copy(savePolicy = savePolicy))
-                            },
-                        )
-                        Text(
-                            text = when (state.draft.savePolicy) {
-                                RemoteCredentialSavePolicy.DO_NOT_SAVE ->
-                                    stringResource(Res.string.label_remote_credentials_do_not_save_hint)
-
-                                RemoteCredentialSavePolicy.SESSION ->
-                                    stringResource(Res.string.label_remote_credentials_session_only)
-
-                                RemoteCredentialSavePolicy.SYSTEM_KEYRING ->
-                                    stringResource(Res.string.label_remote_credentials_save_system_keyring)
-                            },
-                            fontSize = 11.sp,
-                            color = LocalOnyxPalette.current.mutedForeground,
-                        )
-                        if (state.rejected) {
-                            Text(
-                                text = stringResource(Res.string.label_remote_credentials_rejected),
-                                fontSize = 11.sp,
-                                color = Color(0xFFD74E4E),
-                            )
-                        }
-                        if (state.error == RemoteCredentialsDialogError.USERNAME_EMPTY) {
-                            Text(
-                                text = stringResource(Res.string.label_remote_credentials_error_username_required),
-                                fontSize = 11.sp,
-                                color = Color(0xFFD74E4E),
-                            )
-                        }
-                        if (state.error == RemoteCredentialsDialogError.SYSTEM_KEYRING_UNAVAILABLE) {
-                            Text(
-                                text = stringResource(Res.string.label_remote_credentials_system_keyring_unavailable),
-                                fontSize = 11.sp,
-                                color = Color(0xFFD74E4E),
-                            )
-                        }
-                    }
+                    RemoteCredentialsBody(
+                        state = state,
+                        scrollState = scrollState,
+                        focusRequester = focusRequester,
+                        onDraftChange = onDraftChange,
+                        onConfirm = onConfirm,
+                        onDismiss = onDismiss,
+                    )
                 },
                 actions = {
                     DialogTextButton(
@@ -173,6 +110,7 @@ internal fun RemoteCredentialsDialog(
                     DialogTextButton(
                         text = stringResource(Res.string.action_confirm),
                         emphasized = true,
+                        enabled = !state.submitting,
                         onClick = onConfirm,
                     )
                 },
@@ -180,6 +118,135 @@ internal fun RemoteCredentialsDialog(
         }
     }
 }
+
+/**
+ * 绘制即时远程凭据窗口的可滚动表单。
+ *
+ * @param state 当前凭据窗口状态。
+ * @param scrollState 表单滚动状态。
+ * @param focusRequester 用户名输入焦点请求器。
+ * @param onDraftChange 草稿变化回调。
+ * @param onConfirm 确认回调。
+ * @param onDismiss 关闭回调。
+ */
+@Composable
+private fun RemoteCredentialsBody(
+    state: RootDialogState.RemoteCredentials,
+    scrollState: androidx.compose.foundation.ScrollState,
+    focusRequester: FocusRequester,
+    onDraftChange: (RemoteCredentialsDraft) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(end = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        RemoteCredentialHeader(
+            location = state.location,
+            hint = stringResource(Res.string.label_remote_credentials_hint, state.protocol.name),
+        )
+        CredentialInputField(
+            label = stringResource(Res.string.label_remote_credentials_username),
+            value = state.draft.username,
+            onValueChange = { value -> onDraftChange(state.draft.copy(username = value)) },
+            focusRequester = focusRequester,
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+            enabled = !state.submitting,
+        )
+        CredentialInputField(
+            label = stringResource(Res.string.label_remote_credentials_password),
+            value = state.draft.password,
+            onValueChange = { value -> onDraftChange(state.draft.copy(password = value)) },
+            password = true,
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+            enabled = !state.submitting,
+        )
+        CredentialInputField(
+            label = stringResource(Res.string.label_remote_credentials_domain),
+            value = state.draft.domain,
+            onValueChange = { value -> onDraftChange(state.draft.copy(domain = value)) },
+            onConfirm = onConfirm,
+            onDismiss = onDismiss,
+            enabled = !state.submitting,
+        )
+        CredentialSavePolicySelector(
+            selected = state.draft.savePolicy,
+            enabled = !state.submitting,
+            onSelected = { savePolicy -> onDraftChange(state.draft.copy(savePolicy = savePolicy)) },
+        )
+        Text(
+            text = remoteCredentialPolicyHint(state.draft.savePolicy),
+            fontSize = 11.sp,
+            color = LocalOnyxPalette.current.mutedForeground,
+        )
+        RemoteCredentialFeedbackMessages(state)
+    }
+}
+
+/**
+ * 解析凭据保存策略说明。
+ *
+ * @param savePolicy 当前保存策略。
+ * @return 已本地化策略说明。
+ */
+@Composable
+private fun remoteCredentialPolicyHint(savePolicy: RemoteCredentialSavePolicy): String = when (savePolicy) {
+    RemoteCredentialSavePolicy.DO_NOT_SAVE -> {
+        stringResource(Res.string.label_remote_credentials_do_not_save_hint)
+    }
+    RemoteCredentialSavePolicy.SESSION -> {
+        stringResource(Res.string.label_remote_credentials_session_only)
+    }
+    RemoteCredentialSavePolicy.SYSTEM_KEYRING -> {
+        stringResource(Res.string.label_remote_credentials_save_system_keyring)
+    }
+}
+
+/**
+ * 绘制认证拒绝、表单错误和提交状态消息。
+ *
+ * @param state 当前凭据窗口状态。
+ */
+@Composable
+private fun RemoteCredentialFeedbackMessages(state: RootDialogState.RemoteCredentials) {
+    val palette = LocalOnyxPalette.current
+    if (state.rejected) {
+        Text(
+            text = stringResource(Res.string.label_remote_credentials_rejected),
+            fontSize = 11.sp,
+            color = palette.error,
+        )
+    }
+    val errorText = when (state.error) {
+        RemoteCredentialsDialogError.USERNAME_EMPTY -> {
+            stringResource(Res.string.label_remote_credentials_error_username_required)
+        }
+        RemoteCredentialsDialogError.SYSTEM_KEYRING_UNAVAILABLE -> {
+            stringResource(Res.string.label_remote_credentials_system_keyring_unavailable)
+        }
+        RemoteCredentialsDialogError.CREDENTIAL_SAVE_FAILED -> {
+            stringResource(Res.string.label_remote_credentials_error_save_failed)
+        }
+        null -> null
+    }
+    errorText?.let { text -> Text(text = text, fontSize = 11.sp, color = palette.error) }
+    if (state.submitting) {
+        Text(
+            text = stringResource(Res.string.label_remote_credentials_saving),
+            fontSize = 11.sp,
+            color = palette.accent,
+        )
+    }
+}
+
+private const val REMOTE_CREDENTIAL_MIN_WIDTH_PX = 480
+private const val REMOTE_CREDENTIAL_MIN_HEIGHT_PX = 360
 
 @Composable
 private fun RemoteCredentialHeader(
@@ -213,6 +280,7 @@ private fun RemoteCredentialHeader(
 @Composable
 private fun CredentialSavePolicySelector(
     selected: RemoteCredentialSavePolicy,
+    enabled: Boolean,
     onSelected: (RemoteCredentialSavePolicy) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -254,7 +322,7 @@ private fun CredentialSavePolicySelector(
                             if (active) LocalOnyxPalette.current.accent else LocalOnyxPalette.current.outlineVariant,
                             RoundedCornerShape(6.dp),
                         )
-                        .clickable { onSelected(policy) }
+                        .clickable(enabled = enabled) { onSelected(policy) }
                         .padding(horizontal = 6.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -277,6 +345,7 @@ private fun CredentialInputField(
     onValueChange: (String) -> Unit,
     password: Boolean = false,
     focusRequester: FocusRequester? = null,
+    enabled: Boolean = true,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -292,7 +361,7 @@ private fun CredentialInputField(
             color = LocalOnyxPalette.current.mutedForeground,
         )
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-            OnyxTextInput(
+        OnyxTextInput(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier
@@ -318,7 +387,8 @@ private fun CredentialInputField(
                 },
                 fontSize = 12.sp,
                 height = 30.dp,
-                password = password,
+            password = password,
+            enabled = enabled,
             )
         }
     }

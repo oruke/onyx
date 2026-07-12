@@ -71,6 +71,8 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
+            // Exposed/SQLite 通过反射加载 JDBC，jlink 无法从静态依赖自动识别 java.sql。
+            modules("java.sql")
             packageName = "Onyx"
             packageVersion = appVersion
             description = "Professional dual-pane file manager"

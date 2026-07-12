@@ -43,6 +43,7 @@ import onyx.composeapp.generated.resources.msg_created_folders
 import onyx.composeapp.generated.resources.msg_delete_failed
 import onyx.composeapp.generated.resources.msg_delete_items
 import onyx.composeapp.generated.resources.msg_deleted_items
+import onyx.composeapp.generated.resources.msg_deleted_items_without_undo
 import onyx.composeapp.generated.resources.msg_extract_failed
 import onyx.composeapp.generated.resources.msg_extract_items
 import onyx.composeapp.generated.resources.msg_extracted_items
@@ -66,6 +67,7 @@ import java.awt.Cursor
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlin.math.roundToInt
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -73,13 +75,33 @@ import kotlin.math.roundToInt
 internal val DetailsColumnGap = 6.dp
 internal val PaneDividerHitSlop = 7.dp
 
+/** 二进制文件大小换算基数。 */
+private const val FILE_SIZE_UNIT_BASE = 1024
+
+/** 明细列允许收缩到的最小宽度。 */
+private const val MIN_DETAILS_COLUMN_WIDTH = 40f
+
+/** 文件名明细列默认宽度。 */
+private const val DEFAULT_NAME_COLUMN_WIDTH = 300f
+
+/** 文件类型明细列默认宽度。 */
+private const val DEFAULT_TYPE_COLUMN_WIDTH = 80f
+
+/** 文件大小明细列默认宽度。 */
+private const val DEFAULT_SIZE_COLUMN_WIDTH = 100f
+
+/** 修改时间明细列默认宽度。 */
+private const val DEFAULT_MODIFIED_COLUMN_WIDTH = 180f
+
 // ── I18n Extensions ─────────────────────────────────────────────────────────
 
 @Composable
+@Suppress("SpreadOperator") // Compose 资源 API 只接受 vararg，消息参数在模型层以列表存储。
 internal fun I18nMessage.resolve(): String {
     return stringResource(key.toStringResource(), *args.toTypedArray())
 }
 
+@Suppress("CyclomaticComplexMethod") // 穷举枚举到资源键的声明式映射，不包含业务分支。
 private fun MessageKey.toStringResource(): StringResource {
     return when (this) {
         MessageKey.ACTION_BATCH_RENAME -> Res.string.action_batch_rename
@@ -100,6 +122,7 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_DELETE_FAILED -> Res.string.msg_delete_failed
         MessageKey.MSG_DELETE_ITEMS -> Res.string.msg_delete_items
         MessageKey.MSG_DELETED_ITEMS -> Res.string.msg_deleted_items
+        MessageKey.MSG_DELETED_ITEMS_WITHOUT_UNDO -> Res.string.msg_deleted_items_without_undo
         MessageKey.MSG_EXTRACT_FAILED -> Res.string.msg_extract_failed
         MessageKey.MSG_EXTRACT_ITEMS -> Res.string.msg_extract_items
         MessageKey.MSG_EXTRACTED_ITEMS -> Res.string.msg_extracted_items
@@ -179,15 +202,15 @@ internal val LocalTooltipController = staticCompositionLocalOf {
 
 internal fun formatFileSize(sizeBytes: Long?): String {
     if (sizeBytes == null) return "-"
-    if (sizeBytes < 1024) return "${sizeBytes} B"
+    if (sizeBytes < FILE_SIZE_UNIT_BASE) return "${sizeBytes} B"
     val units = listOf("KB", "MB", "GB", "TB")
     var value = sizeBytes.toDouble()
     var unitIndex = -1
-    while (value >= 1024 && unitIndex < units.lastIndex) {
-        value /= 1024
+    while (value >= FILE_SIZE_UNIT_BASE && unitIndex < units.lastIndex) {
+        value /= FILE_SIZE_UNIT_BASE
         unitIndex += 1
     }
-    return String.format("%.1f %s", value, units[unitIndex])
+    return String.format(Locale.getDefault(), "%.1f %s", value, units[unitIndex])
 }
 
 internal fun formatModifiedTime(modifiedAtEpochMillis: Long?): String {
@@ -215,15 +238,15 @@ internal fun detailsColumnWidth(
     widths: Map<DetailsColumn, Float>,
     column: DetailsColumn,
 ): Float {
-    return (widths[column] ?: defaultDetailsColumnWidth(column)).coerceAtLeast(40f)
+    return (widths[column] ?: defaultDetailsColumnWidth(column)).coerceAtLeast(MIN_DETAILS_COLUMN_WIDTH)
 }
 
 internal fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
     return when (column) {
-        DetailsColumn.NAME -> 300f
-        DetailsColumn.TYPE -> 80f
-        DetailsColumn.SIZE -> 100f
-        DetailsColumn.MODIFIED -> 180f
+        DetailsColumn.NAME -> DEFAULT_NAME_COLUMN_WIDTH
+        DetailsColumn.TYPE -> DEFAULT_TYPE_COLUMN_WIDTH
+        DetailsColumn.SIZE -> DEFAULT_SIZE_COLUMN_WIDTH
+        DetailsColumn.MODIFIED -> DEFAULT_MODIFIED_COLUMN_WIDTH
     }
 }
 

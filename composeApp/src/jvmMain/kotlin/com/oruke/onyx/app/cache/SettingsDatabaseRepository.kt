@@ -151,7 +151,9 @@ internal class SettingsDatabaseRepository {
             this[RemoteConnectionTable.username] = connection.username
             this[RemoteConnectionTable.domain] = connection.domain
             this[RemoteConnectionTable.savePolicy] = connection.savePolicy.name
-            this[RemoteConnectionTable.sortOrder] = connections.indexOfFirst { candidate -> candidate.id == connection.id }
+            this[RemoteConnectionTable.sortOrder] = connections.indexOfFirst { candidate ->
+                candidate.id == connection.id
+            }
             this[RemoteConnectionTable.updatedAtMillis] = updatedAtMillis
         }
     }

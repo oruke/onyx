@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,6 +50,9 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.window.TitleBarScope
 
+/** 操作失败反馈条使用的主题错误色透明度。 */
+private const val FEEDBACK_BACKGROUND_ALPHA = 0.2f
+
 @Composable
 internal fun OperationFeedbackBar(
     feedback: PaneOperationFeedback,
@@ -81,7 +83,7 @@ internal fun OperationFeedbackBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0x33D74E4E))
+            .background(LocalOnyxPalette.current.error.copy(alpha = FEEDBACK_BACKGROUND_ALPHA))
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -116,7 +118,6 @@ internal fun TitleBarScope.TitleBarContent(
     rootComponent: RootComponent,
     layoutMode: PaneLayoutMode,
     uiScale: Int,
-    sidebarVisible: Boolean,
     onUiScaleChange: (Int) -> Unit,
     onToggleSidebar: () -> Unit,
     showPreviewPane: Boolean,

@@ -55,26 +55,54 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+/** 侧边栏渲染状态。 */
+internal data class PaneSidebarState(
+    /** 当前激活位置。 */
+    val location: String,
+    /** 收藏位置。 */
+    val favoriteLocations: List<String>,
+    /** 最近位置。 */
+    val recentLocations: List<String>,
+    /** 已保存网络位置。 */
+    val remoteConnections: List<RemoteConnectionProfile>,
+    /** 目录树状态。 */
+    val treeState: SidebarTreeState,
+    /** 是否展示目录树。 */
+    val showTree: Boolean,
+)
+
+/** 侧边栏用户操作集合。 */
+internal data class PaneSidebarActions(
+    /** 位置显示名称解析器。 */
+    val locationLabel: (String) -> String,
+    /** 激活侧边栏所属面板。 */
+    val onActivate: () -> Unit,
+    /** 打开位置。 */
+    val onOpenLocation: (String) -> Unit,
+    /** 切换位置收藏状态。 */
+    val onToggleFavoriteLocation: (String) -> Unit,
+    /** 新建网络位置。 */
+    val onNewRemoteConnection: () -> Unit,
+    /** 编辑网络位置。 */
+    val onEditRemoteConnection: (RemoteConnectionProfile) -> Unit,
+    /** 展开或折叠目录树节点。 */
+    val onToggleTreeNode: (String) -> Unit,
+    /** 重试目录树节点。 */
+    val onRetryTreeNode: (String) -> Unit,
+)
+
+/**
+ * 绘制当前活动面板的收藏、网络位置、最近位置和目录树侧边栏。
+ *
+ * @param state 侧边栏渲染状态。
+ * @param actions 侧边栏用户操作。
+ */
 @Composable
 internal fun PaneSidebar(
-    location: String,
-    favoriteLocations: List<String>,
-    recentLocations: List<String>,
-    remoteConnections: List<RemoteConnectionProfile>,
-    locationLabel: (String) -> String,
-    treeState: SidebarTreeState,
-    showTree: Boolean,
-    onActivate: () -> Unit,
-    onOpenLocation: (String) -> Unit,
-    onToggleFavoriteLocation: (String) -> Unit,
-    onNewRemoteConnection: () -> Unit,
-    onEditRemoteConnection: (RemoteConnectionProfile) -> Unit,
-    onToggleTreeNode: (String) -> Unit,
-    onRetryTreeNode: (String) -> Unit,
+    state: PaneSidebarState,
+    actions: PaneSidebarActions,
 ) {
-    val homeLocation = System.getProperty("user.home")
     val scrollState = rememberScrollState()
-
     Column(
         modifier = Modifier
             .width(184.dp)
@@ -84,125 +112,129 @@ internal fun PaneSidebar(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        SidebarSection(
-            title = stringResource(Res.string.label_sidebar_section_quick_access),
-        ) {
-            SidebarLocationItem(
-                label = stringResource(Res.string.label_home),
-                location = homeLocation,
-                selected = location == homeLocation,
-                favorite = favoriteLocations.contains(homeLocation),
-                onOpen = {
-                    onActivate()
-                    onOpenLocation(homeLocation)
-                },
-                onToggleFavorite = { onToggleFavoriteLocation(homeLocation) },
-            )
-        }
+        SidebarQuickAccess(state, actions)
+        SidebarFavorites(state, actions)
+        SidebarConnections(state, actions)
+        SidebarRecentLocations(state, actions)
+        if (state.showTree) SidebarDirectoryTree(state, actions)
+    }
+}
 
-        SidebarSection(
-            title = stringResource(Res.string.label_sidebar_section_favorites),
-        ) {
-            if (favoriteLocations.isEmpty()) {
-                SidebarEmptyState(
-                    text = stringResource(Res.string.label_sidebar_empty_favorites),
-                )
-            } else {
-                favoriteLocations.forEach { favoriteLocation ->
-                    SidebarLocationItem(
-                        label = locationLabel(favoriteLocation),
-                        location = favoriteLocation,
-                        selected = location == favoriteLocation,
-                        favorite = true,
-                        onOpen = {
-                            onActivate()
-                            onOpenLocation(favoriteLocation)
-                        },
-                        onToggleFavorite = { onToggleFavoriteLocation(favoriteLocation) },
-                    )
-                }
-            }
-        }
+/** 绘制快速访问区。 */
+@Composable
+private fun SidebarQuickAccess(state: PaneSidebarState, actions: PaneSidebarActions) {
+    val homeLocation = System.getProperty("user.home")
+    SidebarSection(title = stringResource(Res.string.label_sidebar_section_quick_access)) {
+        SidebarLocationItem(
+            label = stringResource(Res.string.label_home),
+            location = homeLocation,
+            selected = state.location == homeLocation,
+            favorite = state.favoriteLocations.contains(homeLocation),
+            onOpen = { actions.activateAndOpen(homeLocation) },
+            onToggleFavorite = { actions.onToggleFavoriteLocation(homeLocation) },
+        )
+    }
+}
 
-        SidebarSection(
-            title = stringResource(Res.string.label_sidebar_section_connections),
-            actionIcon = AllIconsKeys.General.Add,
-            actionContentDescription = stringResource(Res.string.action_new_connection),
-            onAction = {
-                onActivate()
-                onNewRemoteConnection()
-            },
-        ) {
-            if (remoteConnections.isEmpty()) {
-                SidebarEmptyState(
-                    text = stringResource(Res.string.label_remote_connection_empty),
-                )
-            } else {
-                remoteConnections.forEach { connection ->
-                    SidebarLocationItem(
-                        label = connection.name,
-                        location = connection.location,
-                        selected = location == connection.location,
-                        favorite = favoriteLocations.contains(connection.location),
-                        iconKey = AllIconsKeys.General.OpenDisk,
-                        onOpen = {
-                            onActivate()
-                            onOpenLocation(connection.location)
-                        },
-                        onToggleFavorite = { onToggleFavoriteLocation(connection.location) },
-                        onEdit = {
-                            onActivate()
-                            onEditRemoteConnection(connection)
-                        },
-                    )
-                }
-            }
-        }
-
-        SidebarSection(
-            title = stringResource(Res.string.label_sidebar_section_recent),
-        ) {
-            val displayRecentLocations = recentLocations.filterNot { recentLocation ->
-                recentLocation == location
-            }
-            if (recentLocations.isEmpty() || displayRecentLocations.isEmpty()) {
-                SidebarEmptyState(
-                    text = stringResource(Res.string.label_sidebar_empty_recent),
-                )
-            } else {
-                displayRecentLocations.forEach { recentLocation ->
-                    SidebarLocationItem(
-                        label = locationLabel(recentLocation),
-                        location = recentLocation,
-                        selected = false,
-                        favorite = favoriteLocations.contains(recentLocation),
-                        onOpen = {
-                            onActivate()
-                            onOpenLocation(recentLocation)
-                        },
-                        onToggleFavorite = { onToggleFavoriteLocation(recentLocation) },
-                    )
-                }
-            }
-        }
-
-        if (showTree) {
-            SidebarSection(
-                title = stringResource(Res.string.label_sidebar_section_tree),
-            ) {
-                SidebarTree(
-                    selectedLocation = location,
-                    treeState = treeState,
-                    onOpenLocation = { treeLocation ->
-                        onActivate()
-                        onOpenLocation(treeLocation)
-                    },
-                    onToggleNode = onToggleTreeNode,
-                    onRetryNode = onRetryTreeNode,
+/** 绘制收藏位置区。 */
+@Composable
+private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarActions) {
+    SidebarSection(title = stringResource(Res.string.label_sidebar_section_favorites)) {
+        if (state.favoriteLocations.isEmpty()) {
+            SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_favorites))
+        } else {
+            state.favoriteLocations.forEach { favoriteLocation ->
+                SidebarLocationItem(
+                    label = actions.locationLabel(favoriteLocation),
+                    location = favoriteLocation,
+                    selected = state.location == favoriteLocation,
+                    favorite = true,
+                    onOpen = { actions.activateAndOpen(favoriteLocation) },
+                    onToggleFavorite = { actions.onToggleFavoriteLocation(favoriteLocation) },
                 )
             }
         }
     }
+}
+
+/** 绘制网络位置区。 */
+@Composable
+private fun SidebarConnections(state: PaneSidebarState, actions: PaneSidebarActions) {
+    SidebarSection(
+        title = stringResource(Res.string.label_sidebar_section_connections),
+        actionIcon = AllIconsKeys.General.Add,
+        actionContentDescription = stringResource(Res.string.action_new_connection),
+        onAction = {
+            actions.onActivate()
+            actions.onNewRemoteConnection()
+        },
+    ) {
+        if (state.remoteConnections.isEmpty()) {
+            SidebarEmptyState(text = stringResource(Res.string.label_remote_connection_empty))
+        } else {
+            state.remoteConnections.forEach { connection ->
+                SidebarLocationItem(
+                    label = connection.name,
+                    location = connection.location,
+                    selected = state.location == connection.location,
+                    favorite = state.favoriteLocations.contains(connection.location),
+                    iconKey = AllIconsKeys.General.OpenDisk,
+                    onOpen = { actions.activateAndOpen(connection.location) },
+                    onToggleFavorite = { actions.onToggleFavoriteLocation(connection.location) },
+                    onEdit = {
+                        actions.onActivate()
+                        actions.onEditRemoteConnection(connection)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/** 绘制最近位置区。 */
+@Composable
+private fun SidebarRecentLocations(state: PaneSidebarState, actions: PaneSidebarActions) {
+    val visibleLocations = state.recentLocations.filterNot { location -> location == state.location }
+    SidebarSection(title = stringResource(Res.string.label_sidebar_section_recent)) {
+        if (visibleLocations.isEmpty()) {
+            SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_recent))
+        } else {
+            visibleLocations.forEach { recentLocation ->
+                SidebarLocationItem(
+                    label = actions.locationLabel(recentLocation),
+                    location = recentLocation,
+                    selected = false,
+                    favorite = state.favoriteLocations.contains(recentLocation),
+                    onOpen = { actions.activateAndOpen(recentLocation) },
+                    onToggleFavorite = { actions.onToggleFavoriteLocation(recentLocation) },
+                )
+            }
+        }
+    }
+}
+
+/** 绘制可展开目录树区。 */
+@Composable
+private fun SidebarDirectoryTree(state: PaneSidebarState, actions: PaneSidebarActions) {
+    SidebarSection(title = stringResource(Res.string.label_sidebar_section_tree)) {
+        SidebarTree(
+            selectedLocation = state.location,
+            treeState = state.treeState,
+            onOpenLocation = actions::activateAndOpen,
+            onToggleNode = actions.onToggleTreeNode,
+            onRetryNode = actions.onRetryTreeNode,
+        )
+    }
+}
+
+/**
+ * 激活所属面板后打开位置。
+ *
+ * @param location 目标位置。
+ */
+private fun PaneSidebarActions.activateAndOpen(location: String) {
+    onActivate()
+    onOpenLocation(location)
 }
 
 @Composable
@@ -283,7 +315,11 @@ internal fun SidebarLocationItem(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
-            key = iconKey ?: if (location == System.getProperty("user.home")) AllIconsKeys.Nodes.HomeFolder else AllIconsKeys.Nodes.Folder,
+            key = iconKey ?: if (location == System.getProperty("user.home")) {
+                AllIconsKeys.Nodes.HomeFolder
+            } else {
+                AllIconsKeys.Nodes.Folder
+            },
             contentDescription = null,
             modifier = Modifier.size(14.dp),
         )
@@ -298,7 +334,11 @@ internal fun SidebarLocationItem(
         Text(
             text = if (favorite) "★" else "☆",
             fontSize = 11.sp,
-            color = if (favorite) Color(0xFFFFC94D) else LocalOnyxPalette.current.disabledForeground,
+            color = if (favorite) {
+                LocalOnyxPalette.current.favorite
+            } else {
+                LocalOnyxPalette.current.disabledForeground
+            },
             modifier = Modifier.clickable(onClick = onToggleFavorite),
         )
         if (onEdit != null) {

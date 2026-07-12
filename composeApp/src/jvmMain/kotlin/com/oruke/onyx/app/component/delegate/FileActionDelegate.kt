@@ -10,6 +10,7 @@ import com.oruke.onyx.shared.usecase.TaskProgress
 import com.oruke.onyx.shared.usecase.buildTaskDetail
 import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.TrashMoveRecord
+import com.oruke.onyx.vfs.api.TrashRestorationStatus
 import com.oruke.onyx.vfs.api.TrashService
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.BackgroundTask
@@ -69,6 +70,7 @@ internal class FileActionDelegate(
     /**
      * 执行删除请求（确认对话框后调用）。
      */
+    @Suppress("TooGenericExceptionCaught") // 文件任务边界统一将 Provider 异常写入任务中心。
     fun executeDeleteRequest(request: PendingDeleteRequest) {
         val selectedEntries = request.entries
         if (selectedEntries.isEmpty()) {
@@ -110,17 +112,28 @@ internal class FileActionDelegate(
                 }
 
                 taskOrchestrator.unregisterJob(taskId)
+                val unavailableUndoCount = trashRecords.count { record ->
+                    record.restorationStatus == TrashRestorationStatus.METADATA_UNAVAILABLE
+                }
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(MessageKey.MSG_DELETED_ITEMS, selectedEntries.size),
+                    detail = if (unavailableUndoCount > 0) {
+                        I18nMessage(
+                            MessageKey.MSG_DELETED_ITEMS_WITHOUT_UNDO,
+                            selectedEntries.size,
+                            unavailableUndoCount,
+                        )
+                    } else {
+                        I18nMessage(MessageKey.MSG_DELETED_ITEMS, selectedEntries.size)
+                    },
                     progress = 1f,
                     processedCount = selectedEntries.size,
                 )
                 callbacks.onTrashDeleteSucceeded(trashRecords)
                 callbacks.onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
-            } catch (_: CancellationException) {
+            } catch (failure: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -129,7 +142,8 @@ internal class FileActionDelegate(
                     progress = null,
                 )
                 callbacks.onRefreshAllPanes()
-            } catch (failure: Throwable) {
+                throw failure
+            } catch (failure: Exception) {
                 callbacks.onTrashDeleteSucceeded(trashRecords)
                 OnyxLogger.error("FileActionDelegate", "删除失败", failure)
                 taskOrchestrator.unregisterJob(taskId)
@@ -161,6 +175,7 @@ internal class FileActionDelegate(
     /**
      * 执行创建目录。
      */
+    @Suppress("TooGenericExceptionCaught") // 文件任务边界统一将 Provider 异常写入任务中心。
     fun executeCreateDirectories(
         paneId: PaneId,
         parentLocation: String,
@@ -214,7 +229,7 @@ internal class FileActionDelegate(
                 )
                 callbacks.onRefreshPane(paneId)
                 taskOrchestrator.scheduleAutoCleanup(taskId)
-            } catch (_: CancellationException) {
+            } catch (failure: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -223,7 +238,8 @@ internal class FileActionDelegate(
                     progress = null,
                 )
                 callbacks.onRefreshPane(paneId)
-            } catch (failure: Throwable) {
+                throw failure
+            } catch (failure: Exception) {
                 OnyxLogger.error("FileActionDelegate", "创建目录失败", failure)
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
@@ -240,6 +256,7 @@ internal class FileActionDelegate(
     /**
      * 执行批量重命名。
      */
+    @Suppress("TooGenericExceptionCaught") // 批量任务边界统一将逐项异常写入任务与对话框状态。
     fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>) {
         if (renameMap.isEmpty()) return
 
@@ -300,7 +317,7 @@ internal class FileActionDelegate(
                 // 短暂展示完成状态后自动重置为编辑模式
                 delay(BATCH_RENAME_COMPLETION_RESET_DELAY_MS)
                 resetBatchRenameForContinue(paneId)
-            } catch (_: CancellationException) {
+            } catch (failure: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -313,7 +330,8 @@ internal class FileActionDelegate(
                         errorMessage = I18nMessage(MessageKey.MSG_CANCELLED),
                     )
                 }
-            } catch (e: Throwable) {
+                throw failure
+            } catch (e: Exception) {
                 OnyxLogger.error("FileActionDelegate", "批量重命名失败", e)
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(

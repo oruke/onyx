@@ -5,7 +5,11 @@ import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.api.SystemFileMaterializer
 import com.oruke.onyx.app.filesystem.systemLocalPathOrNull
 import com.oruke.onyx.core.model.VFile
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.AWTEvent
 import java.awt.Toolkit
@@ -74,6 +78,9 @@ interface ExternalFileDragService {
 class JvmExternalFileDragService(
     private val materializer: SystemFileMaterializer,
 ) : ExternalFileDragService {
+    /** 远程文件预物化使用的后台作用域。 */
+    private val materializationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** 临时物化根目录，应用退出或服务卸载时删除。 */
     private val tempRootDir: Path by lazy {
         val dir = Path.of(System.getProperty("java.io.tmpdir"), "onyx-drag-${UUID.randomUUID()}")
@@ -89,6 +96,18 @@ class JvmExternalFileDragService(
     @Volatile
     private var pendingMaterializeEntries: List<VFile> = emptyList()
 
+    /** 当前后台物化任务。 */
+    @Volatile
+    private var materializationJob: Job? = null
+
+    /** 待拖放状态版本，阻止旧物化任务覆盖新选择。 */
+    @Volatile
+    private var pendingGeneration: Long = 0L
+
+    /** 用户已经拖到窗口边缘，物化完成后应立即尝试系统拖放。 */
+    @Volatile
+    private var edgeDragRequested: Boolean = false
+
     /** 最近一次鼠标按下事件，用于触发 Swing exportAsDrag。 */
     @Volatile
     private var lastMousePressedEvent: MouseEvent? = null
@@ -103,6 +122,9 @@ class JvmExternalFileDragService(
 
     /** 已安装 TransferHandler 的 Swing 组件。 */
     private var installedComponent: JComponent? = null
+
+    /** 安装桥接前组件原有的 TransferHandler。 */
+    private var originalTransferHandler: TransferHandler? = null
 
     /** 全局鼠标监听器，捕获 Compose SkiaLayer 转发前的鼠标事件。 */
     private var awtEventListener: AWTEventListener? = null
@@ -122,6 +144,7 @@ class JvmExternalFileDragService(
      * @param window 主窗口。
      */
     override fun install(window: java.awt.Window) {
+        detachWindowBridge()
         val skiaLayer = findSkiaLayer(window)
         if (skiaLayer != null) {
             installOnComponent(skiaLayer)
@@ -143,12 +166,7 @@ class JvmExternalFileDragService(
      * 卸载监听器、TransferHandler 和待处理状态。
      */
     override fun uninstall() {
-        awtEventListener?.let { listener ->
-            Toolkit.getDefaultToolkit().removeAWTEventListener(listener)
-        }
-        awtEventListener = null
-        installedComponent?.transferHandler = null
-        installedComponent = null
+        detachWindowBridge()
         clearPending()
         cleanupTempRoot()
     }
@@ -158,8 +176,12 @@ class JvmExternalFileDragService(
      */
     override fun clearPending() {
         if (!systemDragActive) {
+            pendingGeneration += 1L
+            materializationJob?.cancel()
+            materializationJob = null
             pendingDragFiles = emptyList()
             pendingMaterializeEntries = emptyList()
+            edgeDragRequested = false
             exportTriggered = false
         }
     }
@@ -171,6 +193,11 @@ class JvmExternalFileDragService(
      * @return 包含压缩包内部条目时返回 true。
      */
     override fun preparePendingFiles(entries: List<VFile>): Boolean {
+        pendingGeneration += 1L
+        val generation = pendingGeneration
+        materializationJob?.cancel()
+        materializationJob = null
+        edgeDragRequested = false
         val localFiles = mutableListOf<File>()
         val materializeEntries = mutableListOf<VFile>()
         var containsArchiveEntry = false
@@ -188,6 +215,27 @@ class JvmExternalFileDragService(
         }
         pendingDragFiles = localFiles
         pendingMaterializeEntries = materializeEntries
+        if (materializeEntries.isNotEmpty()) {
+            materializationJob = materializationScope.launch {
+                val materializedFiles = materializeEntries.mapNotNull { entry ->
+                    materializer.materialize(entry)
+                        .onFailure { failure ->
+                            OnyxLogger.error(LOG_TAG, "后台物化拖放文件失败：${entry.location}", failure)
+                        }
+                        .getOrNull()
+                        ?.location
+                        ?.let(::File)
+                        ?.takeIf(File::exists)
+                }
+                if (pendingGeneration != generation) return@launch
+                pendingDragFiles = localFiles + materializedFiles
+                pendingMaterializeEntries = emptyList()
+                materializationJob = null
+                if (edgeDragRequested) {
+                    SwingUtilities.invokeLater(::startSystemDrag)
+                }
+            }
+        }
         return containsArchiveEntry
     }
 
@@ -233,37 +281,21 @@ class JvmExternalFileDragService(
      *
      * @param component 目标 Swing 组件。
      */
-    private fun installOnComponent(component: JComponent) {
+    internal fun installOnComponent(component: JComponent) {
+        restoreOriginalTransferHandler()
         val originalHandler = component.transferHandler
+        originalTransferHandler = originalHandler
         component.transferHandler = object : TransferHandler() {
             override fun getSourceActions(c: JComponent?): Int = COPY_OR_MOVE
 
             override fun createTransferable(c: JComponent?): Transferable? {
-                val localFiles = pendingDragFiles.toMutableList()
-                val materializeEntries = pendingMaterializeEntries
-                if (materializeEntries.isNotEmpty()) {
-                    for (entry in materializeEntries) {
-                        try {
-                            val materialized = kotlinx.coroutines.runBlocking(Dispatchers.IO) {
-                                materializer.materialize(entry)
-                            }.getOrThrow()
-                            val file = File(materialized.location)
-                            if (file.exists()) {
-                                localFiles.add(file)
-                            }
-                        } catch (e: Exception) {
-                            OnyxLogger.error(LOG_TAG, "延迟物化失败", e)
-                        }
-                    }
-                }
+                val localFiles = pendingDragFiles
                 return if (localFiles.isEmpty()) null else FileTransferable(localFiles)
             }
 
             override fun exportDone(source: JComponent?, data: Transferable?, action: Int) {
                 systemDragActive = false
-                pendingDragFiles = emptyList()
-                pendingMaterializeEntries = emptyList()
-                exportTriggered = false
+                clearPending()
             }
 
             override fun canImport(support: TransferSupport?): Boolean {
@@ -293,6 +325,7 @@ class JvmExternalFileDragService(
 
                 MouseEvent.MOUSE_RELEASED -> {
                     lastMousePressedEvent = null
+                    edgeDragRequested = false
                     exportTriggered = false
                 }
             }
@@ -312,26 +345,73 @@ class JvmExternalFileDragService(
      */
     private fun maybeStartSystemDrag(event: MouseEvent) {
         val hasPending = pendingDragFiles.isNotEmpty() || pendingMaterializeEntries.isNotEmpty()
-        if (!hasPending || systemDragActive || exportTriggered) return
-        val pressEvent = lastMousePressedEvent ?: return
-        val component = installedComponent ?: return
-        if (!isNearWindowEdge(component, event)) return
-
-        exportTriggered = true
-        systemDragActive = true
-        SwingUtilities.invokeLater {
-            try {
-                component.transferHandler.exportAsDrag(
-                    component,
-                    pressEvent,
-                    TransferHandler.COPY,
-                )
-            } catch (e: Exception) {
-                OnyxLogger.error(LOG_TAG, "exportAsDrag 失败", e)
-                systemDragActive = false
-                exportTriggered = false
+        val component = installedComponent
+        val canRequestDrag = hasPending &&
+            !systemDragActive &&
+            !exportTriggered &&
+            component != null &&
+            isNearWindowEdge(component, event)
+        if (canRequestDrag) {
+            edgeDragRequested = true
+            if (materializationJob?.isActive != true) {
+                startSystemDrag()
             }
         }
+    }
+
+    /**
+     * 使用已经物化完成的本地文件发起 Swing 系统拖放。
+     */
+    private fun startSystemDrag() {
+        val pressEvent = lastMousePressedEvent
+        val component = installedComponent
+        val canStart = pressEvent != null &&
+            component != null &&
+            pendingDragFiles.isNotEmpty() &&
+            !systemDragActive &&
+            !exportTriggered
+        if (canStart) {
+            exportTriggered = true
+            systemDragActive = true
+            edgeDragRequested = false
+            SwingUtilities.invokeLater {
+                try {
+                    requireNotNull(component).transferHandler.exportAsDrag(
+                        component,
+                        requireNotNull(pressEvent),
+                        TransferHandler.COPY,
+                    )
+                } catch (e: java.awt.dnd.InvalidDnDOperationException) {
+                    OnyxLogger.error(LOG_TAG, "exportAsDrag 当前不可用", e)
+                    systemDragActive = false
+                    exportTriggered = false
+                } catch (e: IllegalStateException) {
+                    OnyxLogger.error(LOG_TAG, "exportAsDrag 失败", e)
+                    systemDragActive = false
+                    exportTriggered = false
+                }
+            }
+        }
+    }
+
+    /**
+     * 移除窗口级鼠标监听并恢复组件原有的 TransferHandler。
+     */
+    private fun detachWindowBridge() {
+        awtEventListener?.let { listener ->
+            Toolkit.getDefaultToolkit().removeAWTEventListener(listener)
+        }
+        awtEventListener = null
+        restoreOriginalTransferHandler()
+    }
+
+    /**
+     * 恢复安装桥接前组件原有的 TransferHandler。
+     */
+    private fun restoreOriginalTransferHandler() {
+        installedComponent?.transferHandler = originalTransferHandler
+        installedComponent = null
+        originalTransferHandler = null
     }
 
     /**
@@ -363,17 +443,14 @@ class JvmExternalFileDragService(
      * @return 找到的 Swing 组件。
      */
     private fun findSkiaLayer(container: java.awt.Container): JComponent? {
-        for (component in container.components) {
+        return container.components.firstNotNullOfOrNull { component ->
             val className = component.javaClass.name
             if ("SkiaLayer" in className || "ComposeLayer" in className) {
-                return component as? JComponent
-            }
-            if (component is java.awt.Container) {
-                val found = findSkiaLayer(component)
-                if (found != null) return found
+                component as? JComponent
+            } else {
+                (component as? java.awt.Container)?.let(::findSkiaLayer)
             }
         }
-        return null
     }
 
     /**

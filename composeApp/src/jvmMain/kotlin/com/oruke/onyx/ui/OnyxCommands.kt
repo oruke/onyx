@@ -86,6 +86,7 @@ internal enum class OnyxCommand(val defaultShortcut: OnyxShortcut? = null) {
  *
  * @return 对应面板命令；非面板命令返回 `null`。
  */
+@Suppress("CyclomaticComplexMethod") // 穷举应用命令到面板命令的声明式映射。
 internal fun OnyxCommand.toPaneCommand(): PaneCommand? {
     return when (this) {
         OnyxCommand.OpenSelection -> PaneCommand.OPEN_SELECTION
@@ -115,6 +116,7 @@ internal fun OnyxCommand.toPaneCommand(): PaneCommand? {
  *
  * @return 对应 UI 命令；没有快捷键展示需求的命令返回 `null`。
  */
+@Suppress("CyclomaticComplexMethod") // 穷举面板命令到应用命令的声明式映射。
 internal fun PaneCommand.toOnyxCommand(): OnyxCommand? {
     return when (this) {
         PaneCommand.OPEN_SELECTION -> OnyxCommand.OpenSelection
@@ -385,6 +387,7 @@ private fun shortcutModifierLabel(modifier: OnyxShortcutModifier): String {
 }
 
 @Composable
+@Suppress("CyclomaticComplexMethod") // 键位名称是无嵌套的穷举展示映射。
 private fun shortcutKeyLabel(key: OnyxShortcutKey): String {
     return when (key) {
         OnyxShortcutKey.ENTER -> stringResource(Res.string.shortcut_key_enter)

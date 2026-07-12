@@ -117,17 +117,28 @@ internal fun buildProgressLabel(task: BackgroundTask): String = buildString {
 
 internal fun formatSpeed(bytesPerSecond: Double): String {
     return when {
-        bytesPerSecond >= 1_073_741_824 -> "%.1f GB/s".format(bytesPerSecond / 1_073_741_824)
-        bytesPerSecond >= 1_048_576 -> "%.1f MB/s".format(bytesPerSecond / 1_048_576)
-        bytesPerSecond >= 1_024 -> "%.0f KB/s".format(bytesPerSecond / 1_024)
+        bytesPerSecond >= BYTES_PER_GIBIBYTE -> "%.1f GB/s".format(bytesPerSecond / BYTES_PER_GIBIBYTE)
+        bytesPerSecond >= BYTES_PER_MEBIBYTE -> "%.1f MB/s".format(bytesPerSecond / BYTES_PER_MEBIBYTE)
+        bytesPerSecond >= BYTES_PER_KIBIBYTE -> "%.0f KB/s".format(bytesPerSecond / BYTES_PER_KIBIBYTE)
         else -> "%.0f B/s".format(bytesPerSecond)
     }
 }
 
 internal fun formatDuration(seconds: Long): String {
     return when {
-        seconds < 60 -> "${seconds}s"
-        seconds < 3600 -> "${seconds / 60}m ${seconds % 60}s"
-        else -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
+        seconds < SECONDS_PER_MINUTE -> "${seconds}s"
+        seconds < SECONDS_PER_HOUR -> {
+            "${seconds / SECONDS_PER_MINUTE}m ${seconds % SECONDS_PER_MINUTE}s"
+        }
+        else -> {
+            "${seconds / SECONDS_PER_HOUR}h " +
+                "${(seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE}m"
+        }
     }
 }
+
+private const val BYTES_PER_KIBIBYTE = 1_024.0
+private const val BYTES_PER_MEBIBYTE = 1_048_576.0
+private const val BYTES_PER_GIBIBYTE = 1_073_741_824.0
+private const val SECONDS_PER_MINUTE = 60L
+private const val SECONDS_PER_HOUR = 3_600L

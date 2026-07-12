@@ -4,18 +4,19 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import org.w3c.dom.Element
+import org.w3c.dom.NodeList
 import org.xml.sax.InputSource
 import java.io.StringReader
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * S3 单页列表结果。
- *
- * @property entries 当前页条目。
- * @property nextContinuationToken 下一页 token。
  */
 data class S3ListPage(
+    /** 当前页条目。 */
     val entries: List<VFile>,
+
+    /** 下一页 continuation token。 */
     val nextContinuationToken: String?,
 )
 
@@ -36,62 +37,91 @@ class S3ListBucketResultParser {
     ): S3ListPage {
         val document = documentBuilderFactory().newDocumentBuilder()
             .parse(InputSource(StringReader(xml)))
-        val entries = buildList {
-            val commonPrefixes = document.getElementsByTagNameNS("*", "CommonPrefixes")
-            for (index in 0 until commonPrefixes.length) {
-                val element = commonPrefixes.item(index) as? Element ?: continue
-                val prefix = element.childText("Prefix") ?: continue
-                val name = prefix.trimEnd('/').substringAfterLast('/')
-                if (name.isBlank()) continue
-                add(
-                    VFile(
-                        id = location.toLocation(prefix, directory = true),
-                        name = name,
-                        location = location.toLocation(prefix, directory = true),
-                        parentLocation = location.directoryLocation,
-                        kind = VFileKind.DIRECTORY,
-                        sizeBytes = null,
-                        modifiedAtEpochMillis = null,
-                        hidden = name.startsWith("."),
-                        capabilities = setOf(
-                            VFileCapability.READ_METADATA,
-                            VFileCapability.LIST_CHILDREN,
-                            VFileCapability.DELETE,
-                            VFileCapability.RENAME,
-                        ),
-                    )
-                )
-            }
-            val contents = document.getElementsByTagNameNS("*", "Contents")
-            for (index in 0 until contents.length) {
-                val element = contents.item(index) as? Element ?: continue
-                val key = element.childText("Key") ?: continue
-                if (key == location.directoryPrefix || key.endsWith("/")) continue
-                val name = key.substringAfterLast('/')
-                if (name.isBlank()) continue
-                add(
-                    VFile(
-                        id = location.toLocation(key, directory = false),
-                        name = name,
-                        location = location.toLocation(key, directory = false),
-                        parentLocation = location.directoryLocation,
-                        kind = VFileKind.FILE,
-                        sizeBytes = element.childText("Size")?.toLongOrNull(),
-                        modifiedAtEpochMillis = element.childText("LastModified")?.toInstantMillisOrNull(),
-                        hidden = name.startsWith("."),
-                        capabilities = setOf(
-                            VFileCapability.READ_METADATA,
-                            VFileCapability.READ_CONTENT,
-                            VFileCapability.DELETE,
-                            VFileCapability.RENAME,
-                        ),
-                    )
-                )
-            }
-        }
+        val directories = document.getElementsByTagNameNS("*", "CommonPrefixes")
+            .mapElements { element -> element.toS3Directory(location) }
+        val files = document.getElementsByTagNameNS("*", "Contents")
+            .mapElements { element -> element.toS3File(location) }
+        val entries = directories + files
         val nextToken = document.documentElement.childText("NextContinuationToken")
         return S3ListPage(entries = entries, nextContinuationToken = nextToken)
     }
+}
+
+/**
+ * 将 XML 目录前缀节点转换为 VFS 目录。
+ *
+ * @param location 当前 S3 目录位置。
+ * @return VFS 目录；无效前缀返回 `null`。
+ */
+private fun Element.toS3Directory(location: S3Location): VFile? {
+    val prefix = childText("Prefix")
+    val name = prefix?.trimEnd('/')?.substringAfterLast('/')?.takeIf { value -> value.isNotBlank() }
+    return if (prefix != null && name != null) {
+        val childLocation = location.toLocation(prefix, directory = true)
+        VFile(
+            id = childLocation,
+            name = name,
+            location = childLocation,
+            parentLocation = location.directoryLocation,
+            kind = VFileKind.DIRECTORY,
+            sizeBytes = null,
+            modifiedAtEpochMillis = null,
+            hidden = name.startsWith("."),
+            capabilities = setOf(
+                VFileCapability.READ_METADATA,
+                VFileCapability.LIST_CHILDREN,
+                VFileCapability.DELETE,
+                VFileCapability.RENAME,
+            ),
+        )
+    } else {
+        null
+    }
+}
+
+/**
+ * 将 XML 对象节点转换为 VFS 文件。
+ *
+ * @param location 当前 S3 目录位置。
+ * @return VFS 文件；目录占位对象或无效 key 返回 `null`。
+ */
+private fun Element.toS3File(location: S3Location): VFile? {
+    val key = childText("Key")
+    val name = key?.substringAfterLast('/')
+        ?.takeIf { value -> key != location.directoryPrefix && !key.endsWith('/') && value.isNotBlank() }
+    return if (key != null && name != null) {
+        val childLocation = location.toLocation(key, directory = false)
+        VFile(
+            id = childLocation,
+            name = name,
+            location = childLocation,
+            parentLocation = location.directoryLocation,
+            kind = VFileKind.FILE,
+            sizeBytes = childText("Size")?.toLongOrNull(),
+            modifiedAtEpochMillis = childText("LastModified")?.toInstantMillisOrNull(),
+            hidden = name.startsWith("."),
+            capabilities = setOf(
+                VFileCapability.READ_METADATA,
+                VFileCapability.READ_CONTENT,
+                VFileCapability.DELETE,
+                VFileCapability.RENAME,
+            ),
+        )
+    } else {
+        null
+    }
+}
+
+/**
+ * 映射 XML 元素节点并过滤无效结果。
+ *
+ * @param transform 元素转换函数。
+ * @return 转换后的有效结果。
+ */
+private inline fun <T> NodeList.mapElements(transform: (Element) -> T?): List<T> {
+    return (0 until length)
+        .mapNotNull { index -> item(index) as? Element }
+        .mapNotNull(transform)
 }
 
 /**

@@ -113,67 +113,18 @@ internal fun CreateDirectoriesDialog(
                             fontSize = 12.sp,
                             color = LocalOnyxPalette.current.foreground,
                         )
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            BasicTextField(
-                                value = draftFieldValue,
-                                onValueChange = { nextValue ->
-                                    draftFieldValue = nextValue
-                                    onDraftChange(nextValue.text)
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(focusRequester)
-                                    .onPreviewKeyEvent { event ->
-                                        if (event.type != KeyEventType.KeyDown) {
-                                            return@onPreviewKeyEvent false
-                                        }
-                                        when {
-                                            event.matchesCommand(OnyxCommand.CreateDirectories) -> {
-                                                onConfirm()
-                                                true
-                                            }
-
-                                            event.key == Key.Escape -> {
-                                                onDismiss()
-                                                true
-                                            }
-
-                                            else -> false
-                                        }
-                                    },
-                                textStyle = inputTextStyle,
-                                cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
-                                decorationBox = { innerTextField ->
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .heightIn(min = 170.dp, max = 220.dp)
-                                            .background(
-                                                LocalOnyxPalette.current.inputBackground,
-                                                RoundedCornerShape(6.dp)
-                                            )
-                                            .border(
-                                                1.dp,
-                                                LocalOnyxPalette.current.outlineVariant,
-                                                RoundedCornerShape(6.dp)
-                                            )
-                                            .padding(horizontal = 10.dp, vertical = 9.dp)
-                                            .verticalScroll(inputScrollState),
-                                    ) {
-                                        if (draftFieldValue.text.isBlank()) {
-                                            Text(
-                                                text = stringResource(Res.string.label_create_directories_placeholder),
-                                                fontSize = 12.sp,
-                                                lineHeight = 17.sp,
-                                                color = LocalOnyxPalette.current.disabledForeground,
-                                                fontFamily = FontFamily.Monospace,
-                                            )
-                                        }
-                                        innerTextField()
-                                    }
-                                },
-                            )
-                        }
+                        CreateDirectoriesInput(
+                            value = draftFieldValue,
+                            onValueChange = { nextValue ->
+                                draftFieldValue = nextValue
+                                onDraftChange(nextValue.text)
+                            },
+                            focusRequester = focusRequester,
+                            inputScrollState = inputScrollState,
+                            textStyle = inputTextStyle,
+                            onConfirm = onConfirm,
+                            onDismiss = onDismiss,
+                        )
                         Text(
                             text = stringResource(
                                 Res.string.label_create_directories_shortcuts,
@@ -190,7 +141,7 @@ internal fun CreateDirectoriesDialog(
                                         stringResource(Res.string.label_create_directories_error_empty)
                                 },
                                 fontSize = 11.sp,
-                                color = androidx.compose.ui.graphics.Color(0xFFD74E4E),
+                                color = LocalOnyxPalette.current.error,
                             )
                         }
                     }
@@ -208,5 +159,84 @@ internal fun CreateDirectoriesDialog(
                 },
             )
         }
+    }
+}
+
+/**
+ * 绘制支持多行批量目录名称的输入区。
+ *
+ * @param value 当前输入值和光标选择。
+ * @param onValueChange 输入变化回调。
+ * @param focusRequester 窗口打开时使用的焦点请求器。
+ * @param inputScrollState 多行输入滚动状态。
+ * @param textStyle 输入文本样式。
+ * @param onConfirm 创建确认回调。
+ * @param onDismiss 关闭回调。
+ */
+@Composable
+private fun CreateDirectoriesInput(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+    focusRequester: FocusRequester,
+    inputScrollState: androidx.compose.foundation.ScrollState,
+    textStyle: TextStyle,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when {
+                        event.matchesCommand(OnyxCommand.CreateDirectories) -> {
+                            onConfirm()
+                            true
+                        }
+
+                        event.key == Key.Escape -> {
+                            onDismiss()
+                            true
+                        }
+
+                        else -> false
+                    }
+                },
+            textStyle = textStyle,
+            cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
+            decorationBox = { innerTextField ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 170.dp, max = 220.dp)
+                        .background(
+                            LocalOnyxPalette.current.inputBackground,
+                            RoundedCornerShape(6.dp),
+                        )
+                        .border(
+                            1.dp,
+                            LocalOnyxPalette.current.outlineVariant,
+                            RoundedCornerShape(6.dp),
+                        )
+                        .padding(horizontal = 10.dp, vertical = 9.dp)
+                        .verticalScroll(inputScrollState),
+                ) {
+                    if (value.text.isBlank()) {
+                        Text(
+                            text = stringResource(Res.string.label_create_directories_placeholder),
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            color = LocalOnyxPalette.current.disabledForeground,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
     }
 }

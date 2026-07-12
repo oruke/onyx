@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.Path
@@ -29,11 +30,12 @@ import com.oruke.onyx.vfs.archive.ArchiveService
 internal class JvmVfsPathService : VfsPathService {
     override fun normalizeLocation(location: String): String {
         val trimmedLocation = location.trim()
-        if (ArchiveService.isArchiveLocation(trimmedLocation)) return trimmedLocation
-        remoteUri(trimmedLocation)?.let { uri ->
-            return uri.toRemoteLocation(directory = true)
+        val remote = remoteUri(trimmedLocation)
+        return when {
+            ArchiveService.isArchiveLocation(trimmedLocation) -> trimmedLocation
+            remote != null -> remote.toRemoteLocation(directory = true)
+            else -> Path.of(trimmedLocation).normalize().toAbsolutePath().pathString
         }
-        return Path.of(trimmedLocation).normalize().toAbsolutePath().pathString
     }
 
     override fun parentLocation(location: String): String? {
@@ -78,12 +80,14 @@ internal class JvmVfsPathService : VfsPathService {
 
     override fun isLocationAvailable(location: String): Boolean {
         val trimmedLocation = location.trim()
-        if (trimmedLocation.isBlank()) return false
-        if (ArchiveService.isArchiveLocation(trimmedLocation)) return true
-        if (remoteUri(trimmedLocation) != null) return true
-        return runCatching {
-            Files.exists(Path.of(trimmedLocation).normalize().toAbsolutePath())
-        }.getOrDefault(false)
+        return when {
+            trimmedLocation.isBlank() -> false
+            ArchiveService.isArchiveLocation(trimmedLocation) -> true
+            remoteUri(trimmedLocation) != null -> true
+            else -> runCatching {
+                Files.exists(Path.of(trimmedLocation).normalize().toAbsolutePath())
+            }.getOrDefault(false)
+        }
     }
 
     override fun directChildName(ancestor: String, descendant: String): String? {
@@ -109,15 +113,17 @@ internal class JvmVfsPathService : VfsPathService {
     override fun isDirectParent(parent: String, child: String): Boolean {
         val parentRemote = remoteUri(parent)
         val childRemote = remoteUri(child)
-        if (parentRemote != null || childRemote != null) {
-            return parentRemote?.remoteDirectChildName(childRemote ?: return false) != null &&
+        return if (parentRemote != null || childRemote != null) {
+            parentRemote != null && childRemote != null &&
+                parentRemote.remoteDirectChildName(childRemote) != null &&
                 childRemote.remoteParentLocation() == parentRemote.toRemoteLocation(directory = true)
+        } else {
+            runCatching {
+                val parentPath = Path.of(parent).toAbsolutePath().normalize()
+                val childPath = Path.of(child).toAbsolutePath().normalize()
+                childPath.parent == parentPath
+            }.getOrDefault(false)
         }
-        return runCatching {
-            val parentPath = Path.of(parent).toAbsolutePath().normalize()
-            val childPath = Path.of(child).toAbsolutePath().normalize()
-            childPath.parent == parentPath
-        }.getOrDefault(false)
     }
 
     override fun isSameOrChildOf(location: String, parentLocation: String): Boolean {
@@ -156,46 +162,48 @@ internal class JvmVfsPathService : VfsPathService {
 
     override fun buildBreadcrumbs(location: String): List<VfsBreadcrumb> {
         val parsed = ArchiveService.parseArchiveLocation(location)
-        if (parsed != null) {
-            val (archivePath, innerPath) = parsed
-            val archiveFilePath = Path.of(archivePath).normalize().toAbsolutePath()
-            val breadcrumbs = mutableListOf<VfsBreadcrumb>()
-            var current = archiveFilePath.root ?: archiveFilePath
-            breadcrumbs += VfsBreadcrumb(
-                label = current.toString().ifBlank { "/" },
-                location = current.toString().ifBlank { "/" },
+        val remote = remoteUri(location)
+        return when {
+            parsed != null -> archiveBreadcrumbs(parsed.first, parsed.second)
+            remote != null -> remote.remoteBreadcrumbs()
+            else -> localBreadcrumbs(Path.of(location).normalize().toAbsolutePath())
+        }
+    }
+
+    /**
+     * 构建压缩包文件及其内部路径的面包屑。
+     *
+     * @param archivePath 压缩包本地路径。
+     * @param innerPath 压缩包内部路径。
+     * @return 去重后的面包屑列表。
+     */
+    private fun archiveBreadcrumbs(archivePath: String, innerPath: String): List<VfsBreadcrumb> {
+        val archiveFilePath = Path.of(archivePath).normalize().toAbsolutePath()
+        val breadcrumbs = localBreadcrumbs(archiveFilePath).toMutableList()
+        val archiveIndex = breadcrumbs.indexOfLast { crumb -> crumb.location == archiveFilePath.toString() }
+        if (archiveIndex >= 0) {
+            breadcrumbs[archiveIndex] = breadcrumbs[archiveIndex].copy(
+                location = ArchiveService.archiveLocation(archivePath),
             )
-            archiveFilePath.iterator().forEach { segment ->
-                current = current.resolve(segment)
-                val loc = if (current == archiveFilePath) {
-                    ArchiveService.archiveLocation(archivePath)
-                } else {
-                    current.toString()
-                }
-                breadcrumbs += VfsBreadcrumb(
-                    label = segment.toString(),
-                    location = loc,
-                )
-            }
-            if (innerPath.isNotBlank()) {
-                val segments = innerPath.trimEnd('/').split("/").filter { it.isNotEmpty() }
-                var innerCurrent = ""
-                segments.forEach { segment ->
-                    innerCurrent = if (innerCurrent.isEmpty()) segment else "$innerCurrent/$segment"
-                    breadcrumbs += VfsBreadcrumb(
-                        label = segment,
-                        location = ArchiveService.archiveLocation(archivePath, innerCurrent),
-                    )
-                }
-            }
-            return breadcrumbs.distinctBy { it.location }
         }
-
-        remoteUri(location)?.let { uri ->
-            return uri.remoteBreadcrumbs()
+        var innerCurrent = ""
+        innerPath.trimEnd('/').split("/").filter { it.isNotEmpty() }.forEach { segment ->
+            innerCurrent = if (innerCurrent.isEmpty()) segment else "$innerCurrent/$segment"
+            breadcrumbs += VfsBreadcrumb(
+                label = segment,
+                location = ArchiveService.archiveLocation(archivePath, innerCurrent),
+            )
         }
+        return breadcrumbs.distinctBy { it.location }
+    }
 
-        val path = Path.of(location).normalize().toAbsolutePath()
+    /**
+     * 构建本地绝对路径的面包屑。
+     *
+     * @param path 已规范化的本地绝对路径。
+     * @return 从根路径到目标路径的面包屑列表。
+     */
+    private fun localBreadcrumbs(path: Path): List<VfsBreadcrumb> {
         val breadcrumbs = mutableListOf<VfsBreadcrumb>()
         var current = path.root ?: path
         breadcrumbs += VfsBreadcrumb(
@@ -278,12 +286,12 @@ internal class JvmVfsPathService : VfsPathService {
     }
 
     private fun URI.remoteDirectChildName(descendant: URI): String? {
-        if (!hasSameRemoteRoot(descendant)) return null
         val ancestorSegments = remotePathSegments()
         val descendantSegments = descendant.remotePathSegments()
-        if (descendantSegments.size <= ancestorSegments.size) return null
-        if (descendantSegments.take(ancestorSegments.size) != ancestorSegments) return null
-        return descendantSegments[ancestorSegments.size]
+        val isDirectDescendant = hasSameRemoteRoot(descendant) &&
+            descendantSegments.size > ancestorSegments.size &&
+            descendantSegments.take(ancestorSegments.size) == ancestorSegments
+        return descendantSegments.getOrNull(ancestorSegments.size).takeIf { isDirectDescendant }
     }
 
     private fun URI.isSameOrChildOfRemote(parent: URI): Boolean {
@@ -311,18 +319,24 @@ internal class JvmVfsPathService : VfsPathService {
             .orEmpty()
     }
 
-    private fun String.withTrailingSlash(): String {
-        return if (endsWith('/')) this else "$this/"
-    }
-
-    private fun String.encodeSpaces(): String {
-        return replace(" ", "%20")
-    }
-
     private companion object {
         val REMOTE_SCHEMES = setOf("smb", "webdav", "webdavs", "s3")
     }
 }
+
+/**
+ * 确保远程目录路径以斜杠结尾。
+ *
+ * @return 带目录结尾斜杠的路径。
+ */
+private fun String.withTrailingSlash(): String = if (endsWith('/')) this else "$this/"
+
+/**
+ * 将用户输入位置中的空格转义为 URI 可解析形式。
+ *
+ * @return 转义空格后的 URI 文本。
+ */
+private fun String.encodeSpaces(): String = replace(" ", "%20")
 
 internal class JvmTerminalLauncherService : TerminalLauncherService {
     override suspend fun openTerminal(location: String): Result<Unit> = withContext(Dispatchers.IO) {
@@ -338,7 +352,9 @@ internal class JvmTerminalLauncherService : TerminalLauncherService {
                     }
                     processBuilder.start()
                     return@runCatching
-                } catch (failure: Throwable) {
+                } catch (failure: IOException) {
+                    lastFailure = failure
+                } catch (failure: SecurityException) {
                     lastFailure = failure
                 }
             }
@@ -369,8 +385,14 @@ internal class JvmTerminalLauncherService : TerminalLauncherService {
             )
 
             HostPlatform.MACOS -> listOf(
-                TerminalLaunchCandidate(listOf("open", "-a", "Terminal", directory.absolutePath), useWorkingDirectory = false),
-                TerminalLaunchCandidate(listOf("open", "-a", "iTerm", directory.absolutePath), useWorkingDirectory = false),
+                TerminalLaunchCandidate(
+                    listOf("open", "-a", "Terminal", directory.absolutePath),
+                    useWorkingDirectory = false,
+                ),
+                TerminalLaunchCandidate(
+                    listOf("open", "-a", "iTerm", directory.absolutePath),
+                    useWorkingDirectory = false,
+                ),
             )
 
             HostPlatform.LINUX,
@@ -427,6 +449,7 @@ internal class JvmPreviewService(
      * @param request 文本预览请求。
      * @return 文本预览结果。
      */
+    @Suppress("TooGenericExceptionCaught") // 内容服务边界将未建模异常转换为预览失败结果。
     override suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult = withContext(Dispatchers.IO) {
         try {
             if (request.entry.kind != VFileKind.FILE) return@withContext PreviewTextResult.Unavailable
@@ -442,7 +465,9 @@ internal class JvmPreviewService(
             Files.newBufferedReader(path).useLines { lines ->
                 PreviewTextResult.Text(lines.take(request.maxLines).joinToString("\n"))
             }
-        } catch (failure: Throwable) {
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Exception) {
             PreviewTextResult.Failed(failure.toI18nMessage())
         }
     }
@@ -455,7 +480,20 @@ internal class JvmPreviewService(
      */
     private suspend fun loadTextPreviewFromContentService(request: PreviewTextRequest): PreviewTextResult? {
         val contentService = contentServices.firstOrNull { service -> service.supports(request.entry.location) }
-            ?: return null
+        return contentService?.let { service -> loadTextPreviewFromService(service, request) }
+    }
+
+    /**
+     * 从已匹配的内容服务读取受大小和行数约束的文本。
+     *
+     * @param contentService 可以处理目标位置的统一内容服务。
+     * @param request 文本预览请求。
+     * @return 文本、超限状态或读取失败异常。
+     */
+    private suspend fun loadTextPreviewFromService(
+        contentService: RoutableVfsContentService,
+        request: PreviewTextRequest,
+    ): PreviewTextResult {
         val source = contentService.readFile(request.entry).getOrThrow()
         val sourceSizeBytes = source.sizeBytes
         if (sourceSizeBytes != null && sourceSizeBytes >= request.maxBytes) {
@@ -463,7 +501,7 @@ internal class JvmPreviewService(
         }
         val output = ByteArrayOutputStream()
         var readBytes = 0L
-        try {
+        val tooLarge = try {
             source.chunks.collect { chunk ->
                 if (readBytes + chunk.size >= request.maxBytes) {
                     throw PreviewLimitExceededException()
@@ -471,14 +509,19 @@ internal class JvmPreviewService(
                 readBytes += chunk.size
                 output.write(chunk)
             }
+            false
         } catch (_: PreviewLimitExceededException) {
-            return PreviewTextResult.TooLarge
+            true
         }
-        val text = output.toString(Charsets.UTF_8)
-            .lineSequence()
-            .take(request.maxLines)
-            .joinToString("\n")
-        return PreviewTextResult.Text(text)
+        return if (tooLarge) {
+            PreviewTextResult.TooLarge
+        } else {
+            val text = output.toString(Charsets.UTF_8)
+                .lineSequence()
+                .take(request.maxLines)
+                .joinToString("\n")
+            PreviewTextResult.Text(text)
+        }
     }
 
     /**
@@ -490,6 +533,7 @@ internal class JvmPreviewService(
 internal class JvmFileHashService(
     private val archiveService: ArchiveService,
 ) : FileHashService {
+    @Suppress("TooGenericExceptionCaught") // 哈希读取边界将本地与远程读取异常转换为统一结果。
     override suspend fun readHash(request: FileHashRequest): FileHashResult = withContext(Dispatchers.IO) {
         try {
             if (request.entry.kind != VFileKind.FILE) {
@@ -498,46 +542,89 @@ internal class JvmFileHashService(
             if ((request.entry.sizeBytes ?: 0L) > request.maxBytes) {
                 return@withContext FileHashResult.TooLarge
             }
-            val digest = MessageDigest.getInstance(SHA_256)
-            if (ArchiveService.isArchiveLocation(request.entry.location)) {
-                val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(request.entry.location)
-                    ?: return@withContext FileHashResult.Unavailable
-                if (innerPath.isBlank()) return@withContext FileHashResult.Unavailable
-                val bytes = archiveService.extractToBytes(archivePath, innerPath).getOrNull()
-                    ?: return@withContext FileHashResult.Unavailable
-                if (bytes.size.toLong() > request.maxBytes) {
-                    return@withContext FileHashResult.TooLarge
-                }
-                digest.update(bytes)
-            } else {
-                if (request.entry.location.contains("://")) {
-                    return@withContext FileHashResult.Unavailable
-                }
-                val path = Path.of(request.entry.location)
-                if (!Files.exists(path) || Files.isDirectory(path)) {
-                    return@withContext FileHashResult.Unavailable
-                }
-                if (Files.size(path) > request.maxBytes) {
-                    return@withContext FileHashResult.TooLarge
-                }
-                Files.newInputStream(path).use { input ->
-                    val buffer = ByteArray(HASH_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        digest.update(buffer, 0, read)
-                    }
-                }
+            when {
+                ArchiveService.isArchiveLocation(request.entry.location) -> readArchiveHash(request)
+                request.entry.location.contains("://") -> FileHashResult.Unavailable
+                else -> readLocalHash(request)
             }
-            FileHashResult.Hash(
-                algorithm = SHA_256,
-                value = digest.digest().joinToString("") { byte -> "%02x".format(byte) },
-            )
         } catch (failure: CancellationException) {
             throw failure
-        } catch (failure: Throwable) {
+        } catch (failure: Exception) {
             FileHashResult.Failed(failure.toI18nMessage())
         }
+    }
+
+    /**
+     * 读取压缩包内部文件并计算哈希。
+     *
+     * @param request 哈希读取请求。
+     * @return 哈希值、大小超限或不可读取结果。
+     */
+    private suspend fun readArchiveHash(request: FileHashRequest): FileHashResult {
+        val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(request.entry.location)
+            ?: return FileHashResult.Unavailable
+        if (innerPath.isBlank()) return FileHashResult.Unavailable
+        val bytes = archiveService.extractToBytes(archivePath, innerPath).getOrNull()
+            ?: return FileHashResult.Unavailable
+        if (bytes.size.toLong() > request.maxBytes) return FileHashResult.TooLarge
+        return hashBytes(bytes)
+    }
+
+    /**
+     * 流式读取本地文件并计算哈希。
+     *
+     * @param request 哈希读取请求。
+     * @return 哈希值、大小超限或不可读取结果。
+     */
+    private fun readLocalHash(request: FileHashRequest): FileHashResult {
+        val path = Path.of(request.entry.location)
+        if (!Files.exists(path) || Files.isDirectory(path)) return FileHashResult.Unavailable
+        return if (Files.size(path) > request.maxBytes) {
+            FileHashResult.TooLarge
+        } else {
+            hashLocalPath(path)
+        }
+    }
+
+    /**
+     * 流式读取已校验的本地文件并计算摘要。
+     *
+     * @param path 已确认存在且为普通文件的路径。
+     * @return 格式化后的哈希结果。
+     */
+    private fun hashLocalPath(path: Path): FileHashResult {
+        val digest = MessageDigest.getInstance(SHA_256)
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(HASH_BUFFER_SIZE)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.toHashResult()
+    }
+
+    /**
+     * 计算内存字节数据的 SHA-256。
+     *
+     * @param bytes 待计算的文件内容。
+     * @return 格式化后的哈希结果。
+     */
+    private fun hashBytes(bytes: ByteArray): FileHashResult {
+        return MessageDigest.getInstance(SHA_256).apply { update(bytes) }.toHashResult()
+    }
+
+    /**
+     * 将已完成输入的摘要转换为统一哈希结果。
+     *
+     * @return 小写十六进制哈希结果。
+     */
+    private fun MessageDigest.toHashResult(): FileHashResult {
+        return FileHashResult.Hash(
+            algorithm = SHA_256,
+            value = digest().joinToString("") { byte -> "%02x".format(byte) },
+        )
     }
 
     private companion object {
@@ -549,10 +636,14 @@ internal class JvmFileHashService(
 internal class JvmArchiveInfoService(
     private val archiveService: ArchiveService,
 ) : ArchiveInfoService {
+    @Suppress("TooGenericExceptionCaught") // 压缩包元数据边界将引擎异常转换为统一结果。
     override suspend fun readInfo(request: ArchiveInfoRequest): ArchiveInfoResult = withContext(Dispatchers.IO) {
         try {
             val entry = request.entry
-            if (entry.kind != VFileKind.FILE || !ArchiveService.isArchive(entry.name) || entry.location.contains("://")) {
+            val isUnsupportedEntry = entry.kind != VFileKind.FILE ||
+                !ArchiveService.isArchive(entry.name) ||
+                entry.location.contains("://")
+            if (isUnsupportedEntry) {
                 return@withContext ArchiveInfoResult.Unavailable
             }
             val path = Path.of(entry.location)
@@ -567,7 +658,7 @@ internal class JvmArchiveInfoService(
             )
         } catch (failure: CancellationException) {
             throw failure
-        } catch (failure: Throwable) {
+        } catch (failure: Exception) {
             ArchiveInfoResult.Failed(failure.toI18nMessage())
         }
     }

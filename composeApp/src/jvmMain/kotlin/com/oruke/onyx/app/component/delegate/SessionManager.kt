@@ -37,6 +37,11 @@ class SessionManager(
         val error: I18nMessage?,
     )
 
+    /**
+     * 恢复设置、会话和任务历史，各存储项失败时保留其他可用结果。
+     *
+     * @return 恢复结果与聚合警告。
+     */
     suspend fun restore(): RestoreResult {
         var settings: OnyxSettings? = null
         var session: AppSessionSnapshot? = null

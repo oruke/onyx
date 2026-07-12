@@ -23,7 +23,9 @@ import com.oruke.onyx.vfs.api.TrashMoveRecord
  * Windows 继续交给系统 Shell 创建真实回收站条目，再读取 `$I` 元数据定位 `$R` 内容；
  * Linux 遵循 FreeDesktop Trash 目录结构；macOS 使用当前用户的 `~/.Trash`。
  */
-class JvmDesktopTrashService : TrashService {
+internal class JvmDesktopTrashService(
+    private val windowsTrashMoveService: WindowsTrashMoveService = WindowsTrashMoveService(),
+) : TrashService {
     /** 当前平台是否存在可用的回收站实现。 */
     override val isSupported: Boolean
         get() = when (currentHostPlatform()) {
@@ -78,35 +80,11 @@ class JvmDesktopTrashService : TrashService {
         val source = entry.requireSystemLocalPath("trash").normalize().toAbsolutePath()
         check(Files.exists(source)) { "Entry does not exist: ${entry.location}" }
         return when (currentHostPlatform()) {
-            HostPlatform.WINDOWS -> moveWindowsEntryToTrash(entry, source)
+            HostPlatform.WINDOWS -> windowsTrashMoveService.move(entry, source)
             HostPlatform.LINUX -> moveFreedesktopEntryToTrash(entry, source)
             HostPlatform.MACOS -> moveSimpleDirectoryEntryToTrash(entry, source, macosTrashDirectory(), null)
             HostPlatform.OTHER -> moveDesktopEntryToTrash(entry, source)
         }
-    }
-
-    /**
-     * 使用 Windows Shell 移入回收站，并读取 Shell 写入的恢复元数据。
-     *
-     * @param entry 需要移入回收站的文件条目。
-     * @param source 本地绝对路径。
-     * @return Windows 回收站恢复记录。
-     */
-    private fun moveWindowsEntryToTrash(
-        entry: VFile,
-        source: Path,
-    ): TrashMoveRecord {
-        val movedAtMillis = System.currentTimeMillis()
-        check(Desktop.getDesktop().moveToTrash(source.toFile())) {
-            "Failed to move ${entry.name} to trash"
-        }
-        val recycleRecord = WindowsRecycleBinMetadataService.awaitRecord(source, movedAtMillis)
-            ?: error("Windows recycle bin record was not created for ${entry.location}")
-        return TrashMoveRecord(
-            originalEntry = entry,
-            trashedLocation = recycleRecord.contentPath.pathString,
-            metadataLocation = recycleRecord.infoPath.pathString,
-        )
     }
 
     /**

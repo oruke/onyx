@@ -74,6 +74,9 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+/** 检查器图片预览请求的最大边长。 */
+private const val INSPECTOR_THUMBNAIL_DIMENSION = 480
+
 
 // ── Inspector Panel ─────────────────────────────────────────────────────────
 
@@ -96,133 +99,184 @@ internal fun InspectorPanel(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (entry == null) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = stringResource(Res.string.label_preview_no_selection),
-                    color = LocalOnyxPalette.current.mutedForeground,
-                    fontSize = 12.sp
-                )
+            InspectorEmptyState()
+        } else {
+            if (state.previewVisible) {
+                InspectorPreview(entry, loadThumbnail, isImageFileName)
             }
-            return
-        }
-
-        if (state.previewVisible) {
-            val isImage = isImageFileName(entry.name)
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .background(LocalOnyxPalette.current.surface, RoundedCornerShape(8.dp))
-                    .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(8.dp))
-                    .padding(8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isImage) {
-                    val (thumbnail, _) = rememberAsyncBitmap(entry.location, 480, loadThumbnail)
-                    if (thumbnail != null) {
-                        Image(
-                            bitmap = thumbnail,
-                            contentDescription = entry.name,
-                            contentScale = ContentScale.Fit,
-                            filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(
-                            key = AllIconsKeys.FileTypes.Image,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp)
-                        )
-                    }
-                } else {
-                    Icon(
-                        key = if (entry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else AllIconsKeys.FileTypes.Any_type,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp)
-                    )
-                }
+            if (state.detailsVisible) {
+                InspectorDetails(entry, readFileHash, readArchiveInfo, isArchiveFileName)
             }
         }
+    }
+}
 
-        if (state.detailsVisible) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = entry.name,
-                    color = LocalOnyxPalette.current.foreground,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
+/** 渲染检查器未选择文件时的空状态。 */
+@Composable
+private fun InspectorEmptyState() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = stringResource(Res.string.label_preview_no_selection),
+            color = LocalOnyxPalette.current.mutedForeground,
+            fontSize = 12.sp,
+        )
+    }
+}
 
-                Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
-
-                val typeValue = if (entry.kind == VFileKind.DIRECTORY) {
-                    stringResource(Res.string.label_inspector_directory)
-                } else {
-                    stringResource(Res.string.label_inspector_file)
-                }
-                InspectorDetailRow(
-                    label = stringResource(Res.string.label_inspector_type),
-                    value = typeValue,
+/**
+ * 渲染检查器图片或文件类型预览。
+ *
+ * @param entry 当前文件条目。
+ * @param loadThumbnail 缩略图加载函数。
+ * @param isImageFileName 图片文件名判断函数。
+ */
+@Composable
+private fun InspectorPreview(
+    entry: VFile,
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    isImageFileName: (String) -> Boolean,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(200.dp)
+            .background(LocalOnyxPalette.current.surface, RoundedCornerShape(8.dp))
+            .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(8.dp))
+            .padding(8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isImageFileName(entry.name)) {
+            val (thumbnail, _) = rememberAsyncBitmap(
+                entry.location,
+                INSPECTOR_THUMBNAIL_DIMENSION,
+                loadThumbnail,
+            )
+            if (thumbnail != null) {
+                Image(
+                    bitmap = thumbnail,
+                    contentDescription = entry.name,
+                    contentScale = ContentScale.Fit,
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                    modifier = Modifier.fillMaxSize(),
                 )
-                if (entry.kind != VFileKind.DIRECTORY) {
-                    InspectorDetailRow(
-                        label = stringResource(Res.string.label_inspector_size),
-                        value = formatFileSize(entry.sizeBytes),
-                    )
-                }
-                InspectorDetailRow(
-                    label = stringResource(Res.string.label_inspector_modified),
-                    value = formatModifiedTime(entry.modifiedAtEpochMillis),
-                )
-                InspectorDetailRow(
-                    label = stringResource(Res.string.label_inspector_location),
-                    value = entry.parentLocation ?: stringResource(Res.string.label_inspector_unknown),
-                )
-                InspectorDetailRow(
-                    label = stringResource(Res.string.label_inspector_permissions),
-                    value = inspectorPermissionValue(entry),
-                )
-                if (entry.kind == VFileKind.FILE && isArchiveFileName(entry.name)) {
-                    var archiveInfoResult by remember(entry.location) { mutableStateOf<ArchiveInfoResult?>(null) }
-                    LaunchedEffect(entry.location) {
-                        archiveInfoResult = readArchiveInfo(ArchiveInfoRequest(entry))
-                    }
-                    InspectorDetailRow(
-                        label = stringResource(Res.string.label_inspector_archive_encrypted),
-                        value = archiveEncryptionValue(archiveInfoResult),
-                    )
-                    InspectorDetailRow(
-                        label = stringResource(Res.string.label_inspector_archive_capabilities),
-                        value = archiveCapabilityValue(archiveInfoResult),
-                    )
-                }
-                if (entry.kind == VFileKind.FILE) {
-                    var hashResult by remember(entry.location) { mutableStateOf<FileHashResult?>(null) }
-                    LaunchedEffect(entry.location) {
-                        hashResult = readFileHash(
-                            FileHashRequest(
-                                entry = entry,
-                                maxBytes = 64L * 1024L * 1024L,
-                            )
-                        )
-                    }
-                    val hashValue = when (val result = hashResult) {
-                        null -> stringResource(Res.string.label_preview_loading)
-                        is FileHashResult.Hash -> result.value
-                        FileHashResult.TooLarge -> stringResource(Res.string.label_preview_too_large)
-                        FileHashResult.Unavailable -> stringResource(Res.string.label_preview_unavailable)
-                        is FileHashResult.Failed -> result.reason.resolve()
-                    }
-                    InspectorDetailRow(
-                        label = stringResource(Res.string.label_inspector_sha256),
-                        value = hashValue,
-                    )
-                }
+            } else {
+                Icon(AllIconsKeys.FileTypes.Image, null, Modifier.size(64.dp))
             }
+        } else {
+            val icon = if (entry.kind == VFileKind.DIRECTORY) {
+                AllIconsKeys.Nodes.Folder
+            } else {
+                AllIconsKeys.FileTypes.Any_type
+            }
+            Icon(icon, null, Modifier.size(64.dp))
         }
+    }
+}
+
+/**
+ * 渲染检查器文件属性、压缩包能力与哈希信息。
+ *
+ * @param entry 当前文件条目。
+ * @param readFileHash 文件哈希读取函数。
+ * @param readArchiveInfo 压缩包元数据读取函数。
+ * @param isArchiveFileName 压缩包文件名判断函数。
+ */
+@Composable
+private fun InspectorDetails(
+    entry: VFile,
+    readFileHash: suspend (FileHashRequest) -> FileHashResult,
+    readArchiveInfo: suspend (ArchiveInfoRequest) -> ArchiveInfoResult,
+    isArchiveFileName: (String) -> Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = entry.name,
+            color = LocalOnyxPalette.current.foreground,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+        InspectorDetailRow(
+            label = stringResource(Res.string.label_inspector_type),
+            value = if (entry.kind == VFileKind.DIRECTORY) {
+                stringResource(Res.string.label_inspector_directory)
+            } else {
+                stringResource(Res.string.label_inspector_file)
+            },
+        )
+        if (entry.kind != VFileKind.DIRECTORY) {
+            InspectorDetailRow(stringResource(Res.string.label_inspector_size), formatFileSize(entry.sizeBytes))
+        }
+        InspectorDetailRow(
+            stringResource(Res.string.label_inspector_modified),
+            formatModifiedTime(entry.modifiedAtEpochMillis),
+        )
+        InspectorDetailRow(
+            stringResource(Res.string.label_inspector_location),
+            entry.parentLocation ?: stringResource(Res.string.label_inspector_unknown),
+        )
+        InspectorDetailRow(
+            stringResource(Res.string.label_inspector_permissions),
+            inspectorPermissionValue(entry),
+        )
+        InspectorArchiveDetails(entry, readArchiveInfo, isArchiveFileName)
+        InspectorHashDetails(entry, readFileHash)
+    }
+}
+
+/**
+ * 按需渲染压缩包加密与能力信息。
+ *
+ * @param entry 当前文件条目。
+ * @param readArchiveInfo 压缩包元数据读取函数。
+ * @param isArchiveFileName 压缩包文件名判断函数。
+ */
+@Composable
+private fun InspectorArchiveDetails(
+    entry: VFile,
+    readArchiveInfo: suspend (ArchiveInfoRequest) -> ArchiveInfoResult,
+    isArchiveFileName: (String) -> Boolean,
+) {
+    if (entry.kind == VFileKind.FILE && isArchiveFileName(entry.name)) {
+        var result by remember(entry.location) { mutableStateOf<ArchiveInfoResult?>(null) }
+        LaunchedEffect(entry.location) { result = readArchiveInfo(ArchiveInfoRequest(entry)) }
+        InspectorDetailRow(
+            stringResource(Res.string.label_inspector_archive_encrypted),
+            archiveEncryptionValue(result),
+        )
+        InspectorDetailRow(
+            stringResource(Res.string.label_inspector_archive_capabilities),
+            archiveCapabilityValue(result),
+        )
+    }
+}
+
+/**
+ * 按需读取并渲染普通文件的 SHA-256。
+ *
+ * @param entry 当前文件条目。
+ * @param readFileHash 文件哈希读取函数。
+ */
+@Composable
+private fun InspectorHashDetails(
+    entry: VFile,
+    readFileHash: suspend (FileHashRequest) -> FileHashResult,
+) {
+    if (entry.kind == VFileKind.FILE) {
+        var result by remember(entry.location) { mutableStateOf<FileHashResult?>(null) }
+        LaunchedEffect(entry.location) {
+            result = readFileHash(FileHashRequest(entry = entry, maxBytes = 64L * 1024L * 1024L))
+        }
+        val value = when (val current = result) {
+            null -> stringResource(Res.string.label_preview_loading)
+            is FileHashResult.Hash -> current.value
+            FileHashResult.TooLarge -> stringResource(Res.string.label_preview_too_large)
+            FileHashResult.Unavailable -> stringResource(Res.string.label_preview_unavailable)
+            is FileHashResult.Failed -> current.reason.resolve()
+        }
+        InspectorDetailRow(stringResource(Res.string.label_inspector_sha256), value)
     }
 }
 

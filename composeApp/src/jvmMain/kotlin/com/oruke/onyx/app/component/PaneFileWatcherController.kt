@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 /**
@@ -35,20 +36,32 @@ internal class PaneFileWatcherController(
      */
     fun start(location: String) {
         job?.cancel()
-        if (ArchiveService.isArchiveLocation(location)) return
-        if (location.contains("://")) return
-        val path = try {
-            Path.of(location)
-        } catch (_: Exception) {
-            return
+        val path = location
+            .takeUnless(ArchiveService::isArchiveLocation)
+            ?.takeUnless { it.contains("://") }
+            ?.toLocalPathOrNull()
+            ?.takeIf(Files::isDirectory)
+        if (path != null) {
+            job = fileWatcher.watch(path)
+                .onEach { onChanged(location) }
+                .catch { failure ->
+                    OnyxLogger.warn("PaneFileWatcherController", "文件监听已降级：$location", failure)
+                    onWatchDegraded(location, failure)
+                }
+                .launchIn(scope)
         }
-        if (!Files.isDirectory(path)) return
-        job = fileWatcher.watch(path)
-            .onEach { onChanged(location) }
-            .catch { failure ->
-                OnyxLogger.warn("PaneFileWatcherController", "文件监听已降级：$location", failure)
-                onWatchDegraded(location, failure)
-            }
-            .launchIn(scope)
+    }
+
+    /**
+     * 将位置文本转换为本地路径，非法路径返回空值。
+     *
+     * @return 可由 `java.nio` 处理的路径，格式非法时返回 `null`。
+     */
+    private fun String.toLocalPathOrNull(): Path? {
+        return try {
+            Path.of(this)
+        } catch (_: InvalidPathException) {
+            null
+        }
     }
 }

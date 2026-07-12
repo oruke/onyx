@@ -32,13 +32,15 @@ internal class WindowsOpenWithRegistryResolver {
         queryRegistryDefault("HKCR\\$normalizedExtension")?.let { progIds += it }
         progIds += queryRegistryValueNames("HKCR\\$normalizedExtension\\OpenWithProgids")
         progIds += queryRegistryValueNames(
-            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$normalizedExtension\\OpenWithProgids",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\" +
+                "$normalizedExtension\\OpenWithProgids",
         )
 
         val applicationExecutables = linkedSetOf<String>()
         applicationExecutables += queryRegistryOpenWithExecutables("HKCR\\$normalizedExtension\\OpenWithList")
         applicationExecutables += queryRegistryOpenWithExecutables(
-            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$normalizedExtension\\OpenWithList",
+            "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\" +
+                "$normalizedExtension\\OpenWithList",
         )
 
         val progIdApps = progIds
@@ -80,21 +82,29 @@ internal class WindowsOpenWithRegistryResolver {
      * @return 有 open command 时返回候选应用，否则返回 `null`。
      */
     private fun String.toWindowsOpenWithApp(): OpenWithApp? {
-        if (isWindowsRegistryUnsetValue() || isWindowsRegistryDefaultName()) return null
-        val command = windowsProgIdCommandKeys(this)
-            .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
-            ?: return null
-        val iconPath = windowsProgIdIconKeys(this).firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
-            ?: command.toExecutablePathOrName()
-        val displayName = command.readExecutableDisplayName()
-            ?: windowsProgIdDisplayKeys(this).firstNotNullOfOrNull { key -> queryRegistryDefault(key)?.toWindowsMenuLabel() }
-            ?: this
-        return OpenWithApp(
-            id = this,
-            displayName = displayName,
-            command = command,
-            iconPath = iconPath,
-        )
+        val validProgId = takeUnless { value ->
+            value.isWindowsRegistryUnsetValue() || value.isWindowsRegistryDefaultName()
+        }
+        val command = validProgId?.let { progId ->
+            windowsProgIdCommandKeys(progId)
+                .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
+        }
+        return command?.let { resolvedCommand ->
+            val iconPath = windowsProgIdIconKeys(this)
+                .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
+                ?: resolvedCommand.toExecutablePathOrName()
+            val displayName = resolvedCommand.readExecutableDisplayName()
+                ?: windowsProgIdDisplayKeys(this).firstNotNullOfOrNull { key ->
+                    queryRegistryDefault(key)?.toWindowsMenuLabel()
+                }
+                ?: this
+            OpenWithApp(
+                id = this,
+                displayName = displayName,
+                command = resolvedCommand,
+                iconPath = iconPath,
+            )
+        }
     }
 
     /**
@@ -103,24 +113,30 @@ internal class WindowsOpenWithRegistryResolver {
      * @return 注册了 open command 的应用；无命令时返回 `null`。
      */
     private fun String.toWindowsApplicationOpenWithApp(): OpenWithApp? {
-        val executableName = trim().takeIf { value -> value.endsWith(".exe", ignoreCase = true) } ?: return null
-        val command = windowsApplicationCommandKeys(executableName)
-            .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
-            ?: return null
-        val displayName = command.readExecutableDisplayName()
-            ?: windowsApplicationDisplayKeys(executableName)
-                .firstNotNullOfOrNull { key -> queryRegistryNamedData(key, "FriendlyAppName")?.toWindowsMenuLabel() }
-            ?: executableName.removeSuffix(".exe").replaceFirstChar { char ->
-                if (char.isLowerCase()) char.titlecase(Locale.getDefault()) else char.toString()
-            }
-        return OpenWithApp(
-            id = "application:$executableName",
-            displayName = displayName,
-            command = command,
-            iconPath = windowsApplicationIconKeys(executableName)
+        val executableName = trim().takeIf { value -> value.endsWith(".exe", ignoreCase = true) }
+        val command = executableName?.let { value ->
+            windowsApplicationCommandKeys(value)
                 .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
-                ?: command.toExecutablePathOrName(),
-        )
+        }
+        return command?.let { resolvedCommand ->
+            val resolvedExecutableName = requireNotNull(executableName)
+            val displayName = resolvedCommand.readExecutableDisplayName()
+                ?: windowsApplicationDisplayKeys(resolvedExecutableName)
+                    .firstNotNullOfOrNull { key ->
+                        queryRegistryNamedData(key, "FriendlyAppName")?.toWindowsMenuLabel()
+                    }
+                ?: resolvedExecutableName.removeSuffix(".exe").replaceFirstChar { char ->
+                    if (char.isLowerCase()) char.titlecase(Locale.getDefault()) else char.toString()
+                }
+            OpenWithApp(
+                id = "application:$resolvedExecutableName",
+                displayName = displayName,
+                command = resolvedCommand,
+                iconPath = windowsApplicationIconKeys(resolvedExecutableName)
+                    .firstNotNullOfOrNull { key -> queryRegistryDefault(key) }
+                    ?: resolvedCommand.toExecutablePathOrName(),
+            )
+        }
     }
 
     /**
@@ -213,10 +229,13 @@ internal class WindowsOpenWithRegistryResolver {
      * @return exe 的 `FileDescription` 或 `ProductName`；无法读取时返回 `null`。
      */
     private fun String.readExecutableDisplayName(): String? {
-        val executable = toExecutablePathOrName()?.let { value -> Path.of(value) } ?: return null
-        if (!Files.isRegularFile(executable)) return null
-        return readVersionString(executable, "FileDescription")
-            ?: readVersionString(executable, "ProductName")
+        val executable = toExecutablePathOrName()
+            ?.let { value -> runCatching { Path.of(value) }.getOrNull() }
+            ?.takeIf(Files::isRegularFile)
+        return executable?.let { path ->
+            readVersionString(path, "FileDescription")
+                ?: readVersionString(path, "ProductName")
+        }
     }
 
     /**
@@ -233,25 +252,39 @@ internal class WindowsOpenWithRegistryResolver {
         return runCatching {
             val ignoredHandle = IntByReference()
             val size = Version.INSTANCE.GetFileVersionInfoSize(executable.toString(), ignoredHandle)
-            if (size <= 0) return null
-            val data = Memory(size.toLong())
-            if (!Version.INSTANCE.GetFileVersionInfo(executable.toString(), 0, size, data)) return null
-            val translationsRef = PointerByReference()
-            val translationsSizeRef = IntByReference()
-            val translation = if (
-                Version.INSTANCE.VerQueryValue(data, "\\VarFileInfo\\Translation", translationsRef, translationsSizeRef) &&
-                translationsSizeRef.value >= TRANSLATION_BLOCK_SIZE
-            ) {
-                val pointer = translationsRef.value
-                "%04x%04x".format(Locale.ROOT, pointer.getShort(0).toInt() and 0xffff, pointer.getShort(2).toInt() and 0xffff)
+            if (size <= 0) {
+                null
             } else {
-                DEFAULT_VERSION_TRANSLATION
+                val data = Memory(size.toLong())
+                val loaded = Version.INSTANCE.GetFileVersionInfo(executable.toString(), 0, size, data)
+                if (loaded) {
+                    val translationsRef = PointerByReference()
+                    val translationsSizeRef = IntByReference()
+                    val hasTranslation = Version.INSTANCE.VerQueryValue(
+                        data,
+                        "\\VarFileInfo\\Translation",
+                        translationsRef,
+                        translationsSizeRef,
+                    ) && translationsSizeRef.value >= TRANSLATION_BLOCK_SIZE
+                    val translation = if (hasTranslation) {
+                        val pointer = translationsRef.value
+                        "%04x%04x".format(
+                            Locale.ROOT,
+                            pointer.getShort(0).toInt() and LOW_WORD_MASK,
+                            pointer.getShort(2).toInt() and LOW_WORD_MASK,
+                        )
+                    } else {
+                        DEFAULT_VERSION_TRANSLATION
+                    }
+                    val valueRef = PointerByReference()
+                    val valueSizeRef = IntByReference()
+                    val subBlock = "\\StringFileInfo\\$translation\\$key"
+                    val hasValue = Version.INSTANCE.VerQueryValue(data, subBlock, valueRef, valueSizeRef)
+                    if (hasValue) valueRef.value?.getWideString(0)?.toWindowsMenuLabel() else null
+                } else {
+                    null
+                }
             }
-            val valueRef = PointerByReference()
-            val valueSizeRef = IntByReference()
-            val subBlock = "\\StringFileInfo\\$translation\\$key"
-            if (!Version.INSTANCE.VerQueryValue(data, subBlock, valueRef, valueSizeRef)) return null
-            valueRef.value?.getWideString(0)?.toWindowsMenuLabel()
         }.getOrNull()
     }
 
@@ -262,13 +295,20 @@ internal class WindowsOpenWithRegistryResolver {
      */
     private fun String.toRegistryValue(): RegistryValue? {
         val trimmed = trim()
-        if (trimmed.isBlank() || trimmed.startsWith("HKEY", ignoreCase = true)) return null
-        val parts = trimmed.split(Regex("\\s{2,}"), limit = 3)
-        if (parts.size < 2 || !parts[1].startsWith("REG_", ignoreCase = true)) return null
-        return RegistryValue(
-            name = parts[0],
-            data = parts.getOrNull(2)?.trim().orEmpty(),
-        )
+        val isRegistryKey = trimmed.isBlank() || trimmed.startsWith("HKEY", ignoreCase = true)
+        return if (isRegistryKey) {
+            null
+        } else {
+            val parts = trimmed.split(Regex("\\s{2,}"), limit = REGISTRY_VALUE_PART_LIMIT)
+            if (parts.size < REGISTRY_VALUE_MIN_PARTS || !parts[1].startsWith("REG_", ignoreCase = true)) {
+                null
+            } else {
+                RegistryValue(
+                    name = parts[0],
+                    data = parts.getOrNull(2)?.trim().orEmpty(),
+                )
+            }
+        }
     }
 
     /**
@@ -292,13 +332,16 @@ internal class WindowsOpenWithRegistryResolver {
      * @return exe 路径或名称；无法解析时返回 `null`。
      */
     private fun String.toExecutablePathOrName(): String? {
-        val value = trim().takeIf { it.isNotBlank() } ?: return null
-        if (value.startsWith("\"")) {
-            return value.substringAfter("\"")
-                .substringBefore("\"")
-                .takeIf { path -> path.endsWith(".exe", ignoreCase = true) }
+        val value = trim().takeIf(String::isNotBlank)
+        return value?.let { command ->
+            if (command.startsWith("\"")) {
+                command.substringAfter("\"")
+                    .substringBefore("\"")
+                    .takeIf { path -> path.endsWith(".exe", ignoreCase = true) }
+            } else {
+                WINDOWS_EXE_PREFIX.find(command)?.groupValues?.getOrNull(1)
+            }
         }
-        return WINDOWS_EXE_PREFIX.find(value)?.groupValues?.getOrNull(1)
     }
 
     /**
@@ -307,10 +350,12 @@ internal class WindowsOpenWithRegistryResolver {
      * @return 可直接显示的名称；资源引用或空值返回 `null`。
      */
     private fun String?.toWindowsMenuLabel(): String? {
-        val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
-        if (value.isWindowsRegistryUnsetValue()) return null
-        if (value.startsWith("@")) return null
-        return value.replace("&", "").takeIf { it.isNotBlank() }
+        return this?.trim()
+            ?.takeIf { value ->
+                value.isNotBlank() && !value.isWindowsRegistryUnsetValue() && !value.startsWith("@")
+            }
+            ?.replace("&", "")
+            ?.takeIf(String::isNotBlank)
     }
 
     /**
@@ -437,7 +482,16 @@ internal class WindowsOpenWithRegistryResolver {
         /** Windows 版本资源翻译块字节数。 */
         const val TRANSLATION_BLOCK_SIZE = 4
 
+        /** `reg query` 单行拆分的最大字段数。 */
+        const val REGISTRY_VALUE_PART_LIMIT = 3
+
+        /** 注册表值行至少包含名称和类型两个字段。 */
+        const val REGISTRY_VALUE_MIN_PARTS = 2
+
         /** 缺失翻译表时使用的英语资源默认编码。 */
         const val DEFAULT_VERSION_TRANSLATION = "040904b0"
+
+        /** 将有符号 `short` 转成 Windows 无符号 WORD 时使用的掩码。 */
+        const val LOW_WORD_MASK = 0xFFFF
     }
 }

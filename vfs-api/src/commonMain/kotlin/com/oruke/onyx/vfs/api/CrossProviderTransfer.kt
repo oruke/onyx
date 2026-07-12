@@ -1,7 +1,7 @@
 package com.oruke.onyx.vfs.api
 
 /**
- * 跨 provider 传输阶段，用于把目录递归复制中的关键节点统一上报给调用方。
+ * 跨 Provider 传输阶段，用于向调用方报告目录递归复制中的关键节点。
  */
 enum class CrossProviderTransferStage {
     DIRECTORY_CREATED,
@@ -10,78 +10,85 @@ enum class CrossProviderTransferStage {
 }
 
 /**
- * 跨 provider 传输进度事件。
- *
- * @property stage 当前传输阶段。
- * @property sourceLocation 源条目位置。
- * @property targetLocation 目标条目位置。
- * @property copiedFiles 已成功复制的文件数量。
- * @property createdDirectories 已成功创建或复用的目录数量。
- * @property skippedEntries 已按冲突策略跳过的条目数量。
+ * 跨 Provider 传输进度事件。
  */
 data class CrossProviderTransferProgress(
+    /** 当前传输阶段。 */
     val stage: CrossProviderTransferStage,
+
+    /** 源条目位置。 */
     val sourceLocation: String,
+
+    /** 目标条目位置。 */
     val targetLocation: String,
+
+    /** 已成功复制的文件数量。 */
     val copiedFiles: Int,
+
+    /** 已成功创建或复用的目录数量。 */
     val createdDirectories: Int,
+
+    /** 已按冲突策略跳过的条目数量。 */
     val skippedEntries: Int,
 )
 
 /**
- * 跨 provider 传输进度接收器。
+ * 跨 Provider 传输进度接收器。
  */
 fun interface CrossProviderTransferProgressSink {
     /**
-     * 接收单次跨 provider 传输进度事件。
+     * 接收单次跨 Provider 传输进度事件。
      *
      * @param progress 当前进度事件。
      */
     fun onProgress(progress: CrossProviderTransferProgress)
 
+    /**
+     * 进度接收器预置实现。
+     */
     companion object {
-        /**
-         * 默认空实现，保持既有调用方无需关心进度事件。
-         */
+        /** 默认空实现，供不关注进度的调用方使用。 */
         val NoOp = CrossProviderTransferProgressSink { }
     }
 }
 
 /**
- * 跨 provider 传输中的单项失败。
- *
- * @property sourceLocation 源条目位置。
- * @property targetLocation 目标父目录或目标条目位置。
- * @property cause 导致该条目失败的异常。
+ * 跨 Provider 传输中的单项失败。
  */
 data class CrossProviderTransferFailure(
+    /** 源条目位置。 */
     val sourceLocation: String,
+
+    /** 目标父目录或目标条目位置。 */
     val targetLocation: String,
+
+    /** 导致该条目失败的异常。 */
     val cause: Throwable,
 )
 
 /**
- * 跨 provider 传输汇总报告。
- *
- * @property copiedFiles 成功复制的文件数量。
- * @property createdDirectories 成功创建或复用的目录数量。
- * @property skippedEntries 按冲突策略跳过的条目数量。
- * @property failures 传输过程中聚合到的单项失败。
+ * 跨 Provider 传输汇总报告。
  */
 data class CrossProviderTransferReport(
+    /** 成功复制的文件数量。 */
     val copiedFiles: Int,
+
+    /** 成功创建或复用的目录数量。 */
     val createdDirectories: Int,
+
+    /** 按冲突策略跳过的条目数量。 */
     val skippedEntries: Int,
+
+    /** 传输过程中聚合到的单项失败。 */
     val failures: List<CrossProviderTransferFailure>,
 )
 
 /**
- * 跨 provider 传输聚合失败，避免大目录复制因为某个子项失败而丢失其它失败信息。
- *
- * @property report 传输统计和失败明细。
+ * 跨 Provider 传输聚合失败，避免大型目录复制因单个子项失败而丢失其他失败信息。
  */
 class CrossProviderTransferException(
+    /** 传输统计和失败明细。 */
     val report: CrossProviderTransferReport,
 ) : IllegalStateException(
-        "Cross-provider transfer failed for ${report.failures.size} entries"
-    )
+    "Cross-provider transfer failed for ${report.failures.size} entries"
+)

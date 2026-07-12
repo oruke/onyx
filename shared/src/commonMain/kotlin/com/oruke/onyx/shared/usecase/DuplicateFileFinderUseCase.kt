@@ -133,15 +133,13 @@ class DuplicateFileFinderUseCase(
                 continue
             }
             val entries = fileRepository.list(location).getOrThrow()
-            entries.forEach { entry ->
-                when (entry.kind) {
-                    VFileKind.FILE -> if ((entry.sizeBytes ?: 0L) >= request.minSizeBytes) {
-                        files += entry
-                    }
-                    VFileKind.DIRECTORY -> if (request.recursive) {
-                        directories += entry.location
-                    }
-                }
+            files += entries.filter { entry ->
+                entry.kind == VFileKind.FILE && (entry.sizeBytes ?: 0L) >= request.minSizeBytes
+            }
+            if (request.recursive) {
+                directories += entries
+                    .filter { entry -> entry.kind == VFileKind.DIRECTORY }
+                    .map(VFile::location)
             }
         }
         return files

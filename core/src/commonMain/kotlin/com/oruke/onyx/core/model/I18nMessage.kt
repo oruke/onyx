@@ -3,6 +3,7 @@ package com.oruke.onyx.core.model
 import kotlinx.serialization.Serializable
 
 @Serializable
+/** 业务层可引用的稳定国际化消息键。 */
 enum class MessageKey {
     ACTION_BATCH_RENAME,
     ACTION_EXTRACT_HERE,
@@ -21,6 +22,7 @@ enum class MessageKey {
     MSG_DELETE_FAILED,
     MSG_DELETE_ITEMS,
     MSG_DELETED_ITEMS,
+    MSG_DELETED_ITEMS_WITHOUT_UNDO,
     MSG_EXTRACT_FAILED,
     MSG_EXTRACT_ITEMS,
     MSG_EXTRACTED_ITEMS,
@@ -47,8 +49,16 @@ enum class MessageKey {
  * 具体资源映射统一在 UI 层完成。
  */
 data class I18nMessage(
+    /** 稳定消息键。 */
     val key: MessageKey,
+    /** 资源格式化参数。 */
     val args: List<Any> = emptyList()
 ) {
+    /**
+     * 使用可变参数构造国际化消息。
+     *
+     * @param key 稳定消息键。
+     * @param args 资源格式化参数。
+     */
     constructor(key: MessageKey, vararg args: Any) : this(key, args.toList())
 }

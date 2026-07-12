@@ -72,6 +72,9 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
 
+/** 禁用工具栏图标的显示透明度。 */
+private const val DISABLED_TOOLBAR_ICON_ALPHA = 0.45f
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun OnyxTooltip(
@@ -98,7 +101,9 @@ internal fun OnyxTooltip(
     LaunchedEffect(enabled, isHovered, text, anchorBounds, pointerPosition) {
         val bounds = anchorBounds
         val position = pointerPosition
-        if (enabled && isHovered && text.isNotBlank() && bounds != null) {
+        val shouldShow = enabled && isHovered
+        val hasContentAndAnchor = text.isNotBlank() && bounds != null
+        if (shouldShow && hasContentAndAnchor) {
             tooltipController.show(
                 TooltipRequest(
                     owner = tooltipOwner,
@@ -165,7 +170,10 @@ internal fun FileDragOverlay(
         when (operation) {
             FileTransferOperation.COPY -> stringResource(Res.string.label_copy_to_destination, targetDirectoryLocation)
             FileTransferOperation.MOVE -> stringResource(Res.string.label_move_to_destination, targetDirectoryLocation)
-            FileTransferOperation.EXTRACT -> stringResource(Res.string.label_extract_to_destination, targetDirectoryLocation)
+            FileTransferOperation.EXTRACT -> stringResource(
+                Res.string.label_extract_to_destination,
+                targetDirectoryLocation,
+            )
         }
     } else {
         when (operation) {
@@ -350,7 +358,7 @@ internal fun ToolbarIconButton(
                     indication = null,
                     onClick = onClick,
                 )
-                .alpha(if (enabled) 1f else 0.45f)
+                .alpha(if (enabled) 1f else DISABLED_TOOLBAR_ICON_ALPHA)
                 .padding(horizontal = 5.dp, vertical = 4.dp),
             contentAlignment = Alignment.Center,
         ) {

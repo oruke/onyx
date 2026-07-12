@@ -18,9 +18,8 @@ import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readAvailable
@@ -46,7 +45,6 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-import javax.net.ssl.SSLException
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
@@ -78,22 +76,8 @@ class KtorS3Client(
             response.requireSuccess(location.directoryLocation)
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
+            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -121,22 +105,8 @@ class KtorS3Client(
             entries
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
+            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -169,22 +139,8 @@ class KtorS3Client(
             parser.parse(body, location)
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
+            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -217,22 +173,8 @@ class KtorS3Client(
                     }
                 } catch (failure: VfsProviderException) {
                     throw failure
-                } catch (failure: SSLException) {
-                    throw VfsProviderException(
-                        VfsProviderError.NetworkFailure(
-                            protocol = VfsProtocol.S3,
-                            location = entry.location,
-                            reason = failure.message,
-                        )
-                    )
                 } catch (failure: IOException) {
-                    throw VfsProviderException(
-                        VfsProviderError.NetworkFailure(
-                            protocol = VfsProtocol.S3,
-                            location = entry.location,
-                            reason = failure.message,
-                        )
-                    )
+                    throw failure.toS3NetworkException(entry.location)
                 }
             }.flowOn(Dispatchers.IO),
         )
@@ -280,22 +222,9 @@ class KtorS3Client(
             )
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = targetLocation.toLocation(targetLocation.objectKey, directory = false),
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = targetLocation.toLocation(targetLocation.objectKey, directory = false),
-                    reason = failure.message,
-                )
-            )
+            val location = targetLocation.toLocation(targetLocation.objectKey, directory = false)
+            throw failure.toS3NetworkException(location)
         }
     }
 
@@ -316,22 +245,8 @@ class KtorS3Client(
             response.requireDeleteSuccess(objectLocation)
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = objectLocation,
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = objectLocation,
-                    reason = failure.message,
-                )
-            )
+            throw failure.toS3NetworkException(objectLocation)
         }
     }
 
@@ -352,22 +267,8 @@ class KtorS3Client(
             response.requireMutationSuccess(location.directoryLocation)
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location.directoryLocation,
-                    reason = failure.message,
-                )
-            )
+            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -431,46 +332,15 @@ class KtorS3Client(
             method = HttpMethod.Head
             request.headers.forEach { (headerName, value) -> header(headerName, value) }
         }
-        return when (response.status.value) {
-            200, 206 -> true
-            404 -> false
+        return when (response.status) {
+            HttpStatusCode.OK,
+            HttpStatusCode.PartialContent,
+            -> true
+            HttpStatusCode.NotFound -> false
             else -> {
                 response.requireObjectSuccess(location.toLocation(location.objectKey, directory = false))
                 true
             }
-        }
-    }
-
-    private suspend fun HttpResponse.requireSuccess(location: String): String {
-        val body = bodyAsText()
-        when (status.value) {
-            200 -> return body
-            400 -> throw VfsProviderException(
-                VfsProviderError.UnsupportedOperation(
-                    protocol = VfsProtocol.S3,
-                    location = location,
-                    capability = null,
-                )
-            )
-
-            401 -> throw VfsProviderException(VfsProviderError.AuthenticationRejected(VfsProtocol.S3, location))
-            403 -> throw VfsProviderException(s3Error(body, location))
-            404 -> throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.S3, location))
-            in 500..599 -> throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location,
-                    reason = status.description,
-                )
-            )
-
-            else -> throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.S3,
-                    location = location,
-                    reason = status.description,
-                )
-            )
         }
     }
 
@@ -491,58 +361,6 @@ class KtorS3Client(
             )
         }
         return targetName
-    }
-
-    private suspend fun HttpResponse.requireObjectSuccess(location: String) {
-        when (status.value) {
-            200, 206 -> Unit
-            else -> requireSuccess(location)
-        }
-    }
-
-    /**
-     * 校验 S3 写入类请求是否成功。
-     *
-     * @param location 写入对象位置。
-     */
-    private suspend fun HttpResponse.requireMutationSuccess(location: String) {
-        when (status.value) {
-            200, 201, 204 -> Unit
-            else -> requireSuccess(location)
-        }
-    }
-
-    /**
-     * 校验 S3 删除请求是否成功。
-     *
-     * @param location 删除对象位置。
-     */
-    private suspend fun HttpResponse.requireDeleteSuccess(location: String) {
-        when (status.value) {
-            200, 202, 204 -> Unit
-            else -> requireSuccess(location)
-        }
-    }
-
-    private fun s3Error(
-        xml: String,
-        location: String,
-    ): VfsProviderError {
-        val code = S3ErrorParser().parseCode(xml)
-        return when (code) {
-            "InvalidAccessKeyId",
-            "SignatureDoesNotMatch",
-            "ExpiredToken",
-            "InvalidToken",
-            -> VfsProviderError.AuthenticationRejected(VfsProtocol.S3, location, code)
-
-            "AccessDenied" -> VfsProviderError.PermissionDenied(VfsProtocol.S3, location, code)
-            "NoSuchBucket",
-            "NoSuchKey",
-            -> VfsProviderError.NotFound(VfsProtocol.S3, location)
-
-            else -> VfsProviderError.NetworkFailure(VfsProtocol.S3, location, code)
-        }
     }
 
     private companion object {

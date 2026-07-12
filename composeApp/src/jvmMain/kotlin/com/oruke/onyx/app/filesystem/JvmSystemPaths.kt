@@ -11,8 +11,9 @@ internal fun VFile.systemLocalPathOrNull(): Path? {
 }
 
 internal fun VFile.requireSystemLocalPath(capability: String): Path {
-    return systemLocalPathOrNull()
-        ?: throw IllegalStateException("Only local files support $capability: $location")
+    return checkNotNull(systemLocalPathOrNull()) {
+        "Only local files support $capability: $location"
+    }
 }
 
 internal fun VFile.guessSystemMimeType(): String? {

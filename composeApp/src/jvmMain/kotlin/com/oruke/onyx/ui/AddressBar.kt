@@ -171,7 +171,11 @@ internal fun BreadcrumbAddressBar(
             }
             Text(
                 text = crumb.label,
-                color = if (index == breadcrumbs.lastIndex) LocalOnyxPalette.current.foreground else LocalOnyxPalette.current.mutedForeground,
+                color = if (index == breadcrumbs.lastIndex) {
+                    LocalOnyxPalette.current.foreground
+                } else {
+                    LocalOnyxPalette.current.mutedForeground
+                },
                 fontSize = 12.sp,
                 fontWeight = if (index == breadcrumbs.lastIndex) FontWeight.SemiBold else FontWeight.Normal,
                 modifier = Modifier.clickable {

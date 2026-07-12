@@ -44,8 +44,11 @@ import com.oruke.onyx.ui.CreateDirectoriesDialog
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.ui.FileDragOverlay
 import com.oruke.onyx.ui.BoundPaneSurface
+import com.oruke.onyx.ui.PaneDragBindings
 import com.oruke.onyx.ui.OnyxTooltipOverlay
 import com.oruke.onyx.ui.PaneSidebar
+import com.oruke.onyx.ui.PaneSidebarActions
+import com.oruke.onyx.ui.PaneSidebarState
 import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
 import com.oruke.onyx.ui.RemoteConnectionsDialog
@@ -117,11 +120,12 @@ internal fun DecoratedWindowScope.WindowApp(
                 rootComponent = rootComponent,
                 layoutMode = state.layoutMode,
                 uiScale = state.settings.uiScale,
-                sidebarVisible = state.settings.sidebarVisible,
                 onUiScaleChange = onUiScaleChange,
                 onToggleSidebar = {
                     rootComponent.dispatch(
-                        RootIntent.UpdateSettings(state.settings.copy(sidebarVisible = !state.settings.sidebarVisible)),
+                        RootIntent.UpdateSettings(
+                            state.settings.copy(sidebarVisible = !state.settings.sidebarVisible)
+                        ),
                     )
                 },
                 showPreviewPane = state.showPreviewPane,
@@ -185,12 +189,9 @@ private fun AppContent(
     externalFileDragService: ExternalFileDragService,
     externalTooltipRequest: TooltipRequest? = null,
 ) {
-    val tabDropZones = remember { mutableStateMapOf<PaneId, TabDropZone>() }
-    var tabDropTarget by remember { mutableStateOf<TabDropTarget?>(null) }
-    val fileDropZones = remember { mutableStateMapOf<String, FileDropZone>() }
-    var fileDragState by remember { mutableStateOf<FileDragState?>(null) }
-    var fileDropTarget by remember { mutableStateOf<FileDropTarget?>(null) }
-    var fileDragPosition by remember { mutableStateOf<IntOffset?>(null) }
+    val dragController = remember(rootComponent, externalFileDragService) {
+        AppDragController(rootComponent, externalFileDragService)
+    }
     var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     var appContentSize by remember { mutableStateOf(IntSize.Zero) }
     var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
@@ -200,241 +201,8 @@ private fun AppContent(
     val toggleFavoriteLocation: (String) -> Unit = { location ->
         dispatch(RootIntent.ToggleFavoriteLocation(location))
     }
-    fun resolveTabDropTarget(windowPosition: IntOffset): TabDropTarget? {
-        val target = tabDropZones.entries.firstOrNull { (_, zone) ->
-            zone.bounds.containsPoint(windowPosition)
-        } ?: return null
-        return TabDropTarget(
-            paneId = target.key,
-            index = target.value.dropIndex(windowPosition),
-        )
-    }
-
-    val onTabDrop: (PaneId, String, IntOffset) -> Unit = onTabDrop@{ sourcePaneId, tabId, windowPosition ->
-        val target = resolveTabDropTarget(windowPosition) ?: return@onTabDrop
-        dispatch(
-            RootIntent.MoveTab(
-                sourcePaneId = sourcePaneId,
-                tabId = tabId,
-                targetPaneId = target.paneId,
-                targetIndex = target.index,
-            )
-        )
-        tabDropTarget = null
-    }
-    val onTabDragPositionChange: (IntOffset) -> Unit = { windowPosition ->
-        tabDropTarget = resolveTabDropTarget(windowPosition)
-    }
-    val onTabDragEnd: () -> Unit = {
-        tabDropTarget = null
-    }
-
-    fun isCurrentFileDropZone(zone: FileDropZone): Boolean {
-        val paneState = rootComponent.state.value.paneState(zone.paneId)
-        if (zone.directoryEntryId == null) {
-            return true
-        }
-        val entries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
-        return entries.any { entry ->
-            entry.id == zone.directoryEntryId &&
-                    entry.location == zone.targetDirectoryLocation &&
-                    entry.kind == VFileKind.DIRECTORY
-        }
-    }
-
-    fun resolveFileDropTarget(windowPosition: IntOffset): FileDropTarget? {
-        val dragState = fileDragState ?: return null
-        val currentState = rootComponent.state.value
-        val zones = fileDropZones.values
-            .filter { zone -> isCurrentFileDropZone(zone) }
-            .filter { zone -> zone.bounds.containsPoint(windowPosition) }
-            .sortedWith(
-                compareByDescending<FileDropZone> { it.directoryEntryId != null }
-                    .thenBy { it.bounds.area }
-            )
-        val zone = zones.firstOrNull() ?: return null
-        val sourceLocation = currentState.paneState(dragState.sourcePaneId).location
-        val targetLocation = if (zone.directoryEntryId == null) {
-            currentState.paneState(zone.paneId).location
-        } else {
-            zone.targetDirectoryLocation
-        }
-        if (zone.paneId == dragState.sourcePaneId &&
-            zone.directoryEntryId == null &&
-            targetLocation == sourceLocation
-        ) {
-            return null
-        }
-        return FileDropTarget(
-            paneId = zone.paneId,
-            targetDirectoryLocation = targetLocation,
-            directoryEntryId = zone.directoryEntryId,
-        )
-    }
-
-    val onFileDragStart: (PaneId, FileTransferOperation) -> Unit = { sourcePaneId, operation ->
-        // 设置待拖放文件列表 — AWT DragGestureRecognizer 会读取并发起系统级拖放
-        val sourcePaneState = rootComponent.state.value.paneState(sourcePaneId)
-        val selectedIds = sourcePaneState.selectedEntryIds
-        val entries = (sourcePaneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
-        val selectedEntries = entries.filter { it.id in selectedIds }
-        val isArchiveSource = rootComponent.prepareExternalDrag(selectedEntries)
-        // 确定拖拽操作类型
-        val effectiveOperation = when {
-            // 压缩包条目始终为解压
-            isArchiveSource -> FileTransferOperation.EXTRACT
-            // Ctrl 键按下 = 复制（来自 DetailsView）
-            operation == FileTransferOperation.COPY -> FileTransferOperation.COPY
-            // 默认移动（后续 onFileDragPositionChange 会根据目标卷动态更新）
-            else -> FileTransferOperation.MOVE
-        }
-        val isUserForced = operation == FileTransferOperation.COPY // Ctrl 键强制
-        fileDragState = FileDragState(
-            sourcePaneId = sourcePaneId,
-            operation = effectiveOperation,
-            userForced = isUserForced,
-        )
-    }
-    val onFileDragPositionChange: (IntOffset) -> Unit = { windowPosition ->
-        fileDragPosition = windowPosition
-        fileDropTarget = resolveFileDropTarget(windowPosition)
-        // 动态更新操作：同卷移动 / 跨卷复制（Directory Opus 行为）
-        // 仅在非用户强制且非压缩包源时才自动检测
-        val ds = fileDragState
-        if (ds != null && !ds.userForced && ds.operation != FileTransferOperation.EXTRACT) {
-            val target = fileDropTarget
-            if (target != null) {
-                val sourceLoc = rootComponent.state.value.paneState(ds.sourcePaneId).location
-                val newOp = rootComponent.resolveTransferOperation(sourceLoc, target.targetDirectoryLocation)
-                if (newOp != ds.operation) {
-                    fileDragState = ds.copy(operation = newOp)
-                }
-            }
-        }
-    }
-    val onFileDragEnd: (IntOffset?) -> Unit = { windowPosition ->
-        val dragState = fileDragState
-        val target = windowPosition?.let(::resolveFileDropTarget) ?: fileDropTarget
-        // 如果 AWT 系统拖放已激活，不执行内部传输逻辑
-        if (!externalFileDragService.isSystemDragActive && dragState != null && target != null) {
-            dispatch(
-                RootIntent.RequestTransferSelectedToDirectory(
-                    sourcePaneId = dragState.sourcePaneId,
-                    targetDirectoryLocation = target.targetDirectoryLocation,
-                    operation = dragState.operation,
-                )
-            )
-            dispatch(RootIntent.ActivatePane(target.paneId))
-        }
-        fileDragState = null
-        fileDropTarget = null
-        fileDragPosition = null
-        externalFileDragService.clearPending()
-    }
-
-
-
-    when (val dialogState = state.dialogState) {
-        is RootDialogState.DeleteSelectionConfirmation -> {
-            ConfirmationDialog(
-                state = dialogState,
-                onConfirm = { dispatch(RootIntent.ConfirmDialog) },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-            )
-        }
-
-        is RootDialogState.ConflictResolution -> {
-            ConflictResolutionDialog(
-                state = dialogState,
-                onResolve = { strategy, applyToAll ->
-                    dispatch(RootIntent.ResolveConflict(strategy, applyToAll))
-                },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-            )
-        }
-
-        is RootDialogState.CreateDirectories -> {
-            CreateDirectoriesDialog(
-                state = dialogState,
-                onDraftChange = { draft -> dispatch(RootIntent.UpdateCreateDirectoriesDraft(draft)) },
-                onConfirm = { dispatch(RootIntent.ConfirmDialog) },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-            )
-        }
-
-        is RootDialogState.Settings -> {
-            SettingsDialog(
-                state = dialogState,
-                onDraftChange = { draft -> dispatch(RootIntent.UpdateSettingsDraft(draft)) },
-                onCleanupInvalidLocations = { dispatch(RootIntent.CleanupInvalidLocations) },
-                onConfirm = { dispatch(RootIntent.ConfirmDialog) },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-                initialWidth = state.settings.settingsWindowWidth,
-                initialHeight = state.settings.settingsWindowHeight,
-                onWindowSizeChanged = { w, h ->
-                    dispatch(
-                        RootIntent.UpdateSettings(
-                            state.settings.copy(settingsWindowWidth = w, settingsWindowHeight = h),
-                        )
-                    )
-                },
-            )
-        }
-
-        is RootDialogState.RemoteConnections -> {
-            RemoteConnectionsDialog(
-                state = dialogState,
-                connections = state.settings.remoteConnections,
-                onDraftChange = { draft -> dispatch(RootIntent.UpdateRemoteConnectionDraft(draft)) },
-                onNew = { dispatch(RootIntent.NewRemoteConnection) },
-                onEdit = { profile -> dispatch(RootIntent.EditRemoteConnection(profile)) },
-                onSave = { dispatch(RootIntent.SaveRemoteConnectionDraft) },
-                onTest = { dispatch(RootIntent.TestRemoteConnectionDraft) },
-                onDelete = { id -> dispatch(RootIntent.DeleteRemoteConnection(id)) },
-                onOpen = { location -> dispatch(RootIntent.OpenRemoteConnection(location)) },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-            )
-        }
-
-        is RootDialogState.BatchRename -> {
-            BatchRenameDialog(
-                state = dialogState,
-                onConfirm = { renameMap ->
-                    dispatch(RootIntent.ExecuteBatchRename(dialogState.paneId, renameMap))
-                },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-                initialWidth = state.settings.batchRenameWindowWidth,
-                initialHeight = state.settings.batchRenameWindowHeight,
-                onWindowSizeChanged = { w, h ->
-                    dispatch(
-                        RootIntent.UpdateSettings(
-                            state.settings.copy(batchRenameWindowWidth = w, batchRenameWindowHeight = h),
-                        )
-                    )
-                },
-            )
-        }
-
-        is RootDialogState.ArchivePassword -> {
-            ArchivePasswordDialog(
-                archiveName = dialogState.archiveName,
-                error = dialogState.error,
-                onConfirm = { password -> dispatch(RootIntent.SubmitArchivePassword(password)) },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-            )
-        }
-
-        is RootDialogState.RemoteCredentials -> {
-            RemoteCredentialsDialog(
-                state = dialogState,
-                onDraftChange = { draft -> dispatch(RootIntent.UpdateRemoteCredentialsDraft(draft)) },
-                onConfirm = { dispatch(RootIntent.SubmitRemoteCredentials) },
-                onDismiss = { dispatch(RootIntent.DismissDialog) },
-            )
-        }
-
-        null -> Unit
-    }
+    val dragBindings = dragController.bindings
+    AppDialogHost(state, rootComponent::dispatch)
 
     IntUiTheme(isDark = isSystemInDarkTheme()) {
         CompositionLocalProvider(
@@ -455,246 +223,7 @@ private fun AppContent(
                         appWindowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
                     },
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(LocalOnyxPalette.current.appBackground),
-                ) {
-                    val activePaneState = state.paneState(state.activePane)
-                    // ── Content area ────────────────────────────────────────────
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                    ) {
-                        if (state.settings.sidebarVisible) {
-                            PaneSidebar(
-                                location = activePaneState.location,
-                                favoriteLocations = state.settings.favoriteLocations,
-                                recentLocations = state.settings.recentLocations,
-                                remoteConnections = state.settings.remoteConnections,
-                                locationLabel = rootComponent::locationLabel,
-                                treeState = state.sidebarTreeState,
-                                showTree = state.settings.sidebarTreeVisible,
-                                onActivate = {
-                                    when (state.activePane) {
-                                        PaneId.PRIMARY -> dispatch(RootIntent.ActivatePane(PaneId.PRIMARY))
-                                        PaneId.SECONDARY -> dispatch(RootIntent.ActivatePane(PaneId.SECONDARY))
-                                    }
-                                },
-                                onOpenLocation = { location -> dispatch(RootIntent.OpenLocationInActivePane(location)) },
-                                onToggleFavoriteLocation = toggleFavoriteLocation,
-                                onNewRemoteConnection = { dispatch(RootIntent.NewRemoteConnection) },
-                                onEditRemoteConnection = { profile -> dispatch(RootIntent.EditRemoteConnection(profile)) },
-                                onToggleTreeNode = { location -> dispatch(RootIntent.ToggleSidebarTreeNode(location)) },
-                                onRetryTreeNode = { location -> dispatch(RootIntent.RetrySidebarTreeNode(location)) },
-                            )
-                            Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
-                        }
-
-                        when (state.layoutMode) {
-                            PaneLayoutMode.SINGLE -> {
-                                BoundPaneSurface(
-                                    paneId = PaneId.PRIMARY,
-                                    state = state,
-                                    rootComponent = rootComponent,
-                                    modifier = Modifier.weight(1f),
-                                    tabDropZones = tabDropZones,
-                                    tabDropTarget = tabDropTarget,
-                                    fileDropTarget = fileDropTarget,
-                                    fileDropZones = fileDropZones,
-                                    onTabDrop = onTabDrop,
-                                    onTabDragPositionChange = onTabDragPositionChange,
-                                    onTabDragEnd = onTabDragEnd,
-                                    onFileDragStart = onFileDragStart,
-                                    onFileDragPositionChange = onFileDragPositionChange,
-                                    onFileDragEnd = onFileDragEnd,
-    
-                                )
-                            }
-
-                            PaneLayoutMode.DUAL_VERTICAL -> {
-                                var contentSize by remember { mutableStateOf(IntSize.Zero) }
-                                Row(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .onSizeChanged { contentSize = it },
-                                ) {
-                                    BoundPaneSurface(
-                                        paneId = PaneId.PRIMARY,
-                                        state = state,
-                                        rootComponent = rootComponent,
-                                        modifier = Modifier.weight(state.paneSplitFraction),
-                                        tabDropZones = tabDropZones,
-                                        tabDropTarget = tabDropTarget,
-                                        fileDropTarget = fileDropTarget,
-                                        fileDropZones = fileDropZones,
-                                        onTabDrop = onTabDrop,
-                                        onTabDragPositionChange = onTabDragPositionChange,
-                                        onTabDragEnd = onTabDragEnd,
-                                        onFileDragStart = onFileDragStart,
-                                        onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = onFileDragEnd,
-        
-                                    )
-                                    ResizablePaneDivider(
-                                        orientation = Orientation.Vertical,
-                                        onDragDelta = { delta ->
-                                            val width = contentSize.width.toFloat().coerceAtLeast(1f)
-                                            dispatch(
-                                                RootIntent.SetPaneSplitFraction(
-                                                    rootComponent.state.value.paneSplitFraction + delta / width,
-                                                )
-                                            )
-                                        },
-                                    )
-                                    BoundPaneSurface(
-                                        paneId = PaneId.SECONDARY,
-                                        state = state,
-                                        rootComponent = rootComponent,
-                                        modifier = Modifier.weight(1f - state.paneSplitFraction),
-                                        tabDropZones = tabDropZones,
-                                        tabDropTarget = tabDropTarget,
-                                        fileDropTarget = fileDropTarget,
-                                        fileDropZones = fileDropZones,
-                                        onTabDrop = onTabDrop,
-                                        onTabDragPositionChange = onTabDragPositionChange,
-                                        onTabDragEnd = onTabDragEnd,
-                                        onFileDragStart = onFileDragStart,
-                                        onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = onFileDragEnd,
-        
-                                    )
-                                }
-                            }
-
-                            PaneLayoutMode.DUAL_HORIZONTAL -> {
-                                var contentSize by remember { mutableStateOf(IntSize.Zero) }
-                                Column(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                        .onSizeChanged { contentSize = it },
-                                ) {
-                                    BoundPaneSurface(
-                                        paneId = PaneId.PRIMARY,
-                                        state = state,
-                                        rootComponent = rootComponent,
-                                        modifier = Modifier.weight(state.paneSplitFraction),
-                                        tabDropZones = tabDropZones,
-                                        tabDropTarget = tabDropTarget,
-                                        fileDropTarget = fileDropTarget,
-                                        fileDropZones = fileDropZones,
-                                        onTabDrop = onTabDrop,
-                                        onTabDragPositionChange = onTabDragPositionChange,
-                                        onTabDragEnd = onTabDragEnd,
-                                        onFileDragStart = onFileDragStart,
-                                        onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = onFileDragEnd,
-        
-                                    )
-                                    ResizablePaneDivider(
-                                        orientation = Orientation.Horizontal,
-                                        onDragDelta = { delta ->
-                                            val height = contentSize.height.toFloat().coerceAtLeast(1f)
-                                            dispatch(
-                                                RootIntent.SetPaneSplitFraction(
-                                                    rootComponent.state.value.paneSplitFraction + delta / height,
-                                                )
-                                            )
-                                        },
-                                    )
-                                    BoundPaneSurface(
-                                        paneId = PaneId.SECONDARY,
-                                        state = state,
-                                        rootComponent = rootComponent,
-                                        modifier = Modifier.weight(1f - state.paneSplitFraction),
-                                        tabDropZones = tabDropZones,
-                                        tabDropTarget = tabDropTarget,
-                                        fileDropTarget = fileDropTarget,
-                                        fileDropZones = fileDropZones,
-                                        onTabDrop = onTabDrop,
-                                        onTabDragPositionChange = onTabDragPositionChange,
-                                        onTabDragEnd = onTabDragEnd,
-                                        onFileDragStart = onFileDragStart,
-                                        onFileDragPositionChange = onFileDragPositionChange,
-                                        onFileDragEnd = onFileDragEnd,
-        
-                                    )
-                                }
-                            }
-                        }
-
-                        if (state.showPreviewPane) {
-                            Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
-                            val activePaneState = state.paneState(state.activePane)
-                            val selectedEntryId = activePaneState.selectedEntryIds.firstOrNull()
-                            val selectedEntry = if (selectedEntryId != null) {
-                                (activePaneState.entriesState as? PaneEntriesState.Ready)?.entries?.find { it.id == selectedEntryId }
-                            } else null
-                            
-                            PreviewPane(
-                                selectedEntry = selectedEntry,
-                                modifier = Modifier.width(300.dp).fillMaxHeight(),
-                                loadThumbnail = rootComponent::loadThumbnail,
-                                loadTextPreview = rootComponent::loadTextPreview,
-                                isImageFileName = rootComponent::isImageFileName,
-                                isTextPreviewFileName = rootComponent::isTextPreviewFileName,
-                            )
-                        }
-                    }
-
-                    if (state.searchState.visible) {
-                        SearchPanel(
-                            state = state.searchState,
-                            locationLabel = rootComponent::locationLabel,
-                            onQueryChange = { query -> dispatch(RootIntent.UpdateSearchQuery(query)) },
-                            onSearch = { dispatch(RootIntent.ExecuteSearch) },
-                            onCancel = { dispatch(RootIntent.CancelSearch) },
-                            onClose = { dispatch(RootIntent.CloseSearchPanel) },
-                            onOpenResult = { entry -> dispatch(RootIntent.OpenSearchResult(entry)) },
-                        )
-                    }
-
-                    // ── Jobs Bar ─────────────────────────────────────────────
-                    if (state.tasks.isNotEmpty()) {
-                        JobsBar(
-                            tasks = state.tasks,
-                            onPauseTask = { taskId -> dispatch(RootIntent.PauseTask(taskId)) },
-                            onResumeTask = { taskId -> dispatch(RootIntent.ResumeTask(taskId)) },
-                            onRetryTask = { taskId -> dispatch(RootIntent.RetryTask(taskId)) },
-                            onCancelTask = { taskId -> dispatch(RootIntent.CancelTask(taskId)) },
-                            onDismissTask = { taskId -> dispatch(RootIntent.DismissTask(taskId)) },
-                            onClearAllTasks = { dispatch(RootIntent.ClearAllTasks) },
-                        )
-                    }
-
-                    // ── Status bar ──────────────────────────────────────────────
-                    if (state.settings.statusBarVisible) {
-                        StatusBar(
-                            primaryPane = state.primaryPane,
-                            secondaryPane = state.secondaryPane,
-                            activePane = state.activePane,
-                            onSetActiveViewMode = { mode ->
-                                when (state.activePane) {
-                                    PaneId.PRIMARY -> rootComponent.primaryPane.dispatch(PaneIntent.SetViewMode(mode))
-                                    PaneId.SECONDARY -> rootComponent.secondaryPane.dispatch(PaneIntent.SetViewMode(mode))
-                                }
-                            },
-                            galleryItemSizeDp = when (state.activePane) {
-                                PaneId.PRIMARY -> state.primaryPane.galleryItemSizeDp
-                                PaneId.SECONDARY -> state.secondaryPane.galleryItemSizeDp
-                            },
-                            onGalleryItemSizeChange = { size ->
-                                when (state.activePane) {
-                                    PaneId.PRIMARY -> rootComponent.primaryPane.dispatch(PaneIntent.SetGalleryItemSize(size))
-                                    PaneId.SECONDARY -> rootComponent.secondaryPane.dispatch(PaneIntent.SetGalleryItemSize(size))
-                                }
-                            },
-                        )
-                    }
-                }
+                AppWorkspace(state, rootComponent, dragBindings, toggleFavoriteLocation)
 
                 (tooltipRequest ?: externalTooltipRequest)?.let { request ->
                     OnyxTooltipOverlay(
@@ -703,12 +232,12 @@ private fun AppContent(
                         appWindowOrigin = appWindowOrigin,
                     )
                 }
-                val currentFileDragState = fileDragState
-                if (currentFileDragState != null && fileDragPosition != null) {
+                val currentFileDragState = dragController.fileDragState
+                if (currentFileDragState != null && dragController.fileDragPosition != null) {
                     FileDragOverlay(
                         operation = currentFileDragState.operation,
-                        pointerWindowPosition = fileDragPosition,
-                        targetDirectoryLocation = fileDropTarget?.targetDirectoryLocation,
+                        pointerWindowPosition = dragController.fileDragPosition,
+                        targetDirectoryLocation = dragController.fileDropTarget?.targetDirectoryLocation,
                         appWindowOrigin = appWindowOrigin,
                     )
                 }
@@ -716,5 +245,385 @@ private fun AppContent(
 
             }
         }
+    }
+}
+
+/**
+ * 显示应用主工作区及其搜索、任务和状态附属区域。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ * @param dragBindings 面板共享拖放绑定。
+ * @param onToggleFavoriteLocation 切换收藏位置的回调。
+ */
+@Composable
+private fun AppWorkspace(
+    state: RootState,
+    rootComponent: RootComponent,
+    dragBindings: PaneDragBindings,
+    onToggleFavoriteLocation: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(LocalOnyxPalette.current.appBackground),
+    ) {
+        AppMainArea(
+            state = state,
+            rootComponent = rootComponent,
+            dragBindings = dragBindings,
+            onToggleFavoriteLocation = onToggleFavoriteLocation,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        AppSearchPanel(state, rootComponent)
+        AppJobsBar(state, rootComponent::dispatch)
+        AppStatusBar(state, rootComponent)
+    }
+}
+
+/**
+ * 显示侧栏、文件面板布局与可选预览栏。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ * @param dragBindings 面板共享拖放绑定。
+ * @param onToggleFavoriteLocation 切换收藏位置的回调。
+ * @param modifier 内容区布局修饰符。
+ */
+@Composable
+private fun AppMainArea(
+    state: RootState,
+    rootComponent: RootComponent,
+    dragBindings: PaneDragBindings,
+    onToggleFavoriteLocation: (String) -> Unit,
+    modifier: Modifier,
+) {
+    Row(modifier = modifier) {
+        AppSidebar(state, rootComponent, onToggleFavoriteLocation)
+        AppPaneLayout(
+            state = state,
+            rootComponent = rootComponent,
+            dragBindings = dragBindings,
+            modifier = Modifier.weight(1f),
+        )
+        AppPreviewPanel(state, rootComponent)
+    }
+}
+
+/**
+ * 在设置启用时显示位置侧栏及分隔线。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ * @param onToggleFavoriteLocation 切换收藏位置的回调。
+ */
+@Composable
+private fun AppSidebar(
+    state: RootState,
+    rootComponent: RootComponent,
+    onToggleFavoriteLocation: (String) -> Unit,
+) {
+    if (!state.settings.sidebarVisible) return
+    val dispatch = rootComponent::dispatch
+    PaneSidebar(
+        state = PaneSidebarState(
+            location = state.paneState(state.activePane).location,
+            favoriteLocations = state.settings.favoriteLocations,
+            recentLocations = state.settings.recentLocations,
+            remoteConnections = state.settings.remoteConnections,
+            treeState = state.sidebarTreeState,
+            showTree = state.settings.sidebarTreeVisible,
+        ),
+        actions = PaneSidebarActions(
+            locationLabel = rootComponent::locationLabel,
+            onActivate = { dispatch(RootIntent.ActivatePane(state.activePane)) },
+            onOpenLocation = { dispatch(RootIntent.OpenLocationInActivePane(it)) },
+            onToggleFavoriteLocation = onToggleFavoriteLocation,
+            onNewRemoteConnection = { dispatch(RootIntent.NewRemoteConnection) },
+            onEditRemoteConnection = { dispatch(RootIntent.EditRemoteConnection(it)) },
+            onToggleTreeNode = { dispatch(RootIntent.ToggleSidebarTreeNode(it)) },
+            onRetryTreeNode = { dispatch(RootIntent.RetrySidebarTreeNode(it)) },
+        ),
+    )
+    Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
+}
+
+/**
+ * 根据当前布局模式显示单面板或双面板结构。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ * @param dragBindings 面板共享拖放绑定。
+ * @param modifier 面板布局区域修饰符。
+ */
+@Composable
+private fun AppPaneLayout(
+    state: RootState,
+    rootComponent: RootComponent,
+    dragBindings: PaneDragBindings,
+    modifier: Modifier,
+) {
+    when (state.layoutMode) {
+        PaneLayoutMode.SINGLE -> BoundPaneSurface(
+            paneId = PaneId.PRIMARY,
+            state = state,
+            rootComponent = rootComponent,
+            modifier = modifier,
+            dragBindings = dragBindings,
+        )
+        PaneLayoutMode.DUAL_VERTICAL -> VerticalPaneLayout(state, rootComponent, dragBindings, modifier)
+        PaneLayoutMode.DUAL_HORIZONTAL -> HorizontalPaneLayout(state, rootComponent, dragBindings, modifier)
+    }
+}
+
+/**
+ * 显示左右排列的双面板及可拖拽分隔线。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ * @param dragBindings 面板共享拖放绑定。
+ * @param modifier 双面板区域修饰符。
+ */
+@Composable
+private fun VerticalPaneLayout(
+    state: RootState,
+    rootComponent: RootComponent,
+    dragBindings: PaneDragBindings,
+    modifier: Modifier,
+) {
+    var contentSize by remember { mutableStateOf(IntSize.Zero) }
+    Row(modifier = modifier.fillMaxHeight().onSizeChanged { contentSize = it }) {
+        BoundPaneSurface(
+            PaneId.PRIMARY,
+            state,
+            rootComponent,
+            Modifier.weight(state.paneSplitFraction),
+            dragBindings,
+        )
+        ResizablePaneDivider(Orientation.Vertical) { delta ->
+            val width = contentSize.width.toFloat().coerceAtLeast(1f)
+            rootComponent.dispatch(
+                RootIntent.SetPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / width),
+            )
+        }
+        BoundPaneSurface(
+            PaneId.SECONDARY,
+            state,
+            rootComponent,
+            Modifier.weight(1f - state.paneSplitFraction),
+            dragBindings,
+        )
+    }
+}
+
+/**
+ * 显示上下排列的双面板及可拖拽分隔线。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ * @param dragBindings 面板共享拖放绑定。
+ * @param modifier 双面板区域修饰符。
+ */
+@Composable
+private fun HorizontalPaneLayout(
+    state: RootState,
+    rootComponent: RootComponent,
+    dragBindings: PaneDragBindings,
+    modifier: Modifier,
+) {
+    var contentSize by remember { mutableStateOf(IntSize.Zero) }
+    Column(modifier = modifier.fillMaxHeight().onSizeChanged { contentSize = it }) {
+        BoundPaneSurface(
+            PaneId.PRIMARY,
+            state,
+            rootComponent,
+            Modifier.weight(state.paneSplitFraction),
+            dragBindings,
+        )
+        ResizablePaneDivider(Orientation.Horizontal) { delta ->
+            val height = contentSize.height.toFloat().coerceAtLeast(1f)
+            rootComponent.dispatch(
+                RootIntent.SetPaneSplitFraction(rootComponent.state.value.paneSplitFraction + delta / height),
+            )
+        }
+        BoundPaneSurface(
+            PaneId.SECONDARY,
+            state,
+            rootComponent,
+            Modifier.weight(1f - state.paneSplitFraction),
+            dragBindings,
+        )
+    }
+}
+
+/**
+ * 在启用时显示活动面板选中项的预览。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ */
+@Composable
+private fun AppPreviewPanel(state: RootState, rootComponent: RootComponent) {
+    if (!state.showPreviewPane) return
+    val paneState = state.paneState(state.activePane)
+    val selectedId = paneState.selectedEntryIds.firstOrNull()
+    val selectedEntry = (paneState.entriesState as? PaneEntriesState.Ready)
+        ?.entries
+        ?.find { it.id == selectedId }
+    Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
+    PreviewPane(
+        selectedEntry = selectedEntry,
+        modifier = Modifier.width(300.dp).fillMaxHeight(),
+        loadThumbnail = rootComponent::loadThumbnail,
+        loadTextPreview = rootComponent::loadTextPreview,
+        isImageFileName = rootComponent::isImageFileName,
+        isTextPreviewFileName = rootComponent::isTextPreviewFileName,
+    )
+}
+
+/**
+ * 在搜索面板可见时显示搜索状态与动作。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ */
+@Composable
+private fun AppSearchPanel(state: RootState, rootComponent: RootComponent) {
+    if (!state.searchState.visible) return
+    val dispatch = rootComponent::dispatch
+    SearchPanel(
+        state = state.searchState,
+        locationLabel = rootComponent::locationLabel,
+        onQueryChange = { dispatch(RootIntent.UpdateSearchQuery(it)) },
+        onSearch = { dispatch(RootIntent.ExecuteSearch) },
+        onCancel = { dispatch(RootIntent.CancelSearch) },
+        onClose = { dispatch(RootIntent.CloseSearchPanel) },
+        onOpenResult = { dispatch(RootIntent.OpenSearchResult(it)) },
+    )
+}
+
+/**
+ * 在存在后台任务时显示任务栏。
+ *
+ * @param state 根组件当前状态。
+ * @param dispatch 根意图分发器。
+ */
+@Composable
+private fun AppJobsBar(state: RootState, dispatch: (RootIntent) -> Unit) {
+    if (state.tasks.isEmpty()) return
+    JobsBar(
+        tasks = state.tasks,
+        onPauseTask = { dispatch(RootIntent.PauseTask(it)) },
+        onResumeTask = { dispatch(RootIntent.ResumeTask(it)) },
+        onRetryTask = { dispatch(RootIntent.RetryTask(it)) },
+        onCancelTask = { dispatch(RootIntent.CancelTask(it)) },
+        onDismissTask = { dispatch(RootIntent.DismissTask(it)) },
+        onClearAllTasks = { dispatch(RootIntent.ClearAllTasks) },
+    )
+}
+
+/**
+ * 在设置启用时显示活动面板的视图状态栏。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ */
+@Composable
+private fun AppStatusBar(state: RootState, rootComponent: RootComponent) {
+    if (!state.settings.statusBarVisible) return
+    val paneComponent = when (state.activePane) {
+        PaneId.PRIMARY -> rootComponent.primaryPane
+        PaneId.SECONDARY -> rootComponent.secondaryPane
+    }
+    val paneState = state.paneState(state.activePane)
+    StatusBar(
+        primaryPane = state.primaryPane,
+        secondaryPane = state.secondaryPane,
+        activePane = state.activePane,
+        onSetActiveViewMode = { paneComponent.dispatch(PaneIntent.SetViewMode(it)) },
+        galleryItemSizeDp = paneState.galleryItemSizeDp,
+        onGalleryItemSizeChange = { paneComponent.dispatch(PaneIntent.SetGalleryItemSize(it)) },
+    )
+}
+
+/**
+ * 根据根状态显示当前活动的模态窗口。
+ *
+ * @param state 根组件当前状态。
+ * @param dispatch 根意图分发器。
+ */
+@Composable
+private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
+    when (val dialogState = state.dialogState) {
+        is RootDialogState.DeleteSelectionConfirmation -> ConfirmationDialog(
+            state = dialogState,
+            onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+        is RootDialogState.ConflictResolution -> ConflictResolutionDialog(
+            state = dialogState,
+            onResolve = { strategy, applyToAll ->
+                dispatch(RootIntent.ResolveConflict(strategy, applyToAll))
+            },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+        is RootDialogState.CreateDirectories -> CreateDirectoriesDialog(
+            state = dialogState,
+            onDraftChange = { dispatch(RootIntent.UpdateCreateDirectoriesDraft(it)) },
+            onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+        is RootDialogState.Settings -> SettingsDialog(
+            state = dialogState,
+            onDraftChange = { dispatch(RootIntent.UpdateSettingsDraft(it)) },
+            onCleanupInvalidLocations = { dispatch(RootIntent.CleanupInvalidLocations) },
+            onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+            initialWidth = state.settings.settingsWindowWidth,
+            initialHeight = state.settings.settingsWindowHeight,
+            onWindowSizeChanged = { width, height ->
+                val settings = state.settings.copy(settingsWindowWidth = width, settingsWindowHeight = height)
+                dispatch(RootIntent.UpdateSettings(settings))
+            },
+        )
+        is RootDialogState.RemoteConnections -> RemoteConnectionsDialog(
+            state = dialogState,
+            connections = state.settings.remoteConnections,
+            onDraftChange = { dispatch(RootIntent.UpdateRemoteConnectionDraft(it)) },
+            onNew = { dispatch(RootIntent.NewRemoteConnection) },
+            onEdit = { dispatch(RootIntent.EditRemoteConnection(it)) },
+            onSave = { dispatch(RootIntent.SaveRemoteConnectionDraft) },
+            onTest = { dispatch(RootIntent.TestRemoteConnectionDraft) },
+            onDelete = { dispatch(RootIntent.DeleteRemoteConnection(it)) },
+            onOpen = { dispatch(RootIntent.OpenRemoteConnection(it)) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+        is RootDialogState.BatchRename -> BatchRenameDialog(
+            state = dialogState,
+            onConfirm = { renames ->
+                dispatch(RootIntent.ExecuteBatchRename(dialogState.paneId, renames))
+            },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+            initialWidth = state.settings.batchRenameWindowWidth,
+            initialHeight = state.settings.batchRenameWindowHeight,
+            onWindowSizeChanged = { width, height ->
+                val settings = state.settings.copy(
+                    batchRenameWindowWidth = width,
+                    batchRenameWindowHeight = height,
+                )
+                dispatch(RootIntent.UpdateSettings(settings))
+            },
+        )
+        is RootDialogState.ArchivePassword -> ArchivePasswordDialog(
+            archiveName = dialogState.archiveName,
+            error = dialogState.error,
+            onConfirm = { dispatch(RootIntent.SubmitArchivePassword(it)) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+        is RootDialogState.RemoteCredentials -> RemoteCredentialsDialog(
+            state = dialogState,
+            onDraftChange = { dispatch(RootIntent.UpdateRemoteCredentialsDraft(it)) },
+            onConfirm = { dispatch(RootIntent.SubmitRemoteCredentials) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+        null -> Unit
     }
 }

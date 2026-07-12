@@ -71,26 +71,24 @@ internal class JvmWindowsShellComMenuBridge {
      */
     private fun listActionsOnShellThread(entries: List<VFile>): List<SystemMenuAction> {
         val paths = entries.toSystemPaths()
-        if (paths.isEmpty()) return emptyList()
-        if (!paths.shareParentDirectory()) return emptyList()
+        if (paths.isEmpty() || !paths.shareParentDirectory()) return emptyList()
         return withShellContextMenu(paths) { session ->
             val menu = User32Menu.INSTANCE.CreatePopupMenu()
-                ?: return@withShellContextMenu emptyList()
-            try {
-                val queryResult = session.contextMenu.queryContextMenu(
-                    hMenu = menu,
-                    indexMenu = 0,
-                    idCmdFirst = COMMAND_ID_FIRST,
-                    idCmdLast = COMMAND_ID_LAST,
-                    flags = CMF_NORMAL,
-                )
-                if (!queryResult.succeeded()) {
-                    emptyList()
-                } else {
-                    readMenuItems(menu, session)
+            if (menu == null) {
+                emptyList()
+            } else {
+                try {
+                    val queryResult = session.contextMenu.queryContextMenu(
+                        hMenu = menu,
+                        indexMenu = 0,
+                        idCmdFirst = COMMAND_ID_FIRST,
+                        idCmdLast = COMMAND_ID_LAST,
+                        flags = CMF_NORMAL,
+                    )
+                    if (queryResult.succeeded()) readMenuItems(menu, session) else emptyList()
+                } finally {
+                    User32Menu.INSTANCE.DestroyMenu(menu)
                 }
-            } finally {
-                User32Menu.INSTANCE.DestroyMenu(menu)
             }
         }
     }
@@ -105,14 +103,14 @@ internal class JvmWindowsShellComMenuBridge {
         action: SystemMenuAction,
         entries: List<VFile>,
     ) {
-        val command = WindowsShellComCommand.parse(action.command)
-            ?: throw IllegalArgumentException("Invalid Windows Shell COM command: ${action.command}")
+        val command = requireNotNull(WindowsShellComCommand.parse(action.command)) {
+            "Invalid Windows Shell COM command: ${action.command}"
+        }
         val paths = entries.toSystemPaths()
-        if (paths.isEmpty()) throw IllegalArgumentException("Windows Shell COM command requires files")
-        if (!paths.shareParentDirectory()) throw IllegalArgumentException("Windows Shell COM command requires one folder")
+        require(paths.isNotEmpty()) { "Windows Shell COM command requires files" }
+        require(paths.shareParentDirectory()) { "Windows Shell COM command requires one folder" }
         withShellContextMenu(paths) { session ->
-            val menu = User32Menu.INSTANCE.CreatePopupMenu()
-                ?: throw IllegalStateException("CreatePopupMenu failed")
+            val menu = checkNotNull(User32Menu.INSTANCE.CreatePopupMenu()) { "CreatePopupMenu failed" }
             try {
                 val queryResult = session.contextMenu.queryContextMenu(
                     hMenu = menu,
@@ -121,8 +119,8 @@ internal class JvmWindowsShellComMenuBridge {
                     idCmdLast = COMMAND_ID_LAST,
                     flags = CMF_NORMAL,
                 )
-                if (!queryResult.succeeded()) {
-                    throw IllegalStateException("IContextMenu.QueryContextMenu failed: ${queryResult.toInt()}")
+                check(queryResult.succeeded()) {
+                    "IContextMenu.QueryContextMenu failed: ${queryResult.toInt()}"
                 }
                 initializeMenuPath(menu, command.menuPath, session)
                 val directoryMemory = paths.first().parent?.toString()?.toNativeWideString()
@@ -142,8 +140,8 @@ internal class JvmWindowsShellComMenuBridge {
                     write()
                 }
                 val invokeResult = session.contextMenu.invokeCommand(invokeInfo)
-                if (!invokeResult.succeeded()) {
-                    throw IllegalStateException("IContextMenu.InvokeCommand failed: ${invokeResult.toInt()}")
+                check(invokeResult.succeeded()) {
+                    "IContextMenu.InvokeCommand failed: ${invokeResult.toInt()}"
                 }
             } finally {
                 User32Menu.INSTANCE.DestroyMenu(menu)
@@ -196,25 +194,6 @@ internal class JvmWindowsShellComMenuBridge {
     }
 
     /**
-     * 将虚拟文件转换为 Windows Shell 可识别的本地路径。
-     *
-     * @return 本地路径列表。
-     */
-    private fun List<VFile>.toSystemPaths(): List<Path> {
-        return map { entry -> entry.requireSystemLocalPath("Windows Shell context menu") }
-    }
-
-    /**
-     * 判断选中路径是否共享同一个父目录。
-     *
-     * @return `true` 表示可通过同一个 `IShellFolder` 获取上下文菜单。
-     */
-    private fun List<Path>.shareParentDirectory(): Boolean {
-        val firstParent = firstOrNull()?.parent ?: return false
-        return all { path -> path.parent == firstParent }
-    }
-
-    /**
      * 初始化 COM、绑定父 Shell 文件夹并获取 `IContextMenu` 会话。
      *
      * @param paths 同一父目录下的本地路径集合。
@@ -230,8 +209,8 @@ internal class JvmWindowsShellComMenuBridge {
             Ole32.COINIT_APARTMENTTHREADED or Ole32.COINIT_DISABLE_OLE1DDE,
         )
         val comInitialized = initializeResult.succeeded()
-        if (!comInitialized && initializeResult.toInt() != RPC_E_CHANGED_MODE) {
-            throw IllegalStateException("CoInitializeEx failed: ${initializeResult.toInt()}")
+        check(comInitialized || initializeResult.toInt() == RPC_E_CHANGED_MODE) {
+            "CoInitializeEx failed: ${initializeResult.toInt()}"
         }
         val fullPidls = mutableListOf<Pointer>()
         val parentFolders = mutableListOf<IShellFolder>()
@@ -250,14 +229,13 @@ internal class JvmWindowsShellComMenuBridge {
                     parentFolderRef,
                     childPidlRef,
                 )
-                if (!bindResult.succeeded()) {
-                    throw IllegalStateException("SHBindToParent failed: ${bindResult.toInt()}")
-                }
+                check(bindResult.succeeded()) { "SHBindToParent failed: ${bindResult.toInt()}" }
                 parentFolders += IShellFolder.Converter.PointerToIShellFolder(parentFolderRef)
-                childPidls += childPidlRef.value ?: throw IllegalStateException("SHBindToParent returned null child PIDL")
+                childPidls += checkNotNull(childPidlRef.value) {
+                    "SHBindToParent returned null child PIDL"
+                }
             }
-            val parentFolder = parentFolders.firstOrNull()
-                ?: throw IllegalStateException("No parent shell folder")
+            val parentFolder = checkNotNull(parentFolders.firstOrNull()) { "No parent shell folder" }
             val contextMenuRef = PointerByReference()
             val childPidlArray = childPidls.toPointerArray()
             val uiObjectResult = parentFolder.GetUIObjectOf(
@@ -268,8 +246,8 @@ internal class JvmWindowsShellComMenuBridge {
                 null,
                 contextMenuRef,
             )
-            if (!uiObjectResult.succeeded()) {
-                throw IllegalStateException("IShellFolder.GetUIObjectOf(IContextMenu) failed: ${uiObjectResult.toInt()}")
+            check(uiObjectResult.succeeded()) {
+                "IShellFolder.GetUIObjectOf(IContextMenu) failed: ${uiObjectResult.toInt()}"
             }
             contextMenu = WindowsContextMenu(contextMenuRef.value)
             messageHandler = contextMenu.queryMessageHandler()
@@ -300,10 +278,8 @@ internal class JvmWindowsShellComMenuBridge {
             0,
             null,
         )
-        if (!result.succeeded()) {
-            throw IllegalStateException("SHParseDisplayName failed for $path: ${result.toInt()}")
-        }
-        return pidlRef.value ?: throw IllegalStateException("SHParseDisplayName returned null PIDL")
+        check(result.succeeded()) { "SHParseDisplayName failed for $path: ${result.toInt()}" }
+        return checkNotNull(pidlRef.value) { "SHParseDisplayName returned null PIDL" }
     }
 
     /**
@@ -354,6 +330,26 @@ internal class JvmWindowsShellComMenuBridge {
         session: WindowsShellMenuSession,
         menuPath: List<Int>,
     ): SystemMenuAction? {
+        val info = readVisibleMenuItemInfo(menu, index)
+        val label = info?.let { User32Menu.INSTANCE.getMenuString(menu, index).toShellMenuLabel() }
+        return if (info != null && label != null) {
+            buildMenuAction(info, label, index, session, menuPath)
+        } else {
+            null
+        }
+    }
+
+    /**
+     * 读取并过滤不可展示的原生菜单项元数据。
+     *
+     * @param menu 菜单句柄。
+     * @param index 菜单项位置索引。
+     * @return 可展示项的元数据；读取失败、分隔线或禁用项返回 `null`。
+     */
+    private fun readVisibleMenuItemInfo(
+        menu: WinDef.HMENU,
+        index: Int,
+    ): MenuItemInfo? {
         val info = MenuItemInfo().apply {
             cbSize = size()
             fMask = MIIM_FTYPE or MIIM_STATE or MIIM_ID or MIIM_SUBMENU
@@ -361,31 +357,104 @@ internal class JvmWindowsShellComMenuBridge {
         }
         if (!User32Menu.INSTANCE.GetMenuItemInfoW(menu, index, true, info)) return null
         info.read()
-        if ((info.fType and MFT_SEPARATOR) != 0) return null
-        if ((info.fState and MFS_DISABLED) != 0) return null
-        val label = User32Menu.INSTANCE.getMenuString(menu, index).toShellMenuLabel() ?: return null
+        return info.takeUnless { item ->
+            (item.fType and MFT_SEPARATOR) != 0 || (item.fState and MFS_DISABLED) != 0
+        }
+    }
+
+    /**
+     * 根据菜单项元数据构建子菜单动作或叶子命令。
+     *
+     * @param info 原生菜单项元数据。
+     * @param label 清理后的菜单名称。
+     * @param index 菜单项位置索引。
+     * @param session 当前 Shell 菜单会话。
+     * @param menuPath 当前菜单的级联路径。
+     * @return 可执行或可展开的统一菜单动作。
+     */
+    private fun buildMenuAction(
+        info: MenuItemInfo,
+        label: String,
+        index: Int,
+        session: WindowsShellMenuSession,
+        menuPath: List<Int>,
+    ): SystemMenuAction? {
         val subMenu = info.hSubMenu?.takeUnless { handle -> handle.isNullPointer() }
         val childMenuPath = menuPath + index
         val children = subMenu?.let { handle ->
             session.messageHandler?.handleInitMenuPopup(handle, index)
             readMenuItems(handle, session, childMenuPath)
         }.orEmpty()
-        if (children.isNotEmpty()) {
-            return SystemMenuAction(
-                id = "$WINDOWS_COM_ACTION_PREFIX:submenu:${childMenuPath.joinToString("/")}:${label.hashCode()}",
+        return if (children.isNotEmpty()) {
+            SystemMenuAction(
+                id = buildSubmenuActionId(childMenuPath, label),
                 displayName = label,
                 command = "",
                 children = children,
             )
+        } else {
+            buildLeafMenuAction(info, label, menuPath, session)
         }
+    }
+
+    /**
+     * 将有效命令 ID 转换为可执行的叶子菜单动作。
+     *
+     * @param info 原生菜单项元数据。
+     * @param label 清理后的菜单名称。
+     * @param menuPath 叶子命令所属父菜单的级联路径。
+     * @param session 当前 Shell 菜单会话。
+     * @return 命令 ID 有效时返回动作，否则返回 `null`。
+     */
+    private fun buildLeafMenuAction(
+        info: MenuItemInfo,
+        label: String,
+        menuPath: List<Int>,
+        session: WindowsShellMenuSession,
+    ): SystemMenuAction? {
         val offset = info.wID - COMMAND_ID_FIRST
-        if (offset < 0 || info.wID > COMMAND_ID_LAST) return null
-        val verb = session.contextMenu.commandString(offset, GCS_VERBW)
-        return SystemMenuAction(
-            id = "$WINDOWS_COM_ACTION_PREFIX:${verb ?: offset}:${menuPath.joinToString("/")}:${label.hashCode()}",
-            displayName = label,
-            command = WindowsShellComCommand(offset = offset, menuPath = menuPath).serialize(),
-        )
+        return offset.takeIf { value -> value >= 0 && info.wID <= COMMAND_ID_LAST }?.let { validOffset ->
+            val verb = session.contextMenu.commandString(validOffset, GCS_VERBW)
+            SystemMenuAction(
+                id = buildActionId(verb, validOffset, menuPath, label),
+                displayName = label,
+                command = WindowsShellComCommand(offset = validOffset, menuPath = menuPath).serialize(),
+            )
+        }
+    }
+
+    /**
+     * 生成 Shell 叶子动作的稳定标识。
+     *
+     * @param verb Shell canonical verb，部分扩展可能不提供。
+     * @param offset Shell 命令偏移量。
+     * @param menuPath 叶子命令所属父菜单的级联路径。
+     * @param label 菜单显示名称。
+     * @return 包含命令身份和菜单路径的动作标识。
+     */
+    private fun buildActionId(
+        verb: String?,
+        offset: Int,
+        menuPath: List<Int>,
+        label: String,
+    ): String {
+        val path = menuPath.joinToString("/")
+        return "$WINDOWS_COM_ACTION_PREFIX:${verb ?: offset}:$path:${label.hashCode()}"
+    }
+
+    /**
+     * 生成级联菜单动作的稳定标识。
+     *
+     * @param menuPath 子菜单的级联路径。
+     * @param label 菜单显示名称。
+     * @return 包含菜单路径和名称摘要的动作标识。
+     */
+    private fun buildSubmenuActionId(
+        menuPath: List<Int>,
+        label: String,
+    ): String {
+        val path = menuPath.joinToString("/")
+        return "$WINDOWS_COM_ACTION_PREFIX:submenu:$path:${label.hashCode()}"
     }
 
     /**
@@ -410,12 +479,13 @@ internal class JvmWindowsShellComMenuBridge {
                 fMask = MIIM_SUBMENU
                 write()
             }
-            if (!User32Menu.INSTANCE.GetMenuItemInfoW(currentMenu, index, true, info)) {
-                throw IllegalStateException("Windows Shell submenu is not available at index $index")
+            check(User32Menu.INSTANCE.GetMenuItemInfoW(currentMenu, index, true, info)) {
+                "Windows Shell submenu is not available at index $index"
             }
             info.read()
-            val subMenu = info.hSubMenu?.takeUnless { handle -> handle.isNullPointer() }
-                ?: throw IllegalStateException("Windows Shell submenu is empty at index $index")
+            val subMenu = checkNotNull(info.hSubMenu?.takeUnless { handle -> handle.isNullPointer() }) {
+                "Windows Shell submenu is empty at index $index"
+            }
             session.messageHandler?.handleInitMenuPopup(subMenu, index)
             currentMenu = subMenu
         }
@@ -525,9 +595,15 @@ internal class JvmWindowsShellComMenuBridge {
             flags: Int,
         ): WinNT.HRESULT {
             return _invokeNativeObject(
-                3,
-                arrayOf(pointer, hMenu, WinDef.UINT(indexMenu.toLong()), WinDef.UINT(idCmdFirst.toLong()),
-                    WinDef.UINT(idCmdLast.toLong()), WinDef.UINT(flags.toLong())),
+                I_CONTEXT_MENU_QUERY_INDEX,
+                arrayOf(
+                    pointer,
+                    hMenu,
+                    WinDef.UINT(indexMenu.toLong()),
+                    WinDef.UINT(idCmdFirst.toLong()),
+                    WinDef.UINT(idCmdLast.toLong()),
+                    WinDef.UINT(flags.toLong()),
+                ),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
         }
@@ -540,7 +616,7 @@ internal class JvmWindowsShellComMenuBridge {
          */
         fun invokeCommand(info: InvokeCommandInfoEx): WinNT.HRESULT {
             return _invokeNativeObject(
-                4,
+                I_CONTEXT_MENU_INVOKE_INDEX,
                 arrayOf(pointer, info.pointer),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
@@ -559,9 +635,15 @@ internal class JvmWindowsShellComMenuBridge {
         ): String? {
             val buffer = Memory((MAX_COMMAND_STRING_LENGTH * Char.SIZE_BYTES).toLong())
             val result = _invokeNativeObject(
-                5,
-                arrayOf(pointer, WinDef.UINT_PTR(offset.toLong()), WinDef.UINT(type.toLong()), Pointer.NULL, buffer,
-                    WinDef.UINT(MAX_COMMAND_STRING_LENGTH.toLong())),
+                I_CONTEXT_MENU_COMMAND_STRING_INDEX,
+                arrayOf(
+                    pointer,
+                    WinDef.UINT_PTR(offset.toLong()),
+                    WinDef.UINT(type.toLong()),
+                    Pointer.NULL,
+                    buffer,
+                    WinDef.UINT(MAX_COMMAND_STRING_LENGTH.toLong()),
+                ),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
             if (!isSucceeded(result)) return null
@@ -636,7 +718,7 @@ internal class JvmWindowsShellComMenuBridge {
             lParam: WinDef.LPARAM,
         ): WinNT.HRESULT {
             return _invokeNativeObject(
-                6,
+                I_CONTEXT_MENU_HANDLE_MESSAGE_INDEX,
                 arrayOf(pointer, WinDef.UINT(message.toLong()), wParam, lParam),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
@@ -657,7 +739,7 @@ internal class JvmWindowsShellComMenuBridge {
         ): WinNT.HRESULT {
             val resultRef = PointerByReference()
             return _invokeNativeObject(
-                7,
+                I_CONTEXT_MENU_HANDLE_MESSAGE_RESULT_INDEX,
                 arrayOf(pointer, WinDef.UINT(message.toLong()), wParam, lParam, resultRef),
                 WinNT.HRESULT::class.java,
             ) as WinNT.HRESULT
@@ -889,6 +971,31 @@ internal class JvmWindowsShellComMenuBridge {
         private const val MFT_SEPARATOR = 0x00000800
         private const val MFS_DISABLED = 0x00000003
 
+        private const val I_CONTEXT_MENU_QUERY_INDEX = 3
+        private const val I_CONTEXT_MENU_INVOKE_INDEX = 4
+        private const val I_CONTEXT_MENU_COMMAND_STRING_INDEX = 5
+        private const val I_CONTEXT_MENU_HANDLE_MESSAGE_INDEX = 6
+        private const val I_CONTEXT_MENU_HANDLE_MESSAGE_RESULT_INDEX = 7
+
         private fun isSucceeded(result: WinNT.HRESULT): Boolean = result.toInt() >= 0
     }
+}
+
+/**
+ * 将虚拟文件转换为 Windows Shell 可识别的本地路径。
+ *
+ * @return 本地路径列表。
+ */
+private fun List<VFile>.toSystemPaths(): List<Path> {
+    return map { entry -> entry.requireSystemLocalPath("Windows Shell context menu") }
+}
+
+/**
+ * 判断选中路径是否共享同一个父目录。
+ *
+ * @return `true` 表示可通过同一个 `IShellFolder` 获取上下文菜单。
+ */
+private fun List<Path>.shareParentDirectory(): Boolean {
+    val firstParent = firstOrNull()?.parent ?: return false
+    return all { path -> path.parent == firstParent }
 }

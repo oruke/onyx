@@ -139,15 +139,16 @@ class SmbVfsProvider(
     override suspend fun delete(entries: List<VFile>): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
-        if (unsupported != null) {
-            return Result.failure(VfsProviderNotFoundException(unsupported.location))
-        }
-        return runCatching {
-            entries
-                .groupBy { entry -> authRepository.authContext(entry.location) }
-                .forEach { (authContext, groupedEntries) ->
-                    client.delete(groupedEntries, authContext)
-                }
+        return if (unsupported != null) {
+            Result.failure(VfsProviderNotFoundException(unsupported.location))
+        } else {
+            runCatching {
+                entries
+                    .groupBy { entry -> authRepository.authContext(entry.location) }
+                    .forEach { (authContext, groupedEntries) ->
+                        client.delete(groupedEntries, authContext)
+                    }
+            }
         }
     }
 
@@ -224,30 +225,33 @@ class SmbVfsProvider(
         block: suspend (VfsAuthContext) -> Unit,
     ): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
-        if (!supports(targetDirectoryLocation)) {
-            return Result.failure(VfsProviderNotFoundException(targetDirectoryLocation))
+        val unsupportedLocation = if (!supports(targetDirectoryLocation)) {
+            targetDirectoryLocation
+        } else {
+            entries.firstOrNull { entry -> !supports(entry.location) }?.location
         }
-        val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
-        if (unsupported != null) {
-            return Result.failure(VfsProviderNotFoundException(unsupported.location))
-        }
-
-        val targetAuthContext = authRepository.authContext(targetDirectoryLocation)
-        val hasDifferentSourceAuth = entries.any { entry -> authRepository.authContext(entry.location) != targetAuthContext }
-        if (hasDifferentSourceAuth) {
-            return Result.failure(
-                VfsProviderException(
-                    VfsProviderError.UnsupportedOperation(
-                        protocol = VfsProtocol.SMB,
-                        location = targetDirectoryLocation,
-                        capability = capability,
+        return if (unsupportedLocation != null) {
+            Result.failure(VfsProviderNotFoundException(unsupportedLocation))
+        } else {
+            val targetAuthContext = authRepository.authContext(targetDirectoryLocation)
+            val hasDifferentSourceAuth = entries.any { entry ->
+                authRepository.authContext(entry.location) != targetAuthContext
+            }
+            if (hasDifferentSourceAuth) {
+                Result.failure(
+                    VfsProviderException(
+                        VfsProviderError.UnsupportedOperation(
+                            protocol = VfsProtocol.SMB,
+                            location = targetDirectoryLocation,
+                            capability = capability,
+                        )
                     )
                 )
-            )
-        }
-
-        return runCatching {
-            block(targetAuthContext)
+            } else {
+                runCatching {
+                    block(targetAuthContext)
+                }
+            }
         }
     }
 

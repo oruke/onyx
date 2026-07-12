@@ -4,6 +4,7 @@ import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.TrashMoveRecord
+import com.oruke.onyx.vfs.api.TrashRestorationStatus
 import com.oruke.onyx.vfs.api.TrashService
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,7 +77,9 @@ class FileOperationHistoryDelegate(
      * @param records 回收站服务返回的恢复记录。
      */
     fun recordTrashDelete(records: List<TrashMoveRecord>) {
-        val restorableRecords = records.filter { record -> record.trashedLocation.isNotBlank() }
+        val restorableRecords = records.filter { record ->
+            record.restorationStatus == TrashRestorationStatus.AVAILABLE && record.trashedLocation.isNotBlank()
+        }
         if (restorableRecords.isEmpty() || trashService == null) return
         record(FileOperationRecord.TrashBatch(restorableRecords))
     }

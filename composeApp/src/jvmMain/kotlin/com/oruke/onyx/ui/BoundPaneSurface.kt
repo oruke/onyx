@@ -2,10 +2,7 @@ package com.oruke.onyx.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntOffset
-import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
@@ -13,10 +10,6 @@ import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.vfs.api.FileContextMenuRequest
 import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.ui.theme.FileDropTarget
-import com.oruke.onyx.ui.theme.FileDropZone
-import com.oruke.onyx.ui.theme.TabDropTarget
-import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.key
 
 /**
@@ -24,6 +17,12 @@ import com.oruke.onyx.ui.theme.key
  *
  * 之前每个布局模式都复制粘贴 40+ 行 PaneSurface 参数，唯一差异仅在 PaneId。
  * 此函数统一绑定所有回调，消除冗余。
+ *
+ * @param paneId 待渲染的面板标识。
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ * @param modifier 面板布局修饰符。
+ * @param dragBindings 标签与文件拖放绑定。
  */
 @Composable
 internal fun BoundPaneSurface(
@@ -31,17 +30,7 @@ internal fun BoundPaneSurface(
     state: RootState,
     rootComponent: RootComponent,
     modifier: Modifier = Modifier,
-    // 拖放相关
-    tabDropZones: SnapshotStateMap<PaneId, TabDropZone>,
-    tabDropTarget: TabDropTarget?,
-    fileDropTarget: FileDropTarget?,
-    fileDropZones: SnapshotStateMap<String, FileDropZone>,
-    onTabDrop: (PaneId, String, IntOffset) -> Unit,
-    onTabDragPositionChange: (IntOffset) -> Unit,
-    onTabDragEnd: () -> Unit,
-    onFileDragStart: (PaneId, FileTransferOperation) -> Unit,
-    onFileDragPositionChange: (IntOffset) -> Unit,
-    onFileDragEnd: (IntOffset?) -> Unit,
+    dragBindings: PaneDragBindings,
 ) {
     val paneState: PaneState = when (paneId) {
         PaneId.PRIMARY -> state.primaryPane
@@ -87,29 +76,24 @@ internal fun BoundPaneSurface(
     }
 
     PaneSurface(
-        state = paneState,
-        active = state.activePane == paneId,
-        component = paneComponent,
-        actions = actions,
-        commandShortcuts = commandShortcuts,
+        model = PaneSurfaceModel(
+            state = paneState,
+            active = state.activePane == paneId,
+            component = paneComponent,
+            actions = actions,
+            commandShortcuts = commandShortcuts,
+            canPaste = state.canPaste,
+            favoriteLocations = state.settings.favoriteLocations,
+            onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
+        ),
+        dragBindings = dragBindings,
+        services = PaneSurfaceServices(
+            loadThumbnail = rootComponent::loadThumbnail,
+            loadArchiveThumbnail = rootComponent::loadArchiveThumbnail,
+            readFileHash = rootComponent::readFileHash,
+            readArchiveInfo = rootComponent::readArchiveInfo,
+            buildBreadcrumbs = rootComponent::buildBreadcrumbs,
+        ),
         modifier = modifier,
-        onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
-        canPaste = state.canPaste,
-        favoriteLocations = state.settings.favoriteLocations,
-        onDropTab = onTabDrop,
-        onTabDragPositionChange = onTabDragPositionChange,
-        onTabDragEnd = onTabDragEnd,
-        onTabDropZoneChange = { id, zone -> tabDropZones[id] = zone },
-        tabDropIndicatorIndex = tabDropTarget?.takeIf { it.paneId == paneId }?.index,
-        onFileDragStart = onFileDragStart,
-        onFileDragPositionChange = onFileDragPositionChange,
-        onFileDragEnd = onFileDragEnd,
-        onFileDropZoneChange = { zone -> fileDropZones[zone.key] = zone },
-        fileDropTarget = fileDropTarget,
-        loadThumbnail = rootComponent::loadThumbnail,
-        loadArchiveThumbnail = rootComponent::loadArchiveThumbnail,
-        readFileHash = rootComponent::readFileHash,
-        readArchiveInfo = rootComponent::readArchiveInfo,
-        buildBreadcrumbs = rootComponent::buildBreadcrumbs,
     )
 }

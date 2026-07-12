@@ -7,7 +7,7 @@ config:
 
 complexity:
   active: true
-  ComplexMethod:
+  CyclomaticComplexMethod:
     active: true
     threshold: 18
   LargeClass:
@@ -48,6 +48,10 @@ naming:
 
 style:
   active: true
+  ReturnCount:
+    active: true
+    max: 2
+    excludeGuardClauses: true
   MagicNumber:
     active: true
     ignorePropertyDeclaration: true

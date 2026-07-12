@@ -1,9 +1,7 @@
 package com.oruke.onyx.vfs.s3
 
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
-import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.RoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
 import com.oruke.onyx.vfs.api.VfsAuthContext
@@ -15,53 +13,15 @@ import com.oruke.onyx.vfs.api.VfsDirectoryPage
 import com.oruke.onyx.vfs.api.VfsDirectoryPageRequest
 import com.oruke.onyx.vfs.api.PagedVfsProvider
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
-import com.oruke.onyx.vfs.api.VfsProvider
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.api.VfsProtocol
-import com.oruke.onyx.vfs.api.encodeVfsSpaces
 import com.oruke.onyx.vfs.api.toVfsConnectionTestResult
-import com.oruke.onyx.vfs.api.withVfsCopySuffix
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.request.request
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.HttpResponse
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpMethod
-import io.ktor.http.content.OutgoingContent
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.readAvailable
-import io.ktor.utils.io.writeFully
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
-import org.w3c.dom.Element
-import org.xml.sax.InputSource
-import java.io.IOException
-import java.io.StringReader
-import java.net.URI
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
-import javax.net.ssl.SSLException
-import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * S3 协议的 VFS Provider，负责把统一文件操作转换为对象存储请求。
@@ -72,7 +32,14 @@ import javax.xml.parsers.DocumentBuilderFactory
 class S3VfsProvider(
     private val authRepository: S3AuthRepository = S3AuthRepository.None,
     private val client: S3Client = KtorS3Client(),
-) : PagedVfsProvider, RoutableFileCommandService, RoutableVfsContentService, VfsConnectionTester {
+) : PagedVfsProvider,
+    RoutableFileCommandService,
+    RoutableVfsContentService,
+    VfsConnectionTester,
+    S3TransferGateway {
+    /** S3 递归复制与移动服务。 */
+    private val transferService = S3TransferService(this)
+
     override val protocol: VfsProtocol = VfsProtocol.S3
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
@@ -170,12 +137,28 @@ class S3VfsProvider(
                 )
             )
         }
-        val location = runCatching { S3Location.parse(request.location) }.getOrElse { failure ->
-            return failure.toVfsConnectionTestResult(
-                protocol = VfsProtocol.S3,
-                location = request.location,
-            )
-        }
+        return runCatching { S3Location.parse(request.location) }.fold(
+            onSuccess = { location -> testParsedConnection(request, location) },
+            onFailure = { failure ->
+                failure.toVfsConnectionTestResult(
+                    protocol = VfsProtocol.S3,
+                    location = request.location,
+                )
+            },
+        )
+    }
+
+    /**
+     * 使用已解析 S3 位置执行连接测试。
+     *
+     * @param request 原始连接测试请求。
+     * @param location 已解析 S3 位置。
+     * @return 连接测试结果。
+     */
+    private suspend fun testParsedConnection(
+        request: VfsConnectionTestRequest,
+        location: S3Location,
+    ): VfsConnectionTestResult {
         val authContext = request.authContext.takeIf { it != VfsAuthContext.None }
             ?: authRepository.authContext(request.location)
         return when (authContext) {
@@ -218,42 +201,43 @@ class S3VfsProvider(
     }
 
     override suspend fun readFile(entry: VFile): Result<VfsContentSource> {
-        if (!supports(entry.location)) {
-            return Result.failure(VfsProviderNotFoundException(entry.location))
-        }
-        if (entry.kind == VFileKind.DIRECTORY) {
-            return Result.failure(
-                VfsProviderException(
-                    VfsProviderError.UnsupportedOperation(
-                        protocol = VfsProtocol.S3,
-                        location = entry.location,
-                        capability = VfsProviderCapability.READ_CONTENT,
-                    )
+        val validationFailure = when {
+            !supports(entry.location) -> VfsProviderNotFoundException(entry.location)
+            entry.kind == VFileKind.DIRECTORY -> VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.S3,
+                    location = entry.location,
+                    capability = VfsProviderCapability.READ_CONTENT,
                 )
             )
+            else -> null
         }
-        return when (val authContext = authRepository.authContext(entry.location)) {
-            VfsAuthContext.None -> Result.failure(
-                VfsProviderException(VfsProviderError.AuthenticationRequired(VfsProtocol.S3, entry.location))
-            )
+        return if (validationFailure != null) {
+            Result.failure(validationFailure)
+        } else {
+            when (val authContext = authRepository.authContext(entry.location)) {
+                VfsAuthContext.None -> Result.failure(
+                    VfsProviderException(VfsProviderError.AuthenticationRequired(VfsProtocol.S3, entry.location))
+                )
 
-            is VfsAuthContext.AwsCredentials -> runCatching {
-                client.readFile(
-                    entry = entry,
-                    location = S3Location.parse(entry.location),
-                    authContext = authContext,
+                is VfsAuthContext.AwsCredentials -> runCatching {
+                    client.readFile(
+                        entry = entry,
+                        location = S3Location.parse(entry.location),
+                        authContext = authContext,
+                    )
+                }
+
+                else -> Result.failure(
+                    VfsProviderException(
+                        VfsProviderError.UnsupportedOperation(
+                            protocol = VfsProtocol.S3,
+                            location = entry.location,
+                            capability = VfsProviderCapability.READ_CONTENT,
+                        )
+                    )
                 )
             }
-
-            else -> Result.failure(
-                VfsProviderException(
-                    VfsProviderError.UnsupportedOperation(
-                        protocol = VfsProtocol.S3,
-                        location = entry.location,
-                        capability = VfsProviderCapability.READ_CONTENT,
-                    )
-                )
-            )
         }
     }
 
@@ -270,7 +254,7 @@ class S3VfsProvider(
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
     ): Result<Unit> {
-        return transferObjects(
+        return transferService.transferObjects(
             entries = entries,
             targetDirectoryLocation = targetDirectoryLocation,
             conflictStrategy = conflictStrategy,
@@ -291,7 +275,7 @@ class S3VfsProvider(
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
     ): Result<Unit> {
-        return transferObjects(
+        return transferService.transferObjects(
             entries = entries,
             targetDirectoryLocation = targetDirectoryLocation,
             conflictStrategy = conflictStrategy,
@@ -308,12 +292,13 @@ class S3VfsProvider(
     override suspend fun delete(entries: List<VFile>): Result<Unit> {
         if (entries.isEmpty()) return Result.success(Unit)
         val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
-        if (unsupported != null) {
-            return Result.failure(VfsProviderNotFoundException(unsupported.location))
-        }
-        return runCatching {
-            entries.forEach { entry ->
-                deleteEntry(entry)
+        return if (unsupported != null) {
+            Result.failure(VfsProviderNotFoundException(unsupported.location))
+        } else {
+            runCatching {
+                entries.forEach { entry ->
+                    deleteEntry(entry)
+                }
             }
         }
     }
@@ -335,7 +320,7 @@ class S3VfsProvider(
         return runCatching {
             val parentLocation = entry.parentLocation ?: S3Location.parse(entry.location).directoryLocation
             val target = if (entry.kind == VFileKind.DIRECTORY) {
-                copyDirectory(
+                transferService.copyDirectory(
                     entry = entry,
                     targetDirectoryLocation = parentLocation,
                     targetName = targetName,
@@ -451,158 +436,6 @@ class S3VfsProvider(
     }
 
     /**
-     * 在 S3 内复制或移动文件对象。
-     *
-     * @param entries 源文件对象列表。
-     * @param targetDirectoryLocation 目标目录位置。
-     * @param conflictStrategy 冲突处理策略。
-     * @param deleteSource 写入完成后是否删除源对象。
-     * @return 执行结果。
-     */
-    private suspend fun transferObjects(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        conflictStrategy: TransferConflictStrategy,
-        deleteSource: Boolean,
-    ): Result<Unit> {
-        if (entries.isEmpty()) return Result.success(Unit)
-        if (!supports(targetDirectoryLocation)) {
-            return Result.failure(VfsProviderNotFoundException(targetDirectoryLocation))
-        }
-        val unsupported = entries.firstOrNull { entry -> !supports(entry.location) }
-        if (unsupported != null) {
-            return Result.failure(VfsProviderNotFoundException(unsupported.location))
-        }
-        return runCatching {
-            entries.forEach { entry ->
-                val transferred = if (entry.kind == VFileKind.DIRECTORY) {
-                    if (isSameOrChildDirectory(targetDirectoryLocation, entry)) {
-                        throw unsupported(targetDirectoryLocation, if (deleteSource) VfsProviderCapability.MOVE else VfsProviderCapability.COPY)
-                    }
-                    copyDirectory(
-                        entry = entry,
-                        targetDirectoryLocation = targetDirectoryLocation,
-                        targetName = entry.name,
-                        conflictStrategy = conflictStrategy,
-                    ) != null
-                } else {
-                    val source = readFile(entry).getOrThrow()
-                    writeFile(
-                        parentLocation = targetDirectoryLocation,
-                        name = entry.name,
-                        chunks = source.chunks,
-                        conflictStrategy = conflictStrategy,
-                    ).getOrThrow() != null
-                }
-                if (deleteSource && transferred) {
-                    delete(listOf(entry)).getOrThrow()
-                }
-            }
-        }
-    }
-
-    /**
-     * 递归复制 S3 目录，并保留空目录占位对象。
-     *
-     * @param entry 源目录条目。
-     * @param targetDirectoryLocation 目标父目录位置。
-     * @param targetName 目标目录名。
-     * @param conflictStrategy 冲突处理策略。
-     * @return 实际创建的目标目录；冲突策略为跳过且目标已存在时返回 `null`。
-     */
-    private suspend fun copyDirectory(
-        entry: VFile,
-        targetDirectoryLocation: String,
-        targetName: String,
-        conflictStrategy: TransferConflictStrategy,
-    ): VFile? {
-        val targetDirectory = createDirectoryForCopy(
-            parentLocation = targetDirectoryLocation,
-            name = targetName,
-            conflictStrategy = conflictStrategy,
-        ) ?: return null
-        list(entry.location).getOrThrow().forEach { child ->
-            if (child.kind == VFileKind.DIRECTORY) {
-                copyDirectory(
-                    entry = child,
-                    targetDirectoryLocation = targetDirectory.location,
-                    targetName = child.name,
-                    conflictStrategy = conflictStrategy,
-                )
-            } else {
-                val source = readFile(child).getOrThrow()
-                writeFile(
-                    parentLocation = targetDirectory.location,
-                    name = child.name,
-                    chunks = source.chunks,
-                    conflictStrategy = conflictStrategy,
-                ).getOrThrow()
-            }
-        }
-        return targetDirectory
-    }
-
-    /**
-     * 按复制语义创建 S3 目录，避免把目录冲突简单伪装成普通文件冲突。
-     *
-     * @param parentLocation 目标父目录位置。
-     * @param name 源目录名或用户输入的新目录名。
-     * @param conflictStrategy 冲突处理策略。
-     * @return 创建或复用的目录条目；跳过冲突时返回 `null`。
-     */
-    private suspend fun createDirectoryForCopy(
-        parentLocation: String,
-        name: String,
-        conflictStrategy: TransferConflictStrategy,
-    ): VFile? {
-        val targetName = resolveDirectoryNameForCopy(parentLocation, name, conflictStrategy) ?: return null
-        val parent = S3Location.parse(parentLocation)
-        return createDirectory(parentLocation, targetName).recoverCatching { failure ->
-            if (conflictStrategy == TransferConflictStrategy.OVERWRITE && failure.isAlreadyExists()) {
-                parent
-                    .copy(prefix = parent.directoryPrefix + targetName.withVfsTrailingSlash())
-                    .toDirectoryVFile(name = targetName, parentLocation = parent.directoryLocation)
-            } else {
-                throw failure
-            }
-        }.getOrThrow()
-    }
-
-    /**
-     * 根据冲突策略解析目录复制时的目标目录名。
-     *
-     * @param parentLocation 目标父目录位置。
-     * @param name 原始目录名。
-     * @param conflictStrategy 冲突处理策略。
-     * @return 目标目录名；跳过冲突时返回 `null`。
-     */
-    private suspend fun resolveDirectoryNameForCopy(
-        parentLocation: String,
-        name: String,
-        conflictStrategy: TransferConflictStrategy,
-    ): String? {
-        val targetName = validateTargetName(name)
-        val existingNames = list(parentLocation).getOrThrow().mapTo(mutableSetOf()) { entry -> entry.name }
-        return when (conflictStrategy) {
-            TransferConflictStrategy.OVERWRITE -> targetName
-            TransferConflictStrategy.SKIP -> targetName.takeUnless { it in existingNames }
-            TransferConflictStrategy.KEEP_BOTH -> {
-                var candidateName = targetName
-                repeat(MAX_KEEP_BOTH_ATTEMPTS) { index ->
-                    if (candidateName !in existingNames) return candidateName
-                    candidateName = targetName.withVfsCopySuffix(index + 1)
-                }
-                throw VfsProviderException(
-                    VfsProviderError.AlreadyExists(
-                        protocol = VfsProtocol.S3,
-                        location = parentLocation,
-                    )
-                )
-            }
-        }
-    }
-
-    /**
      * 递归删除 S3 条目。
      *
      * @param entry 待删除条目。
@@ -616,31 +449,6 @@ class S3VfsProvider(
             location = S3Location.parse(entry.location),
             authContext = authContext,
         )
-    }
-
-    /**
-     * 判断异常是否表示 S3 目标已存在。
-     *
-     * @return `true` 表示异常来自已存在错误。
-     */
-    private fun Throwable.isAlreadyExists(): Boolean {
-        return this is VfsProviderException && error is VfsProviderError.AlreadyExists
-    }
-
-    /**
-     * 判断目标目录是否落在源目录内部，避免递归复制时把刚创建的目标再次枚举进去。
-     *
-     * @param targetDirectoryLocation 目标父目录位置。
-     * @param sourceDirectory 源目录条目。
-     * @return `true` 表示目标与源相同或在源目录内部。
-     */
-    private fun isSameOrChildDirectory(
-        targetDirectoryLocation: String,
-        sourceDirectory: VFile,
-    ): Boolean {
-        val target = S3Location.parse(targetDirectoryLocation).directoryLocation
-        val source = S3Location.parse(sourceDirectory.location).directoryLocation
-        return target == source || target.startsWith(source)
     }
 
     /**
@@ -696,6 +504,5 @@ class S3VfsProvider(
 
     private companion object {
         const val S3_SCHEME = "s3://"
-        const val MAX_KEEP_BOTH_ATTEMPTS = 10_000
     }
 }

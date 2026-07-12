@@ -124,21 +124,22 @@ internal class RootSearchDelegate(
 
         val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                fileSearchUseCase.search(
-                    FileSearchRequest(
-                        rootLocation = rootLocation,
-                        query = query,
-                    )
-                ).collect { event ->
-                    if (searchRunId != runId) {
-                        return@collect
+                val outcome = runCatching {
+                    fileSearchUseCase.search(
+                        FileSearchRequest(
+                            rootLocation = rootLocation,
+                            query = query,
+                        )
+                    ).collect { event ->
+                        if (searchRunId != runId) {
+                            return@collect
+                        }
+                        reduceSearchEvent(event)
                     }
-                    reduceSearchEvent(event)
                 }
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (failure: Throwable) {
-                if (searchRunId == runId) {
+                val failure = outcome.exceptionOrNull()
+                if (failure is CancellationException) throw failure
+                if (failure != null && searchRunId == runId) {
                     _searchState.value = _searchState.value.copy(
                         status = SearchStatus.FAILED,
                         error = failure.toSearchErrorMessage(),

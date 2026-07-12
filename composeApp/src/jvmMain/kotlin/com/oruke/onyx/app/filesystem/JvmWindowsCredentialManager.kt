@@ -40,13 +40,23 @@ internal class JvmWindowsCredentialManager {
             flags = 0,
             credential = credentialRef,
         )
-        if (!read) return null
-        val pointer = credentialRef.value ?: return null
+        val pointer = credentialRef.value.takeIf { read }
+        return pointer?.let(::readCredential)
+    }
+
+    /**
+     * 从系统分配的原生指针读取凭据，并确保内存最终释放。
+     *
+     * @param pointer `CredReadW` 返回的凭据结构指针。
+     * @return UTF-16LE 凭据内容；凭据没有内容时返回 `null`。
+     */
+    private fun readCredential(pointer: Pointer): String? {
         return try {
             val credential = Credential(pointer).apply { read() }
-            val blobPointer = credential.CredentialBlob ?: return null
-            val bytes = blobPointer.getByteArray(0, credential.CredentialBlobSize)
-            String(bytes, StandardCharsets.UTF_16LE).trimEnd('\u0000')
+            credential.CredentialBlob?.let { blobPointer ->
+                val bytes = blobPointer.getByteArray(0, credential.CredentialBlobSize)
+                String(bytes, StandardCharsets.UTF_16LE).trimEnd('\u0000')
+            }
         } finally {
             WinCred.INSTANCE.CredFree(pointer)
         }
@@ -99,6 +109,7 @@ internal class JvmWindowsCredentialManager {
      * Windows `CREDENTIALW` 结构体映射。
      *
      * JNA 会从 `Structure` 包外反射访问字段，因此声明类不能使用 JVM 私有可见性。
+     * 字段名称必须逐字匹配 Windows SDK，不能改为 Kotlin 小驼峰命名。
      */
     @Structure.FieldOrder(
         "Flags",
@@ -114,18 +125,31 @@ internal class JvmWindowsCredentialManager {
         "TargetAlias",
         "UserName",
     )
+    @Suppress("VariableNaming")
     internal class Credential : Structure {
+        /** Windows 凭据标记。 */
         @JvmField var Flags: Int = 0
+        /** 凭据类型，本实现固定使用 Generic Credential。 */
         @JvmField var Type: Int = CRED_TYPE_GENERIC
+        /** 系统凭据目标名称。 */
         @JvmField var TargetName: WString? = null
+        /** 可选的凭据注释。 */
         @JvmField var Comment: WString? = null
+        /** 系统维护的最后写入时间。 */
         @JvmField var LastWritten: WinBase.FILETIME = WinBase.FILETIME()
+        /** 凭据内容的字节长度。 */
         @JvmField var CredentialBlobSize: Int = 0
+        /** 凭据内容的原生内存指针。 */
         @JvmField var CredentialBlob: Pointer? = null
+        /** 凭据持久化范围。 */
         @JvmField var Persist: Int = CRED_PERSIST_LOCAL_MACHINE
+        /** 附加属性数量。 */
         @JvmField var AttributeCount: Int = 0
+        /** 附加属性数组指针。 */
         @JvmField var Attributes: Pointer? = null
+        /** 可选的目标别名。 */
         @JvmField var TargetAlias: WString? = null
+        /** 凭据条目显示的用户名。 */
         @JvmField var UserName: WString? = null
 
         /**

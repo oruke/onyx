@@ -38,6 +38,15 @@ import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.styling.TitleBarStyle
 import org.koin.compose.getKoin
 
+/** 主窗口允许缩放到的最小宽度，单位为物理像素。 */
+private const val MAIN_WINDOW_MIN_WIDTH = 800
+
+/** 主窗口允许缩放到的最小高度，单位为物理像素。 */
+private const val MAIN_WINDOW_MIN_HEIGHT = 600
+
+/**
+ * 启动 Onyx 桌面应用并装配依赖与 Jewel 主题。
+ */
 fun main() = application {
     KoinApplication(application = { modules(fileModule) }) {
         val isDark = isSystemInDarkTheme()
@@ -100,7 +109,7 @@ fun main() = application {
                 icon = painterResource(Res.drawable.onyx_logo),
                 state = mainWindowState,
             ) {
-                window.minimumSize = java.awt.Dimension(800, 600)
+                window.minimumSize = java.awt.Dimension(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
                 // 安装外部拖放支持
                 LaunchedEffect(window) {
                     externalFileDragService.install(window)

@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,7 +47,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.panpf.zoomimage.ZoomImage
+import com.github.panpf.zoomimage.compose.ZoomState
 import com.github.panpf.zoomimage.compose.rememberZoomState
+import com.oruke.onyx.core.model.ImageFitMode
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.ui.theme.formatFileSize
@@ -60,6 +63,21 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+
+/** 查看器读取原图时允许请求的最大边长。 */
+private const val VIEWER_MAX_IMAGE_DIMENSION = 4096
+
+/** 左右翻页热区各自占窗口宽度的比例。 */
+private const val VIEWER_NAVIGATION_ZONE_FRACTION = 0.2f
+
+/** 缩放倍率转换为百分比的基数。 */
+private const val ZOOM_PERCENT_BASE = 100
+
+/** 单次图片旋转的角度。 */
+private const val ROTATION_STEP_DEGREES = 90
+
+/** 一周完整旋转的角度。 */
+private const val FULL_ROTATION_DEGREES = 360
 
 /**
  * 图片查看器内容。
@@ -79,7 +97,7 @@ internal fun ImageViewerContent(
     onNext: () -> Unit,
     onPrevious: () -> Unit,
     onSetZoom: (Float) -> Unit,
-    onSetFitMode: (com.oruke.onyx.core.model.ImageFitMode) -> Unit,
+    onSetFitMode: (ImageFitMode) -> Unit,
     onRotate: (Boolean) -> Unit,
     loadThumbnail: suspend (String, Int) -> ImageBitmap?,
     readImageSize: suspend (VFile) -> IntSize?,
@@ -87,7 +105,11 @@ internal fun ImageViewerContent(
     val currentFile = state.currentFile ?: return
 
     // ── 图片加载 ──────────────────────────────────────────────────
-    val (bitmap, isLoading) = rememberAsyncBitmap(currentFile.location, 4096, loadThumbnail)
+    val (bitmap, isLoading) = rememberAsyncBitmap(
+        currentFile.location,
+        VIEWER_MAX_IMAGE_DIMENSION,
+        loadThumbnail,
+    )
 
     // 原图分辨率（用于信息栏显示）
     var nativeResolution by remember(currentFile.location) { mutableStateOf<IntSize?>(null) }
@@ -131,6 +153,7 @@ internal fun ImageViewerContent(
                                 targetScale = target,
                                 animated = true,
                             )
+                            onSetZoom(target)
                         }
                         true
                     }
@@ -143,6 +166,7 @@ internal fun ImageViewerContent(
                                 targetScale = target,
                                 animated = true,
                             )
+                            onSetZoom(target)
                         }
                         true
                     }
@@ -152,6 +176,7 @@ internal fun ImageViewerContent(
                                 targetScale = zoomState.zoomable.minScale,
                                 animated = true,
                             )
+                            onSetFitMode(ImageFitMode.FIT_WINDOW)
                         }
                         true
                     }
@@ -159,208 +184,235 @@ internal fun ImageViewerContent(
                 }
             },
     ) {
-        // ── 图片区域 ──────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(vertical = 48.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (isLoading) {
-                Text(
-                    text = "…",
-                    color = Color.White.copy(alpha = 0.5f),
-                    fontSize = 24.sp,
-                )
-            } else if (bitmap != null) {
-                ZoomImage(
-                    painter = remember(bitmap) { BitmapPainter(bitmap) },
-                    contentDescription = currentFile.name,
-                    modifier = Modifier.fillMaxSize(),
-                    zoomState = zoomState,
-                )
-            } else {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        key = AllIconsKeys.FileTypes.Any_type,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = currentFile.name,
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 14.sp,
-                    )
-                }
+        ImageViewerViewport(currentFile, bitmap, isLoading, zoomState)
+        ImageViewerToolbar(
+            zoomState = zoomState,
+            currentScale = currentScale,
+            coroutineScope = coroutineScope,
+            onPrevious = onPrevious,
+            onNext = onNext,
+            onSetZoom = onSetZoom,
+            onSetFitMode = onSetFitMode,
+            onRotate = onRotate,
+        )
+        ImageViewerInfoBar(state, currentFile, nativeResolution)
+        ImageViewerNavigationZones(onPrevious, onNext)
+    }
+}
+
+/**
+ * 渲染查看器图片画布及加载、失败状态。
+ *
+ * @param file 当前图片文件。
+ * @param bitmap 已加载位图。
+ * @param isLoading 是否仍在加载。
+ * @param zoomState ZoomImage 交互状态。
+ */
+@Composable
+private fun ImageViewerViewport(
+    file: VFile,
+    bitmap: ImageBitmap?,
+    isLoading: Boolean,
+    zoomState: ZoomState,
+) {
+    Box(
+        modifier = Modifier.fillMaxSize().padding(vertical = 48.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            isLoading -> Text("…", color = Color.White.copy(alpha = 0.5f), fontSize = 24.sp)
+            bitmap != null -> ZoomImage(
+                painter = remember(bitmap) { BitmapPainter(bitmap) },
+                contentDescription = file.name,
+                modifier = Modifier.fillMaxSize(),
+                zoomState = zoomState,
+            )
+            else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(AllIconsKeys.FileTypes.Any_type, null, Modifier.size(64.dp))
+                Spacer(Modifier.height(8.dp))
+                Text(file.name, color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
             }
         }
+    }
+}
 
-        // ── 顶部工具栏 ────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .background(Color.Black.copy(alpha = 0.6f))
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ViewerToolbarButton(label = "←", onClick = onPrevious)
-            Spacer(Modifier.width(4.dp))
-            ViewerToolbarButton(label = "→", onClick = onNext)
-            Spacer(Modifier.width(16.dp))
-            ViewerToolbarButton(
-                label = stringResource(Res.string.action_image_fit_window),
-                onClick = {
-                    coroutineScope.launch {
-                        zoomState.zoomable.scale(
-                            targetScale = zoomState.zoomable.minScale,
-                            animated = true,
-                        )
-                    }
-                },
-            )
-            Spacer(Modifier.width(4.dp))
-            ViewerToolbarButton(
-                label = stringResource(Res.string.action_image_actual_size),
-                onClick = {
-                    coroutineScope.launch {
-                        zoomState.zoomable.scale(
-                            targetScale = 1f,
-                            animated = true,
-                        )
-                    }
-                },
-            )
-            Spacer(Modifier.width(16.dp))
-
-            // 缩放百分比显示
-            Text(
-                text = "${(currentScale * 100).toInt()}%",
-                color = Color.White.copy(alpha = 0.8f),
-                fontSize = 12.sp,
-                modifier = Modifier.widthIn(min = 48.dp),
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.width(4.dp))
-            ViewerToolbarButton(label = "−", onClick = {
-                coroutineScope.launch {
-                    val target = (currentScale / 1.25f).coerceAtLeast(
-                        zoomState.zoomable.minScale
-                    )
-                    zoomState.zoomable.scale(targetScale = target, animated = true)
-                }
-            })
-            Spacer(Modifier.width(4.dp))
-            ViewerToolbarButton(label = "+", onClick = {
-                coroutineScope.launch {
-                    val target = (currentScale * 1.25f).coerceAtMost(
-                        zoomState.zoomable.maxScale
-                    )
-                    zoomState.zoomable.scale(targetScale = target, animated = true)
-                }
-            })
-            Spacer(Modifier.width(16.dp))
-            ViewerToolbarButton(
-                label = stringResource(Res.string.action_image_rotate_ccw),
-                onClick = {
-                    coroutineScope.launch {
-                        zoomState.zoomable.rotate(
-                            targetRotation = (zoomState.zoomable.transform.rotation.toInt() - 90 + 360) % 360,
-                        )
-                    }
-                },
-            )
-            Spacer(Modifier.width(4.dp))
-            ViewerToolbarButton(
-                label = stringResource(Res.string.action_image_rotate_cw),
-                onClick = {
-                    coroutineScope.launch {
-                        zoomState.zoomable.rotate(
-                            targetRotation = (zoomState.zoomable.transform.rotation.toInt() + 90) % 360,
-                        )
-                    }
-                },
-            )
-            Spacer(Modifier.weight(1f))
-        }
-
-        // ── 底部信息栏 ────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .background(Color.Black.copy(alpha = 0.6f))
-                .padding(horizontal = 16.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // 文件名
-            Text(
-                text = currentFile.name,
-                color = Color.White.copy(alpha = 0.9f),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false).widthIn(max = 400.dp),
-            )
-            Spacer(Modifier.width(16.dp))
-
-            // 分辨率
-            nativeResolution?.let { res ->
-                Text(
-                    text = "${res.width} × ${res.height}",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 11.sp,
-                )
-                Spacer(Modifier.width(16.dp))
+/**
+ * 渲染查看器导航、缩放和旋转工具栏。
+ *
+ * @param zoomState ZoomImage 交互状态。
+ * @param currentScale 当前缩放倍率。
+ * @param coroutineScope 运行缩放动画的协程作用域。
+ * @param onPrevious 上一张回调。
+ * @param onNext 下一张回调。
+ * @param onSetZoom 保存缩放状态回调。
+ * @param onSetFitMode 保存适应模式回调。
+ * @param onRotate 保存旋转状态回调。
+ */
+@Composable
+private fun BoxScope.ImageViewerToolbar(
+    zoomState: ZoomState,
+    currentScale: Float,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onSetZoom: (Float) -> Unit,
+    onSetFitMode: (ImageFitMode) -> Unit,
+    onRotate: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .align(Alignment.TopCenter)
+            .background(Color.Black.copy(alpha = 0.6f))
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ViewerToolbarButton("←", onPrevious)
+        Spacer(Modifier.width(4.dp))
+        ViewerToolbarButton("→", onNext)
+        Spacer(Modifier.width(16.dp))
+        ViewerToolbarButton(
+            label = stringResource(Res.string.action_image_fit_window),
+            onClick = {
+            coroutineScope.launch {
+                zoomState.zoomable.scale(zoomState.zoomable.minScale, animated = true)
+                onSetFitMode(ImageFitMode.FIT_WINDOW)
             }
+            },
+        )
+        Spacer(Modifier.width(4.dp))
+        ViewerToolbarButton(
+            label = stringResource(Res.string.action_image_actual_size),
+            onClick = {
+            coroutineScope.launch {
+                zoomState.zoomable.scale(1f, animated = true)
+                onSetFitMode(ImageFitMode.ACTUAL_SIZE)
+            }
+            },
+        )
+        Spacer(Modifier.width(16.dp))
+        Text(
+            "${(currentScale * ZOOM_PERCENT_BASE).toInt()}%",
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 12.sp,
+            modifier = Modifier.widthIn(min = 48.dp),
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.width(4.dp))
+        ViewerToolbarButton(label = "−", onClick = {
+            coroutineScope.launch {
+                val target = (currentScale / 1.25f).coerceAtLeast(zoomState.zoomable.minScale)
+                zoomState.zoomable.scale(target, animated = true)
+                onSetZoom(target)
+            }
+        })
+        Spacer(Modifier.width(4.dp))
+        ViewerToolbarButton(label = "+", onClick = {
+            coroutineScope.launch {
+                val target = (currentScale * 1.25f).coerceAtMost(zoomState.zoomable.maxScale)
+                zoomState.zoomable.scale(target, animated = true)
+                onSetZoom(target)
+            }
+        })
+        Spacer(Modifier.width(16.dp))
+        ViewerToolbarButton(
+            label = stringResource(Res.string.action_image_rotate_ccw),
+            onClick = {
+            coroutineScope.launch {
+                val rotation = (
+                    zoomState.zoomable.transform.rotation.toInt() -
+                        ROTATION_STEP_DEGREES + FULL_ROTATION_DEGREES
+                    ) % FULL_ROTATION_DEGREES
+                zoomState.zoomable.rotate(rotation)
+                onRotate(false)
+            }
+            },
+        )
+        Spacer(Modifier.width(4.dp))
+        ViewerToolbarButton(
+            label = stringResource(Res.string.action_image_rotate_cw),
+            onClick = {
+            coroutineScope.launch {
+                val rotation = (
+                    zoomState.zoomable.transform.rotation.toInt() + ROTATION_STEP_DEGREES
+                    ) % FULL_ROTATION_DEGREES
+                zoomState.zoomable.rotate(rotation)
+                onRotate(true)
+            }
+            },
+        )
+        Spacer(Modifier.weight(1f))
+    }
+}
 
-            // 文件大小
+/**
+ * 渲染当前图片名称、分辨率、大小和索引。
+ *
+ * @param state 图片查看器状态。
+ * @param file 当前图片文件。
+ * @param resolution 原图分辨率。
+ */
+@Composable
+private fun BoxScope.ImageViewerInfoBar(
+    state: ImageViewerState,
+    file: VFile,
+    resolution: IntSize?,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .align(Alignment.BottomCenter)
+            .background(Color.Black.copy(alpha = 0.6f))
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            file.name,
+            color = Color.White.copy(alpha = 0.9f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false).widthIn(max = 400.dp),
+        )
+        Spacer(Modifier.width(16.dp))
+        resolution?.let { value ->
+            Text("${value.width} × ${value.height}", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+            Spacer(Modifier.width(16.dp))
+        }
+        Text(formatFileSize(file.sizeBytes), color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp)
+        Spacer(Modifier.width(16.dp))
+        if (state.allImages.isNotEmpty()) {
             Text(
-                text = formatFileSize(currentFile.sizeBytes),
+                "${state.currentIndex + 1} / ${state.allImages.size}",
                 color = Color.White.copy(alpha = 0.6f),
                 fontSize = 11.sp,
             )
-            Spacer(Modifier.width(16.dp))
-
-            // 索引
-            if (state.allImages.isNotEmpty()) {
-                Text(
-                    text = "${state.currentIndex + 1} / ${state.allImages.size}",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 11.sp,
-                )
-            }
         }
+    }
+}
 
-        // ── 左右翻页点击区域 ──────────────────────────────────────
-        // 左侧 20% 点击 = 上一张
+/**
+ * 渲染窗口左右两侧的翻页热区。
+ *
+ * @param onPrevious 上一张回调。
+ * @param onNext 下一张回调。
+ */
+@Composable
+private fun BoxScope.ImageViewerNavigationZones(onPrevious: () -> Unit, onNext: () -> Unit) {
+    listOf(Alignment.CenterStart to onPrevious, Alignment.CenterEnd to onNext).forEach { (alignment, action) ->
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.2f)
+                .fillMaxWidth(VIEWER_NAVIGATION_ZONE_FRACTION)
                 .fillMaxSize()
-                .align(Alignment.CenterStart)
+                .align(alignment)
                 .padding(vertical = 48.dp)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onPrevious,
-                ),
-        )
-        // 右侧 20% 点击 = 下一张
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.2f)
-                .fillMaxSize()
-                .align(Alignment.CenterEnd)
-                .padding(vertical = 48.dp)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onNext,
+                    onClick = action,
                 ),
         )
     }

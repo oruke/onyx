@@ -120,29 +120,31 @@ internal class PlatformMenuSourceFingerprintService {
         depth: Int,
         remaining: Int,
     ): Int {
-        if (remaining <= 0) return 0
-        digest.appendText(path.name)
-        if (!path.exists()) {
-            digest.appendText("missing")
-            return remaining - 1
-        }
-        val modifiedAt = runCatching { Files.getLastModifiedTime(path).toMillis() }.getOrDefault(0L)
-        digest.appendText(modifiedAt.toString())
-        if (path.isRegularFile()) {
-            digest.appendText(runCatching { Files.size(path).toString() }.getOrDefault("0"))
-            return remaining - 1
-        }
-        if (!path.isDirectory() || depth >= MAX_FINGERPRINT_DEPTH) return remaining - 1
+        var nextRemaining = remaining
+        if (remaining > 0) {
+            digest.appendText(path.name)
+            nextRemaining = remaining - 1
+            when {
+                !path.exists() -> digest.appendText("missing")
+                path.isRegularFile() -> {
+                    val size = runCatching { Files.size(path).toString() }.getOrDefault("0")
+                    digest.appendText(size)
+                }
 
-        var nextRemaining = remaining - 1
-        runCatching {
-            Files.list(path).use { stream ->
-                stream
-                    .sorted { left, right -> left.name.compareTo(right.name, ignoreCase = true) }
-                    .forEach { child ->
-                        nextRemaining = appendPathFingerprint(digest, child, depth + 1, nextRemaining)
+                path.isDirectory() && depth < MAX_FINGERPRINT_DEPTH -> runCatching {
+                    Files.list(path).use { stream ->
+                        stream
+                            .sorted { left, right -> left.name.compareTo(right.name, ignoreCase = true) }
+                            .forEach { child ->
+                                nextRemaining = appendPathFingerprint(digest, child, depth + 1, nextRemaining)
+                            }
                     }
+                }
+
+                else -> Unit
             }
+            val modifiedAt = runCatching { Files.getLastModifiedTime(path).toMillis() }.getOrDefault(0L)
+            digest.appendText(modifiedAt.toString())
         }
         return nextRemaining
     }

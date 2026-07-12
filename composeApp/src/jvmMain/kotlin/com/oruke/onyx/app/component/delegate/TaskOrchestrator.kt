@@ -49,10 +49,26 @@ class TaskOrchestrator(
         restorePersistedTasks()
     }
 
+    /**
+     * 将新任务插入任务列表顶部。
+     *
+     * @param task 新后台任务。
+     */
     fun appendTask(task: BackgroundTask) {
         replaceTasks(listOf(task) + _tasks.value)
     }
 
+    /**
+     * 更新后台任务的执行状态与进度字段。
+     *
+     * @param taskId 任务 id。
+     * @param status 新任务状态。
+     * @param detail 新状态详情。
+     * @param progress 可选进度比例。
+     * @param processedCount 可选已处理条目数。
+     * @param processedBytes 可选已处理字节数。
+     * @param totalBytes 可选总字节数。
+     */
     fun updateTask(
         taskId: String,
         status: BackgroundTaskStatus,
@@ -78,12 +94,24 @@ class TaskOrchestrator(
         })
     }
 
+    /**
+     * 使用转换函数更新指定任务。
+     *
+     * @param taskId 任务 id。
+     * @param transform 任务状态转换函数。
+     */
     fun updateTaskFields(taskId: String, transform: (BackgroundTask) -> BackgroundTask) {
         replaceTasks(_tasks.value.map { task ->
             if (task.id == taskId) transform(task) else task
         })
     }
 
+    /**
+     * 绑定任务与协程 Job。
+     *
+     * @param taskId 任务 id。
+     * @param job 任务协程。
+     */
     fun registerJob(taskId: String, job: Job) {
         taskJobs[taskId] = job
     }
@@ -122,19 +150,41 @@ class TaskOrchestrator(
         return job
     }
 
+    /**
+     * 解除任务 Job 和暂停标志注册。
+     *
+     * @param taskId 任务 id。
+     */
     fun unregisterJob(taskId: String) {
         taskJobs.remove(taskId)
         taskPauseFlags.remove(taskId)
     }
 
+    /**
+     * 注册任务重试动作。
+     *
+     * @param taskId 任务 id。
+     * @param retry 重试动作。
+     */
     fun registerRetryHandler(taskId: String, retry: () -> Unit) {
         taskRetryHandlers[taskId] = retry
     }
 
+    /**
+     * 获取或创建任务暂停标志。
+     *
+     * @param taskId 任务 id。
+     * @return 可观察暂停标志。
+     */
     fun getOrCreatePauseFlag(taskId: String): MutableStateFlow<Boolean> {
         return taskPauseFlags.getOrPut(taskId) { MutableStateFlow(false) }
     }
 
+    /**
+     * 从活动列表移除任务并归档其最终状态。
+     *
+     * @param taskId 任务 id。
+     */
     fun dismissTask(taskId: String) {
         val removedTask = _tasks.value.firstOrNull { task -> task.id == taskId }?.withArchivedStatus()
         taskJobs.remove(taskId)?.cancel()
@@ -144,10 +194,20 @@ class TaskOrchestrator(
         replaceTasks(_tasks.value.filterNot { task -> task.id == taskId })
     }
 
+    /**
+     * 取消指定任务协程。
+     *
+     * @param taskId 任务 id。
+     */
     fun cancelTask(taskId: String) {
         taskJobs[taskId]?.cancel()
     }
 
+    /**
+     * 将任务标记为暂停。
+     *
+     * @param taskId 任务 id。
+     */
     fun pauseTask(taskId: String) {
         taskPauseFlags[taskId]?.value = true
         updateTaskFields(taskId) { task ->
@@ -155,6 +215,11 @@ class TaskOrchestrator(
         }
     }
 
+    /**
+     * 恢复暂停任务。
+     *
+     * @param taskId 任务 id。
+     */
     fun resumeTask(taskId: String) {
         taskPauseFlags[taskId]?.value = false
         updateTaskFields(taskId) { task ->
@@ -162,12 +227,20 @@ class TaskOrchestrator(
         }
     }
 
+    /**
+     * 移除失败任务并执行已注册的重试动作。
+     *
+     * @param taskId 任务 id。
+     */
     fun retryTask(taskId: String) {
         val retry = taskRetryHandlers[taskId] ?: return
         dismissTask(taskId)
         retry()
     }
 
+    /**
+     * 取消、归档并清空全部活动任务。
+     */
     fun clearAllTasks() {
         val removedTasks = _tasks.value.map { task -> task.withArchivedStatus() }
         taskJobs.values.forEach { job -> job.cancel() }
@@ -183,7 +256,7 @@ class TaskOrchestrator(
      */
     fun scheduleAutoCleanup(taskId: String) {
         scope.launch {
-            delay(5000)
+            delay(TASK_RETRY_HANDLER_RETENTION_MS)
             taskRetryHandlers.remove(taskId)
             val task = _tasks.value.firstOrNull { current -> current.id == taskId }
             if (task != null) {
@@ -281,7 +354,11 @@ class TaskOrchestrator(
     }
 
     private companion object {
+        /** 持久化任务历史的最大条数。 */
         const val MAX_PERSISTED_TASKS = 200
+        /** 同时运行的后台任务上限。 */
         const val MAX_CONCURRENT_RUNNING_TASKS = 2
+        /** 完成任务后继续保留重试处理器的时长。 */
+        const val TASK_RETRY_HANDLER_RETENTION_MS = 5_000L
     }
 }

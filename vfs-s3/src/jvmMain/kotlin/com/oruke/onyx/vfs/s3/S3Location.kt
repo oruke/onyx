@@ -7,12 +7,12 @@ import java.net.URI
 
 /**
  * 解析后的 S3 位置。
- *
- * @property bucket bucket 名称。
- * @property prefix 当前前缀。
  */
 data class S3Location(
+    /** bucket 名称。 */
     val bucket: String,
+
+    /** 当前对象或目录前缀。 */
     val prefix: String,
 ) {
     /** 对象 key，不包含开头 `/`。 */
@@ -42,6 +42,9 @@ data class S3Location(
         return URI("s3", bucket, "/$path", null).toASCIIString()
     }
 
+    /**
+     * S3 VFS 位置解析工具。
+     */
     companion object {
         /**
          * 解析 `s3://bucket/key` 位置。

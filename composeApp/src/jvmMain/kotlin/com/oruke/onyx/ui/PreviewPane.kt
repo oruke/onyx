@@ -54,6 +54,9 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+/** 预览面板图片请求的最大边长。 */
+private const val PREVIEW_THUMBNAIL_DIMENSION = 800
+
 
 /**
  * 右侧预览面板组件 (Preview Pane)
@@ -92,128 +95,154 @@ internal fun PreviewPane(
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
-                // 1. 顶部大图/图标预览区域
-                // 采用 Box 限制最大高度，内部元素居中对齐
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val isImage = isImageFileName(selectedEntry.name)
-                    if (isImage) {
-                        val (thumbnail, _) = rememberAsyncBitmap(selectedEntry.location, 800, loadThumbnail)
-                        if (thumbnail != null) {
-                            Image(
-                                bitmap = thumbnail,
-                                contentDescription = selectedEntry.name,
-                                contentScale = ContentScale.Fit,
-                                filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
-                    } else {
-                        val iconKey = if (selectedEntry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(selectedEntry.name)
-                        Icon(
-                            key = iconKey,
-                            contentDescription = null,
-                            modifier = Modifier.size(96.dp)
-                        )
-                    }
-                }
-
+                PreviewVisual(selectedEntry, loadThumbnail, isImageFileName)
                 Spacer(modifier = Modifier.height(16.dp))
-
-                // 2. 元数据展示区域
-                // 包含文件名、类型、大小、最后修改时间
-                Text(
-                    text = selectedEntry.name,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = LocalOnyxPalette.current.foreground,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
+                PreviewMetadata(selectedEntry)
                 Spacer(modifier = Modifier.height(16.dp))
+                TextFilePreview(selectedEntry, loadTextPreview, isTextPreviewFileName)
+            }
+        }
+    }
+}
 
-                val typeLabel = stringResource(Res.string.label_inspector_type)
-                val typeValue = if (selectedEntry.kind == VFileKind.DIRECTORY) {
-                    stringResource(Res.string.label_inspector_directory)
-                } else {
-                    selectedEntry.name.substringAfterLast('.', stringResource(Res.string.label_inspector_file)).uppercase()
-                }
-                Text(
-                    text = "$typeLabel: $typeValue",
-                    fontSize = 12.sp,
-                    color = LocalOnyxPalette.current.mutedForeground
+/**
+ * 渲染图片缩略图或通用文件图标。
+ *
+ * @param entry 当前文件条目。
+ * @param loadThumbnail 缩略图加载函数。
+ * @param isImageFileName 图片文件名判断函数。
+ */
+@Composable
+private fun PreviewVisual(
+    entry: VFile,
+    loadThumbnail: suspend (String, Int) -> ImageBitmap?,
+    isImageFileName: (String) -> Boolean,
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth().height(200.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isImageFileName(entry.name)) {
+            val (thumbnail, _) = rememberAsyncBitmap(
+                entry.location,
+                PREVIEW_THUMBNAIL_DIMENSION,
+                loadThumbnail,
+            )
+            thumbnail?.let { bitmap ->
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = entry.name,
+                    contentScale = ContentScale.Fit,
+                    filterQuality = androidx.compose.ui.graphics.FilterQuality.High,
+                    modifier = Modifier.fillMaxSize(),
                 )
+            }
+        } else {
+            val iconKey = if (entry.kind == VFileKind.DIRECTORY) {
+                AllIconsKeys.Nodes.Folder
+            } else {
+                fileIconKey(entry.name)
+            }
+            Icon(key = iconKey, contentDescription = null, modifier = Modifier.size(96.dp))
+        }
+    }
+}
 
-                if (selectedEntry.kind == VFileKind.FILE) {
-                    val sizeLabel = stringResource(Res.string.label_inspector_size)
-                    Text(
-                        text = "$sizeLabel: ${formatFileSize(selectedEntry.sizeBytes)}",
-                        fontSize = 12.sp,
-                        color = LocalOnyxPalette.current.mutedForeground
-                    )
-                }
+/**
+ * 渲染预览面板中的名称、类型、大小与修改时间。
+ *
+ * @param entry 当前文件条目。
+ */
+@Composable
+private fun PreviewMetadata(entry: VFile) {
+    Text(
+        text = entry.name,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Bold,
+        color = LocalOnyxPalette.current.foreground,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Spacer(modifier = Modifier.height(16.dp))
+    val typeValue = if (entry.kind == VFileKind.DIRECTORY) {
+        stringResource(Res.string.label_inspector_directory)
+    } else {
+        entry.name.substringAfterLast(
+            '.',
+            stringResource(Res.string.label_inspector_file),
+        ).uppercase()
+    }
+    PreviewMetadataText(stringResource(Res.string.label_inspector_type), typeValue)
+    if (entry.kind == VFileKind.FILE) {
+        PreviewMetadataText(
+            stringResource(Res.string.label_inspector_size),
+            formatFileSize(entry.sizeBytes),
+        )
+    }
+    PreviewMetadataText(
+        stringResource(Res.string.label_inspector_modified),
+        formatModifiedTime(entry.modifiedAtEpochMillis),
+    )
+}
 
-                val modifiedLabel = stringResource(Res.string.label_inspector_modified)
-                Text(
-                    text = "$modifiedLabel: ${formatModifiedTime(selectedEntry.modifiedAtEpochMillis)}",
-                    fontSize = 12.sp,
-                    color = LocalOnyxPalette.current.mutedForeground
-                )
+/**
+ * 渲染单行预览元数据。
+ *
+ * @param label 元数据名称。
+ * @param value 元数据值。
+ */
+@Composable
+private fun PreviewMetadataText(label: String, value: String) {
+    Text(
+        text = "$label: $value",
+        fontSize = 12.sp,
+        color = LocalOnyxPalette.current.mutedForeground,
+    )
+}
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 3. 纯文本预览区域
-                // 针对常见的文本/代码类型进行安全读取
-                val isText = isTextPreviewFileName(selectedEntry.name)
-
-                if (isText && selectedEntry.kind == VFileKind.FILE) {
-                    val loadingText = stringResource(Res.string.label_preview_loading)
-                    val tooLargeText = stringResource(Res.string.label_preview_too_large)
-                    val unavailableText = stringResource(Res.string.label_preview_unavailable)
-                    var previewText by remember(selectedEntry.location) { mutableStateOf<String?>(loadingText) }
-                    var previewFailure by remember(selectedEntry.location) { mutableStateOf<I18nMessage?>(null) }
-
-                    LaunchedEffect(selectedEntry.location) {
-                        previewFailure = null
-                        when (
-                            val result = loadTextPreview(
-                                PreviewTextRequest(
-                                    entry = selectedEntry,
-                                    maxBytes = 1024 * 1024,
-                                    maxLines = 100,
-                                ),
-                            )
-                        ) {
-                            is PreviewTextResult.Text -> previewText = result.value
-                            PreviewTextResult.TooLarge -> previewText = tooLargeText
-                            PreviewTextResult.Unavailable -> previewText = unavailableText
-                            is PreviewTextResult.Failed -> {
-                                previewText = null
-                                previewFailure = result.reason
-                            }
-                        }
-                    }
-
-                    Text(
-                        text = previewFailure?.resolve() ?: previewText ?: "",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = LocalOnyxPalette.current.foreground,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.05f))
-                            .padding(8.dp)
-                            .verticalScroll(rememberScrollState())
-                    )
+/**
+ * 按需读取并渲染文本文件预览。
+ *
+ * @param entry 当前文件条目。
+ * @param loadTextPreview 文本预览读取函数。
+ * @param isTextPreviewFileName 文本文件名判断函数。
+ */
+@Composable
+private fun TextFilePreview(
+    entry: VFile,
+    loadTextPreview: suspend (PreviewTextRequest) -> PreviewTextResult,
+    isTextPreviewFileName: (String) -> Boolean,
+) {
+    if (isTextPreviewFileName(entry.name) && entry.kind == VFileKind.FILE) {
+        val loadingText = stringResource(Res.string.label_preview_loading)
+        val tooLargeText = stringResource(Res.string.label_preview_too_large)
+        val unavailableText = stringResource(Res.string.label_preview_unavailable)
+        var previewText by remember(entry.location) { mutableStateOf<String?>(loadingText) }
+        var previewFailure by remember(entry.location) { mutableStateOf<I18nMessage?>(null) }
+        LaunchedEffect(entry.location) {
+            previewFailure = null
+            when (val result = loadTextPreview(PreviewTextRequest(entry, 1024 * 1024, 100))) {
+                is PreviewTextResult.Text -> previewText = result.value
+                PreviewTextResult.TooLarge -> previewText = tooLargeText
+                PreviewTextResult.Unavailable -> previewText = unavailableText
+                is PreviewTextResult.Failed -> {
+                    previewText = null
+                    previewFailure = result.reason
                 }
             }
         }
+        Text(
+            text = previewFailure?.resolve() ?: previewText.orEmpty(),
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            color = LocalOnyxPalette.current.foreground,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.05f))
+                .padding(8.dp)
+                .verticalScroll(rememberScrollState()),
+        )
     }
 }

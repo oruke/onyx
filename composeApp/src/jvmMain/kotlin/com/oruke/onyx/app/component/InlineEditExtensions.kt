@@ -83,24 +83,35 @@ internal fun PaneTabState.clearInlineEditState(): PaneTabState {
 internal fun PaneTabState.confirmInlineEditState(
     currentEntries: List<VFile>,
 ): InlineEditConfirmResult {
-    val currentInlineEdit = inlineEditState ?: return InlineEditConfirmResult(this, null)
-    if (entriesState is PaneEntriesState.Failure) {
-        return InlineEditConfirmResult(clearInlineEditState(), null)
-    }
+    val currentInlineEdit = inlineEditState
+    val normalizedDraft = currentInlineEdit?.draftName?.trim().orEmpty()
+    return when {
+        currentInlineEdit == null -> InlineEditConfirmResult(this, null)
+        entriesState is PaneEntriesState.Failure || normalizedDraft.isBlank() ->
+            InlineEditConfirmResult(clearInlineEditState(), null)
 
-    val normalizedDraft = currentInlineEdit.draftName.trim()
-    if (normalizedDraft.isBlank()) {
-        return InlineEditConfirmResult(clearInlineEditState(), null)
+        else -> confirmValidInlineEdit(currentInlineEdit, normalizedDraft, currentEntries)
     }
+}
 
-    return when (currentInlineEdit.mode) {
+/**
+ * 将已经通过基础校验的内联编辑状态转换为文件操作。
+ *
+ * @param inlineEdit 当前内联编辑状态。
+ * @param normalizedDraft 去除首尾空白后的目标名称。
+ * @param currentEntries 当前面板条目，用于定位重命名目标。
+ * @return 可以立即执行的操作，或仅清理编辑状态的结果。
+ */
+private fun PaneTabState.confirmValidInlineEdit(
+    inlineEdit: PaneInlineEditState,
+    normalizedDraft: String,
+    currentEntries: List<VFile>,
+): InlineEditConfirmResult {
+    return when (inlineEdit.mode) {
         PaneInlineEditMode.RENAME -> {
             val targetEntry = currentEntries
-                .firstOrNull { it.id == currentInlineEdit.targetEntryId }
-                ?: return InlineEditConfirmResult(clearInlineEditState(), null)
-            if (targetEntry.name == normalizedDraft) {
-                InlineEditConfirmResult(clearInlineEditState(), null)
-            } else {
+                .firstOrNull { it.id == inlineEdit.targetEntryId }
+            if (targetEntry != null && targetEntry.name != normalizedDraft) {
                 InlineEditConfirmResult(
                     tab = this,
                     operation = InlineEditOperation.Rename(
@@ -108,6 +119,8 @@ internal fun PaneTabState.confirmInlineEditState(
                         targetName = normalizedDraft,
                     ),
                 )
+            } else {
+                InlineEditConfirmResult(clearInlineEditState(), null)
             }
         }
 

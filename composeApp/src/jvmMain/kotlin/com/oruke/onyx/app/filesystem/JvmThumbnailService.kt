@@ -7,6 +7,7 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.FilterMipmap
@@ -16,6 +17,7 @@ import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
 import net.sf.sevenzipjbinding.ISequentialOutStream
+import net.sf.sevenzipjbinding.IInArchive
 import net.sf.sevenzipjbinding.PropID
 import net.sf.sevenzipjbinding.SevenZip
 import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
@@ -120,7 +122,7 @@ internal class JvmThumbnailService(
         }
 
         // 最后一步精确缩放（Mitchell 三次重采样 B=1/3 C=1/3）
-        if (cw != targetW || ch != targetH) {
+        return if (cw != targetW || ch != targetH) {
             val surface = Surface.makeRasterN32Premul(targetW, targetH)
             surface.canvas.drawImageRect(
                 current,
@@ -134,17 +136,18 @@ internal class JvmThumbnailService(
             surface.close()
             // 释放最后一个中间图像
             if (current !== skImage) current.close()
-            return result
+            result
+        } else {
+            current
         }
-
-        return current
     }
 
     /** 图片扩展名集合（用于压缩包内条目筛选） */
-    private val IMAGE_EXTENSIONS = setOf(
+    private val imageExtensions = setOf(
         "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "tif",
     )
 
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun loadThumbnail(
         location: String,
         maxDimension: Int,
@@ -192,6 +195,8 @@ internal class JvmThumbnailService(
 
             putCache(cacheKey, composeBitmap)
             composeBitmap
+        } catch (failure: CancellationException) {
+            throw failure
         } catch (failure: Exception) {
             OnyxLogger.warn("JvmThumbnailService", "缩略图加载失败: $location", failure)
             null
@@ -251,11 +256,61 @@ internal class JvmThumbnailService(
     private class ThumbnailContentTooLargeException : RuntimeException()
 
     /**
+     * 压缩包中可作为封面缩略图的图片条目。
+     */
+    private data class ArchiveImageEntry(
+        /** 条目在压缩包中的索引。 */
+        val index: Int,
+        /** 用于稳定排序的条目路径。 */
+        val path: String,
+        /** 解压前声明的字节数。 */
+        val size: Long,
+    )
+
+    /**
+     * 收集压缩包中尺寸受控的图片条目。
+     *
+     * @param archive 已打开的 7-Zip 压缩包句柄。
+     * @return 可解码图片条目列表。
+     */
+    private fun collectArchiveImageEntries(archive: IInArchive): List<ArchiveImageEntry> {
+        return (0 until archive.numberOfItems).mapNotNull { index ->
+            archive.readArchiveImageEntry(index)
+        }
+    }
+
+    /**
+     * 将单个压缩包条目转换为图片候选。
+     *
+     * @param index 条目索引。
+     * @return 图片类型且大小未超限时返回候选，否则返回 `null`。
+     */
+    private fun IInArchive.readArchiveImageEntry(index: Int): ArchiveImageEntry? {
+        val isDirectory = getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
+        val path = getProperty(index, PropID.PATH) as? String
+        val size = getProperty(index, PropID.SIZE) as? Long ?: 0L
+        return path
+            ?.takeIf { itemPath -> !isDirectory && itemPath.hasThumbnailImageExtension() }
+            ?.takeIf { size <= MAX_ARCHIVE_IMAGE_BYTES }
+            ?.let { itemPath -> ArchiveImageEntry(index, itemPath, size) }
+    }
+
+    /**
+     * 判断压缩包条目路径是否具有可解码的图片扩展名。
+     *
+     * @return `true` 表示可尝试作为缩略图解码。
+     */
+    private fun String.hasThumbnailImageExtension(): Boolean {
+        return substringAfterLast('.', "").lowercase() in imageExtensions
+    }
+
+    /**
      * 从压缩包中提取第一张图片，生成缩略图。
      *
      * 扫描压缩包内所有条目，按路径排序后取第一张图片类型的文件，
      * 解压到内存中并复用 Skia 管线生成缩略图。
      */
+    @Suppress("TooGenericExceptionCaught")
     override suspend fun loadArchiveThumbnail(
         location: String,
         maxDimension: Int,
@@ -272,22 +327,7 @@ internal class JvmThumbnailService(
             val archive = SevenZip.openInArchive(null, inStream)
 
             try {
-                val numItems = archive.numberOfItems
-
-                // 找到第一张图片条目（按路径排序，优先取浅层文件）
-                data class ImageEntry(val index: Int, val path: String, val size: Long)
-
-                val imageEntries = mutableListOf<ImageEntry>()
-                for (i in 0 until numItems) {
-                    val isDir = archive.getProperty(i, PropID.IS_FOLDER) as? Boolean ?: false
-                    if (isDir) continue
-                    val itemPath = archive.getProperty(i, PropID.PATH) as? String ?: continue
-                    val ext = itemPath.substringAfterLast('.', "").lowercase()
-                    if (ext !in IMAGE_EXTENSIONS) continue
-                    val size = (archive.getProperty(i, PropID.SIZE) as? Long) ?: 0L
-                    if (size > MAX_ARCHIVE_IMAGE_BYTES) continue
-                    imageEntries += ImageEntry(i, itemPath, size)
-                }
+                val imageEntries = collectArchiveImageEntries(archive)
 
                 if (imageEntries.isEmpty()) return@withContext null
 
@@ -311,10 +351,17 @@ internal class JvmThumbnailService(
                                 data.size
                             }
                         }
-                        override fun prepareOperation(extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode) {}
-                        override fun setOperationResult(result: net.sf.sevenzipjbinding.ExtractOperationResult) {}
-                        override fun setTotal(total: Long) {}
-                        override fun setCompleted(complete: Long) {}
+                        override fun prepareOperation(
+                            extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode,
+                        ) = Unit
+
+                        override fun setOperationResult(
+                            result: net.sf.sevenzipjbinding.ExtractOperationResult,
+                        ) = Unit
+
+                        override fun setTotal(total: Long) = Unit
+
+                        override fun setCompleted(complete: Long) = Unit
                     },
                 )
 
@@ -340,6 +387,8 @@ internal class JvmThumbnailService(
                 inStream.close()
                 raf.close()
             }
+        } catch (failure: CancellationException) {
+            throw failure
         } catch (failure: Exception) {
             OnyxLogger.warn("JvmThumbnailService", "压缩包缩略图加载失败: $location", failure)
             null

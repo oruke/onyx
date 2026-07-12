@@ -122,6 +122,7 @@ internal fun RemoteConnectionsDialog(
                         editingConnectionId = state.editingRemoteConnectionId,
                         testState = state.remoteConnectionTestState,
                         error = state.remoteConnectionError,
+                        saving = state.saving,
                         actions = actions,
                         fontSize = appearance.listFontSize,
                         labelFontSize = appearance.headerFontSize,
@@ -146,6 +147,7 @@ internal fun RemoteConnectionsDialog(
  * @param editingConnectionId 当前编辑的连接 ID，空值表示新建模式。
  * @param testState 当前连接测试状态。
  * @param error 当前表单校验错误。
+ * @param saving 是否正在保存连接与凭据。
  * @param actions 网络位置用户操作集合。
  * @param fontSize 正文字号。
  * @param labelFontSize 标签字号。
@@ -157,6 +159,7 @@ internal fun RemoteConnectionsSettings(
     editingConnectionId: String?,
     testState: RemoteConnectionTestState,
     error: RemoteConnectionDialogError?,
+    saving: Boolean,
     actions: RemoteConnectionUiActions,
     fontSize: androidx.compose.ui.unit.TextUnit,
     labelFontSize: androidx.compose.ui.unit.TextUnit,
@@ -190,11 +193,8 @@ internal fun RemoteConnectionsSettings(
             editingConnectionId = editingConnectionId,
             testState = testState,
             error = error,
-            onDraftChange = actions.onDraftChange,
-            onSave = actions.onSave,
-            onTest = actions.onTest,
-            onDelete = actions.onDelete,
-            onOpen = actions.onOpen,
+            saving = saving,
+            actions = actions,
             fontSize = fontSize,
             labelFontSize = labelFontSize,
             modifier = Modifier.weight(1f).fillMaxHeight(),

@@ -5,6 +5,12 @@ import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.ViewMode
 
+/** 画廊项目允许的最小边长。 */
+private const val MIN_GALLERY_ITEM_SIZE_DP = 80
+
+/** 画廊项目允许的最大边长。 */
+private const val MAX_GALLERY_ITEM_SIZE_DP = 320
+
 internal fun PaneTabState.withViewModeState(mode: ViewMode): PaneTabState {
     return withTabState { current -> current.copy(viewMode = mode) }
 }
@@ -53,19 +59,27 @@ internal fun PaneTabState.withToggledColumnVisibilityState(column: DetailsColumn
 
 internal fun PaneTabState.withGalleryItemSizeState(sizeDp: Int): PaneTabState {
     return withTabState { current ->
-        current.copy(galleryItemSizeDp = sizeDp.coerceIn(80, 320))
+        current.copy(galleryItemSizeDp = sizeDp.coerceIn(MIN_GALLERY_ITEM_SIZE_DP, MAX_GALLERY_ITEM_SIZE_DP))
     }
 }
 
 internal fun PaneTabState.withResizedDetailsColumnState(
     column: DetailsColumn,
+    nextColumn: DetailsColumn,
     deltaWeight: Float,
 ): PaneTabState {
     val currentWidth = detailsColumnWeights[column] ?: defaultDetailsColumnWidth(column)
-    val newWidth = (currentWidth + deltaWeight).coerceAtLeast(MIN_DETAILS_COLUMN_WIDTH)
+    val nextWidth = detailsColumnWeights[nextColumn] ?: defaultDetailsColumnWidth(nextColumn)
+    val adjustedDelta = deltaWeight.coerceIn(
+        minimumValue = MIN_DETAILS_COLUMN_WIDTH - currentWidth,
+        maximumValue = nextWidth - MIN_DETAILS_COLUMN_WIDTH,
+    )
     return withTabState { current ->
         current.copy(
-            detailsColumnWeights = current.detailsColumnWeights + mapOf(column to newWidth),
+            detailsColumnWeights = current.detailsColumnWeights + mapOf(
+                column to currentWidth + adjustedDelta,
+                nextColumn to nextWidth - adjustedDelta,
+            ),
         )
     }
 }

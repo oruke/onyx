@@ -1,7 +1,6 @@
 package com.oruke.onyx.vfs.webdav
 
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
@@ -10,7 +9,6 @@ import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
-import com.oruke.onyx.vfs.api.encodeVfsSpaces
 import com.oruke.onyx.vfs.api.withVfsCopySuffix
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
 import io.ktor.client.HttpClient
@@ -19,11 +17,11 @@ import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.http.content.OutgoingContent
 import io.ktor.utils.io.ByteWriteChannel
@@ -35,18 +33,10 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import org.w3c.dom.Element
-import org.xml.sax.InputSource
 import java.io.IOException
-import java.io.StringReader
-import java.net.URI
-import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
 import java.util.Base64
 import javax.net.ssl.SSLException
-import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * 基于 Ktor CIO 的 WebDAV 客户端实现。
@@ -74,22 +64,8 @@ class KtorWebDavClient(
             response.requireSuccess(location, authContext)
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.WEBDAV,
-                    location = location,
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.WEBDAV,
-                    location = location,
-                    reason = failure.message,
-                )
-            )
+            throw failure.toNetworkFailure(location)
         }
     }
 
@@ -114,22 +90,8 @@ class KtorWebDavClient(
             )
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.WEBDAV,
-                    location = location,
-                    reason = failure.message,
-                )
-            )
         } catch (failure: IOException) {
-            throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.WEBDAV,
-                    location = location,
-                    reason = failure.message,
-                )
-            )
+            throw failure.toNetworkFailure(location)
         }
     }
 
@@ -337,7 +299,11 @@ class KtorWebDavClient(
                 )
             }
             response.requireSuccess(targetLocation, authContext, acceptedStatuses = MutationSuccessStatuses)
-            targetLocation.toWebDavVFile(name = targetLocation.fileNameFromWebDavLocation(), parentLocation = parentLocation, directory = false)
+            targetLocation.toWebDavVFile(
+                name = targetLocation.fileNameFromWebDavLocation(),
+                parentLocation = parentLocation,
+                directory = false,
+            )
         } catch (failure: VfsProviderException) {
             throw failure
         } catch (failure: SSLException) {
@@ -400,7 +366,11 @@ class KtorWebDavClient(
             TransferConflictStrategy.KEEP_BOTH -> {
                 var candidateName = entry.name
                 repeat(MAX_KEEP_BOTH_ATTEMPTS) { index ->
-                    val candidateLocation = webDavChildLocation(targetDirectoryLocation, candidateName, directory = isDirectory)
+                    val candidateLocation = webDavChildLocation(
+                        parentLocation = targetDirectoryLocation,
+                        name = candidateName,
+                        directory = isDirectory,
+                    )
                     if (!resourceExists(candidateLocation, authContext)) {
                         return candidateLocation
                     }
@@ -450,9 +420,11 @@ class KtorWebDavClient(
                 applyAuth(authContext, location)
                 setBody(PROPFIND_BODY)
             }
-            return when (response.status.value) {
-                200, 207 -> true
-                404 -> false
+            return when (response.status) {
+                HttpStatusCode.OK,
+                HttpStatusCode.MultiStatus,
+                -> true
+                HttpStatusCode.NotFound -> false
                 else -> {
                     response.requireSuccess(location, authContext)
                     true
@@ -460,8 +432,6 @@ class KtorWebDavClient(
             }
         } catch (failure: VfsProviderException) {
             throw failure
-        } catch (failure: SSLException) {
-            throw failure.toNetworkFailure(location)
         } catch (failure: IOException) {
             throw failure.toNetworkFailure(location)
         }
@@ -490,117 +460,7 @@ class KtorWebDavClient(
         }
     }
 
-    private fun HttpResponse.requireSuccess(
-        location: String,
-        authContext: VfsAuthContext,
-        acceptedStatuses: Set<Int> = ListSuccessStatuses,
-    ) {
-        when {
-            status.value in acceptedStatuses -> Unit
-            status.value == 401 -> throw VfsProviderException(
-                if (authContext == VfsAuthContext.None) {
-                    VfsProviderError.AuthenticationRequired(VfsProtocol.WEBDAV, location)
-                } else {
-                    VfsProviderError.AuthenticationRejected(VfsProtocol.WEBDAV, location)
-                }
-            )
-
-            status.value == 403 -> throw VfsProviderException(VfsProviderError.PermissionDenied(VfsProtocol.WEBDAV, location))
-            status.value == 404 -> throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.WEBDAV, location))
-            status.value == 412 -> throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, location))
-            status.value in 500..599 -> throw VfsProviderException(
-                VfsProviderError.NetworkFailure(
-                    protocol = VfsProtocol.WEBDAV,
-                    location = location,
-                    reason = status.description,
-                )
-            )
-
-            else -> throw VfsProviderException(
-                VfsProviderError.UnsupportedOperation(
-                    protocol = VfsProtocol.WEBDAV,
-                    location = location,
-                    capability = null,
-                )
-            )
-        }
-    }
-
-    private fun Throwable.toNetworkFailure(location: String): VfsProviderException {
-        return VfsProviderException(
-            VfsProviderError.NetworkFailure(
-                protocol = VfsProtocol.WEBDAV,
-                location = location,
-                reason = message,
-            )
-        )
-    }
-
-    private fun validateTargetName(targetName: String) {
-        val sanitized = targetName.trim()
-        if (sanitized.isBlank() || '/' in sanitized || '\\' in sanitized) {
-            throw VfsProviderException(
-                VfsProviderError.UnsupportedOperation(
-                    protocol = VfsProtocol.WEBDAV,
-                    capability = null,
-                )
-            )
-        }
-    }
-
-    private fun webDavChildLocation(
-        parentLocation: String,
-        name: String,
-        directory: Boolean,
-    ): String {
-        val parentUri = URI(parentLocation.withVfsTrailingSlash().encodeVfsSpaces())
-        val childPath = parentUri.path.withVfsTrailingSlash() + name + (if (directory) "/" else "")
-        return URI(parentUri.scheme, null, parentUri.host, parentUri.port, childPath, null, null).toASCIIString()
-    }
-
-    private fun String.fileNameFromWebDavLocation(): String {
-        return URI(encodeVfsSpaces()).path.trimEnd('/').substringAfterLast('/').urlDecode()
-    }
-
-    private fun String.parentWebDavLocation(): String {
-        val uri = URI(encodeVfsSpaces())
-        val path = uri.path.trimEnd('/').substringBeforeLast('/', missingDelimiterValue = "").ifBlank { "/" }
-        val parentPath = if (path == "/") path else path.withVfsTrailingSlash()
-        return URI(uri.scheme, null, uri.host, uri.port, parentPath, null, null).toASCIIString()
-    }
-
-    private fun String.toWebDavVFile(
-        name: String,
-        parentLocation: String,
-        directory: Boolean,
-    ): VFile {
-        return VFile(
-            id = this,
-            name = name,
-            location = this,
-            parentLocation = parentLocation.withVfsTrailingSlash(),
-            kind = if (directory) VFileKind.DIRECTORY else VFileKind.FILE,
-            sizeBytes = if (directory) null else 0L,
-            modifiedAtEpochMillis = null,
-            hidden = name.startsWith("."),
-            capabilities = buildSet {
-                add(VFileCapability.READ_METADATA)
-                add(VFileCapability.RENAME)
-                add(VFileCapability.DELETE)
-                if (directory) {
-                    add(VFileCapability.LIST_CHILDREN)
-                } else {
-                    add(VFileCapability.READ_CONTENT)
-                    add(VFileCapability.WRITE_CONTENT)
-                }
-            },
-        )
-    }
-
     private companion object {
-        val ListSuccessStatuses = setOf(200, 207)
-        val MutationSuccessStatuses = setOf(200, 201, 204)
-        val DownloadSuccessStatuses = setOf(200, 206)
         const val CONTENT_BUFFER_SIZE = 64 * 1024
         const val MAX_KEEP_BOTH_ATTEMPTS = 10_000
         val PROPFIND_BODY = """

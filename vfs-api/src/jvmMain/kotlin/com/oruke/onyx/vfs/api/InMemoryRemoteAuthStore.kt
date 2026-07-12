@@ -1,5 +1,8 @@
 package com.oruke.onyx.vfs.api
 
+/**
+ * 仅在当前 JVM 进程中保存远程认证信息的线程安全存储。
+ */
 class InMemoryRemoteAuthStore : RemoteAuthStore {
     private val sessionAuthContexts = mutableMapOf<RemoteAuthScope, VfsAuthContext>()
     private val transientAuthContexts = mutableMapOf<RemoteAuthScope, VfsAuthContext>()

@@ -2,7 +2,7 @@ package com.oruke.onyx.app.cache
 
 import org.jetbrains.exposed.v1.core.Table
 
-/** Onyx 本地缓存库的键值元数据表，记录 schema 版本和平台指纹等轻量状态。 */
+/** Onyx 本地缓存库的键值元数据表，记录平台指纹等轻量业务状态。 */
 internal object CacheMetadataTable : Table("cache_metadata") {
     /** 元数据键名，必须在整库内保持唯一。 */
     val key = varchar("key", length = 160)

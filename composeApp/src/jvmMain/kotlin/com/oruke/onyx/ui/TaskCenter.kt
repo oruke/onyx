@@ -48,6 +48,12 @@ import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
+/** 任务状态底色相对于语义色的透明度。 */
+private const val TASK_STATUS_BACKGROUND_ALPHA = 0.19f
+
+/** 任务详情中最多直接展示的错误条数。 */
+private const val MAX_VISIBLE_TASK_ERRORS = 5
+
 // ── Jobs Bar ────────────────────────────────────────────────────────────────
 // 嵌入主窗口底部，每个任务一个紧凑按钮+微型进度条。
 // 仅当有活跃（QUEUED/RUNNING/PAUSED）或最近完成的任务时显示。
@@ -163,9 +169,9 @@ private fun JobChip(
             || task.status == BackgroundTaskStatus.PAUSED
 
     val chipBackground = when (task.status) {
-        BackgroundTaskStatus.FAILED -> Color(0x30D74E4E)
-        BackgroundTaskStatus.SUCCEEDED -> Color(0x304DAA57)
-        BackgroundTaskStatus.PAUSED -> Color(0x30E8A317)
+        BackgroundTaskStatus.FAILED -> palette.error.copy(alpha = TASK_STATUS_BACKGROUND_ALPHA)
+        BackgroundTaskStatus.SUCCEEDED -> palette.success.copy(alpha = TASK_STATUS_BACKGROUND_ALPHA)
+        BackgroundTaskStatus.PAUSED -> palette.favorite.copy(alpha = TASK_STATUS_BACKGROUND_ALPHA)
         else -> palette.surfaceVariant
     }
 
@@ -321,161 +327,169 @@ private fun TaskDetailRow(
             .background(palette.appBackground)
             .padding(8.dp),
     ) {
-        // 第一行：标题 + 操作按钮
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    key = taskKindIcon(task.kind),
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                )
-                Text(
-                    text = task.title.resolve(),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = palette.foreground,
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                if (task.status == BackgroundTaskStatus.RUNNING) {
-                    IconButton(onClick = onPause, modifier = Modifier.size(18.dp)) {
-                        Icon(
-                            key = AllIconsKeys.Actions.Pause,
-                            contentDescription = stringResource(Res.string.action_pause_task),
-                            modifier = Modifier.size(12.dp),
-                        )
-                    }
-                } else if (task.status == BackgroundTaskStatus.PAUSED) {
-                    IconButton(onClick = onResume, modifier = Modifier.size(18.dp)) {
-                        Icon(
-                            key = AllIconsKeys.RunConfigurations.TestState.Run,
-                            contentDescription = stringResource(Res.string.action_resume_task),
-                            modifier = Modifier.size(12.dp),
-                        )
-                    }
-                }
-                if (task.status == BackgroundTaskStatus.FAILED) {
-                    IconButton(onClick = onRetry, modifier = Modifier.size(18.dp)) {
-                        Icon(
-                            key = AllIconsKeys.Actions.Refresh,
-                            contentDescription = stringResource(Res.string.action_retry_task),
-                            modifier = Modifier.size(12.dp),
-                        )
-                    }
-                }
-                IconButton(
-                    onClick = { if (isActive) onCancel() else onDismiss() },
-                    modifier = Modifier.size(18.dp),
-                ) {
-                    Icon(
-                        key = AllIconsKeys.Actions.Close,
-                        contentDescription = stringResource(Res.string.action_cancel_task),
-                        modifier = Modifier.size(12.dp),
-                    )
-                }
-            }
+        TaskDetailHeader(task, onPause, onResume, onRetry) {
+            if (isActive) onCancel() else onDismiss()
         }
-
         Spacer(modifier = Modifier.height(4.dp))
+        TaskDetailProgress(task, isActive)
+        Spacer(modifier = Modifier.height(4.dp))
+        TaskProgressBar(progress = task.progress, status = task.status)
+        TaskErrorList(task)
+    }
+}
 
-        // 第二行：进度详情
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // 当前文件名或详情
-            val currentFileName = task.currentFileName
-            val detailText = when {
-                currentFileName != null && isActive -> currentFileName
-                else -> task.detail.resolve()
-            }
+/**
+ * 渲染任务标题和状态相关操作按钮。
+ *
+ * @param task 当前后台任务。
+ * @param onPause 暂停回调。
+ * @param onResume 恢复回调。
+ * @param onRetry 重试回调。
+ * @param onClose 取消或移除回调。
+ */
+@Composable
+private fun TaskDetailHeader(
+    task: BackgroundTask,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onRetry: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(taskKindIcon(task.kind), null, Modifier.size(14.dp))
             Text(
-                text = detailText,
-                fontSize = 11.sp,
+                text = task.title.resolve(),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = palette.foreground,
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            when (task.status) {
+                BackgroundTaskStatus.RUNNING -> TaskActionIcon(
+                    onPause,
+                    AllIconsKeys.Actions.Pause,
+                    stringResource(Res.string.action_pause_task),
+                )
+                BackgroundTaskStatus.PAUSED -> TaskActionIcon(
+                    onResume,
+                    AllIconsKeys.RunConfigurations.TestState.Run,
+                    stringResource(Res.string.action_resume_task),
+                )
+                else -> Unit
+            }
+            if (task.status == BackgroundTaskStatus.FAILED) {
+                TaskActionIcon(onRetry, AllIconsKeys.Actions.Refresh, stringResource(Res.string.action_retry_task))
+            }
+            TaskActionIcon(onClose, AllIconsKeys.Actions.Close, stringResource(Res.string.action_cancel_task))
+        }
+    }
+}
+
+/**
+ * 渲染任务操作图标。
+ *
+ * @param onClick 点击回调。
+ * @param icon Jewel 图标键。
+ * @param description 无障碍说明。
+ */
+@Composable
+private fun TaskActionIcon(
+    onClick: () -> Unit,
+    icon: org.jetbrains.jewel.ui.icon.IconKey,
+    description: String,
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(18.dp)) {
+        Icon(icon, description, Modifier.size(12.dp))
+    }
+}
+
+/**
+ * 渲染任务当前文件、计数、速度和剩余时间。
+ *
+ * @param task 当前后台任务。
+ * @param isActive 任务是否仍处于活动状态。
+ */
+@Composable
+private fun TaskDetailProgress(task: BackgroundTask, isActive: Boolean) {
+    val palette = LocalOnyxPalette.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val detailText = task.currentFileName?.takeIf { isActive } ?: task.detail.resolve()
+        Text(
+            text = detailText,
+            fontSize = 11.sp,
+            color = palette.mutedForeground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        buildProgressLabel(task).takeIf(String::isNotEmpty)?.let { label ->
+            Text(label, fontSize = 10.sp, color = palette.mutedForeground)
+        }
+    }
+    val timingLabel = task.timingLabel(isActive)
+    if (timingLabel != null) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Text(timingLabel, fontSize = 10.sp, color = palette.mutedForeground)
+        }
+    }
+}
+
+/**
+ * 计算任务速度和剩余时间标签。
+ *
+ * @param isActive 任务是否仍处于活动状态。
+ * @return 有足够进度信息时返回标签，否则返回 `null`。
+ */
+private fun BackgroundTask.timingLabel(isActive: Boolean): String? {
+    val elapsedMs = System.currentTimeMillis() - startTimeMillis
+    val hasTiming = isActive && processedBytes > 0 && startTimeMillis > 0 && elapsedMs > 0
+    return if (hasTiming) {
+        val speedBps = processedBytes * 1000.0 / elapsedMs
+        val remaining = if (speedBps > 0 && totalBytes > processedBytes) {
+            formatDuration(((totalBytes - processedBytes) / speedBps).toLong())
+        } else {
+            null
+        }
+        listOfNotNull(formatSpeed(speedBps), remaining).joinToString("  ·  ")
+    } else {
+        null
+    }
+}
+
+/**
+ * 渲染任务错误摘要和有限数量的明细。
+ *
+ * @param task 当前后台任务。
+ */
+@Composable
+private fun TaskErrorList(task: BackgroundTask) {
+    if (task.errors.isNotEmpty()) {
+        val palette = LocalOnyxPalette.current
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = stringResource(Res.string.label_task_errors_count, task.errors.size),
+            fontSize = 10.sp,
+            color = palette.error,
+        )
+        task.errors.take(MAX_VISIBLE_TASK_ERRORS).forEach { error ->
+            Text(
+                text = "${error.fileName}: ${error.message}",
+                fontSize = 9.sp,
                 color = palette.mutedForeground,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
             )
-
-            // 字节进度 + 文件计数
-            val progressLabel = buildProgressLabel(task)
-            if (progressLabel.isNotEmpty()) {
-                Text(
-                    text = progressLabel,
-                    fontSize = 10.sp,
-                    color = palette.mutedForeground,
-                )
-            }
-        }
-
-        // 第二·五行：速度 + 剩余时间
-        if (isActive && task.processedBytes > 0 && task.startTimeMillis > 0) {
-            val elapsedMs = System.currentTimeMillis() - task.startTimeMillis
-            val speedBps = if (elapsedMs > 0) task.processedBytes * 1000.0 / elapsedMs else 0.0
-            val speedLabel = formatSpeed(speedBps)
-            val remainingLabel = if (speedBps > 0 && task.totalBytes > task.processedBytes) {
-                val remainingBytes = task.totalBytes - task.processedBytes
-                val remainingSec = (remainingBytes / speedBps).toLong()
-                formatDuration(remainingSec)
-            } else null
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = buildString {
-                        append(speedLabel)
-                        if (remainingLabel != null) {
-                            append("  ·  ")
-                            append(remainingLabel)
-                        }
-                    },
-                    fontSize = 10.sp,
-                    color = palette.mutedForeground,
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // 第三行：进度条
-        TaskProgressBar(
-            progress = task.progress,
-            status = task.status,
-        )
-
-        // 错误列表
-        if (task.errors.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = stringResource(Res.string.label_task_errors_count, task.errors.size),
-                fontSize = 10.sp,
-                color = Color(0xFFD74E4E),
-            )
-            task.errors.take(5).forEach { error ->
-                Text(
-                    text = "${error.fileName}: ${error.message}",
-                    fontSize = 9.sp,
-                    color = palette.mutedForeground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }

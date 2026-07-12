@@ -16,7 +16,6 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,7 +28,6 @@ import java.util.UUID
  * 从 DefaultRootComponent 剥离的纯业务逻辑。
  */
 internal class ArchiveActionDelegate(
-    private val scope: CoroutineScope,
     private val archiveService: ArchiveService,
     private val taskOrchestrator: TaskOrchestrator,
     private val dialogState: MutableStateFlow<RootDialogState?>,
@@ -43,6 +41,7 @@ internal class ArchiveActionDelegate(
      * 将压缩包内的选中条目解压到目标本地目录。
      * 用于从已打开的压缩包面板拖拽文件到本地目录面板。
      */
+    @Suppress("TooGenericExceptionCaught") // 后台任务边界负责将任意业务异常转换为任务失败状态。
     fun launchArchiveExtractToDirectory(
         entries: List<VFile>,
         targetDirectoryLocation: String,
@@ -106,6 +105,7 @@ internal class ArchiveActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_EXTRACT_FAILED),
                     progress = 0f,
                 )
+                throw e
             } catch (e: Exception) {
                 OnyxLogger.error("ArchiveActionDelegate", "解压失败", e)
                 taskOrchestrator.unregisterJob(taskId)
@@ -122,6 +122,7 @@ internal class ArchiveActionDelegate(
     /**
      * 通用压缩包解压任务启动器 — 支持加密压缩包密码输入。
      */
+    @Suppress("TooGenericExceptionCaught") // 后台任务边界负责将任意 Provider 异常转换为任务失败状态。
     fun launchArchiveExtraction(
         selectedEntries: List<VFile>,
         currentLocation: String,
@@ -186,7 +187,7 @@ internal class ArchiveActionDelegate(
                 )
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
-            } catch (_: CancellationException) {
+            } catch (failure: CancellationException) {
                 pendingArchiveExtraction = null
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
@@ -194,7 +195,8 @@ internal class ArchiveActionDelegate(
                     status = BackgroundTaskStatus.CANCELLED,
                     detail = I18nMessage(MessageKey.MSG_CANCELLED),
                 )
-            } catch (e: Throwable) {
+                throw failure
+            } catch (e: Exception) {
                 OnyxLogger.error("ArchiveActionDelegate", "拖拽解压失败", e)
                 pendingArchiveExtraction = null
                 taskOrchestrator.unregisterJob(taskId)

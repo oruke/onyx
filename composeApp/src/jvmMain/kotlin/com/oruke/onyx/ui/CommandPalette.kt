@@ -53,15 +53,6 @@ import onyx.composeapp.generated.resources.label_command_palette_placeholder
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.icon.IconKey
-
-internal data class CommandPaletteItem(
-    val command: OnyxCommand,
-    val label: String,
-    val shortcut: String?,
-    val iconKey: IconKey,
-    val enabled: Boolean,
-)
 
 @Composable
 internal fun CommandPalettePopup(
@@ -138,73 +129,115 @@ internal fun CommandPalettePopup(
                 },
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            BasicTextField(
-                value = query,
-                onValueChange = {
-                    query = it
+            CommandPaletteSearchField(
+                query = query,
+                focusRequester = focusRequester,
+                onQueryChange = { nextQuery ->
+                    query = nextQuery
                     selectedIndex = 0
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(28.dp)
-                    .focusRequester(focusRequester)
-                    .background(palette.inputBackground, RoundedCornerShape(4.dp))
-                    .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                textStyle = TextStyle(
-                    fontSize = 12.sp,
-                    color = palette.foreground,
-                ),
-                singleLine = true,
-                cursorBrush = SolidColor(palette.accent),
-                decorationBox = { innerTextField ->
-                    Box(contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) {
-                            Text(
-                                text = stringResource(Res.string.label_command_palette_placeholder),
-                                fontSize = 12.sp,
-                                color = palette.disabledForeground,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        innerTextField()
-                    }
                 },
             )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(260.dp)
-                    .background(palette.surface),
-            ) {
-                if (filteredItems.isEmpty()) {
+            CommandPaletteResults(
+                items = filteredItems,
+                selectedIndex = selectedIndex,
+                listState = listState,
+                onExecute = onExecute,
+            )
+        }
+    }
+}
+
+/**
+ * 渲染命令面板搜索输入框。
+ *
+ * @param query 当前查询文本。
+ * @param focusRequester 弹窗打开后使用的焦点请求器。
+ * @param onQueryChange 查询文本变化回调。
+ */
+@Composable
+private fun CommandPaletteSearchField(
+    query: String,
+    focusRequester: FocusRequester,
+    onQueryChange: (String) -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    BasicTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .focusRequester(focusRequester)
+            .background(palette.inputBackground, RoundedCornerShape(4.dp))
+            .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        textStyle = TextStyle(fontSize = 12.sp, color = palette.foreground),
+        singleLine = true,
+        cursorBrush = SolidColor(palette.accent),
+        decorationBox = { innerTextField ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (query.isEmpty()) {
                     Text(
-                        text = stringResource(Res.string.label_command_palette_empty),
-                        color = palette.disabledForeground,
+                        text = stringResource(Res.string.label_command_palette_placeholder),
                         fontSize = 12.sp,
-                        modifier = Modifier.align(Alignment.Center),
+                        color = palette.disabledForeground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-                    ) {
-                        itemsIndexed(filteredItems) { index, item ->
-                            CommandPaletteRow(
-                                item = item,
-                                selected = index == selectedIndex,
-                                onExecute = { onExecute(item.command) },
-                            )
-                        }
-                    }
-                    VerticalScrollbar(
-                        adapter = rememberScrollbarAdapter(listState),
-                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                }
+                innerTextField()
+            }
+        },
+    )
+}
+
+/**
+ * 渲染命令面板过滤结果和滚动条。
+ *
+ * @param items 当前过滤结果。
+ * @param selectedIndex 键盘选中的结果索引。
+ * @param listState 结果列表滚动状态。
+ * @param onExecute 执行命令回调。
+ */
+@Composable
+private fun CommandPaletteResults(
+    items: List<CommandPaletteItem>,
+    selectedIndex: Int,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    onExecute: (OnyxCommand) -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp)
+            .background(palette.surface),
+    ) {
+        if (items.isEmpty()) {
+            Text(
+                text = stringResource(Res.string.label_command_palette_empty),
+                color = palette.disabledForeground,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.Center),
+            )
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+            ) {
+                itemsIndexed(items) { index, item ->
+                    CommandPaletteRow(
+                        item = item,
+                        selected = index == selectedIndex,
+                        onExecute = { onExecute(item.command) },
                     )
                 }
             }
+            VerticalScrollbar(
+                adapter = rememberScrollbarAdapter(listState),
+                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+            )
         }
     }
 }

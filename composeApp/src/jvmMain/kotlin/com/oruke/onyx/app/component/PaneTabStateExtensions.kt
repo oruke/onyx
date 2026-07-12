@@ -16,6 +16,18 @@ import com.oruke.onyx.core.model.ViewMode
 
 internal const val MIN_DETAILS_COLUMN_WIDTH = 40f
 
+/** 文件名明细列默认宽度。 */
+private const val DEFAULT_NAME_COLUMN_WIDTH = 300f
+
+/** 文件类型明细列默认宽度。 */
+private const val DEFAULT_TYPE_COLUMN_WIDTH = 80f
+
+/** 文件大小明细列默认宽度。 */
+private const val DEFAULT_SIZE_COLUMN_WIDTH = 100f
+
+/** 修改时间明细列默认宽度。 */
+private const val DEFAULT_MODIFIED_COLUMN_WIDTH = 180f
+
 internal fun defaultDetailsColumns(): List<DetailsColumn> {
     return listOf(
         DetailsColumn.NAME,
@@ -27,10 +39,10 @@ internal fun defaultDetailsColumns(): List<DetailsColumn> {
 
 internal fun defaultDetailsColumnWeights(): Map<DetailsColumn, Float> {
     return mapOf(
-        DetailsColumn.NAME to 300f,
-        DetailsColumn.TYPE to 80f,
-        DetailsColumn.SIZE to 100f,
-        DetailsColumn.MODIFIED to 180f,
+        DetailsColumn.NAME to DEFAULT_NAME_COLUMN_WIDTH,
+        DetailsColumn.TYPE to DEFAULT_TYPE_COLUMN_WIDTH,
+        DetailsColumn.SIZE to DEFAULT_SIZE_COLUMN_WIDTH,
+        DetailsColumn.MODIFIED to DEFAULT_MODIFIED_COLUMN_WIDTH,
     )
 }
 

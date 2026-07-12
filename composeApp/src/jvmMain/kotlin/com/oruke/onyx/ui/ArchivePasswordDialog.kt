@@ -55,7 +55,6 @@ internal fun ArchivePasswordDialog(
 ) {
     val focusRequester = remember { FocusRequester() }
     var password by remember { mutableStateOf("") }
-    var showPassword by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -111,11 +110,7 @@ internal fun ArchivePasswordDialog(
                                 color = LocalOnyxPalette.current.foreground,
                             ),
                             cursorBrush = SolidColor(LocalOnyxPalette.current.accent),
-                            visualTransformation = if (showPassword) {
-                                androidx.compose.ui.text.input.VisualTransformation.None
-                            } else {
-                                androidx.compose.ui.text.input.PasswordVisualTransformation()
-                            },
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                             decorationBox = { innerTextField ->
                                 Box(
                                     modifier = Modifier
@@ -132,13 +127,6 @@ internal fun ArchivePasswordDialog(
                                         )
                                         .padding(horizontal = 10.dp, vertical = 7.dp),
                                 ) {
-                                    if (password.isEmpty()) {
-                                        Text(
-                                            text = "••••••••",
-                                            fontSize = 13.sp,
-                                            color = LocalOnyxPalette.current.disabledForeground,
-                                        )
-                                    }
                                     innerTextField()
                                 }
                             },
@@ -147,7 +135,7 @@ internal fun ArchivePasswordDialog(
                             Text(
                                 text = errMsg.resolve(),
                                 fontSize = 11.sp,
-                                color = androidx.compose.ui.graphics.Color(0xFFD74E4E),
+                                color = LocalOnyxPalette.current.error,
                             )
                         }
                     }

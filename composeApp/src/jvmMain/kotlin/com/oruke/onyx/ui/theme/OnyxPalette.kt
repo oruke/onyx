@@ -14,29 +14,86 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 
+/**
+ * Onyx 运行时语义调色板。
+ */
 data class OnyxPalette(
+    /** 应用主背景色。 */
     val appBackground: Color,
+
+    /** 标题栏背景色。 */
     val titleBarBackground: Color,
+
+    /** 基础表面色。 */
     val surface: Color,
+
+    /** 次级表面色。 */
     val surfaceVariant: Color,
+
+    /** 浮层表面色。 */
     val floatingSurface: Color,
+
+    /** 输入控件背景色。 */
     val inputBackground: Color,
+
+    /** 主边框色。 */
     val outline: Color,
+
+    /** 次级边框色。 */
     val outlineVariant: Color,
+
+    /** 主前景色。 */
     val foreground: Color,
+
+    /** 弱化前景色。 */
     val mutedForeground: Color,
+
+    /** 禁用状态前景色。 */
     val disabledForeground: Color,
+
+    /** 错误语义色。 */
+    val error: Color,
+
+    /** 操作成功语义色。 */
+    val success: Color,
+
+    /** 收藏与重点标记语义色。 */
+    val favorite: Color,
+
+    /** 主强调色。 */
     val accent: Color,
+
+    /** 次级强调色。 */
     val accentVariant: Color,
+
+    /** 激活选择背景色。 */
     val selectionBackground: Color,
+
+    /** 选择前景色。 */
     val selectionForeground: Color,
+
+    /** 表头背景色。 */
     val headerBackground: Color,
+
+    /** 行悬停背景色。 */
     val rowHoverBackground: Color,
+
+    /** 状态栏背景色。 */
     val statusBarBackground: Color,
+
+    /** 标题栏边框色。 */
     val titleBarBorder: Color,
+
+    /** 标题栏激活背景色。 */
     val titleBarActiveBackground: Color,
+
+    /** 标题栏悬停背景色。 */
     val titleBarHoverBackground: Color,
+
+    /** 标题栏按下背景色。 */
     val titleBarPressedBackground: Color,
+
+    /** 非激活面板选择背景色。 */
     val inactiveSelectionBackground: Color,
 )
 
@@ -44,7 +101,13 @@ val LocalOnyxPalette = staticCompositionLocalOf<OnyxPalette> {
     error("No OnyxPalette provided. Wrap your content in OnyxTheme.")
 }
 
+/**
+ * 根据系统明暗主题创建并记忆 Onyx 调色板。
+ *
+ * @return 当前系统主题对应的调色板。
+ */
 @Composable
+@Suppress("MagicNumber") // ARGB 字面量是集中式调色板数据，抽成编号常量会降低可读性。
 fun rememberOnyxPalette(): OnyxPalette {
     val dark = isSystemInDarkTheme()
     return remember(dark) {
@@ -61,6 +124,9 @@ fun rememberOnyxPalette(): OnyxPalette {
                 foreground = Color(0xFFD4D4D8),
                 mutedForeground = Color(0xFF8C8C94),
                 disabledForeground = Color(0xFF6E6E6E),
+                error = onyxErrorColor,
+                success = Color(0xFF4DAA57),
+                favorite = Color(0xFFFFC94D),
                 accent = Color(0xFF4D8DFF),
                 accentVariant = Color(0xFF2A5FAD),
                 selectionBackground = Color(0xFF2D4F80),
@@ -87,6 +153,9 @@ fun rememberOnyxPalette(): OnyxPalette {
                 foreground = Color(0xFF1D2733),
                 mutedForeground = Color(0xFF5D6B7C),
                 disabledForeground = Color(0xFF94A0AE),
+                error = onyxErrorColor,
+                success = Color(0xFF318343),
+                favorite = Color(0xFFC78600),
                 accent = Color(0xFF2F6FEB),
                 accentVariant = Color(0xFF5B9BF0),
                 selectionBackground = Color(0xFFD0E0FF),
@@ -103,6 +172,9 @@ fun rememberOnyxPalette(): OnyxPalette {
         }
     }
 }
+
+/** 应用级错误语义色。 */
+private val onyxErrorColor = Color(0xFFD74E4E)
 
 /**
  * Onyx 主题入口

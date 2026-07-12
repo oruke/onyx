@@ -58,12 +58,23 @@ interface TrashService {
  * @property originalEntry 移入回收站前的文件条目。
  * @property trashedLocation 平台回收站内的实际条目位置。
  * @property metadataLocation 平台回收站元数据位置；没有独立元数据时为 `null`。
+ * @property restorationStatus 当前记录是否具备可靠恢复信息。
  */
 data class TrashMoveRecord(
     val originalEntry: VFile,
     val trashedLocation: String,
     val metadataLocation: String? = null,
+    val restorationStatus: TrashRestorationStatus = TrashRestorationStatus.AVAILABLE,
 )
+
+/** 回收站记录的恢复能力状态。 */
+enum class TrashRestorationStatus {
+    /** 已获得平台回收站位置，可以执行撤销。 */
+    AVAILABLE,
+
+    /** 文件已进入回收站，但平台元数据尚未出现，当前操作不能可靠撤销。 */
+    METADATA_UNAVAILABLE,
+}
 
 /**
  * 系统文件物化服务，用于把非本地 VFS 条目导出为可交给外部系统的本地文件。

@@ -4,7 +4,6 @@ import com.oruke.onyx.app.storage.OnyxDataDirectories
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.exposed.v1.jdbc.Database
-import org.jetbrains.exposed.v1.jdbc.SchemaUtils
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction as exposedTransaction
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -51,29 +50,23 @@ internal class OnyxLocalDatabaseService(
      * @return 可用于事务的数据库连接。
      */
     private fun database(): Database {
-        if (initialized.get()) return requireNotNull(databaseRef)
-        synchronized(this) {
-            if (initialized.get()) return requireNotNull(databaseRef)
-
-            databasePath.parent?.createDirectories()
-            val database = Database.connect(
-                url = "jdbc:sqlite:${databasePath.toAbsolutePath()}",
-                driver = "org.sqlite.JDBC",
-            )
-            exposedTransaction(database) {
-                SchemaUtils.createMissingTablesAndColumns(
-                    CacheMetadataTable,
-                    PlatformMenuSourceFingerprintTable,
-                    PlatformMenuActionTable,
-                    SettingsDocumentTable,
-                    FavoriteLocationTable,
-                    RecentLocationTable,
-                    RemoteConnectionTable,
-                )
+        if (!initialized.get()) {
+            synchronized(this) {
+                if (!initialized.get()) initializeDatabase()
             }
-            databaseRef = database
-            initialized.set(true)
-            return database
         }
+        return requireNotNull(databaseRef)
+    }
+
+    /** 完成目录创建、schema 迁移和 Exposed 连接初始化。 */
+    private fun initializeDatabase() {
+        databasePath.parent?.createDirectories()
+        val databaseUrl = "jdbc:sqlite:${databasePath.toAbsolutePath()}"
+        OnyxDatabaseMigrationService(databaseUrl).migrate()
+        databaseRef = Database.connect(
+            url = databaseUrl,
+            driver = "org.sqlite.JDBC",
+        )
+        initialized.set(true)
     }
 }

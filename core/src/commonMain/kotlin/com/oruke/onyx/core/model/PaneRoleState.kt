@@ -32,6 +32,7 @@ data class PaneRoleState(
         return if (paneId == sourcePaneId) PaneTransferRole.SOURCE else PaneTransferRole.DESTINATION
     }
 
+    /** 面板角色状态工厂。 */
     companion object {
         /**
          * 根据当前源面板构造双面板角色状态。

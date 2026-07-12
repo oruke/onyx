@@ -22,6 +22,7 @@ data class ImageViewerState(
     val rotation: Int = 0,
 )
 
+/** 图片查看器的缩放适配模式。 */
 enum class ImageFitMode {
     /** 适应窗口（保持宽高比，完整显示） */
     FIT_WINDOW,

@@ -195,12 +195,14 @@ sealed interface VfsProviderError {
 
 /**
  * VFS provider 语义化异常。
- *
- * @property error provider 错误模型。
  */
 class VfsProviderException(
+    /** provider 错误模型。 */
     val error: VfsProviderError,
-) : IllegalStateException(error.toString())
+
+    /** 导致该错误的底层异常。 */
+    cause: Throwable? = null,
+) : IllegalStateException(error.toString(), cause)
 
 /**
  * 没有找到可处理指定位置的 VFS provider。

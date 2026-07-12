@@ -122,7 +122,9 @@ class ZipArchiveMutationService {
                 .filterNot { directory -> directory in source.entryNames }
                 .toSet()
             copyEntries(source, output) { entry ->
-                entry.name.takeIf { name -> conflictStrategy != TransferConflictStrategy.OVERWRITE || name != targetPath }
+                entry.name.takeIf { name ->
+                    conflictStrategy != TransferConflictStrategy.OVERWRITE || name != targetPath
+                }
             }
             parentDirectories.forEach { directory ->
                 output.putNextEntry(ZipEntry(directory))
@@ -152,17 +154,25 @@ class ZipArchiveMutationService {
         val parent = archive.parent ?: Path.of(".")
         val temp = Files.createTempFile(parent, "${archive.fileName}.", ".tmp")
         val backup = Files.createTempFile(parent, "${archive.fileName}.", ".bak")
-        try {
+        var backupReady = false
+        val mutationResult = runCatching {
             Files.copy(archive, backup, StandardCopyOption.REPLACE_EXISTING)
+            backupReady = true
             ZipArchiveSource(archive).use { source ->
                 ZipOutputStream(Files.newOutputStream(temp)).use { output ->
                     mutation(source, output)
                 }
             }
             moveReplacing(temp, archive)
-        } catch (failure: Throwable) {
-            restoreBackup(backup, archive)
-            throw ArchiveMutationException("保存压缩包失败，已回滚: $archivePath", failure)
+        }
+        try {
+            mutationResult.getOrElse { failure ->
+                if (backupReady) {
+                    runCatching { restoreBackup(backup, archive) }
+                        .onFailure { rollbackFailure -> failure.addSuppressed(rollbackFailure) }
+                }
+                throw ArchiveMutationException("保存压缩包失败，已回滚: $archivePath", failure)
+            }
         } finally {
             Files.deleteIfExists(temp)
             Files.deleteIfExists(backup)
@@ -185,16 +195,32 @@ class ZipArchiveMutationService {
             while (true) {
                 val entry = input.nextEntry ?: break
                 val targetName = transform(entry)
-                if (targetName != null) {
-                    output.putNextEntry(entry.copyForName(targetName))
-                    if (!entry.isDirectory) {
-                        input.copyTo(output)
-                    }
-                    output.closeEntry()
-                }
+                copyEntry(input, output, entry, targetName)
                 input.closeEntry()
             }
         }
+    }
+
+    /**
+     * 把单个 ZIP 条目复制到目标流。
+     *
+     * @param input 源 ZIP 输入流。
+     * @param output 目标 ZIP 输出流。
+     * @param entry 当前源条目。
+     * @param targetName 目标条目名；为空时跳过。
+     */
+    private fun copyEntry(
+        input: ZipInputStream,
+        output: ZipOutputStream,
+        entry: ZipEntry,
+        targetName: String?,
+    ) {
+        if (targetName == null) return
+        output.putNextEntry(entry.copyForName(targetName))
+        if (!entry.isDirectory) {
+            input.copyTo(output)
+        }
+        output.closeEntry()
     }
 
     /**
