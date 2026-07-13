@@ -23,7 +23,8 @@ jobs:
             artifact-path: |
               composeApp/build/compose/binaries/main/msi/*.msi
               composeApp/build/compose/jars/*.jar
-          - os: macos-latest
+          # 7-Zip-JBinding 16.02 仅提供 Mac x86_64 native，发布任务必须固定 Intel runner。
+          - os: macos-15-intel
             task: packageDmg packageUberJarForCurrentOS
             artifact-path: |
               composeApp/build/compose/binaries/main/dmg/*.dmg
