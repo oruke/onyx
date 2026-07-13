@@ -49,6 +49,23 @@ class FileWatcher {
      */
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     fun watch(directory: Path): Flow<FileWatchEvent> {
+        return watch(directory, onRegistered = {})
+    }
+
+    /**
+     * 监听目录，并在底层 WatchService 完成注册后发出就绪通知。
+     *
+     * 该入口用于需要与注册时机同步的模块内部场景，目录事件语义与公开入口一致。
+     *
+     * @param directory 待监听目录。
+     * @param onRegistered WatchService 注册完成回调。
+     * @return 已去抖的文件变更事件流。
+     */
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    internal fun watch(
+        directory: Path,
+        onRegistered: () -> Unit,
+    ): Flow<FileWatchEvent> {
         return callbackFlow {
             val watchService = FileSystems.getDefault().newWatchService()
             directory.register(
@@ -57,6 +74,7 @@ class FileWatcher {
                 StandardWatchEventKinds.ENTRY_MODIFY,
                 StandardWatchEventKinds.ENTRY_DELETE,
             )
+            onRegistered()
             val watchJob = launch(Dispatchers.IO) {
                 var watchKeyValid = true
                 while (isActive && watchKeyValid) {

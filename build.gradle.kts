@@ -38,4 +38,16 @@ subprojects {
             sarif.required.set(false)
         }
     }
+
+    if (project.name == "composeApp" || project.name == "vfs-archive") {
+        tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+            val isolatedTempDirectory = layout.buildDirectory.dir("tmp/$name/process")
+            doFirst {
+                val directory = isolatedTempDirectory.get().asFile
+                directory.mkdirs()
+                // 7-Zip-JBinding 会把固定名称的 native 解压到 java.io.tmpdir，并行测试必须隔离目录。
+                systemProperty("java.io.tmpdir", directory.absolutePath)
+            }
+        }
+    }
 }

@@ -1,7 +1,7 @@
 package com.oruke.onyx.vfs.local
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -21,14 +21,15 @@ class FileWatcherTest {
         val directory = Files.createTempDirectory("onyx-file-watcher-test")
         try {
             val expected = directory.resolve("created.txt")
+            val registered = CompletableDeferred<Unit>()
             val event = async {
                 withTimeout(WATCH_TEST_TIMEOUT_MILLIS) {
-                    FileWatcher().watch(directory).first { candidate ->
+                    FileWatcher().watch(directory) { registered.complete(Unit) }.first { candidate ->
                         candidate.path == expected
                     }
                 }
             }
-            delay(WATCH_REGISTRATION_DELAY_MILLIS)
+            withTimeout(WATCH_TEST_TIMEOUT_MILLIS) { registered.await() }
             Files.writeString(expected, "content")
 
             assertEquals(expected, event.await().path)
@@ -37,9 +38,8 @@ class FileWatcherTest {
         }
     }
 
-    /** 测试等待监听器注册的毫秒数。 */
+    /** 测试等待监听器注册和文件事件的最大毫秒数。 */
     private companion object {
-        const val WATCH_REGISTRATION_DELAY_MILLIS = 150L
         const val WATCH_TEST_TIMEOUT_MILLIS = 5_000L
     }
 }
