@@ -1,5 +1,7 @@
 package com.oruke.onyx.vfs.api
 
+import com.oruke.onyx.core.model.S3ConnectionConfig
+
 /**
  * VFS 连接测试请求。
  */
@@ -12,6 +14,9 @@ data class VfsConnectionTestRequest(
 
     /** 本次测试使用的认证上下文。 */
     val authContext: VfsAuthContext = VfsAuthContext.None,
+
+    /** S3 测试专用 Endpoint 与寻址配置；其他协议保持为空。 */
+    val s3ConnectionConfig: S3ConnectionConfig? = null,
 )
 
 /**

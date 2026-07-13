@@ -51,11 +51,13 @@ import com.oruke.onyx.app.filesystem.ProviderBackedFileRepository
 import com.oruke.onyx.app.filesystem.PreviewService
 import com.oruke.onyx.vfs.api.RemoteAuthStore
 import com.oruke.onyx.vfs.s3.RemoteAuthStoreS3AuthRepository
+import com.oruke.onyx.vfs.s3.MutableS3ConnectionRepository
 import com.oruke.onyx.vfs.smb.RemoteAuthStoreSmbAuthRepository
 import com.oruke.onyx.vfs.webdav.RemoteAuthStoreWebDavAuthRepository
 import com.oruke.onyx.vfs.api.RoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
 import com.oruke.onyx.vfs.s3.S3AuthRepository
+import com.oruke.onyx.vfs.s3.S3ConnectionRepository
 import com.oruke.onyx.vfs.s3.S3VfsProvider
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.SettingsRepository
@@ -128,9 +130,11 @@ val fileModule = module {
     single<SmbAuthRepository> { RemoteAuthStoreSmbAuthRepository(get()) }
     single<WebDavAuthRepository> { RemoteAuthStoreWebDavAuthRepository(get()) }
     single<S3AuthRepository> { RemoteAuthStoreS3AuthRepository(get()) }
+    single { MutableS3ConnectionRepository() }
+    single<S3ConnectionRepository> { get<MutableS3ConnectionRepository>() }
     single { SmbVfsProvider(authRepository = get()) }
     single { WebDavVfsProvider(authRepository = get()) }
-    single { S3VfsProvider(authRepository = get()) }
+    single { S3VfsProvider(authRepository = get(), connectionRepository = get()) }
     single {
         VfsProviderRegistry(
             listOf(

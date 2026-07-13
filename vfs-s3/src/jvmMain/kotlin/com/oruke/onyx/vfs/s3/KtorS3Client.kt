@@ -3,6 +3,7 @@ package com.oruke.onyx.vfs.s3
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.S3ConnectionConfig
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsContentSource
@@ -62,11 +63,13 @@ class KtorS3Client(
     override suspend fun testConnection(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): Unit = withContext(Dispatchers.IO) {
         try {
             val request = signer.signListObjectsV2(
                 location = location,
                 authContext = authContext,
+                connectionConfig = connectionConfig,
                 continuationToken = null,
                 maxKeys = 0,
             )
@@ -84,6 +87,7 @@ class KtorS3Client(
     override suspend fun list(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): List<VFile> = withContext(Dispatchers.IO) {
         try {
             val entries = mutableListOf<VFile>()
@@ -92,6 +96,7 @@ class KtorS3Client(
                 val request = signer.signListObjectsV2(
                     location = location,
                     authContext = authContext,
+                    connectionConfig = connectionConfig,
                     continuationToken = continuationToken,
                 )
                 val response = httpClient.get(request.url) {
@@ -117,6 +122,7 @@ class KtorS3Client(
      * @param pageSize 单页最大条目数。
      * @param pageToken S3 continuation token；第一页为 null。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return 当前页条目与下一页 token。
      */
     override suspend fun listPage(
@@ -124,11 +130,13 @@ class KtorS3Client(
         pageSize: Int,
         pageToken: String?,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): S3ListPage = withContext(Dispatchers.IO) {
         try {
             val request = signer.signListObjectsV2(
                 location = location,
                 authContext = authContext,
+                connectionConfig = connectionConfig,
                 continuationToken = pageToken,
                 maxKeys = pageSize,
             )
@@ -148,6 +156,7 @@ class KtorS3Client(
         entry: VFile,
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): VfsContentSource = withContext(Dispatchers.IO) {
         VfsContentSource(
             name = entry.name,
@@ -157,6 +166,7 @@ class KtorS3Client(
                     val request = signer.signGetObject(
                         location = location,
                         authContext = authContext,
+                        connectionConfig = connectionConfig,
                     )
                     val response = httpClient.get(request.url) {
                         request.headers.forEach { (name, value) -> header(name, value) }
@@ -186,6 +196,7 @@ class KtorS3Client(
         chunks: Flow<ByteArray>,
         conflictStrategy: TransferConflictStrategy,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): VFile? = withContext(Dispatchers.IO) {
         val targetName = validateTargetName(name)
         val targetLocation = resolveWriteTargetLocation(
@@ -193,12 +204,14 @@ class KtorS3Client(
             name = targetName,
             conflictStrategy = conflictStrategy,
             authContext = authContext,
+            connectionConfig = connectionConfig,
         ) ?: return@withContext null
         val writtenBytes = AtomicLong(0)
         try {
             val request = signer.signPutObject(
                 location = targetLocation,
                 authContext = authContext,
+                connectionConfig = connectionConfig,
             )
             val response = httpClient.request(request.url) {
                 method = HttpMethod.Put
@@ -231,12 +244,14 @@ class KtorS3Client(
     override suspend fun deleteObject(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): Unit = withContext(Dispatchers.IO) {
         val objectLocation = location.toLocation(location.objectKey, directory = false)
         try {
             val request = signer.signDeleteObject(
                 location = location,
                 authContext = authContext,
+                connectionConfig = connectionConfig,
             )
             val response = httpClient.request(request.url) {
                 method = HttpMethod.Delete
@@ -253,11 +268,13 @@ class KtorS3Client(
     override suspend fun createDirectory(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): Unit = withContext(Dispatchers.IO) {
         try {
             val request = signer.signPutObject(
                 location = location,
                 authContext = authContext,
+                connectionConfig = connectionConfig,
             )
             val response = httpClient.request(request.url) {
                 method = HttpMethod.Put
@@ -279,6 +296,7 @@ class KtorS3Client(
      * @param name 目标文件名。
      * @param conflictStrategy 冲突处理策略。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return 实际写入的目标对象位置；跳过时返回 `null`。
      */
     private suspend fun resolveWriteTargetLocation(
@@ -286,19 +304,20 @@ class KtorS3Client(
         name: String,
         conflictStrategy: TransferConflictStrategy,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): S3Location? {
         val targetLocation = parentLocation.childObject(name)
         return when (conflictStrategy) {
             TransferConflictStrategy.OVERWRITE -> targetLocation
             TransferConflictStrategy.SKIP -> {
-                if (objectExists(targetLocation, authContext)) null else targetLocation
+                if (objectExists(targetLocation, authContext, connectionConfig)) null else targetLocation
             }
 
             TransferConflictStrategy.KEEP_BOTH -> {
                 var candidateName = name
                 repeat(MAX_KEEP_BOTH_ATTEMPTS) { index ->
                     val candidate = parentLocation.childObject(candidateName)
-                    if (!objectExists(candidate, authContext)) {
+                    if (!objectExists(candidate, authContext, connectionConfig)) {
                         return candidate
                     }
                     candidateName = name.withVfsCopySuffix(index + 1)
@@ -318,15 +337,18 @@ class KtorS3Client(
      *
      * @param location 需要检查的对象位置。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return `true` 表示对象已存在，`false` 表示对象不存在。
      */
     override suspend fun objectExists(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): Boolean {
         val request = signer.signHeadObject(
             location = location,
             authContext = authContext,
+            connectionConfig = connectionConfig,
         )
         val response = httpClient.request(request.url) {
             method = HttpMethod.Head

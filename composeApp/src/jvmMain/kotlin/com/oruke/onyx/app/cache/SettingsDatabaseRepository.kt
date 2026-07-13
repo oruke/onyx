@@ -4,6 +4,9 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
+import com.oruke.onyx.core.model.S3AddressingStyle
+import com.oruke.onyx.core.model.S3ConnectionConfig
+import com.oruke.onyx.core.model.S3ProviderPreset
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.batchInsert
@@ -90,6 +93,14 @@ internal class SettingsDatabaseRepository {
                     location = row[RemoteConnectionTable.location],
                     username = row[RemoteConnectionTable.username],
                     domain = row[RemoteConnectionTable.domain],
+                    s3Config = S3ConnectionConfig(
+                        provider = row[RemoteConnectionTable.s3Provider]
+                            .toEnumOrDefault(S3ProviderPreset.AMAZON_S3),
+                        endpoint = row[RemoteConnectionTable.s3Endpoint],
+                        region = row[RemoteConnectionTable.s3Region],
+                        addressingStyle = row[RemoteConnectionTable.s3AddressingStyle]
+                            .toEnumOrDefault(S3AddressingStyle.VIRTUAL_HOSTED),
+                    ),
                     savePolicy = row[RemoteConnectionTable.savePolicy]
                         .toEnumOrDefault(RemoteConnectionSavePolicy.SESSION),
                 )
@@ -150,6 +161,10 @@ internal class SettingsDatabaseRepository {
             this[RemoteConnectionTable.location] = connection.location
             this[RemoteConnectionTable.username] = connection.username
             this[RemoteConnectionTable.domain] = connection.domain
+            this[RemoteConnectionTable.s3Provider] = connection.s3Config.provider.name
+            this[RemoteConnectionTable.s3Endpoint] = connection.s3Config.endpoint
+            this[RemoteConnectionTable.s3Region] = connection.s3Config.region
+            this[RemoteConnectionTable.s3AddressingStyle] = connection.s3Config.addressingStyle.name
             this[RemoteConnectionTable.savePolicy] = connection.savePolicy.name
             this[RemoteConnectionTable.sortOrder] = connections.indexOfFirst { candidate ->
                 candidate.id == connection.id

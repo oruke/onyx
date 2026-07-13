@@ -75,7 +75,7 @@ internal class OnyxDatabaseMigrationService(
 
     private companion object {
         /** 当前应用能够读写的最高 schema 版本。 */
-        const val CURRENT_SCHEMA_VERSION = 1
+        const val CURRENT_SCHEMA_VERSION = 2
 
         /** 经过审查且只能顺序追加的 schema 迁移清单。 */
         val MIGRATIONS = listOf(
@@ -148,6 +148,17 @@ internal class OnyxDatabaseMigrationService(
                         updated_at_millis BIGINT NOT NULL
                     )
                     """.trimIndent(),
+                ),
+            ),
+            DatabaseMigration(
+                version = 2,
+                statements = listOf(
+                    "ALTER TABLE remote_connection ADD COLUMN s3_provider VARCHAR(32) NOT NULL DEFAULT 'AMAZON_S3'",
+                    "ALTER TABLE remote_connection ADD COLUMN s3_endpoint TEXT NOT NULL DEFAULT ''",
+                    "ALTER TABLE remote_connection ADD COLUMN s3_region VARCHAR(128) NOT NULL DEFAULT ''",
+                    "ALTER TABLE remote_connection ADD COLUMN s3_addressing_style " +
+                        "VARCHAR(32) NOT NULL DEFAULT 'VIRTUAL_HOSTED'",
+                    "UPDATE remote_connection SET s3_region = domain WHERE protocol = 'S3' AND s3_region = ''",
                 ),
             ),
         )

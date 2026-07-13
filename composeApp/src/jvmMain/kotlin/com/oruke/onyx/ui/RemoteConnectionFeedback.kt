@@ -22,7 +22,11 @@ import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_remote_connection_error_location_required
+import onyx.composeapp.generated.resources.label_remote_connection_error_s3_endpoint_invalid
+import onyx.composeapp.generated.resources.label_remote_connection_error_s3_region_required
+import onyx.composeapp.generated.resources.label_remote_connection_error_location_invalid
 import onyx.composeapp.generated.resources.label_remote_connection_error_name_required
+import onyx.composeapp.generated.resources.label_remote_connection_error_secret_required
 import onyx.composeapp.generated.resources.label_remote_connection_error_username_required
 import onyx.composeapp.generated.resources.label_remote_connection_error_credential_save_failed
 import onyx.composeapp.generated.resources.label_remote_connection_saving
@@ -114,8 +118,16 @@ private fun remoteConnectionErrorText(error: RemoteConnectionDialogError): Strin
             stringResource(Res.string.label_remote_connection_error_name_required)
         RemoteConnectionDialogError.LOCATION_EMPTY ->
             stringResource(Res.string.label_remote_connection_error_location_required)
+        RemoteConnectionDialogError.LOCATION_INVALID ->
+            stringResource(Res.string.label_remote_connection_error_location_invalid)
+        RemoteConnectionDialogError.S3_ENDPOINT_INVALID ->
+            stringResource(Res.string.label_remote_connection_error_s3_endpoint_invalid)
+        RemoteConnectionDialogError.S3_REGION_EMPTY ->
+            stringResource(Res.string.label_remote_connection_error_s3_region_required)
         RemoteConnectionDialogError.USERNAME_EMPTY ->
             stringResource(Res.string.label_remote_connection_error_username_required)
+        RemoteConnectionDialogError.SECRET_EMPTY ->
+            stringResource(Res.string.label_remote_connection_error_secret_required)
         RemoteConnectionDialogError.SYSTEM_KEYRING_UNAVAILABLE ->
             stringResource(Res.string.label_remote_credentials_system_keyring_unavailable)
         RemoteConnectionDialogError.CREDENTIAL_SAVE_FAILED ->

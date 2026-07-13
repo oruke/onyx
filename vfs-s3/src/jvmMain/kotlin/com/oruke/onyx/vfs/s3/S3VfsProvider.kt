@@ -27,10 +27,12 @@ import kotlinx.coroutines.flow.flow
  * S3 协议的 VFS Provider，负责把统一文件操作转换为对象存储请求。
  *
  * @property authRepository S3 认证上下文来源。
+ * @property connectionRepository S3 Endpoint 与寻址配置来源。
  * @property client 实际执行 S3 请求的客户端。
  */
 class S3VfsProvider(
     private val authRepository: S3AuthRepository = S3AuthRepository.None,
+    private val connectionRepository: S3ConnectionRepository = S3ConnectionRepository.None,
     private val client: S3Client = KtorS3Client(),
 ) : PagedVfsProvider,
     RoutableFileCommandService,
@@ -70,6 +72,7 @@ class S3VfsProvider(
                 client.list(
                     location = S3Location.parse(location),
                     authContext = authContext,
+                    connectionConfig = connectionRepository.configuration(location),
                 )
             }
 
@@ -106,6 +109,7 @@ class S3VfsProvider(
                     pageSize = request.pageSize,
                     pageToken = request.pageToken,
                     authContext = authContext,
+                    connectionConfig = connectionRepository.configuration(request.location),
                 )
                 VfsDirectoryPage(
                     entries = page.entries,
@@ -161,6 +165,8 @@ class S3VfsProvider(
     ): VfsConnectionTestResult {
         val authContext = request.authContext.takeIf { it != VfsAuthContext.None }
             ?: authRepository.authContext(request.location)
+        val connectionConfig = request.s3ConnectionConfig
+            ?: connectionRepository.configuration(request.location)
         return when (authContext) {
             VfsAuthContext.None -> VfsConnectionTestResult.Failed(
                 protocol = VfsProtocol.S3,
@@ -175,6 +181,7 @@ class S3VfsProvider(
                 client.testConnection(
                     location = location,
                     authContext = authContext,
+                    connectionConfig = connectionConfig,
                 )
                 VfsConnectionTestResult.Reachable(
                     protocol = VfsProtocol.S3,
@@ -225,6 +232,7 @@ class S3VfsProvider(
                         entry = entry,
                         location = S3Location.parse(entry.location),
                         authContext = authContext,
+                        connectionConfig = connectionRepository.configuration(entry.location),
                     )
                 }
 
@@ -388,10 +396,11 @@ class S3VfsProvider(
                 val targetName = validateTargetName(name)
                 val parent = S3Location.parse(parentLocation)
                 val target = parent.copy(prefix = parent.directoryPrefix + targetName.withVfsTrailingSlash())
-                if (client.objectExists(target, authContext)) {
+                val connectionConfig = connectionRepository.configuration(parentLocation)
+                if (client.objectExists(target, authContext, connectionConfig)) {
                     throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.S3, target.directoryLocation))
                 }
-                client.createDirectory(target, authContext)
+                client.createDirectory(target, authContext, connectionConfig)
                 target.toDirectoryVFile(name = targetName, parentLocation = parent.directoryLocation)
             }
 
@@ -420,6 +429,7 @@ class S3VfsProvider(
                     chunks = chunks,
                     conflictStrategy = conflictStrategy,
                     authContext = authContext,
+                    connectionConfig = connectionRepository.configuration(parentLocation),
                 )
             }
 
@@ -448,6 +458,7 @@ class S3VfsProvider(
         client.deleteObject(
             location = S3Location.parse(entry.location),
             authContext = authContext,
+            connectionConfig = connectionRepository.configuration(entry.location),
         )
     }
 

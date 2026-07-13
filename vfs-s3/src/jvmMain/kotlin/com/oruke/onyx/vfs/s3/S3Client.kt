@@ -1,6 +1,7 @@
 package com.oruke.onyx.vfs.s3
 
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.S3ConnectionConfig
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsContentSource
@@ -19,10 +20,12 @@ interface S3Client {
      *
      * @param location S3 位置。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      */
     suspend fun testConnection(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     )
 
     /**
@@ -30,11 +33,13 @@ interface S3Client {
      *
      * @param location S3 目录位置。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return 子项列表。
      */
     suspend fun list(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): List<VFile>
 
     /**
@@ -44,6 +49,7 @@ interface S3Client {
      * @param pageSize 单页最大条目数。
      * @param pageToken S3 continuation token；第一页为 null。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return 当前页条目和下一页 token。
      */
     suspend fun listPage(
@@ -51,9 +57,10 @@ interface S3Client {
         pageSize: Int,
         pageToken: String?,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): S3ListPage {
         return S3ListPage(
-            entries = list(location, authContext),
+            entries = list(location, authContext, connectionConfig),
             nextContinuationToken = null,
         )
     }
@@ -64,12 +71,14 @@ interface S3Client {
      * @param entry 文件条目。
      * @param location S3 对象位置。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return 文件内容源。
      */
     suspend fun readFile(
         entry: VFile,
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): VfsContentSource {
         throw VfsProviderException(
             VfsProviderError.UnsupportedOperation(
@@ -88,6 +97,7 @@ interface S3Client {
      * @param chunks 内容块。
      * @param conflictStrategy 名称冲突策略。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return 写入后的文件；SKIP 时可能返回 null。
      */
     suspend fun writeFile(
@@ -96,6 +106,7 @@ interface S3Client {
         chunks: Flow<ByteArray>,
         conflictStrategy: TransferConflictStrategy,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): VFile? {
         throw VfsProviderException(
             VfsProviderError.UnsupportedOperation(
@@ -111,10 +122,12 @@ interface S3Client {
      *
      * @param location 对象位置。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      */
     suspend fun deleteObject(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ) {
         throw VfsProviderException(
             VfsProviderError.UnsupportedOperation(
@@ -130,10 +143,12 @@ interface S3Client {
      *
      * @param location 目录位置。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      */
     suspend fun createDirectory(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ) {
         throw VfsProviderException(
             VfsProviderError.UnsupportedOperation(
@@ -149,11 +164,13 @@ interface S3Client {
      *
      * @param location 对象位置。
      * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
      * @return 存在时返回 true。
      */
     suspend fun objectExists(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
     ): Boolean {
         throw VfsProviderException(
             VfsProviderError.UnsupportedOperation(

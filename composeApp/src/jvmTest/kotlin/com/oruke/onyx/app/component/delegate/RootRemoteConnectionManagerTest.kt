@@ -4,6 +4,9 @@ import com.oruke.onyx.app.component.RemoteConnectionDraft
 import com.oruke.onyx.app.component.RemoteConnectionTestState
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.RemoteConnectionProfile
+import com.oruke.onyx.core.model.RemoteConnectionProtocol
+import com.oruke.onyx.core.model.S3AddressingStyle
+import com.oruke.onyx.core.model.S3ProviderPreset
 import com.oruke.onyx.vfs.api.InMemoryRemoteAuthStore
 import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
 import com.oruke.onyx.vfs.api.VfsConnectionTestResult
@@ -20,6 +23,60 @@ import kotlin.test.assertEquals
 
 /** 远程连接管理委托并发状态测试。 */
 class RootRemoteConnectionManagerTest {
+    /** 校验组件层在跨协议族切换时隔离旧地址和凭据。 */
+    @Test
+    fun isolatesCredentialsWhenProtocolChanges() = runTest {
+        val initialDraft = RemoteConnectionDraft(
+            protocol = RemoteConnectionProtocol.SMB,
+            location = "smb://server/share/",
+            username = "user",
+            secret = "password",
+            domain = "DOMAIN",
+        )
+        val dialogState = MutableStateFlow<RootDialogState?>(
+            RootDialogState.RemoteConnections(remoteConnectionDraft = initialDraft),
+        )
+        val manager = createManager(this, dialogState, DelayedConnectionTestService())
+
+        manager.updateRemoteConnectionDraft(initialDraft.copy(protocol = RemoteConnectionProtocol.S3))
+
+        val updated = (dialogState.value as RootDialogState.RemoteConnections).remoteConnectionDraft
+        assertEquals(RemoteConnectionProtocol.S3, updated.protocol)
+        assertEquals("", updated.location)
+        assertEquals("", updated.username)
+        assertEquals("", updated.secret)
+        assertEquals("", updated.domain)
+        assertEquals(true, updated.secretChanged)
+    }
+
+    /** 验证切换 S3 服务商时由组件层恢复该预设的 Endpoint 与寻址默认值。 */
+    @Test
+    fun appliesProviderDefaultsWhenS3PresetChanges() = runTest {
+        val initialDraft = RemoteConnectionDraft(
+            protocol = RemoteConnectionProtocol.S3,
+            location = "s3://sample-bucket/",
+        )
+        val dialogState = MutableStateFlow<RootDialogState?>(
+            RootDialogState.RemoteConnections(remoteConnectionDraft = initialDraft),
+        )
+        val manager = createManager(this, dialogState, DelayedConnectionTestService())
+
+        manager.updateRemoteConnectionDraft(
+            initialDraft.copy(
+                s3Config = initialDraft.s3Config.copy(
+                    provider = S3ProviderPreset.MINIO,
+                    endpoint = "https://stale-endpoint.example.test",
+                ),
+            ),
+        )
+
+        val updated = (dialogState.value as RootDialogState.RemoteConnections).remoteConnectionDraft.s3Config
+        assertEquals(S3ProviderPreset.MINIO, updated.provider)
+        assertEquals("", updated.endpoint)
+        assertEquals("us-east-1", updated.region)
+        assertEquals(S3AddressingStyle.PATH_STYLE, updated.addressingStyle)
+    }
+
     /**
      * 校验用户修改草稿后，已取消测试的旧结果不能覆盖当前状态。
      */

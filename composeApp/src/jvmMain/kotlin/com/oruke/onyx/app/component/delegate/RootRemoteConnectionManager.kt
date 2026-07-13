@@ -5,6 +5,7 @@ import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RemoteConnectionDialogError
 import com.oruke.onyx.app.component.RemoteConnectionDraft
+import com.oruke.onyx.app.component.RemoteConnectionLocation
 import com.oruke.onyx.app.component.RemoteConnectionTestState
 import com.oruke.onyx.app.component.RemoteCredentialsDialogError
 import com.oruke.onyx.app.component.RemoteCredentialsDraft
@@ -15,6 +16,7 @@ import com.oruke.onyx.app.component.toRemoteConnectionDraft
 import com.oruke.onyx.app.component.toRemoteConnectionProfile
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.RemoteConnectionProfile
+import com.oruke.onyx.core.model.defaultS3ConnectionConfig
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.vfs.api.RemoteAuthStore
 import com.oruke.onyx.vfs.api.RemoteCredentialSaveResult
@@ -80,8 +82,20 @@ internal class RootRemoteConnectionManager(
     fun updateRemoteConnectionDraft(draft: RemoteConnectionDraft) {
         val currentDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return
         cancelConnectionTest()
+        val currentDraft = currentDialog.remoteConnectionDraft
+        val nextDraft = when {
+            currentDraft.protocol != draft.protocol -> {
+                RemoteConnectionLocation.switchProtocol(currentDraft, draft.protocol)
+            }
+
+            currentDraft.s3Config.provider != draft.s3Config.provider -> {
+                draft.copy(s3Config = draft.s3Config.provider.defaultS3ConnectionConfig())
+            }
+
+            else -> draft
+        }
         dialogState.value = currentDialog.copy(
-            remoteConnectionDraft = draft,
+            remoteConnectionDraft = nextDraft,
             remoteConnectionError = null,
             remoteConnectionTestState = RemoteConnectionTestState.Idle,
         )
@@ -124,14 +138,16 @@ internal class RootRemoteConnectionManager(
         val currentDialog = dialogState.value as? RootDialogState.RemoteConnections
         if (currentDialog != null && connectionSaveJob?.isActive != true) {
             val draft = currentDialog.remoteConnectionDraft
-            val validationError = draft.saveValidationError()
+            val existing = currentDialog.editingRemoteConnectionId?.let { editingId ->
+                remoteConnections().firstOrNull { connection -> connection.id == editingId }
+            }
+            val validationError = draft.saveValidationError(
+                canReuseStoredSecret = existing != null && !draft.secretChanged,
+            )
             if (validationError != null) {
                 dialogState.value = currentDialog.copy(remoteConnectionError = validationError)
             } else {
                 val location = draft.normalizedLocation()
-                val existing = currentDialog.editingRemoteConnectionId?.let { editingId ->
-                    remoteConnections().firstOrNull { connection -> connection.id == editingId }
-                }
                 val profile = draft.toRemoteConnectionProfile(
                     id = currentDialog.editingRemoteConnectionId ?: UUID.randomUUID().toString(),
                     location = location,
@@ -202,14 +218,16 @@ internal class RootRemoteConnectionManager(
         val currentDialog = dialogState.value as? RootDialogState.RemoteConnections
         if (currentDialog != null) {
             val draft = currentDialog.remoteConnectionDraft
-            val validationError = draft.testValidationError()
+            val existing = currentDialog.editingRemoteConnectionId?.let { editingId ->
+                remoteConnections().firstOrNull { connection -> connection.id == editingId }
+            }
+            val validationError = draft.testValidationError(
+                canReuseStoredSecret = existing != null && !draft.secretChanged,
+            )
             if (validationError != null) {
                 dialogState.value = currentDialog.copy(remoteConnectionError = validationError)
             } else {
                 cancelConnectionTest()
-                val existing = currentDialog.editingRemoteConnectionId?.let { editingId ->
-                    remoteConnections().firstOrNull { connection -> connection.id == editingId }
-                }
                 val runId = UUID.randomUUID().toString()
                 connectionTestRunId = runId
                 dialogState.value = currentDialog.copy(

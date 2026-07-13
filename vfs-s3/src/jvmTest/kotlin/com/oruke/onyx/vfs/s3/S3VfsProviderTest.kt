@@ -2,6 +2,8 @@ package com.oruke.onyx.vfs.s3
 
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.S3ConnectionConfig
+import com.oruke.onyx.core.model.S3ProviderPreset
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.RoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
@@ -173,6 +175,28 @@ class S3VfsProviderTest {
         assertEquals("token-1", client.lastPageToken)
     }
 
+    /** 验证 Provider 会按 VFS 根位置把服务商配置传给底层 S3 client。 */
+    @Test
+    fun `list passes registered connection config to client`() = runBlocking {
+        val client = FakeS3Client(initialObjects = emptyMap())
+        val connectionConfig = S3ConnectionConfig(
+            provider = S3ProviderPreset.MINIO,
+            endpoint = "http://minio.example.test:9000",
+        )
+        val connectionRepository = MutableS3ConnectionRepository().apply {
+            replaceAll(listOf(S3ConnectionRegistration("s3://bucket/", connectionConfig)))
+        }
+        val provider = S3VfsProvider(
+            authRepository = StaticS3AuthRepository,
+            client = client,
+            connectionRepository = connectionRepository,
+        )
+
+        provider.list("s3://bucket/source/").getOrThrow()
+
+        assertEquals(connectionConfig, client.lastConnectionConfig)
+    }
+
     /**
      * 创建目录测试条目。
      *
@@ -256,6 +280,9 @@ class S3VfsProviderTest {
         /** 最近一次分页请求的 pageToken。 */
         var lastPageToken: String? = null
 
+        /** 最近一次 client 调用收到的 S3 连接配置。 */
+        var lastConnectionConfig: S3ConnectionConfig? = null
+
         /**
          * 判断对象是否存在。
          *
@@ -277,10 +304,12 @@ class S3VfsProviderTest {
          *
          * @param location 请求位置。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          */
         override suspend fun testConnection(
             location: S3Location,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ) = Unit
 
         /**
@@ -288,12 +317,15 @@ class S3VfsProviderTest {
          *
          * @param location 当前目录位置。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          * @return 当前目录直接子条目。
          */
         override suspend fun list(
             location: S3Location,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ): List<VFile> {
+            lastConnectionConfig = connectionConfig
             val directoryPrefix = location.directoryPrefix
             val directories = linkedSetOf<String>()
             val files = mutableListOf<VFile>()
@@ -326,6 +358,7 @@ class S3VfsProviderTest {
          * @param pageSize 单页最大条目数。
          * @param pageToken continuation token。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          * @return 当前页和下一页 token。
          */
         override suspend fun listPage(
@@ -333,11 +366,13 @@ class S3VfsProviderTest {
             pageSize: Int,
             pageToken: String?,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ): S3ListPage {
             lastPageSize = pageSize
             lastPageToken = pageToken
+            lastConnectionConfig = connectionConfig
             return S3ListPage(
-                entries = list(location, authContext).take(pageSize),
+                entries = list(location, authContext, connectionConfig).take(pageSize),
                 nextContinuationToken = "token-2",
             )
         }
@@ -348,12 +383,14 @@ class S3VfsProviderTest {
          * @param entry 源文件条目。
          * @param location 对象位置。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          * @return 内容源。
          */
         override suspend fun readFile(
             entry: VFile,
             location: S3Location,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ): VfsContentSource {
             return VfsContentSource(
                 name = entry.name,
@@ -370,6 +407,7 @@ class S3VfsProviderTest {
          * @param chunks 内容分块。
          * @param conflictStrategy 冲突处理策略。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          * @return 写入后的文件；跳过时返回 `null`。
          */
         override suspend fun writeFile(
@@ -378,6 +416,7 @@ class S3VfsProviderTest {
             chunks: Flow<ByteArray>,
             conflictStrategy: TransferConflictStrategy,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ): VFile? {
             val key = parentLocation.directoryPrefix + name
             if (key in objects && conflictStrategy == TransferConflictStrategy.SKIP) return null
@@ -392,10 +431,12 @@ class S3VfsProviderTest {
          *
          * @param location 对象位置。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          */
         override suspend fun deleteObject(
             location: S3Location,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ) {
             objects -= location.objectKey
         }
@@ -405,10 +446,12 @@ class S3VfsProviderTest {
          *
          * @param location 目录位置。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          */
         override suspend fun createDirectory(
             location: S3Location,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ) {
             objects[location.directoryPrefix] = ByteArray(0)
         }
@@ -418,11 +461,13 @@ class S3VfsProviderTest {
          *
          * @param location 对象位置。
          * @param authContext AWS 凭据。
+         * @param connectionConfig S3 Endpoint 与寻址配置。
          * @return `true` 表示存在。
          */
         override suspend fun objectExists(
             location: S3Location,
             authContext: VfsAuthContext.AwsCredentials,
+            connectionConfig: S3ConnectionConfig,
         ): Boolean {
             return location.objectKey in objects
         }

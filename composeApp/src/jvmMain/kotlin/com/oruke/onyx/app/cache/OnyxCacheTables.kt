@@ -134,8 +134,20 @@ internal object RemoteConnectionTable : Table("remote_connection") {
     /** 连接用户名，不包含密码或 token。 */
     val username = varchar("username", length = 256)
 
-    /** SMB 域或兼容协议的域字段。 */
+    /** SMB 域。 */
     val domain = varchar("domain", length = 256)
+
+    /** S3 服务商预设枚举名。 */
+    val s3Provider = varchar("s3_provider", length = 32)
+
+    /** S3 自定义或覆盖预设的 Endpoint。 */
+    val s3Endpoint = text("s3_endpoint")
+
+    /** S3 签名 Region。 */
+    val s3Region = varchar("s3_region", length = 128)
+
+    /** S3 Bucket 寻址方式枚举名。 */
+    val s3AddressingStyle = varchar("s3_addressing_style", length = 32)
 
     /** 凭据保存策略枚举名。 */
     val savePolicy = varchar("save_policy", length = 64)

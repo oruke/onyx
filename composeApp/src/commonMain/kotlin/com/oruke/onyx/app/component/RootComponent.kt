@@ -29,6 +29,7 @@ import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
+import com.oruke.onyx.core.model.S3ConnectionConfig
 import com.oruke.onyx.core.model.VFile
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
@@ -209,8 +210,10 @@ internal data class RemoteConnectionDraft(
     val secret: String = "",
     /** 用户是否实际修改过密钥字段，用于区分“保持原密码”和“写入空密码”。 */
     val secretChanged: Boolean = false,
-    /** SMB 域或 S3 Region。 */
+    /** SMB 域。 */
     val domain: String = "",
+    /** S3 兼容服务专属连接参数。 */
+    val s3Config: S3ConnectionConfig = S3ConnectionConfig(),
     /** 凭据保存策略。 */
     val savePolicy: RemoteConnectionSavePolicy = RemoteConnectionSavePolicy.SESSION,
 )
@@ -232,7 +235,11 @@ internal sealed interface RemoteConnectionTestState {
 internal enum class RemoteConnectionDialogError {
     NAME_EMPTY,
     LOCATION_EMPTY,
+    LOCATION_INVALID,
+    S3_ENDPOINT_INVALID,
+    S3_REGION_EMPTY,
     USERNAME_EMPTY,
+    SECRET_EMPTY,
     SYSTEM_KEYRING_UNAVAILABLE,
     CREDENTIAL_SAVE_FAILED,
 }

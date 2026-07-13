@@ -43,6 +43,7 @@ private suspend fun DefaultRootComponent.restoreSettings(): I18nMessage? {
                 settings.value = loadedSettings.copy(
                     uiScale = loadedSettings.uiScale.coerceIn(MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT),
                 )
+                synchronizeS3ConnectionConfigurations()
             }
         },
         onFailure = { failure ->

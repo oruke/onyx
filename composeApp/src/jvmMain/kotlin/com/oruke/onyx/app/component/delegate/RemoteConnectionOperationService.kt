@@ -6,6 +6,7 @@ import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.component.normalizedLocation
 import com.oruke.onyx.app.component.toVfsProtocol
 import com.oruke.onyx.core.model.RemoteConnectionProfile
+import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.vfs.api.RemoteAuthStore
 import com.oruke.onyx.vfs.api.RemoteCredentialSaveResult
@@ -65,6 +66,9 @@ internal class RemoteConnectionOperationService(
                 protocol = draft.protocol.toVfsProtocol(),
                 location = draft.normalizedLocation(),
                 authContext = credentialService.authContextForTest(existing, draft),
+                s3ConnectionConfig = draft.s3Config.takeIf {
+                    draft.protocol == RemoteConnectionProtocol.S3
+                },
             )
         }
         when (val result = connectionTestService.testConnection(request)) {

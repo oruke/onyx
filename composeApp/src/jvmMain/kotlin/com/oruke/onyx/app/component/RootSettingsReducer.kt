@@ -22,6 +22,10 @@ internal fun OnyxSettings.sanitizeRootSettings(): OnyxSettings {
                     location = connection.location.trim(),
                     username = connection.username.trim(),
                     domain = connection.domain.trim(),
+                    s3Config = connection.s3Config.copy(
+                        endpoint = connection.s3Config.endpoint.trim(),
+                        region = connection.s3Config.region.trim(),
+                    ),
                 )
             }
             .filter { connection -> connection.name.isNotEmpty() && connection.location.isNotEmpty() }

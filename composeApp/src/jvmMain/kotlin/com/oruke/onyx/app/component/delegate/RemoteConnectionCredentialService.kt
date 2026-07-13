@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.component.RemoteConnectionDraft
+import com.oruke.onyx.app.component.domainForProtocol
 import com.oruke.onyx.app.component.toAuthContextOrNull
 import com.oruke.onyx.app.component.toRemoteCredentialSavePolicy
 import com.oruke.onyx.app.component.toVfsProtocol
@@ -108,7 +109,9 @@ internal class RemoteConnectionCredentialService(
         newSavePolicy: RemoteCredentialSavePolicy,
     ): RemoteCredentialSaveResult? {
         val oldProtocol = existing.protocol.toVfsProtocol()
-        val targetChanged = oldProtocol != newProtocol || existing.location != normalizedLocation
+        val targetChanged = oldProtocol != newProtocol ||
+            existing.location != normalizedLocation ||
+            existing.s3Config != draft.s3Config
         val savePolicyChanged = existing.savePolicy != draft.savePolicy
 
         val previousAuth = remoteAuthStore.authContext(oldProtocol, existing.location)
@@ -154,7 +157,8 @@ internal class RemoteConnectionCredentialService(
         normalizedLocation: String,
     ): Boolean {
         val targetChanged = existing.protocol.toVfsProtocol() != draft.protocol.toVfsProtocol() ||
-            existing.location != normalizedLocation
+            existing.location != normalizedLocation ||
+            existing.s3Config != draft.s3Config
         val savePolicyChanged = existing.savePolicy != draft.savePolicy
         val metadataChanged = existing.username != draft.username.trim() ||
             existing.domain != draft.domain.trim()
@@ -269,12 +273,12 @@ private fun VfsAuthContext.mergeWithDraftMetadata(draft: RemoteConnectionDraft):
     return when (this) {
         is VfsAuthContext.UsernamePassword -> copy(
             username = draft.username.trim(),
-            domain = draft.domain.trim().ifBlank { null },
+            domain = draft.domainForProtocol().ifBlank { null },
         )
 
         is VfsAuthContext.AwsCredentials -> copy(
             accessKeyId = draft.username.trim(),
-            region = draft.domain.trim().ifBlank { null },
+            region = draft.s3Config.region.trim().ifBlank { null },
         )
 
         is VfsAuthContext.BearerToken -> this

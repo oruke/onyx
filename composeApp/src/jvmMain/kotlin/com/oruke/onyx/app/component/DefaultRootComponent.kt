@@ -117,6 +117,8 @@ internal class DefaultRootComponent(
     internal val connectionTestService = dependencies.inspection.connectionTestService
     /** 远程认证存储。 */
     internal val remoteAuthStore = dependencies.inspection.remoteAuthStore
+    /** 运行期 S3 Endpoint 配置仓库。 */
+    internal val s3ConnectionRepository = dependencies.inspection.s3ConnectionRepository
     /** 文件集合用例。 */
     internal val fileCollectionUseCase = dependencies.search.fileCollectionUseCase
     /** 文件内容搜索服务。 */

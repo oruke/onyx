@@ -18,6 +18,7 @@ internal fun RemoteConnectionProfile.toRemoteConnectionDraft(): RemoteConnection
         location = location,
         username = username,
         domain = domain,
+        s3Config = s3Config,
         savePolicy = savePolicy,
     )
 }
@@ -32,13 +33,17 @@ internal fun RemoteConnectionDraft.toRemoteConnectionProfile(
         protocol = protocol,
         location = location,
         username = username.trim(),
-        domain = domain.trim(),
+        domain = domainForProtocol(),
+        s3Config = s3Config.copy(
+            endpoint = s3Config.endpoint.trim(),
+            region = s3Config.region.trim(),
+        ),
         savePolicy = savePolicy,
     )
 }
 
 internal fun RemoteConnectionDraft.hasCredentialInput(): Boolean {
-    return username.isNotBlank() || secret.isNotBlank() || domain.isNotBlank()
+    return username.isNotBlank() || secret.isNotBlank() || domainForProtocol().isNotBlank()
 }
 
 internal fun RemoteConnectionDraft.toAuthContextOrNull(): VfsAuthContext? {
@@ -47,39 +52,38 @@ internal fun RemoteConnectionDraft.toAuthContextOrNull(): VfsAuthContext? {
         RemoteConnectionProtocol.S3 -> VfsAuthContext.AwsCredentials(
             accessKeyId = username.trim(),
             secretAccessKey = secret,
-            region = domain.trim().ifBlank { null },
+            region = s3Config.region.trim().ifBlank { null },
         )
 
-        RemoteConnectionProtocol.SMB,
-        RemoteConnectionProtocol.WEBDAV,
-        RemoteConnectionProtocol.WEBDAVS -> VfsAuthContext.UsernamePassword(
+        RemoteConnectionProtocol.SMB -> VfsAuthContext.UsernamePassword(
             username = username.trim(),
             password = secret,
             domain = domain.trim().ifBlank { null },
         )
+
+        RemoteConnectionProtocol.WEBDAV,
+        RemoteConnectionProtocol.WEBDAVS -> VfsAuthContext.UsernamePassword(
+            username = username.trim(),
+            password = secret,
+            domain = null,
+        )
     }
 }
 
-internal fun RemoteConnectionDraft.normalizedLocation(): String {
-    val trimmed = location.trim()
-    val withScheme = if ("://" in trimmed) {
-        trimmed
-    } else {
-        "${protocol.defaultScheme()}://${trimmed.trimStart('/')}"
-    }
-    return if (withScheme.contains('?') || withScheme.contains('#') || withScheme.endsWith('/')) {
-        withScheme
-    } else {
-        "$withScheme/"
-    }
-}
-
-internal fun RemoteConnectionProtocol.defaultScheme(): String {
-    return when (this) {
-        RemoteConnectionProtocol.SMB -> "smb"
-        RemoteConnectionProtocol.WEBDAV -> "webdav"
-        RemoteConnectionProtocol.WEBDAVS -> "webdavs"
-        RemoteConnectionProtocol.S3 -> "s3"
+/**
+ * 返回当前协议实际使用的附加认证元数据。
+ *
+ * WebDAV Basic 认证不消费域字段，因此必须在进入配置和凭据存储前清空，避免隐藏字段残留。
+ *
+ * @return SMB 域；其他协议返回空字符串。
+ */
+internal fun RemoteConnectionDraft.domainForProtocol(): String {
+    return when (protocol) {
+        RemoteConnectionProtocol.SMB -> domain.trim()
+        RemoteConnectionProtocol.S3,
+        RemoteConnectionProtocol.WEBDAV,
+        RemoteConnectionProtocol.WEBDAVS,
+        -> ""
     }
 }
 

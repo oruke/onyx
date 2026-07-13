@@ -42,6 +42,7 @@ internal fun DefaultRootComponent.activatePane(paneId: PaneId) {
 /** @param nextSettings 待应用设置。 */
 internal fun DefaultRootComponent.updateSettings(nextSettings: OnyxSettings) {
     settings.value = nextSettings.sanitizeRootSettings()
+    synchronizeS3ConnectionConfigurations()
 }
 
 /** @param location 待打开 VFS 位置。 */

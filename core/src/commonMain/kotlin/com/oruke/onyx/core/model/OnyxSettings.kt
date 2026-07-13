@@ -109,8 +109,10 @@ data class RemoteConnectionProfile(
     val location: String,
     /** 登录用户名或访问密钥 ID。 */
     val username: String = "",
-    /** SMB 域或 S3 Region。 */
+    /** SMB 域；其他协议保持为空。 */
     val domain: String = "",
+    /** S3 协议专属连接参数。 */
+    val s3Config: S3ConnectionConfig = S3ConnectionConfig(),
     /** 凭据保存策略。 */
     val savePolicy: RemoteConnectionSavePolicy = RemoteConnectionSavePolicy.SESSION,
 )

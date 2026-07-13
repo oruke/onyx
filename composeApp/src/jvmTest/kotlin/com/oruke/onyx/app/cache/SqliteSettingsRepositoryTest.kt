@@ -4,6 +4,9 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
+import com.oruke.onyx.core.model.S3AddressingStyle
+import com.oruke.onyx.core.model.S3ConnectionConfig
+import com.oruke.onyx.core.model.S3ProviderPreset
 import kotlinx.coroutines.test.runTest
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -101,7 +104,21 @@ class SqliteSettingsRepositoryTest {
                     username = "demo-user",
                     domain = "WORKGROUP",
                     savePolicy = RemoteConnectionSavePolicy.SYSTEM_KEYRING,
-                )
+                ),
+                RemoteConnectionProfile(
+                    id = "remote-s3-demo",
+                    name = "Demo MinIO",
+                    protocol = RemoteConnectionProtocol.S3,
+                    location = "s3://sample-bucket/library/",
+                    username = "sample-access",
+                    s3Config = S3ConnectionConfig(
+                        provider = S3ProviderPreset.MINIO,
+                        endpoint = "https://storage.example.test:9000",
+                        region = "us-east-1",
+                        addressingStyle = S3AddressingStyle.PATH_STYLE,
+                    ),
+                    savePolicy = RemoteConnectionSavePolicy.SESSION,
+                ),
             ),
         )
     }

@@ -36,6 +36,7 @@ import com.oruke.onyx.vfs.api.TrashService
 import com.oruke.onyx.vfs.api.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
+import com.oruke.onyx.vfs.s3.MutableS3ConnectionRepository
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileContentSearchService
 import com.oruke.onyx.app.platform.ExternalFileDragService
@@ -102,6 +103,7 @@ internal fun rememberRootComponent(): RootComponent {
                     imageMetadataService = koin.get<ImageMetadataService>(),
                     connectionTestService = koin.get<VfsConnectionTestService>(),
                     remoteAuthStore = koin.get<RemoteAuthStore>(),
+                    s3ConnectionRepository = koin.get<MutableS3ConnectionRepository>(),
                 ),
                 search = RootSearchDependencies(
                     fileCollectionUseCase = koin.get<FileCollectionUseCase>(),

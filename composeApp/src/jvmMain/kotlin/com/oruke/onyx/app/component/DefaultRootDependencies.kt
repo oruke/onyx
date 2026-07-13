@@ -30,6 +30,7 @@ import com.oruke.onyx.vfs.api.TrashService
 import com.oruke.onyx.vfs.api.VfsConnectionTestService
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.s3.MutableS3ConnectionRepository
 
 /** 根组件的文件读写与条目打开依赖。 */
 internal data class RootFileDependencies(
@@ -91,6 +92,8 @@ internal data class RootInspectionDependencies(
     val connectionTestService: VfsConnectionTestService,
     /** 远程认证存储。 */
     val remoteAuthStore: RemoteAuthStore,
+    /** 运行期 S3 Endpoint 配置仓库。 */
+    val s3ConnectionRepository: MutableS3ConnectionRepository,
 )
 
 /** 根组件的搜索依赖。 */
