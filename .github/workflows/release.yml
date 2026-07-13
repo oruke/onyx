@@ -13,33 +13,78 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            task: packageDeb packageRpm packageUberJarForCurrentOS
+            jbr-archive: jbrsdk-21.0.11-linux-x64-b1163.116.tar.gz
+            jbr-sha512: 13d0aab4bcfa9e4f77a696b97d3998f7e82e22f7f1362d8ce97f0d50d69dddd9331a66ada3fe92c04e544795fc247bcbaf586ad0415df4eda5e0e0505753888f
+            task: packageDeb packageRpm createDistributable
+            portable-id: linux-x64
+            portable-directory: Onyx
             artifact-path: |
               composeApp/build/compose/binaries/main/deb/*.deb
               composeApp/build/compose/binaries/main/rpm/*.rpm
-              composeApp/build/compose/jars/*.jar
+              composeApp/build/compose/portable/*.zip
           - os: windows-latest
-            task: packageMsi packageUberJarForCurrentOS
+            jbr-archive: jbrsdk-21.0.11-windows-x64-b1163.116.zip
+            jbr-sha512: 457c15d931bb5055ae97574fc7d899aa70917c266d4b40a1c50d949ff1d2b431eb95ad078b2038bd94561fbd57889803f867dd9c295868fbb0c3c870f1f4d1d3
+            task: packageMsi createDistributable
+            portable-id: windows-x64
+            portable-directory: Onyx
             artifact-path: |
               composeApp/build/compose/binaries/main/msi/*.msi
-              composeApp/build/compose/jars/*.jar
+              composeApp/build/compose/portable/*.zip
           # 7-Zip-JBinding 16.02 仅提供 Mac x86_64 native，发布任务必须固定 Intel runner。
           - os: macos-15-intel
-            task: packageDmg packageUberJarForCurrentOS
+            jbr-archive: jbrsdk-21.0.11-osx-x64-b1163.116.tar.gz
+            jbr-sha512: efe9b3636804a1f7089414b10b77b53adf108b566b751eef483c0507197c8282b8459419c5a0f37fd67ad5e64111650069f70ea8ba8abf451078d6900045c88a
+            task: packageDmg createDistributable
+            portable-id: macos-x64
+            portable-directory: Onyx.app
             artifact-path: |
               composeApp/build/compose/binaries/main/dmg/*.dmg
-              composeApp/build/compose/jars/*.jar
+              composeApp/build/compose/portable/*.zip
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup JDK 21
+      - name: Download pinned JetBrains Runtime SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archivePath = Join-Path $env:RUNNER_TEMP '${{ matrix.jbr-archive }}'
+          $downloadUrl = 'https://cache-redirector.jetbrains.com/intellij-jbr/${{ matrix.jbr-archive }}'
+
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try {
+              Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath
+              break
+            } catch {
+              if ($attempt -eq 3) { throw }
+              Start-Sleep -Seconds (5 * $attempt)
+            }
+          }
+
+          $actualSha512 = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA512).Hash.ToLowerInvariant()
+          if ($actualSha512 -ne '${{ matrix.jbr-sha512 }}') {
+            throw "JBR SDK SHA-512 mismatch: $actualSha512"
+          }
+          "JBR_ARCHIVE=$archivePath" >> $env:GITHUB_ENV
+
+      - name: Setup JetBrains Runtime SDK 21
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
+          distribution: 'jdkfile'
+          java-version: '21.0.11'
+          jdkFile: ${{ env.JBR_ARCHIVE }}
+
+      - name: Verify JetBrains Runtime SDK
+        shell: pwsh
+        run: |
+          $runtimeProperties = (& java -XshowSettings:properties -version 2>&1 | Out-String)
+          if ($runtimeProperties -notmatch 'java\.vendor\s*=\s*JetBrains') {
+            throw "Release packages require JetBrains Runtime.`n$runtimeProperties"
+          }
+          Get-Command jpackage -ErrorAction Stop | Out-Null
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -49,6 +94,51 @@ jobs:
 
       - name: Build packages
         run: ./gradlew ${{ matrix.task }}
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceRoot = Resolve-Path 'composeApp/build/compose/binaries/main/app'
+          $sourcePath = Join-Path $sourceRoot '${{ matrix.portable-directory }}'
+          if (-not (Test-Path -LiteralPath $sourcePath)) {
+            throw "Portable application directory was not generated: $sourcePath"
+          }
+
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $outputDirectory = (New-Item -ItemType Directory -Force 'composeApp/build/compose/portable').FullName
+          $archivePath = Join-Path $outputDirectory "Onyx-${{ matrix.portable-id }}-$version.zip"
+
+          if ($IsMacOS) {
+            & ditto -c -k --sequesterRsrc --keepParent $sourcePath $archivePath
+            if ($LASTEXITCODE -ne 0) {
+              throw "ditto failed to create portable ZIP: $archivePath"
+            }
+          } elseif ($IsLinux) {
+            Push-Location $sourceRoot
+            try {
+              & zip -qry -y $archivePath '${{ matrix.portable-directory }}'
+              if ($LASTEXITCODE -ne 0) {
+                throw "zip failed to create portable ZIP: $archivePath"
+              }
+            } finally {
+              Pop-Location
+            }
+          } else {
+            Push-Location $sourceRoot
+            try {
+              & tar -a -c -f $archivePath '${{ matrix.portable-directory }}'
+              if ($LASTEXITCODE -ne 0) {
+                throw "tar failed to create portable ZIP: $archivePath"
+              }
+            } finally {
+              Pop-Location
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $archivePath)) {
+            throw "Failed to create portable ZIP: $archivePath"
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -79,6 +79,7 @@ compose.desktop {
             vendor = "oruke"
 
             windows {
+                iconFile.set(project.file("src/jvmMain/resources/onyx.ico"))
                 menuGroup = "Onyx"
                 shortcut = true
                 dirChooser = true

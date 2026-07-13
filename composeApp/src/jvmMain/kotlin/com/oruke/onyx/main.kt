@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.SessionRestoreState
@@ -41,9 +42,23 @@ private const val MAIN_WINDOW_MIN_WIDTH = 800
 private const val MAIN_WINDOW_MIN_HEIGHT = 600
 
 /**
- * 启动 Onyx 桌面应用并装配依赖与 Jewel 主题。
+ * 启动 Onyx 桌面应用，并在创建窗口前初始化持久化日志。
+ *
+ * @return 无返回值。
  */
-fun main() = application {
+@Suppress("TooGenericExceptionCaught")
+fun main() {
+    OnyxLogger.initialize()
+    try {
+        launchOnyxApplication()
+    } catch (failure: Throwable) {
+        OnyxLogger.error("Startup", "应用启动失败", failure)
+        throw failure
+    }
+}
+
+/** 创建 Compose 应用生命周期并装配依赖与 Jewel 主题。 */
+private fun launchOnyxApplication() = application {
     KoinApplication(application = { modules(fileModule) }) {
         val isDark = isSystemInDarkTheme()
         val theme = if (isDark) JewelTheme.darkThemeDefinition() else JewelTheme.lightThemeDefinition()
