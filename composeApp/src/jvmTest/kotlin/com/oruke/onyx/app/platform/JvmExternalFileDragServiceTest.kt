@@ -5,8 +5,10 @@ import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.SystemFileMaterializer
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.withTimeout
 import java.nio.file.Files
 import javax.swing.JPanel
 import javax.swing.TransferHandler
@@ -14,22 +16,30 @@ import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 /** JVM 系统外拖服务线程与生命周期测试。 */
 class JvmExternalFileDragServiceTest {
     /**
      * 校验远程文件物化在后台启动，不阻塞准备拖放的调用线程。
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun startsRemoteMaterializationWithoutBlockingDragPreparation() = runTest {
         val materializer = DelayedMaterializer()
-        val service = JvmExternalFileDragService(materializer)
+        val service = JvmExternalFileDragService(
+            materializer = materializer,
+            materializationDispatcher = StandardTestDispatcher(testScheduler),
+        )
 
         service.preparePendingFiles(listOf(remoteFile()))
 
-        withTimeout(TEST_TIMEOUT_MILLIS) { materializer.started.await() }
+        assertFalse(materializer.started.isCompleted)
+        runCurrent()
+        assertTrue(materializer.started.isCompleted)
         assertFalse(materializer.result.isCompleted)
         materializer.result.complete(Result.success(localFile()))
+        runCurrent()
         service.clearPending()
     }
 
@@ -116,10 +126,5 @@ class JvmExternalFileDragServiceTest {
             hidden = false,
             capabilities = setOf(VFileCapability.READ_CONTENT),
         )
-    }
-
-    private companion object {
-        /** 后台物化启动的最长等待时间。 */
-        const val TEST_TIMEOUT_MILLIS = 5_000L
     }
 }

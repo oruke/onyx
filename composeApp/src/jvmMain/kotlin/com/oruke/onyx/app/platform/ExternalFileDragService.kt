@@ -5,6 +5,7 @@ import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.api.SystemFileMaterializer
 import com.oruke.onyx.app.filesystem.systemLocalPathOrNull
 import com.oruke.onyx.core.model.VFile
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,12 +75,14 @@ interface ExternalFileDragService {
  * JVM/Swing 外部文件拖放服务实现。
  *
  * @param materializer VFS 到系统本地文件的物化服务。
+ * @param materializationDispatcher 远程文件后台物化调度器。
  */
 class JvmExternalFileDragService(
     private val materializer: SystemFileMaterializer,
+    materializationDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ExternalFileDragService {
     /** 远程文件预物化使用的后台作用域。 */
-    private val materializationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val materializationScope = CoroutineScope(SupervisorJob() + materializationDispatcher)
 
     /** 临时物化根目录，应用退出或服务卸载时删除。 */
     private val tempRootDir: Path by lazy {
