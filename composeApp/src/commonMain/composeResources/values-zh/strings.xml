@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="window_image_viewer_title">Onyx 图片查看器</string>
     <string name="app_name">Onyx</string>
 
     <string name="action_go_back">后退</string>
@@ -12,6 +13,7 @@
     <string name="action_command_palette">命令面板</string>
     <string name="action_select_all">全选</string>
     <string name="action_open_in_new_tab">在新标签页打开</string>
+    <string name="action_open_in_new_window">在新窗口打开</string>
     <string name="action_open_with">打开方式</string>
     <string name="action_open_with_other">其他应用…</string>
     <string name="action_toggle_favorite">切换收藏</string>

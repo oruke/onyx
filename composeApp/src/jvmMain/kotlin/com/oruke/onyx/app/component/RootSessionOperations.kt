@@ -8,22 +8,37 @@ import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.archive.ArchiveService
 
-/** 恢复设置与会话，并在完成后启用自动持久化。 */
+/**
+ * 恢复设置与会话，并在完成后启用自动持久化。
+ *
+ * @return 无返回值。
+ */
 internal suspend fun DefaultRootComponent.restorePersistedState() {
-    var restoreError: I18nMessage? = restoreSettings()
-    sessionRepository.loadSession().fold(
-        onSuccess = { session ->
-            if (session != null) {
-                applySession(session)
-            } else {
+    var restoreError: I18nMessage? = null
+    if (launchConfiguration.persistsMainSession) {
+        restoreError = restoreSettings()
+        sessionRepository.loadSession().fold(
+            onSuccess = { session ->
+                if (session != null) {
+                    applySession(session)
+                } else {
+                    applySettingsDefaults()
+                }
+            },
+            onFailure = { failure ->
+                restoreError = restoreError ?: failure.toI18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
                 applySettingsDefaults()
-            }
-        },
-        onFailure = { failure ->
-            restoreError = restoreError ?: failure.toI18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
-            applySettingsDefaults()
-        },
-    )
+            },
+        )
+    } else {
+        applySettingsDefaults()
+    }
+    launchConfiguration.initialLocation
+        ?.takeIf(String::isNotBlank)
+        ?.let { location ->
+            activePane.value = PaneId.PRIMARY
+            primaryPane.openDirectory(location)
+        }
     sessionRestoreState.value = restoreError?.let(SessionRestoreState::Failed) ?: SessionRestoreState.Ready
     persistenceReady = true
     recordRecentLocations(listOf(primaryPane.state.value.location, secondaryPane.state.value.location))
@@ -73,9 +88,17 @@ private fun DefaultRootComponent.applySettingsDefaults() {
     secondaryPane.setViewMode(defaultViewMode)
 }
 
-/** 持久化当前设置与会话快照。 */
+/**
+ * 持久化当前设置与会话快照。
+ *
+ * @return 无返回值。
+ */
 internal suspend fun DefaultRootComponent.persistCurrentState() {
-    sessionManager.persist(settings.value, buildSessionSnapshot())
+    if (launchConfiguration.persistsMainSession) {
+        sessionManager.persist(settings.value, buildSessionSnapshot())
+    } else {
+        sessionManager.saveSettings(settings.value)
+    }
 }
 
 /** @return 当前根状态对应的会话快照。 */

@@ -192,7 +192,7 @@ val fileModule = module {
             )
         )
     }
-    single<ExternalFileDragService> { JvmExternalFileDragService(get()) }
+    factory<ExternalFileDragService> { JvmExternalFileDragService(get()) }
     single<OpenWithService> { JvmPlatformOpenWithService(get()) }
     single { OnyxLocalDatabaseService() }
     single { PlatformMenuCacheRepository() }

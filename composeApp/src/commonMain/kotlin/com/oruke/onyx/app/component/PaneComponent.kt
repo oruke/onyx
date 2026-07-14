@@ -261,6 +261,8 @@ internal sealed interface PaneIntent {
 
     data object OpenSelectedInNewTab : PaneIntent
 
+    data object OpenSelectedInNewWindow : PaneIntent
+
     data object CopySelectedPaths : PaneIntent
 
     data class UpdateInlineEditDraft(

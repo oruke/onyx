@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,6 +33,8 @@ import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
+import com.oruke.onyx.app.component.RootLaunchConfiguration
+import com.oruke.onyx.app.component.rememberRootApplicationRuntime
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
@@ -158,11 +161,40 @@ internal fun DecoratedWindowScope.WindowApp(
     }
 }
 
+/**
+ * 创建供独立预览或嵌入场景使用的单窗口应用内容。
+ *
+ * @return 无返回值。
+ */
 @Composable
-internal fun App(rootComponent: RootComponent = rememberRootComponent()) {
-    // 独立使用时仍可默认创建 rootComponent
+internal fun App() {
     val koin = org.koin.compose.getKoin()
     val externalFileDragService = remember { koin.get<ExternalFileDragService>() }
+    val applicationRuntime = rememberRootApplicationRuntime()
+    val launchConfiguration = remember { RootLaunchConfiguration() }
+    val rootComponent = rememberRootComponent(
+        applicationRuntime = applicationRuntime,
+        externalFileDragService = externalFileDragService,
+        launchConfiguration = launchConfiguration,
+    )
+    DisposableEffect(externalFileDragService) {
+        onDispose(externalFileDragService::dispose)
+    }
+    App(rootComponent, externalFileDragService)
+}
+
+/**
+ * 使用已装配的根组件与拖放服务渲染单窗口应用内容。
+ *
+ * @param rootComponent 文件管理器根组件。
+ * @param externalFileDragService 与根组件一致的窗口拖放服务。
+ * @return 无返回值。
+ */
+@Composable
+internal fun App(
+    rootComponent: RootComponent,
+    externalFileDragService: ExternalFileDragService,
+) {
     val state by rootComponent.state.collectAsState()
     val appearance = rememberOnyxAppearance(
         listRowHeightDp = state.settings.listRowHeightDp,

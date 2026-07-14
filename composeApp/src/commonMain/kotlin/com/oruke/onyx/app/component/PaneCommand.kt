@@ -8,6 +8,7 @@ import com.oruke.onyx.core.model.VFileKind
 internal enum class PaneCommand {
     OPEN_SELECTION,
     OPEN_SELECTION_IN_NEW_TAB,
+    OPEN_SELECTION_IN_NEW_WINDOW,
     RENAME_SELECTION,
     NEW_FILE,
     NEW_DIRECTORY,
@@ -115,7 +116,8 @@ internal class PaneCommandController(
             PaneCommand.OPEN_SELECTION,
             PaneCommand.RENAME_SELECTION -> selectedCount == 1
 
-            PaneCommand.OPEN_SELECTION_IN_NEW_TAB -> selectedDirectoryCount() == 1
+            PaneCommand.OPEN_SELECTION_IN_NEW_TAB,
+            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW -> selectedCount == 1 && selectedDirectoryCount() == 1
 
             PaneCommand.DELETE_SELECTION,
             PaneCommand.COPY_SELECTION,
@@ -154,6 +156,10 @@ internal class PaneCommandController(
 
             PaneCommand.OPEN_SELECTION_IN_NEW_TAB -> executeIfEnabled(command) {
                 dispatch(PaneIntent.OpenSelectedInNewTab)
+            }
+
+            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW -> executeIfEnabled(command) {
+                dispatch(PaneIntent.OpenSelectedInNewWindow)
             }
 
             PaneCommand.RENAME_SELECTION -> executeIfEnabled(command) {

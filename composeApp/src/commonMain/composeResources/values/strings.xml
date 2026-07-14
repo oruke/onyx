@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="window_image_viewer_title">Onyx Viewer</string>
     <string name="app_name">Onyx</string>
 
     <string name="action_go_back">Back</string>
@@ -12,6 +13,7 @@
     <string name="action_command_palette">Command Palette</string>
     <string name="action_select_all">Select All</string>
     <string name="action_open_in_new_tab">Open in New Tab</string>
+    <string name="action_open_in_new_window">Open in New Window</string>
     <string name="action_open_with">Open With</string>
     <string name="action_open_with_other">Other Application…</string>
     <string name="action_toggle_favorite">Toggle Favorite</string>

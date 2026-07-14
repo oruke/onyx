@@ -8,10 +8,7 @@ import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.create
 import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
-import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.ImageViewerController
-import com.oruke.onyx.app.component.delegate.SessionManager
-import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ArchiveInfoService
@@ -28,7 +25,6 @@ import com.oruke.onyx.vfs.api.RemoteAuthStore
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.SettingsRepository
 import com.oruke.onyx.vfs.api.SystemMenuService
-import com.oruke.onyx.vfs.api.TaskPersistenceRepository
 import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.vfs.api.TextClipboardService
 import com.oruke.onyx.app.filesystem.ThumbnailService
@@ -41,36 +37,29 @@ import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileContentSearchService
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.app.platform.SystemQuickAccessService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import org.koin.compose.getKoin
 
 /**
- * Composable factory — 通过 Koin 获取所有服务依赖，通过 Decompose ComponentContext 管理生命周期。
+ * 使用明确的应用级与窗口级依赖创建根组件。
  *
- * 生命周期由 [LifecycleRegistry] 驱动：
- * - Composable 进入组合 → create + resume
- * - Composable 退出组合 → destroy（自动取消组件内部 CoroutineScope）
+ * 生命周期由 [LifecycleRegistry] 驱动，进入组合时恢复，退出组合时销毁组件树。
+ *
+ * @param applicationRuntime 所有文件管理器窗口共享的应用运行时。
+ * @param externalFileDragService 当前窗口独占的外部拖放服务。
+ * @param launchConfiguration 当前窗口的启动与会话策略。
+ * @return 与当前窗口生命周期绑定的根组件。
  */
 @Composable
-internal fun rememberRootComponent(): RootComponent {
+internal fun rememberRootComponent(
+    applicationRuntime: RootApplicationRuntime,
+    externalFileDragService: ExternalFileDragService,
+    launchConfiguration: RootLaunchConfiguration,
+): RootComponent {
     val koin = getKoin()
     val lifecycle = remember { LifecycleRegistry() }
-    val component = remember {
+    val component = remember(applicationRuntime, externalFileDragService, launchConfiguration) {
         val componentContext = DefaultComponentContext(lifecycle = lifecycle)
-        // 创建 delegate 实例
-        val delegateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-        val taskOrchestrator = TaskOrchestrator(
-            scope = delegateScope,
-            taskRepository = koin.get<TaskPersistenceRepository>(),
-        )
-        val clipboardManager = ClipboardManager()
         val imageViewerController = ImageViewerController()
-        val sessionManager = SessionManager(
-            settingsRepository = koin.get<SettingsRepository>(),
-            sessionRepository = koin.get<SessionRepository>(),
-        )
         DefaultRootComponent(
             componentContext = componentContext,
             dependencies = DefaultRootDependencies(
@@ -91,7 +80,7 @@ internal fun rememberRootComponent(): RootComponent {
                     openWithService = koin.get<OpenWithService>(),
                     systemMenuService = koin.get<SystemMenuService>(),
                     fileContextMenuService = koin.get<FileContextMenuService>(),
-                    externalFileDragService = koin.get<ExternalFileDragService>(),
+                    externalFileDragService = externalFileDragService,
                     pathService = koin.get<VfsPathService>(),
                     providerRegistry = koin.get<VfsProviderRegistry>(),
                     terminalLauncherService = koin.get<TerminalLauncherService>(),
@@ -112,12 +101,14 @@ internal fun rememberRootComponent(): RootComponent {
                     fileContentSearchService = koin.get<FileContentSearchService>(),
                 ),
                 delegates = RootRuntimeDelegates(
-                    taskOrchestrator = taskOrchestrator,
-                    clipboardManager = clipboardManager,
+                    taskOrchestrator = applicationRuntime.taskOrchestrator,
+                    clipboardManager = applicationRuntime.clipboardManager,
                     imageViewerController = imageViewerController,
-                    sessionManager = sessionManager,
+                    sessionManager = applicationRuntime.sessionManager,
+                    settings = applicationRuntime.settings,
                 ),
             ),
+            launchConfiguration = launchConfiguration,
         )
     }
 

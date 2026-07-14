@@ -62,11 +62,13 @@ internal const val MAX_PANE_SPLIT_FRACTION = 0.82f
  *
  * @param componentContext Decompose 组件上下文。
  * @param dependencies 类型化根组件依赖。
+ * @param launchConfiguration 当前窗口的启动与会话策略。
  */
 @OptIn(FlowPreview::class)
 internal class DefaultRootComponent(
     componentContext: ComponentContext,
     internal val dependencies: DefaultRootDependencies,
+    internal val launchConfiguration: RootLaunchConfiguration,
 ) : RootComponent, ComponentContext by componentContext {
     /** 文件查询仓库。 */
     internal val fileRepository = dependencies.files.fileRepository
@@ -153,7 +155,7 @@ internal class DefaultRootComponent(
     /** 当前活动面板。 */
     internal val activePane = MutableStateFlow(PaneId.PRIMARY)
     /** 当前应用设置。 */
-    internal val settings = MutableStateFlow(OnyxSettings())
+    internal val settings = dependencies.delegates.settings
     /** 会话恢复状态。 */
     internal val sessionRestoreState = MutableStateFlow<SessionRestoreState>(SessionRestoreState.Loading)
     /** 当前根对话框。 */
@@ -440,6 +442,7 @@ private fun DefaultRootComponent.createPaneComponent(paneId: PaneId, childKey: S
         fileTypeService = fileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
         onOpenImageViewer = ::openImageViewer,
+        onOpenDirectoryInNewWindow = launchConfiguration.onOpenDirectoryInNewWindow,
         onRemoteAuthenticationRequired = ::requestRemoteCredentials,
         onFileRenamed = ::recordRenameOperation,
     )

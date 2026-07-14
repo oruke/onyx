@@ -62,6 +62,8 @@ internal class DefaultPaneComponent(
     internal val initialViewMode: ViewMode = ViewMode.DETAILS,
     /** 打开图片查看器的跨组件动作。 */
     internal val onOpenImageViewer: ((file: VFile, allImages: List<VFile>) -> Unit)? = null,
+    /** 在独立窗口打开目录的跨组件动作。 */
+    internal val onOpenDirectoryInNewWindow: (String) -> Unit = {},
     /** 请求远程认证的跨组件动作。 */
     internal val onRemoteAuthenticationRequired: (PaneId, VfsProviderError) -> Unit = { _, _ -> },
     /** 文件重命名完成后的跨组件通知。 */

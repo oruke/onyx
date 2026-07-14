@@ -67,6 +67,7 @@ import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
 import onyx.composeapp.generated.resources.action_open_in_new_tab
+import onyx.composeapp.generated.resources.action_open_in_new_window
 import onyx.composeapp.generated.resources.action_open_terminal
 import onyx.composeapp.generated.resources.action_open_with
 import onyx.composeapp.generated.resources.action_open_with_other
@@ -416,6 +417,7 @@ private fun PaneContextMenuText.stringResourceKey(): StringResource {
     return when (this) {
         PaneContextMenuText.OPEN -> Res.string.action_open
         PaneContextMenuText.OPEN_IN_NEW_TAB -> Res.string.action_open_in_new_tab
+        PaneContextMenuText.OPEN_IN_NEW_WINDOW -> Res.string.action_open_in_new_window
         PaneContextMenuText.OPEN_WITH -> Res.string.action_open_with
         PaneContextMenuText.OPEN_WITH_OTHER -> Res.string.action_open_with_other
         PaneContextMenuText.RENAME -> Res.string.action_rename

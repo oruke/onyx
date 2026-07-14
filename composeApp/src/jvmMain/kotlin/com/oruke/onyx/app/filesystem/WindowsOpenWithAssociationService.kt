@@ -1,13 +1,10 @@
 package com.oruke.onyx.app.filesystem
 
 import com.oruke.onyx.vfs.api.OpenWithApp
-import com.sun.jna.Memory
 import com.sun.jna.Native
 import com.sun.jna.Pointer
 import com.sun.jna.WString
-import com.sun.jna.platform.win32.COM.IShellFolder
 import com.sun.jna.platform.win32.COM.Unknown
-import com.sun.jna.platform.win32.Guid
 import com.sun.jna.platform.win32.Ole32
 import com.sun.jna.platform.win32.WinDef
 import com.sun.jna.platform.win32.WinNT
@@ -27,9 +24,13 @@ import java.util.concurrent.TimeoutException
  * Windows Shell “打开方式”关联处理器服务。
  *
  * `SHAssocEnumHandlers` 返回的 `IAssocHandler` 是资源管理器“打开方式”菜单使用的应用来源，
- * 能拿到应用 UI 名、图标位置，并能通过 `Invoke(IDataObject)` 执行真实 Shell 打开动作。
+ * 本服务只读取应用可执行路径、UI 名称和图标位置，执行阶段交给明确的应用启动器。
+ *
+ * @param launcher 使用用户已选应用直接打开文件的启动器。
  */
-internal class WindowsOpenWithAssociationService {
+internal class WindowsOpenWithAssociationService(
+    private val launcher: WindowsOpenWithLauncher = ProcessWindowsOpenWithLauncher(),
+) {
     /** Shell 关联处理器专用线程池替换锁。 */
     private val shellExecutorLock = Any()
 
@@ -62,19 +63,27 @@ internal class WindowsOpenWithAssociationService {
     }
 
     /**
-     * 通过 Shell 关联处理器打开目标文件。
+     * 使用用户已选择的 Shell 关联应用直接打开目标文件。
      *
      * @param target 需要打开的本地文件路径。
      * @param app 用户选择的“打开方式”应用。
-     * @return Shell 调用结果。
+     * @return 应用进程启动结果。
      */
     fun openWith(
         target: Path,
         app: OpenWithApp,
-    ): Result<Unit> = runCatching {
-        callOnShellThread(WINDOWS_ASSOC_EXECUTE_TIMEOUT_MS) {
-            openWithOnShellThread(target, app)
-        }
+    ): Result<Unit> {
+        val executable = runCatching {
+            require(isAssociationCommand(app.command)) {
+                "Invalid Windows association command: ${app.command}"
+            }
+            val executablePath = app.command.removePrefix(WINDOWS_ASSOC_COMMAND_PREFIX)
+            require(executablePath.isNotBlank()) {
+                "Windows association executable is empty: ${app.displayName}"
+            }
+            Path.of(executablePath)
+        }.getOrElse { failure -> return Result.failure(failure) }
+        return launcher.launch(executable, target)
     }
 
     /**
@@ -88,33 +97,6 @@ internal class WindowsOpenWithAssociationService {
             enumerateHandlers(extension, ASSOC_FILTER_RECOMMENDED)
                 .distinctBy { handler -> handler.name.lowercase(Locale.ROOT) }
                 .map { handler -> handler.toOpenWithApp() }
-        }
-    }
-
-    /**
-     * 在 Shell STA 线程中执行候选应用。
-     *
-     * @param target 需要打开的本地文件路径。
-     * @param app 用户选择的“打开方式”应用。
-     */
-    private fun openWithOnShellThread(
-        target: Path,
-        app: OpenWithApp,
-    ) {
-        val handlerName = app.command.removePrefix(WINDOWS_ASSOC_COMMAND_PREFIX).takeIf { value -> value.isNotBlank() }
-        requireNotNull(handlerName) { "Invalid Windows association command: ${app.command}" }
-        withComApartment {
-            val handler = checkNotNull(findHandler(target.extensionForAssociation(), handlerName)) {
-                "Windows association handler is not available: ${app.displayName}"
-            }
-            try {
-                withShellDataObject(target) { dataObject ->
-                    val result = handler.invoke(dataObject)
-                    check(result.succeeded()) { "IAssocHandler.Invoke failed: ${result.toInt()}" }
-                }
-            } finally {
-                handler.Release()
-            }
         }
     }
 
@@ -146,89 +128,6 @@ internal class WindowsOpenWithAssociationService {
             }
         } finally {
             enumerator.Release()
-        }
-    }
-
-    /**
-     * 按名称查找 Shell 关联处理器。
-     *
-     * @param extension 带点的文件扩展名。
-     * @param handlerName `IAssocHandler.GetName` 返回的稳定名称。
-     * @return 匹配的 COM 处理器；调用方负责释放。
-     */
-    private fun findHandler(
-        extension: String,
-        handlerName: String,
-    ): WindowsAssocHandler? {
-        val enumRef = PointerByReference()
-        val result = Shell32Association.INSTANCE.SHAssocEnumHandlers(WString(extension), ASSOC_FILTER_NONE, enumRef)
-        if (!result.succeeded() || enumRef.value == null) return null
-        val enumerator = WindowsAssocHandlers(enumRef.value)
-        return try {
-            var matchingHandler: WindowsAssocHandler? = null
-            while (matchingHandler == null) {
-                val handler = enumerator.nextHandler() ?: break
-                val nameMatches = handler.name()?.equals(handlerName, ignoreCase = true) == true
-                if (nameMatches) {
-                    matchingHandler = handler
-                } else {
-                    handler.Release()
-                }
-            }
-            matchingHandler
-        } finally {
-            enumerator.Release()
-        }
-    }
-
-    /**
-     * 创建目标文件的 `IDataObject` 并交给调用方使用。
-     *
-     * @param target 需要交给 Shell 的本地文件。
-     * @param block 拿到 `IDataObject` 后执行的操作。
-     * @return `block` 的返回值。
-     */
-    private fun <T> withShellDataObject(
-        target: Path,
-        block: (Pointer) -> T,
-    ): T {
-        var fullPidl: Pointer? = null
-        var parentFolder: IShellFolder? = null
-        var dataObject: WindowsDataObject? = null
-        return try {
-            fullPidl = parseDisplayName(target)
-            val parentFolderRef = PointerByReference()
-            val childPidlRef = PointerByReference()
-            val bindResult = Shell32Association.INSTANCE.SHBindToParent(
-                fullPidl,
-                Guid.REFIID(IShellFolder.IID_ISHELLFOLDER),
-                parentFolderRef,
-                childPidlRef,
-            )
-            check(bindResult.succeeded()) { "SHBindToParent failed: ${bindResult.toInt()}" }
-            parentFolder = IShellFolder.Converter.PointerToIShellFolder(parentFolderRef)
-            val childPidl = checkNotNull(childPidlRef.value) {
-                "SHBindToParent returned null child PIDL"
-            }
-            val dataObjectRef = PointerByReference()
-            val childPidlArray = listOf(childPidl).toPointerArray()
-            val uiObjectResult = parentFolder.GetUIObjectOf(
-                null,
-                1,
-                childPidlArray,
-                Guid.REFIID(IID_I_DATA_OBJECT),
-                null,
-                dataObjectRef,
-            )
-            check(uiObjectResult.succeeded()) {
-                "IShellFolder.GetUIObjectOf(IDataObject) failed: ${uiObjectResult.toInt()}"
-            }
-            dataObject = WindowsDataObject(checkNotNull(dataObjectRef.value) { "IDataObject is null" })
-            block(dataObject.rawPointer())
-        } finally {
-            dataObject?.Release()
-            parentFolder?.Release()
-            fullPidl?.let { pidl -> Ole32.INSTANCE.CoTaskMemFree(pidl) }
         }
     }
 
@@ -296,51 +195,6 @@ internal class WindowsOpenWithAssociationService {
                 isDaemon = true
             }
         }
-    }
-
-    /**
-     * 将路径解析为 Shell PIDL。
-     *
-     * @param path 需要交给 Shell 解析的本地路径。
-     * @return Shell 分配的 PIDL 指针，调用方负责释放。
-     */
-    private fun parseDisplayName(path: Path): Pointer {
-        val pidlRef = PointerByReference()
-        val result = Shell32Association.INSTANCE.SHParseDisplayName(
-            WString(path.toString()),
-            null,
-            pidlRef,
-            0,
-            null,
-        )
-        check(result.succeeded()) { "SHParseDisplayName failed for $path: ${result.toInt()}" }
-        return checkNotNull(pidlRef.value) { "SHParseDisplayName returned null PIDL" }
-    }
-
-    /**
-     * 将 PIDL 指针列表写入连续内存。
-     *
-     * @return 可传给 `GetUIObjectOf` 的指针数组内存。
-     */
-    private fun List<Pointer>.toPointerArray(): Pointer {
-        val memory = Memory((Native.POINTER_SIZE * size).toLong())
-        forEachIndexed { index, pointer ->
-            memory.setPointer((Native.POINTER_SIZE * index).toLong(), pointer)
-        }
-        return memory
-    }
-
-    /**
-     * 从路径中提取 Shell 关联所需扩展名。
-     *
-     * @return 带点扩展名；没有扩展名时返回 `*`。
-     */
-    private fun Path.extensionForAssociation(): String {
-        return fileName.toString()
-            .substringAfterLast('.', "")
-            .takeIf { value -> value.isNotBlank() }
-            ?.let { value -> ".$value" }
-            ?: "*"
     }
 
     /**
@@ -456,20 +310,6 @@ internal class WindowsOpenWithAssociationService {
         }
 
         /**
-         * 调用处理器打开文件数据对象。
-         *
-         * @param dataObject `IShellFolder.GetUIObjectOf(IDataObject)` 返回的数据对象。
-         * @return COM 调用结果。
-         */
-        fun invoke(dataObject: Pointer): WinNT.HRESULT {
-            return _invokeNativeObject(
-                ASSOC_HANDLER_INVOKE_VTABLE_INDEX,
-                arrayOf(pointer, dataObject),
-                WinNT.HRESULT::class.java,
-            ) as WinNT.HRESULT
-        }
-
-        /**
          * 调用返回 `LPWSTR*` 的 `IAssocHandler` 方法。
          *
          * @param vtableIndex 方法在 COM vtable 中的索引。
@@ -485,20 +325,6 @@ internal class WindowsOpenWithAssociationService {
             if (!result.succeeded()) return null
             return readCoTaskString(valueRef.value)
         }
-    }
-
-    /**
-     * `IDataObject` 引用的释放包装。
-     *
-     * @param pointer COM 对象指针。
-     */
-    private class WindowsDataObject(pointer: Pointer) : Unknown(pointer) {
-        /**
-         * 返回底层 `IDataObject` 指针。
-         *
-         * @return COM 对象指针。
-         */
-        fun rawPointer(): Pointer = pointer
     }
 
     /**
@@ -531,40 +357,6 @@ internal class WindowsOpenWithAssociationService {
             ppEnumHandler: PointerByReference,
         ): WinNT.HRESULT
 
-        /**
-         * 解析路径为 PIDL。
-         *
-         * @param pszName 路径字符串。
-         * @param pbc 绑定上下文，本实现传 `null`。
-         * @param ppidl 输出 PIDL。
-         * @param sfgaoIn 属性查询输入标记。
-         * @param psfgaoOut 属性查询输出标记。
-         * @return COM 调用结果。
-         */
-        fun SHParseDisplayName(
-            pszName: WString,
-            pbc: Pointer?,
-            ppidl: PointerByReference,
-            sfgaoIn: Int,
-            psfgaoOut: IntByReference?,
-        ): WinNT.HRESULT
-
-        /**
-         * 从完整 PIDL 绑定父 Shell 文件夹并取最后一级子 PIDL。
-         *
-         * @param pidl 完整 PIDL。
-         * @param riid 需要查询的接口 ID。
-         * @param ppv 输出父文件夹接口。
-         * @param ppidlLast 输出子 PIDL。
-         * @return COM 调用结果。
-         */
-        fun SHBindToParent(
-            pidl: Pointer,
-            riid: Guid.REFIID,
-            ppv: PointerByReference,
-            ppidlLast: PointerByReference,
-        ): WinNT.HRESULT
-
         companion object {
             /** Shell32 原生库单例。 */
             val INSTANCE: Shell32Association = Native.load(
@@ -582,9 +374,6 @@ internal class WindowsOpenWithAssociationService {
         /** `IEnumAssocHandlers.Next` 成功读取元素时的返回值。 */
         const val S_OK = 0
 
-        /** 枚举全部关联处理器。 */
-        const val ASSOC_FILTER_NONE = 0
-
         /** 枚举推荐关联处理器。 */
         const val ASSOC_FILTER_RECOMMENDED = 1
 
@@ -593,9 +382,6 @@ internal class WindowsOpenWithAssociationService {
 
         /** Shell 关联处理器列表读取超时。 */
         const val WINDOWS_ASSOC_LIST_TIMEOUT_MS = 800L
-
-        /** Shell 关联处理器执行超时。 */
-        const val WINDOWS_ASSOC_EXECUTE_TIMEOUT_MS = 5_000L
 
         /** `IEnumAssocHandlers.Next` 在 COM vtable 中的索引。 */
         const val ENUM_ASSOC_HANDLERS_NEXT_VTABLE_INDEX = 3
@@ -608,12 +394,6 @@ internal class WindowsOpenWithAssociationService {
 
         /** `IAssocHandler.GetIconLocation` 在 COM vtable 中的索引。 */
         const val ASSOC_HANDLER_GET_ICON_LOCATION_VTABLE_INDEX = 5
-
-        /** `IAssocHandler.Invoke` 在 COM vtable 中的索引。 */
-        const val ASSOC_HANDLER_INVOKE_VTABLE_INDEX = 8
-
-        /** `IDataObject` 接口 ID。 */
-        val IID_I_DATA_OBJECT = Guid.IID("{0000010E-0000-0000-C000-000000000046}")
 
         /**
          * 清理 Shell 处理器显示名称。

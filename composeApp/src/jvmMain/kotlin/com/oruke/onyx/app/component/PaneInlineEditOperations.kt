@@ -2,6 +2,7 @@ package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.component.delegate.SelectionReducer
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
+import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import kotlinx.coroutines.launch
@@ -41,9 +42,37 @@ internal fun DefaultPaneComponent.beginCreateDirectory() {
     }
 }
 
-/** 在新标签中打开当前聚焦目录。 */
+/**
+ * 在新标签中打开当前聚焦目录。
+ *
+ * @return 无返回值。
+ */
 internal fun DefaultPaneComponent.openSelectedInNewTab() {
     val tab = activeTab() ?: return
+    val targetEntry = selectedDirectoryForOpen() ?: return
+    clearInlineEdit(tab.id)
+    createTab(targetEntry.location)
+}
+
+/**
+ * 在独立文件管理器窗口中打开当前聚焦目录。
+ *
+ * @return 无返回值。
+ */
+internal fun DefaultPaneComponent.openSelectedInNewWindow() {
+    val tab = activeTab() ?: return
+    val targetEntry = selectedDirectoryForOpen() ?: return
+    clearInlineEdit(tab.id)
+    onOpenDirectoryInNewWindow(targetEntry.location)
+}
+
+/**
+ * 解析当前选择焦点对应的单个目录。
+ *
+ * @return 可在新标签或新窗口打开的目录；当前焦点不是目录时返回 `null`。
+ */
+private fun DefaultPaneComponent.selectedDirectoryForOpen(): VFile? {
+    val tab = activeTab() ?: return null
     val entries = currentVisibleEntries()
     val targetEntryId = SelectionReducer.resolveSelectionFocusId(
         entries,
@@ -51,13 +80,9 @@ internal fun DefaultPaneComponent.openSelectedInNewTab() {
         tab.selectionAnchorId,
         tab.selectedEntryIds,
     )
-    val targetEntry = targetEntryId
+    return targetEntryId
         ?.let { id -> entries.firstOrNull { entry -> entry.id == id } }
         ?.takeIf { entry -> entry.kind == VFileKind.DIRECTORY }
-    if (targetEntry != null) {
-        clearInlineEdit(tab.id)
-        createTab(targetEntry.location)
-    }
 }
 
 /** 将当前选中条目的 VFS 路径复制到系统文本剪贴板。 */

@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.AWTEvent
@@ -44,6 +45,13 @@ interface ExternalFileDragService {
      * 卸载系统拖放桥接并清理临时状态。
      */
     fun uninstall()
+
+    /**
+     * 永久释放服务持有的协程与 JVM 退出钩子。
+     *
+     * @return 无返回值。
+     */
+    fun dispose()
 
     /**
      * 清理待拖放状态。
@@ -132,13 +140,17 @@ class JvmExternalFileDragService(
     /** 全局鼠标监听器，捕获 Compose SkiaLayer 转发前的鼠标事件。 */
     private var awtEventListener: AWTEventListener? = null
 
+    /** JVM 异常退出时清理临时物化目录的钩子。 */
+    private val shutdownHook = Thread(::cleanupTempRoot, "onyx-external-drag-cleanup")
+
+    /** 服务是否已永久释放。 */
+    private var disposed = false
+
     override val isSystemDragActive: Boolean
         get() = systemDragActive
 
     init {
-        Runtime.getRuntime().addShutdownHook(Thread {
-            cleanupTempRoot()
-        })
+        Runtime.getRuntime().addShutdownHook(shutdownHook)
     }
 
     /**
@@ -147,6 +159,7 @@ class JvmExternalFileDragService(
      * @param window 主窗口。
      */
     override fun install(window: java.awt.Window) {
+        check(!disposed) { "External file drag service is already disposed" }
         detachWindowBridge()
         val skiaLayer = findSkiaLayer(window)
         if (skiaLayer != null) {
@@ -172,6 +185,25 @@ class JvmExternalFileDragService(
         detachWindowBridge()
         clearPending()
         cleanupTempRoot()
+    }
+
+    /**
+     * 释放窗口桥接、后台物化作用域和当前实例注册的退出钩子。
+     *
+     * @return 无返回值。
+     */
+    override fun dispose() {
+        if (disposed) return
+        disposed = true
+        uninstall()
+        materializationScope.cancel()
+        try {
+            Runtime.getRuntime().removeShutdownHook(shutdownHook)
+        } catch (_: IllegalStateException) {
+            // JVM 已进入关闭阶段时钩子正在执行，不能再从运行时移除。
+        } catch (failure: SecurityException) {
+            OnyxLogger.warn(LOG_TAG, "外部拖放退出钩子注销失败", failure)
+        }
     }
 
     /**

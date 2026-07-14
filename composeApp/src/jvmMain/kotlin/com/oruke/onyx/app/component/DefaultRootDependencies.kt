@@ -15,6 +15,7 @@ import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.app.platform.SystemQuickAccessService
+import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileContentSearchService
 import com.oruke.onyx.vfs.api.ExternalOpenService
@@ -32,6 +33,7 @@ import com.oruke.onyx.vfs.api.VfsConnectionTestService
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.s3.MutableS3ConnectionRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /** 根组件的文件读写与条目打开依赖。 */
 internal data class RootFileDependencies(
@@ -117,6 +119,8 @@ internal data class RootRuntimeDelegates(
     val imageViewerController: ImageViewerController,
     /** 设置和会话持久化管理器。 */
     val sessionManager: SessionManager,
+    /** 所有窗口共享的即时设置状态。 */
+    val settings: MutableStateFlow<OnyxSettings>,
 )
 
 /** 默认根组件的全部类型化依赖。 */

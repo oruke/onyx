@@ -14,6 +14,7 @@ import com.oruke.onyx.core.model.VFileKind
 internal enum class PaneContextMenuText {
     OPEN,
     OPEN_IN_NEW_TAB,
+    OPEN_IN_NEW_WINDOW,
     OPEN_WITH,
     OPEN_WITH_OTHER,
     RENAME,
@@ -283,6 +284,8 @@ internal object PaneContextMenuModelBuilder {
             selectedCount == 1))
         add(paneItem("open-new-tab", PaneContextMenuText.OPEN_IN_NEW_TAB, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
             PaneCommand.OPEN_SELECTION_IN_NEW_TAB, singleEntry?.kind == VFileKind.DIRECTORY))
+        add(paneItem("open-new-window", PaneContextMenuText.OPEN_IN_NEW_WINDOW, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
+            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW, singleEntry?.kind == VFileKind.DIRECTORY))
         openWithSection?.let { section ->
             add(
                 PaneContextMenuNode.Item(

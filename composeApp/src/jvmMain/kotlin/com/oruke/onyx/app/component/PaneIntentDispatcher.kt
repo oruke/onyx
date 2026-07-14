@@ -94,6 +94,7 @@ private fun DefaultPaneComponent.dispatchEditIntent(intent: PaneIntent): Boolean
         PaneIntent.BeginCreateFile -> { beginCreateFile(); true }
         PaneIntent.BeginCreateDirectory -> { beginCreateDirectory(); true }
         PaneIntent.OpenSelectedInNewTab -> { openSelectedInNewTab(); true }
+        PaneIntent.OpenSelectedInNewWindow -> { openSelectedInNewWindow(); true }
         PaneIntent.CopySelectedPaths -> { copySelectedPaths(); true }
         is PaneIntent.UpdateInlineEditDraft -> { updateInlineEditDraft(intent.draft); true }
         PaneIntent.ConfirmInlineEdit -> { confirmInlineEdit(); true }

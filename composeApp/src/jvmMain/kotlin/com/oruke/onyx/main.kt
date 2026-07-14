@@ -2,25 +2,14 @@ package com.oruke.onyx
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
-import com.oruke.onyx.app.component.RootIntent
-import com.oruke.onyx.app.component.SessionRestoreState
-import com.oruke.onyx.app.component.rememberRootComponent
-import com.oruke.onyx.app.platform.ExternalFileDragService
-import com.oruke.onyx.app.platform.rememberDesktopWindowStates
+import com.oruke.onyx.app.component.rememberRootApplicationRuntime
+import com.oruke.onyx.app.platform.DesktopWindowManager
 import com.oruke.onyx.di.fileModule
-import com.oruke.onyx.ui.ImageViewerContent
-import com.oruke.onyx.ui.theme.OnyxTheme
-import com.oruke.onyx.ui.theme.rememberOnyxAppearance
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.onyx_logo
-import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.KoinApplication
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
@@ -31,15 +20,8 @@ import org.jetbrains.jewel.intui.window.decoratedWindow
 import org.jetbrains.jewel.intui.window.styling.dark
 import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
 import org.jetbrains.jewel.ui.ComponentStyling
-import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.styling.TitleBarStyle
 import org.koin.compose.getKoin
-
-/** 主窗口允许缩放到的最小宽度，单位为物理像素。 */
-private const val MAIN_WINDOW_MIN_WIDTH = 800
-
-/** 主窗口允许缩放到的最小高度，单位为物理像素。 */
-private const val MAIN_WINDOW_MIN_HEIGHT = 600
 
 /**
  * 启动 Onyx 桌面应用，并在创建窗口前初始化持久化日志。
@@ -57,7 +39,11 @@ fun main() {
     }
 }
 
-/** 创建 Compose 应用生命周期并装配依赖与 Jewel 主题。 */
+/**
+ * 创建 Compose 应用生命周期并装配依赖、主题和多窗口管理器。
+ *
+ * @return 无返回值。
+ */
 private fun launchOnyxApplication() = application {
     KoinApplication(application = { modules(fileModule) }) {
         val isDark = isSystemInDarkTheme()
@@ -70,75 +56,36 @@ private fun launchOnyxApplication() = application {
             theme = theme,
             styling = styling,
         ) {
-            // rootComponent 在 application 级别创建，供主窗口和图片查看器共享
-            val rootComponent = rememberRootComponent()
             val koin = getKoin()
-            val externalFileDragService = remember { koin.get<ExternalFileDragService>() }
+            val applicationRuntime = rememberRootApplicationRuntime()
+            val windowManager = remember { DesktopWindowManager() }
+            val openDirectoryInNewWindow = remember(windowManager) {
+                { location: String ->
+                    windowManager.openDirectory(location)
+                    Unit
+                }
+            }
+            val closeWindow = remember(windowManager) {
+                { windowId: Long ->
+                    if (windowManager.closeWindow(windowId)) exitApplication()
+                }
+            }
             val platformMenuCacheMaintenanceService = remember {
                 koin.get<PlatformMenuCacheMaintenanceService>()
             }
-            val state by rootComponent.state.collectAsState()
-            val windowStates = rememberDesktopWindowStates(
-                settings = state.settings,
-                restorationCompleted = state.sessionRestoreState !is SessionRestoreState.Loading,
-                onSettingsChanged = { settings ->
-                    rootComponent.dispatch(RootIntent.UpdateSettings(settings))
-                },
-            )
 
             LaunchedEffect(platformMenuCacheMaintenanceService) {
                 platformMenuCacheMaintenanceService.runUntilCancelled()
             }
 
-            // ── 主窗口（记忆大小，最小 800×600）──────────────────────────
-            DecoratedWindow(
-                onCloseRequest = {
-                    externalFileDragService.uninstall()
-                    exitApplication()
-                },
-                title = "Onyx ${BuildConfig.VERSION}",
-                icon = painterResource(Res.drawable.onyx_logo),
-                state = windowStates.main,
-            ) {
-                window.minimumSize = java.awt.Dimension(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
-                // 安装外部拖放支持
-                LaunchedEffect(window) {
-                    externalFileDragService.install(window)
-                }
-                WindowApp(rootComponent, externalFileDragService)
-            }
-
-            // ── 图片查看器窗口 ──────────────────────────────────────────
-            // imageViewerState 独立收集，不触发主窗口 RootState 重组
-            val imageViewerState by rootComponent.imageViewerState.collectAsState()
-            if (imageViewerState.visible) {
-                Window(
-                    onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
-                    title = imageViewerState.currentFile?.name ?: "Onyx Viewer",
-                    icon = painterResource(Res.drawable.onyx_logo),
-                    state = windowStates.imageViewer,
-                ) {
-                    val appearance = rememberOnyxAppearance(
-                        listRowHeightDp = state.settings.listRowHeightDp,
-                        listFontSizeSp = state.settings.listFontSizeSp,
-                        zebraStripeEnabled = state.settings.zebraStripeEnabled,
+            windowManager.windows.forEach { request ->
+                key(request.id) {
+                    DesktopFileManagerWindow(
+                        request = request,
+                        applicationRuntime = applicationRuntime,
+                        onOpenDirectoryInNewWindow = openDirectoryInNewWindow,
+                        onCloseRequest = closeWindow,
                     )
-                    OnyxTheme(
-                        uiScale = state.settings.uiScale,
-                        appearance = appearance,
-                    ) {
-                        ImageViewerContent(
-                            state = imageViewerState,
-                            onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
-                            onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
-                            onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
-                            onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
-                            onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
-                            onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
-                            loadThumbnail = rootComponent::loadThumbnail,
-                            readImageSize = rootComponent::readImageSize,
-                        )
-                    }
                 }
             }
         }

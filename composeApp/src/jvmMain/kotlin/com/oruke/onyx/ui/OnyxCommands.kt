@@ -138,7 +138,8 @@ internal fun PaneCommand.toOnyxCommand(): OnyxCommand? {
         PaneCommand.TOGGLE_FAVORITE -> OnyxCommand.ToggleFavorite
         PaneCommand.OPEN_SETTINGS -> OnyxCommand.OpenSettings
         PaneCommand.COMMAND_PALETTE -> OnyxCommand.CommandPalette
-        PaneCommand.OPEN_SELECTION_IN_NEW_TAB -> null
+        PaneCommand.OPEN_SELECTION_IN_NEW_TAB,
+        PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW -> null
     }
 }
 

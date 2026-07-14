@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="window_image_viewer_title">Onyx 画像ビューアー</string>
     <string name="app_name">Onyx</string>
 
     <string name="action_go_back">戻る</string>
@@ -12,6 +13,7 @@
     <string name="action_command_palette">コマンドパレット</string>
     <string name="action_select_all">すべて選択</string>
     <string name="action_open_in_new_tab">新しいタブで開く</string>
+    <string name="action_open_in_new_window">新しいウィンドウで開く</string>
     <string name="action_open_with">プログラムから開く</string>
     <string name="action_open_with_other">他のアプリ…</string>
     <string name="action_toggle_favorite">お気に入り切替</string>
