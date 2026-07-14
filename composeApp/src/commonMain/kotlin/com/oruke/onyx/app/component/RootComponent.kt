@@ -30,26 +30,44 @@ import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.core.model.S3ConnectionConfig
+import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.VFile
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.StateFlow
 
 internal data class RootState(
+    /** 当前文件面板布局模式。 */
     val layoutMode: PaneLayoutMode,
+    /** 双面板分隔位置比例。 */
     val paneSplitFraction: Float,
+    /** 当前接收用户操作的面板。 */
     val activePane: PaneId,
+    /** 主次面板当前角色关系。 */
     val paneRoles: PaneRoleState = PaneRoleState.fromSource(activePane),
+    /** 主面板状态。 */
     val primaryPane: PaneState,
+    /** 次面板状态。 */
     val secondaryPane: PaneState,
+    /** 侧栏目录树状态。 */
     val sidebarTreeState: SidebarTreeState,
+    /** 操作系统文件管理器提供的快速访问位置。 */
+    val systemQuickAccessLocations: List<SystemQuickAccessLocation>,
+    /** 当前应用设置。 */
     val settings: OnyxSettings,
+    /** 会话恢复进度。 */
     val sessionRestoreState: SessionRestoreState,
+    /** 当前根级对话框状态。 */
     val dialogState: RootDialogState?,
+    /** 当前剪贴板是否包含可粘贴文件。 */
     val canPaste: Boolean,
+    /** 后台任务快照。 */
     val tasks: List<BackgroundTask>,
+    /** 是否显示预览面板。 */
     val showPreviewPane: Boolean = false,
+    /** 文件搜索面板状态。 */
     val searchState: SearchPanelState = SearchPanelState(),
+    /** 可撤销与重做的文件操作历史状态。 */
     val operationHistoryState: OperationHistoryState = OperationHistoryState(),
 )
 

@@ -40,6 +40,7 @@ import com.oruke.onyx.vfs.s3.MutableS3ConnectionRepository
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileContentSearchService
 import com.oruke.onyx.app.platform.ExternalFileDragService
+import com.oruke.onyx.app.platform.SystemQuickAccessService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -94,6 +95,7 @@ internal fun rememberRootComponent(): RootComponent {
                     pathService = koin.get<VfsPathService>(),
                     providerRegistry = koin.get<VfsProviderRegistry>(),
                     terminalLauncherService = koin.get<TerminalLauncherService>(),
+                    systemQuickAccessService = koin.get<SystemQuickAccessService>(),
                 ),
                 inspection = RootInspectionDependencies(
                     previewService = koin.get<PreviewService>(),

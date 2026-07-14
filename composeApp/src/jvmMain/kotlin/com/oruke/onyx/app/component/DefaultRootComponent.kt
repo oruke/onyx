@@ -27,6 +27,7 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneRoleState
+import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.shared.usecase.FileSearchUseCase
 import com.oruke.onyx.vfs.api.FileContextMenuRequest
@@ -103,6 +104,8 @@ internal class DefaultRootComponent(
     internal val providerRegistry = dependencies.platform.providerRegistry
     /** 终端启动服务。 */
     internal val terminalLauncherService = dependencies.platform.terminalLauncherService
+    /** 操作系统快速访问位置读取服务。 */
+    internal val systemQuickAccessService = dependencies.platform.systemQuickAccessService
     /** 文本预览服务。 */
     internal val previewService = dependencies.inspection.previewService
     /** 文件哈希服务。 */
@@ -163,7 +166,7 @@ internal class DefaultRootComponent(
     internal var persistenceReady = false
 
     /** 侧栏目录树委托。 */
-    internal val sidebarDelegate = SidebarDelegate(scope, fileRepository)
+    internal val sidebarDelegate = SidebarDelegate(scope, fileRepository, systemQuickAccessService)
 
     /** 文件传输委托。 */
     internal val fileTransferDelegate = FileTransferDelegate(
@@ -375,8 +378,13 @@ internal class DefaultRootComponent(
 
     /** @return 侧栏、设置、对话框、任务和历史组成的上下文流。 */
     private fun rootContextFlow() = combine(
-        combine(sidebarDelegate.sidebarTreeState, settings, sessionRestoreState) { sidebar, value, restore ->
-            Triple(sidebar, value, restore)
+        combine(
+            sidebarDelegate.sidebarTreeState,
+            sidebarDelegate.systemQuickAccessLocations,
+            settings,
+            sessionRestoreState,
+        ) { sidebarTree, quickAccessLocations, value, restore ->
+            SidebarContextSlice(sidebarTree, quickAccessLocations, value, restore)
         },
         combine(
             dialogState,
@@ -387,8 +395,14 @@ internal class DefaultRootComponent(
         ) { dialog, clipboard, tasks, search, history ->
             RuntimeContextSlice(dialog, clipboard != null, tasks, search, history.toRootOperationHistoryState())
         },
-    ) { (sidebar, value, restore), runtime ->
-        ContextSlice(sidebar, value, restore, runtime)
+    ) { sidebar, runtime ->
+        ContextSlice(
+            sidebarTreeState = sidebar.sidebarTreeState,
+            systemQuickAccessLocations = sidebar.systemQuickAccessLocations,
+            settings = sidebar.settings,
+            sessionRestoreState = sidebar.sessionRestoreState,
+            runtime = runtime,
+        )
     }
 
     /** 观察可持久化状态并防抖保存。 */
@@ -441,6 +455,7 @@ private fun DefaultRootComponent.initialRootState(): RootState {
         primaryPane = primaryPane.state.value,
         secondaryPane = secondaryPane.state.value,
         sidebarTreeState = sidebarDelegate.sidebarTreeState.value,
+        systemQuickAccessLocations = sidebarDelegate.systemQuickAccessLocations.value,
         settings = settings.value,
         sessionRestoreState = sessionRestoreState.value,
         dialogState = dialogState.value,
@@ -484,10 +499,24 @@ private data class LayoutSlice(
     val showPreviewPane: Boolean,
 )
 
+/** 侧栏平台位置、目录树与持久化上下文切片。 */
+private data class SidebarContextSlice(
+    /** 侧栏目录树状态。 */
+    val sidebarTreeState: SidebarTreeState,
+    /** 操作系统快速访问位置。 */
+    val systemQuickAccessLocations: List<SystemQuickAccessLocation>,
+    /** 当前应用设置。 */
+    val settings: OnyxSettings,
+    /** 会话恢复状态。 */
+    val sessionRestoreState: SessionRestoreState,
+)
+
 /** 根上下文状态切片。 */
 private data class ContextSlice(
     /** 侧栏树状态。 */
     val sidebarTreeState: SidebarTreeState,
+    /** 操作系统快速访问位置。 */
+    val systemQuickAccessLocations: List<SystemQuickAccessLocation>,
     /** 当前设置。 */
     val settings: OnyxSettings,
     /** 会话恢复状态。 */
@@ -526,6 +555,7 @@ private fun ContextSlice.toRootState(layout: LayoutSlice, panes: Pair<PaneState,
         primaryPane = panes.first,
         secondaryPane = panes.second,
         sidebarTreeState = sidebarTreeState,
+        systemQuickAccessLocations = systemQuickAccessLocations,
         settings = settings,
         sessionRestoreState = sessionRestoreState,
         dialogState = runtime.dialogState,

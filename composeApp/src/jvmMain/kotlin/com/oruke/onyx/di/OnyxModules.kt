@@ -77,6 +77,8 @@ import com.oruke.onyx.vfs.webdav.WebDavAuthRepository
 import com.oruke.onyx.vfs.webdav.WebDavVfsProvider
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.app.platform.JvmExternalFileDragService
+import com.oruke.onyx.app.platform.JvmSystemQuickAccessService
+import com.oruke.onyx.app.platform.SystemQuickAccessService
 import com.oruke.onyx.shared.usecase.FileContentSearchService
 import com.oruke.onyx.shared.usecase.BatchRenamePresetPlanner
 import com.oruke.onyx.shared.usecase.DirectoryComparisonUseCase
@@ -207,6 +209,7 @@ val fileModule = module {
     single<FileTypeService> { JvmFileTypeService() }
     single<ArchiveEntryOpenService> { JvmArchiveEntryOpenService(get(), get()) }
     single<TerminalLauncherService> { JvmTerminalLauncherService() }
+    single<SystemQuickAccessService> { JvmSystemQuickAccessService() }
     single<PreviewService> {
         JvmPreviewService(
             listOf(

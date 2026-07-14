@@ -14,6 +14,7 @@ import com.oruke.onyx.app.filesystem.TerminalLauncherService
 import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.app.platform.ExternalFileDragService
+import com.oruke.onyx.app.platform.SystemQuickAccessService
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileContentSearchService
 import com.oruke.onyx.vfs.api.ExternalOpenService
@@ -74,6 +75,8 @@ internal data class RootPlatformDependencies(
     val providerRegistry: VfsProviderRegistry,
     /** 终端启动服务。 */
     val terminalLauncherService: TerminalLauncherService,
+    /** 操作系统快速访问位置读取服务。 */
+    val systemQuickAccessService: SystemQuickAccessService,
 )
 
 /** 根组件的预览、元数据与远程认证依赖。 */

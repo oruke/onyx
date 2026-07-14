@@ -71,6 +71,27 @@ class TaskCenterPresentationTest {
         assertEquals(1f, summary.progress)
     }
 
+    /** 单个活动任务展开后不应重复展示聚合进度。 */
+    @Test
+    fun hidesAggregateProgressForSingleActiveTask() {
+        val summary = listOf(
+            task(id = "single", processedBytes = 50L, totalBytes = 100L, bytesPerSecond = 10L),
+        ).toTaskCenterSummary()
+
+        assertFalse(summary.shouldShowAggregateProgress())
+    }
+
+    /** 多个活动任务展开后应保留可区分的总进度。 */
+    @Test
+    fun showsAggregateProgressForMultipleActiveTasks() {
+        val summary = listOf(
+            task(id = "first", processedBytes = 50L, totalBytes = 100L, bytesPerSecond = 10L),
+            task(id = "second", processedBytes = 25L, totalBytes = 100L, bytesPerSecond = 10L),
+        ).toTaskCenterSummary()
+
+        assertTrue(summary.shouldShowAggregateProgress())
+    }
+
     /**
      * 构造任务中心聚合测试任务。
      *

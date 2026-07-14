@@ -89,13 +89,15 @@ internal fun JobsBar(
                     .fillMaxWidth()
                     .background(palette.surface),
             ) {
-                TaskCenterOverview(summary)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(palette.outlineVariant),
-                )
+                if (summary.shouldShowAggregateProgress()) {
+                    TaskCenterOverview(summary)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(palette.outlineVariant),
+                    )
+                }
                 TaskCenterList(
                     tasks = tasks,
                     onPauseTask = onPauseTask,
@@ -156,16 +158,20 @@ private fun TaskCenterCollapsedBar(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        TaskProgressBar(
-            progress = summary.progress,
-            status = summary.overallStatus(),
-            showIndeterminateOverlay = summary.hasIndeterminateRunning,
-            modifier = Modifier
-                .weight(1f)
-                .widthIn(min = 72.dp, max = 280.dp)
-                .height(5.dp),
-        )
-        CollapsedTaskMetrics(summary)
+        if (expanded) {
+            Spacer(modifier = Modifier.weight(1f))
+        } else {
+            TaskProgressBar(
+                progress = summary.progress,
+                status = summary.overallStatus(),
+                showIndeterminateOverlay = summary.hasIndeterminateRunning,
+                modifier = Modifier
+                    .weight(1f)
+                    .widthIn(min = 72.dp, max = 280.dp)
+                    .height(5.dp),
+            )
+            CollapsedTaskMetrics(summary)
+        }
         if (summary.activeCount == 0 && summary.terminalCount > 0) {
             OnyxTooltip(text = stringResource(Res.string.action_clear_finished_tasks)) {
                 IconButton(onClick = onClearFinished, modifier = Modifier.size(20.dp)) {

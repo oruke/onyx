@@ -326,6 +326,7 @@ private fun AppSidebar(
     PaneSidebar(
         state = PaneSidebarState(
             location = state.paneState(state.activePane).location,
+            systemQuickAccessLocations = state.systemQuickAccessLocations,
             favoriteLocations = state.settings.favoriteLocations,
             recentLocations = state.settings.recentLocations,
             remoteConnections = state.settings.remoteConnections,

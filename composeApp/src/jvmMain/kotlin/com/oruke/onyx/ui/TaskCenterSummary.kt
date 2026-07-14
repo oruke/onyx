@@ -89,6 +89,15 @@ internal fun BackgroundTaskStatus.isActiveTaskStatus(): Boolean {
 }
 
 /**
+ * 判断展开面板是否需要单独展示聚合进度。
+ *
+ * 只有多个活动任务并行或排队时，总进度才提供额外信息；单任务总进度与任务进度完全重复。
+ *
+ * @return 活动任务超过一个时返回 true。
+ */
+internal fun TaskCenterSummary.shouldShowAggregateProgress(): Boolean = activeCount > 1
+
+/**
  * 计算活动任务总体剩余时间。
  *
  * @param activeTasks 当前活动任务。

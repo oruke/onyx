@@ -34,12 +34,12 @@ import com.oruke.onyx.app.component.SidebarTreeNode
 import com.oruke.onyx.app.component.SidebarTreeNodeLoadState
 import com.oruke.onyx.app.component.SidebarTreeState
 import com.oruke.onyx.core.model.RemoteConnectionProfile
+import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_edit_connection
 import onyx.composeapp.generated.resources.action_new_connection
 import onyx.composeapp.generated.resources.action_refresh_active
-import onyx.composeapp.generated.resources.label_home
 import onyx.composeapp.generated.resources.label_remote_connection_empty
 import onyx.composeapp.generated.resources.label_sidebar_empty_favorites
 import onyx.composeapp.generated.resources.label_sidebar_empty_recent
@@ -59,6 +59,8 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 internal data class PaneSidebarState(
     /** 当前激活位置。 */
     val location: String,
+    /** 操作系统文件管理器提供的快速访问位置。 */
+    val systemQuickAccessLocations: List<SystemQuickAccessLocation>,
     /** 收藏位置。 */
     val favoriteLocations: List<String>,
     /** 最近位置。 */
@@ -120,22 +122,6 @@ internal fun PaneSidebar(
     }
 }
 
-/** 绘制快速访问区。 */
-@Composable
-private fun SidebarQuickAccess(state: PaneSidebarState, actions: PaneSidebarActions) {
-    val homeLocation = System.getProperty("user.home")
-    SidebarSection(title = stringResource(Res.string.label_sidebar_section_quick_access)) {
-        SidebarLocationItem(
-            label = stringResource(Res.string.label_home),
-            location = homeLocation,
-            selected = state.location == homeLocation,
-            favorite = state.favoriteLocations.contains(homeLocation),
-            onOpen = { actions.activateAndOpen(homeLocation) },
-            onToggleFavorite = { actions.onToggleFavoriteLocation(homeLocation) },
-        )
-    }
-}
-
 /** 绘制收藏位置区。 */
 @Composable
 private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarActions) {
@@ -146,7 +132,6 @@ private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarAction
             state.favoriteLocations.forEach { favoriteLocation ->
                 SidebarLocationItem(
                     label = actions.locationLabel(favoriteLocation),
-                    location = favoriteLocation,
                     selected = state.location == favoriteLocation,
                     favorite = true,
                     onOpen = { actions.activateAndOpen(favoriteLocation) },
@@ -175,7 +160,6 @@ private fun SidebarConnections(state: PaneSidebarState, actions: PaneSidebarActi
             state.remoteConnections.forEach { connection ->
                 SidebarLocationItem(
                     label = connection.name,
-                    location = connection.location,
                     selected = state.location == connection.location,
                     favorite = state.favoriteLocations.contains(connection.location),
                     iconKey = AllIconsKeys.General.OpenDisk,
@@ -202,7 +186,6 @@ private fun SidebarRecentLocations(state: PaneSidebarState, actions: PaneSidebar
             visibleLocations.forEach { recentLocation ->
                 SidebarLocationItem(
                     label = actions.locationLabel(recentLocation),
-                    location = recentLocation,
                     selected = false,
                     favorite = state.favoriteLocations.contains(recentLocation),
                     onOpen = { actions.activateAndOpen(recentLocation) },
@@ -232,7 +215,7 @@ private fun SidebarDirectoryTree(state: PaneSidebarState, actions: PaneSidebarAc
  *
  * @param location 目标位置。
  */
-private fun PaneSidebarActions.activateAndOpen(location: String) {
+internal fun PaneSidebarActions.activateAndOpen(location: String) {
     onActivate()
     onOpenLocation(location)
 }
@@ -284,10 +267,20 @@ internal fun SidebarEmptyState(
     )
 }
 
+/**
+ * 绘制可打开、收藏并按需编辑的单个侧栏位置。
+ *
+ * @param label 位置显示名称。
+ * @param selected 是否为当前打开位置。
+ * @param favorite 是否已加入应用收藏。
+ * @param iconKey 可选位置图标。
+ * @param onOpen 打开位置回调。
+ * @param onToggleFavorite 切换收藏状态回调。
+ * @param onEdit 可选编辑回调。
+ */
 @Composable
 internal fun SidebarLocationItem(
     label: String,
-    location: String,
     selected: Boolean,
     favorite: Boolean,
     iconKey: IconKey? = null,
@@ -315,11 +308,7 @@ internal fun SidebarLocationItem(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
-            key = iconKey ?: if (location == System.getProperty("user.home")) {
-                AllIconsKeys.Nodes.HomeFolder
-            } else {
-                AllIconsKeys.Nodes.Folder
-            },
+            key = iconKey ?: AllIconsKeys.Nodes.Folder,
             contentDescription = null,
             modifier = Modifier.size(14.dp),
         )
