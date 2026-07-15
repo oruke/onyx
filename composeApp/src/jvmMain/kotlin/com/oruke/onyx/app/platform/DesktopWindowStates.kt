@@ -25,17 +25,17 @@ internal data class DesktopWindowStates(
  * 创建并绑定可持久化的桌面窗口状态。
  *
  * 窗口实例始终保留在应用组合范围内，因此临时关闭图片查看器不会丢失位置、尺寸或最大化状态。
- * 设置恢复完成后应用持久化尺寸，后续尺寸变化通过回调写回统一设置缓存。
+ * 调用方必须在设置恢复完成后再创建本状态，确保原生窗口第一次显示时就使用持久化尺寸。
  *
- * @param settings 当前应用设置。
- * @param restorationCompleted 设置恢复是否已经完成。
+ * @param settings 已完成恢复的应用设置。
+ * @param persistMainWindowSize 是否允许当前窗口更新主窗口持久化尺寸。
  * @param onSettingsChanged 窗口尺寸变化后的设置更新回调。
  * @return 主窗口与图片查看器窗口状态。
  */
 @Composable
 internal fun rememberDesktopWindowStates(
     settings: OnyxSettings,
-    restorationCompleted: Boolean,
+    persistMainWindowSize: Boolean,
     onSettingsChanged: (OnyxSettings) -> Unit,
 ): DesktopWindowStates {
     val latestSettings by rememberUpdatedState(settings)
@@ -53,21 +53,8 @@ internal fun rememberDesktopWindowStates(
         )
     }
 
-    LaunchedEffect(restorationCompleted) {
-        if (restorationCompleted) {
-            val restoredSettings = latestSettings
-            mainWindowState.size = DpSize(
-                restoredSettings.mainWindowWidth.dp,
-                restoredSettings.mainWindowHeight.dp,
-            )
-            imageViewerWindowState.size = DpSize(
-                restoredSettings.imageViewerWindowWidth.dp,
-                restoredSettings.imageViewerWindowHeight.dp,
-            )
-        }
-    }
-
-    LaunchedEffect(mainWindowState) {
+    LaunchedEffect(mainWindowState, persistMainWindowSize) {
+        if (!persistMainWindowSize) return@LaunchedEffect
         snapshotFlow { mainWindowState.size }.collect { size ->
             val width = size.width
             val height = size.height

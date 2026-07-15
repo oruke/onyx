@@ -66,9 +66,12 @@ internal fun DesktopFileManagerWindow(
         onDispose(externalFileDragService::dispose)
     }
     val state by rootComponent.state.collectAsState()
+    // 必须先恢复持久化尺寸再创建原生窗口，否则 Windows 会先绘制默认尺寸并产生可见缩放。
+    if (state.sessionRestoreState is SessionRestoreState.Loading) return
+
     val windowStates = rememberDesktopWindowStates(
         settings = state.settings,
-        restorationCompleted = state.sessionRestoreState !is SessionRestoreState.Loading,
+        persistMainWindowSize = request.persistsMainSession,
         onSettingsChanged = { settings -> rootComponent.dispatch(RootIntent.UpdateSettings(settings)) },
     )
 
