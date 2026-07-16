@@ -12,9 +12,6 @@ import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
 import jcifs.CIFSContext
-import jcifs.config.PropertyConfiguration
-import jcifs.context.BaseContext
-import jcifs.smb.NtlmPasswordAuthenticator
 import jcifs.smb.SmbAuthException
 import jcifs.smb.SmbException
 import jcifs.smb.SmbFile
@@ -26,12 +23,18 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.net.MalformedURLException
 import java.net.UnknownHostException
-import java.util.Properties
 
 /**
  * 基于 jcifs-ng 的 SMB 客户端实现。
+ *
+ * @param contextProvider 应用生命周期内共享 SMB 传输池的上下文提供器。
  */
-class JcifsSmbClient : SmbClient {
+class JcifsSmbClient internal constructor(
+    private val contextProvider: JcifsSmbContextProvider,
+) : SmbClient {
+    /** 创建使用默认共享 jcifs 上下文的 SMB 客户端。 */
+    constructor() : this(JcifsSmbContextProvider())
+
     override suspend fun testConnection(
         location: String,
         authContext: VfsAuthContext,
@@ -55,25 +58,22 @@ class JcifsSmbClient : SmbClient {
         location: String,
         authContext: VfsAuthContext,
     ): List<VFile> = withSmbContext(location, authContext) { context ->
-            val directory = SmbFile(location, context)
-            if (!directory.exists()) {
-                throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, location))
-            }
-            if (!directory.isDirectory) {
-                throw VfsProviderException(
-                    VfsProviderError.UnsupportedOperation(
-                        protocol = VfsProtocol.SMB,
-                        location = location,
-                        capability = null,
-                    )
-                )
-            }
-            directory.listFiles()
-                .map { child -> child.toVFile(parentLocation = directory.canonicalPath) }
-                .sortedWith(
-                    compareByDescending<VFile> { entry -> entry.kind == VFileKind.DIRECTORY }
-                        .thenBy { entry -> entry.name.lowercase() }
-                )
+        val directory = SmbFile(location, context)
+        directory.listFiles()
+            .map { child -> child.toVFile(parentLocation = directory.canonicalPath) }
+            .sortedWith(
+                compareByDescending<VFile> { entry -> entry.kind == VFileKind.DIRECTORY }
+                    .thenBy { entry -> entry.name.lowercase() }
+            )
+    }
+
+    /**
+     * 释放客户端共享的 jcifs 传输池。
+     *
+     * @return 无返回值。
+     */
+    override fun close() {
+        contextProvider.close()
     }
 
     override suspend fun copy(
@@ -266,7 +266,7 @@ class JcifsSmbClient : SmbClient {
     ): T = withContext(Dispatchers.IO) {
         val errorLocation = location
         try {
-            block(baseContext(authContext))
+            block(contextProvider.contextFor(authContext))
         } catch (failure: VfsProviderException) {
             throw failure
         } catch (failure: SmbAuthException) {
@@ -300,28 +300,6 @@ class JcifsSmbClient : SmbClient {
                     location = errorLocation,
                 ),
                 failure,
-            )
-        }
-    }
-
-    private fun baseContext(authContext: VfsAuthContext): CIFSContext {
-        val properties = Properties()
-        val base = BaseContext(PropertyConfiguration(properties))
-        return when (authContext) {
-            VfsAuthContext.None -> base.withAnonymousCredentials()
-            is VfsAuthContext.UsernamePassword -> base.withCredentials(
-                NtlmPasswordAuthenticator(
-                    authContext.domain.orEmpty(),
-                    authContext.username,
-                    authContext.password,
-                )
-            )
-
-            else -> throw VfsProviderException(
-                VfsProviderError.UnsupportedOperation(
-                    protocol = VfsProtocol.SMB,
-                    capability = null,
-                )
             )
         }
     }

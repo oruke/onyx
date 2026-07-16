@@ -93,6 +93,7 @@ import com.oruke.onyx.shared.usecase.PreviewCapabilityUseCase
 import com.oruke.onyx.shared.usecase.UserCommandUseCase
 import com.oruke.onyx.ui.ResourceEntryNameSuggestionService
 import org.koin.dsl.module
+import org.koin.dsl.onClose
 
 /**
  * 文件系统服务模块 — 所有文件操作相关的服务注册。
@@ -134,7 +135,7 @@ val fileModule = module {
     single<S3AuthRepository> { RemoteAuthStoreS3AuthRepository(get()) }
     single { MutableS3ConnectionRepository() }
     single<S3ConnectionRepository> { get<MutableS3ConnectionRepository>() }
-    single { SmbVfsProvider(authRepository = get()) }
+    single { SmbVfsProvider(authRepository = get()) } onClose { provider -> provider?.close() }
     single { WebDavVfsProvider(authRepository = get()) }
     single { S3VfsProvider(authRepository = get(), connectionRepository = get()) }
     single {

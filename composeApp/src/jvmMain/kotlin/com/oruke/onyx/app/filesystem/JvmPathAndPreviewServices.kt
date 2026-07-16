@@ -220,123 +220,14 @@ internal class JvmVfsPathService : VfsPathService {
         return breadcrumbs.distinctBy { it.location }
     }
 
-    private fun remoteUri(location: String): URI? {
-        if (!location.contains("://")) return null
-        return runCatching {
-            val uri = URI(location.encodeSpaces())
-            val scheme = uri.scheme?.lowercase()
-            if (scheme in REMOTE_SCHEMES && !uri.host.isNullOrBlank()) uri else null
-        }.getOrNull()
-    }
-
-    private fun URI.toRemoteLocation(directory: Boolean): String {
-        val normalizedPath = remotePathSegments()
-            .joinToString(separator = "/", prefix = "/")
-            .let { path ->
-                when {
-                    path == "/" -> path
-                    directory -> path.withTrailingSlash()
-                    else -> path
-                }
-            }
-        return URI(scheme.lowercase(), null, host, port, normalizedPath, null, null).toString()
-    }
-
-    private fun URI.remoteParentLocation(): String? {
-        val segments = remotePathSegments()
-        if (segments.isEmpty()) return null
-        val parentPath = segments.dropLast(1)
-            .joinToString(separator = "/", prefix = "/")
-            .let { path -> if (path == "/") path else path.withTrailingSlash() }
-        return URI(scheme.lowercase(), null, host, port, parentPath, null, null).toString()
-    }
-
-    private fun URI.remoteBaseName(): String? {
-        return remotePathSegments()
-            .lastOrNull()
-            ?.takeIf { it.isNotBlank() }
-    }
-
-    private fun URI.remoteBreadcrumbs(): List<VfsBreadcrumb> {
-        val breadcrumbs = mutableListOf(
-            VfsBreadcrumb(
-                label = host,
-                location = URI(scheme.lowercase(), null, host, port, "/", null, null).toString(),
-            )
-        )
-        val segments = remotePathSegments()
-        var currentPath = ""
-        segments.forEach { segment ->
-            currentPath = "$currentPath/$segment"
-            val location = URI(
-                scheme.lowercase(),
-                null,
-                host,
-                port,
-                currentPath.withTrailingSlash(),
-                null,
-                null,
-            ).toString()
-            breadcrumbs += VfsBreadcrumb(
-                label = segment,
-                location = location,
-            )
-        }
-        return breadcrumbs.distinctBy { it.location }
-    }
-
-    private fun URI.remoteDirectChildName(descendant: URI): String? {
-        val ancestorSegments = remotePathSegments()
-        val descendantSegments = descendant.remotePathSegments()
-        val isDirectDescendant = hasSameRemoteRoot(descendant) &&
-            descendantSegments.size > ancestorSegments.size &&
-            descendantSegments.take(ancestorSegments.size) == ancestorSegments
-        return descendantSegments.getOrNull(ancestorSegments.size).takeIf { isDirectDescendant }
-    }
-
-    private fun URI.isSameOrChildOfRemote(parent: URI): Boolean {
-        if (!hasSameRemoteRoot(parent)) return false
-        val segments = remotePathSegments()
-        val parentSegments = parent.remotePathSegments()
-        return segments == parentSegments || segments.take(parentSegments.size) == parentSegments
-    }
-
-    private fun URI.hasSameRemoteRoot(other: URI): Boolean {
-        return scheme.equals(other.scheme, ignoreCase = true) &&
-            host.equals(other.host, ignoreCase = true) &&
-            effectivePort() == other.effectivePort()
-    }
-
-    private fun URI.effectivePort(): Int {
-        return if (port >= 0) port else -1
-    }
-
-    private fun URI.remotePathSegments(): List<String> {
-        return path
-            ?.trim('/')
-            ?.split('/')
-            ?.filter { segment -> segment.isNotBlank() }
-            .orEmpty()
-    }
-
-    private companion object {
-        val REMOTE_SCHEMES = setOf("smb", "webdav", "webdavs", "s3")
-    }
+    /**
+     * 将远程位置解析为结构化 URI。
+     *
+     * @param location 待解析 VFS 位置。
+     * @return 受支持的远程 URI；本地位置或非法远程位置返回 `null`。
+     */
+    private fun remoteUri(location: String): URI? = RemoteVfsLocationParser.parse(location)
 }
-
-/**
- * 确保远程目录路径以斜杠结尾。
- *
- * @return 带目录结尾斜杠的路径。
- */
-private fun String.withTrailingSlash(): String = if (endsWith('/')) this else "$this/"
-
-/**
- * 将用户输入位置中的空格转义为 URI 可解析形式。
- *
- * @return 转义空格后的 URI 文本。
- */
-private fun String.encodeSpaces(): String = replace(" ", "%20")
 
 internal class JvmTerminalLauncherService : TerminalLauncherService {
     override suspend fun openTerminal(location: String): Result<Unit> = withContext(Dispatchers.IO) {

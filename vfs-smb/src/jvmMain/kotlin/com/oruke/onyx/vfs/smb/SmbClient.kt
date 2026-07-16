@@ -9,7 +9,14 @@ import kotlinx.coroutines.flow.Flow
 /**
  * SMB provider 使用的底层 client。
  */
-interface SmbClient {
+interface SmbClient : AutoCloseable {
+    /**
+     * 释放客户端持有的连接与后台资源；无状态测试客户端可保持默认空实现。
+     *
+     * @return 无返回值。
+     */
+    override fun close() = Unit
+
     /**
      * 测试 SMB 连接。
      *

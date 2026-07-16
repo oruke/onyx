@@ -47,4 +47,41 @@ class JvmVfsPathServiceTest {
             service.buildBreadcrumbs(location),
         )
     }
+
+    /**
+     * 校验空格与方括号目录名会被规范化为可导航 URI，而不会回退成本地路径。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun normalizesReservedCharactersInRemoteDirectoryNames() {
+        val rawLocation =
+            "smb://example-host/share/动画/[Release Group] Example Series [1080p]/"
+        val encodedLocation = rawLocation
+            .replace("[", "%5B")
+            .replace("]", "%5D")
+            .replace(" ", "%20")
+
+        assertEquals(rawLocation, service.normalizeLocation(rawLocation))
+        assertEquals(rawLocation, service.normalizeLocation(encodedLocation))
+        assertEquals("smb://example-host/share/动画/", service.parentLocation(rawLocation))
+        assertEquals("[Release Group] Example Series [1080p]", service.title(rawLocation))
+    }
+
+    /**
+     * 校验仅 SMB 保留原始路径字符，标准 URI provider 继续输出百分号编码。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun preservesProviderSpecificRemoteLocationFormats() {
+        assertEquals(
+            "webdav://host/share/%5Bfolder%5D%20name/",
+            service.normalizeLocation("webdav://host/share/[folder] name"),
+        )
+        assertEquals(
+            "s3://bucket/prefix/%5Bfolder%5D%20name/",
+            service.normalizeLocation("s3://bucket/prefix/[folder] name"),
+        )
+    }
 }

@@ -45,7 +45,7 @@ import java.util.Properties
 class SmbVfsProvider(
     private val authRepository: SmbAuthRepository = SmbAuthRepository.None,
     private val client: SmbClient = JcifsSmbClient(),
-) : VfsProvider, RoutableFileCommandService, RoutableVfsContentService, VfsConnectionTester {
+) : VfsProvider, RoutableFileCommandService, RoutableVfsContentService, VfsConnectionTester, AutoCloseable {
     override val protocol: VfsProtocol = VfsProtocol.SMB
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
@@ -61,6 +61,15 @@ class SmbVfsProvider(
 
     override fun supports(location: String): Boolean {
         return location.startsWith(SMB_SCHEME, ignoreCase = true)
+    }
+
+    /**
+     * 释放底层 SMB 客户端持有的连接与资源。
+     *
+     * @return 无返回值。
+     */
+    override fun close() {
+        client.close()
     }
 
     override suspend fun list(location: String): Result<List<VFile>> {
