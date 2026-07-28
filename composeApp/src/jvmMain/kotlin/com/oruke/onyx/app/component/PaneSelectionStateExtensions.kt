@@ -133,3 +133,28 @@ internal fun PaneTabState.clearSelectionState(): PaneTabState {
         )
     }
 }
+
+/**
+ * 读取包含目录树展开子项的可见条目。
+ *
+ * @return 顶层条目与已展开子项的合并列表。
+ */
+internal fun PaneState.visibleEntriesIncludingExpanded(): List<VFile> {
+    val entries = (entriesState as? PaneEntriesState.Ready)?.entries ?: return emptyList()
+    if (inlineExpandedLocations.isEmpty()) return entries
+    return SelectionReducer.collectVisibleEntries(
+        entries = entries,
+        expandedLocations = inlineExpandedLocations,
+        expandedEntries = inlineExpandedEntries,
+    )
+}
+
+/**
+ * 在包含目录树展开子项的可见条目中按 ID 查找条目。
+ *
+ * @param entryId 条目 ID。
+ * @return 匹配条目，ID 为空或未命中时返回 null。
+ */
+internal fun PaneState.findVisibleEntry(entryId: String?): VFile? {
+    return entryId?.let { id -> visibleEntriesIncludingExpanded().firstOrNull { it.id == id } }
+}

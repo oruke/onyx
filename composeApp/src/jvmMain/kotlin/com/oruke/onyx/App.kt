@@ -27,13 +27,13 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.oruke.onyx.core.model.FileTransferOperation
-import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.app.component.RootLaunchConfiguration
+import com.oruke.onyx.app.component.findVisibleEntry
 import com.oruke.onyx.app.component.rememberRootApplicationRuntime
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.core.model.PaneId
@@ -497,10 +497,7 @@ private fun HorizontalPaneLayout(
 private fun AppPreviewPanel(state: RootState, rootComponent: RootComponent) {
     if (!state.showPreviewPane) return
     val paneState = state.paneState(state.activePane)
-    val selectedId = paneState.selectedEntryIds.firstOrNull()
-    val selectedEntry = (paneState.entriesState as? PaneEntriesState.Ready)
-        ?.entries
-        ?.find { it.id == selectedId }
+    val selectedEntry = paneState.findVisibleEntry(paneState.selectedEntryIds.firstOrNull())
     Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
     PreviewPane(
         selectedEntry = selectedEntry,
