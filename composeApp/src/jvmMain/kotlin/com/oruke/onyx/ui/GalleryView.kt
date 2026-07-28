@@ -89,8 +89,8 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
 
-/** 单击已选中缩略图后等待进入重命名的时间。 */
-private const val GALLERY_RENAME_DELAY_MS = 500L
+/** 确认单击后延迟请求重命名的时间。 */
+private const val RENAME_AFTER_CLICK_DELAY_MS = 300L
 
 /** 画廊缩略图读取时请求的最大边长。 */
 private const val GALLERY_THUMBNAIL_DIMENSION = 512
@@ -188,6 +188,8 @@ private class GalleryInteractionState {
     var coordinates by mutableStateOf<LayoutCoordinates?>(null)
     /** 是否等待松开后收敛多选。 */
     var pendingDeselectOthers by mutableStateOf(false)
+    /** 本次主键按下时当前条目是否已满足慢速重命名条件。 */
+    var pressCanRename by mutableStateOf(false)
     /** 慢速重命名定时任务。 */
     var renameJob by mutableStateOf<Job?>(null)
     /** 内联编辑框是否曾获得焦点。 */
@@ -200,7 +202,7 @@ private class GalleryInteractionState {
     }
 
     /**
-     * 延迟请求重命名当前条目。
+     * 确认单击后延迟请求重命名当前条目。
      *
      * @param scope 计时协程作用域。
      * @param onBeginRename 开始重命名回调。
@@ -208,7 +210,7 @@ private class GalleryInteractionState {
     fun scheduleRename(scope: CoroutineScope, onBeginRename: () -> Unit) {
         cancelRename()
         renameJob = scope.launch {
-            delay(GALLERY_RENAME_DELAY_MS)
+            delay(RENAME_AFTER_CLICK_DELAY_MS)
             onBeginRename()
         }
     }
@@ -230,6 +232,8 @@ internal fun GalleryItem(
 ) {
     val interaction = remember(state.entry?.id) { GalleryInteractionState() }
     val selectedState = rememberUpdatedState(state.selected)
+    val entryCountState = rememberUpdatedState(state.selectedEntryCount)
+    val draftNameState = rememberUpdatedState(state.draftName)
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
     val canInlineEdit = state.draftName != null &&
@@ -255,10 +259,22 @@ internal fun GalleryItem(
                 if (state.selected) LocalOnyxPalette.current.outline else Color.Transparent,
                 RoundedCornerShape(6.dp),
             )
-            .galleryPressInteractions(state, actions, interaction, scope, canInlineEdit)
+            .galleryPressInteractions(state, actions, interaction, canInlineEdit)
             .galleryDragInteractions(state, actions, interaction, selectedState)
             .combinedClickable(
-                onClick = actions.onActivate,
+                onClick = {
+                    actions.onActivate()
+                    val canRename = state.entry != null && !canInlineEdit &&
+                        interaction.pressCanRename &&
+                        selectedState.value && entryCountState.value == 1
+                    if (canRename) {
+                        interaction.scheduleRename(scope) {
+                            if (selectedState.value && entryCountState.value == 1 && draftNameState.value == null) {
+                                actions.onBeginRename()
+                            }
+                        }
+                    }
+                },
                 onDoubleClick = {
                     interaction.cancelRename()
                     actions.onActivate()
@@ -299,7 +315,6 @@ private fun galleryItemBackground(state: GalleryItemState, isDropTarget: Boolean
  * @param state 画廊项显示状态。
  * @param actions 画廊项交互回调。
  * @param interaction 指针交互状态。
- * @param scope 慢速重命名协程作用域。
  * @param inlineEditing 当前是否正在内联编辑。
  * @return 添加按下交互后的修饰符。
  */
@@ -308,7 +323,6 @@ private fun Modifier.galleryPressInteractions(
     state: GalleryItemState,
     actions: GalleryItemActions,
     interaction: GalleryInteractionState,
-    scope: CoroutineScope,
     inlineEditing: Boolean,
 ): Modifier = onGloballyPositioned { coordinates ->
     interaction.coordinates = coordinates
@@ -318,17 +332,16 @@ private fun Modifier.galleryPressInteractions(
         )
     }
 }.onPointerEvent(PointerEventType.Press) { event ->
-    handleGalleryPress(event, state, actions, interaction, scope, inlineEditing)
+    handleGalleryPress(event, state, actions, interaction, inlineEditing)
 }
 
 /**
- * 处理画廊项按下事件中的选择、菜单和慢速重命名。
+ * 处理画廊项按下事件中的选择和菜单。
  *
  * @param event 当前指针事件。
  * @param state 画廊项显示状态。
  * @param actions 画廊项交互回调。
  * @param interaction 指针交互状态。
- * @param scope 慢速重命名协程作用域。
  * @param inlineEditing 当前是否正在内联编辑。
  */
 private fun handleGalleryPress(
@@ -336,7 +349,6 @@ private fun handleGalleryPress(
     state: GalleryItemState,
     actions: GalleryItemActions,
     interaction: GalleryInteractionState,
-    scope: CoroutineScope,
     inlineEditing: Boolean,
 ) {
     val entry = state.entry ?: return
@@ -356,27 +368,28 @@ private fun handleGalleryPress(
             IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()),
         )
     } else if (event.buttons.isPrimaryPressed) {
-        handleGalleryPrimaryPress(state, actions, interaction, scope)
+        handleGalleryPrimaryPress(state, actions, interaction)
     }
 }
 
 /**
- * 处理主键按下后的选择与重命名计时。
+ * 处理主键按下后的选择。
  *
  * @param state 画廊项显示状态。
  * @param actions 画廊项交互回调。
  * @param interaction 指针交互状态。
- * @param scope 慢速重命名协程作用域。
  */
 private fun handleGalleryPrimaryPress(
     state: GalleryItemState,
     actions: GalleryItemActions,
     interaction: GalleryInteractionState,
-    scope: CoroutineScope,
 ) {
     val entry = requireNotNull(state.entry)
     actions.onActivate()
     actions.onDismissContextMenu()
+    interaction.cancelRename()
+    interaction.pressCanRename = state.selected && state.selectedEntryCount == 1 &&
+        !interaction.additiveSelection && !interaction.rangeSelection
     interaction.pendingDeselectOthers = false
     when {
         interaction.additiveSelection || interaction.rangeSelection -> actions.onSelectEntry(
@@ -387,9 +400,6 @@ private fun handleGalleryPrimaryPress(
         state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(entry.id, false, false)
     }
-    val canRename = state.selected && state.selectedEntryCount == 1 &&
-        !interaction.additiveSelection && !interaction.rangeSelection
-    if (canRename) interaction.scheduleRename(scope, actions.onBeginRename) else interaction.cancelRename()
 }
 
 /**
@@ -652,5 +662,11 @@ private fun GalleryInlineEditor(
         ),
         singleLine = true,
         cursorBrush = SolidColor(LocalOnyxPalette.current.foreground),
+        decorationBox = { innerTextField ->
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) { innerTextField() }
+        },
     )
 }

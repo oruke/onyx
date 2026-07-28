@@ -142,8 +142,8 @@ private const val EMPTY_STATE_ICON_ALPHA = 0.4f
 /** 指针移动超过此距离平方后才开始拖拽或框选。 */
 private const val DRAG_START_DISTANCE_SQUARED = 36f
 
-/** 单击选中项后等待进入重命名的时间。 */
-private const val INLINE_RENAME_DELAY_MS = 500L
+/** 确认单击后延迟请求重命名的时间。 */
+private const val RENAME_AFTER_CLICK_DELAY_MS = 300L
 
 // ── File entries ────────────────────────────────────────────────────────────
 
@@ -415,6 +415,12 @@ internal fun InlineEditEntryRow(
                             ),
                             singleLine = true,
                             cursorBrush = SolidColor(LocalOnyxPalette.current.foreground),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.CenterStart,
+                                ) { innerTextField() }
+                            },
                         )
                     }
                 }
@@ -748,6 +754,8 @@ private class EntryRowInteractionState {
     var expandCoordinates by mutableStateOf<LayoutCoordinates?>(null)
     /** 是否等待松开后收敛多选。 */
     var pendingDeselectOthers by mutableStateOf(false)
+    /** 本次主键按下时当前条目是否已满足慢速重命名条件。 */
+    var pressCanRename by mutableStateOf(false)
     /** 慢速重命名定时任务。 */
     var renameJob by mutableStateOf<Job?>(null)
 
@@ -782,7 +790,7 @@ private class EntryRowInteractionState {
     }
 
     /**
-     * 延迟请求重命名当前条目。
+     * 确认单击后延迟请求重命名当前条目。
      *
      * @param scope 计时协程作用域。
      * @param onBeginRename 开始重命名回调。
@@ -790,7 +798,7 @@ private class EntryRowInteractionState {
     fun scheduleRename(scope: CoroutineScope, onBeginRename: () -> Unit) {
         cancelRename()
         renameJob = scope.launch {
-            kotlinx.coroutines.delay(INLINE_RENAME_DELAY_MS)
+            kotlinx.coroutines.delay(RENAME_AFTER_CLICK_DELAY_MS)
             onBeginRename()
         }
     }
@@ -1517,17 +1525,27 @@ internal fun EntryRow(
 ) {
     val interaction = remember(state.entry.id) { EntryRowInteractionState() }
     val selectedState = rememberUpdatedState(state.selected)
+    val entryCountState = rememberUpdatedState(state.selectedEntryCount)
     val coroutineScope = rememberCoroutineScope()
     val rowBackground = entryRowBackground(state)
 
     Row(
         modifier = Modifier
             .horizontalScroll(scrollState)
-            .entryRowPressInteractions(state, actions, interaction, coroutineScope)
+            .entryRowPressInteractions(state, actions, interaction)
             .entryRowDragInteractions(state, actions, interaction, selectedState)
             .background(rowBackground)
             .combinedClickable(
-                onClick = actions.onActivate,
+                onClick = {
+                    actions.onActivate()
+                    val canRename = interaction.pressCanRename &&
+                        selectedState.value && entryCountState.value == 1
+                    if (canRename) {
+                        interaction.scheduleRename(coroutineScope) {
+                            if (selectedState.value && entryCountState.value == 1) actions.onBeginRename()
+                        }
+                    }
+                },
                 onDoubleClick = {
                     interaction.cancelRename()
                     actions.onActivate()
@@ -1555,7 +1573,6 @@ internal fun EntryRow(
  * @param state 详情行显示状态。
  * @param actions 详情行交互回调。
  * @param interaction 指针交互状态。
- * @param scope 慢速重命名协程作用域。
  * @return 添加按下交互后的修饰符。
  */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -1563,27 +1580,24 @@ private fun Modifier.entryRowPressInteractions(
     state: EntryRowState,
     actions: EntryRowActions,
     interaction: EntryRowInteractionState,
-    scope: CoroutineScope,
 ): Modifier = onGloballyPositioned { interaction.rowCoordinates = it }
     .onPointerEvent(PointerEventType.Press) { event ->
-        handleEntryRowPress(event, state, actions, interaction, scope)
+        handleEntryRowPress(event, state, actions, interaction)
     }
 
 /**
- * 处理详情行按下事件中的选择、展开、菜单和重命名计时。
+ * 处理详情行按下事件中的选择、展开和菜单。
  *
  * @param event 当前指针事件。
  * @param state 详情行显示状态。
  * @param actions 详情行交互回调。
  * @param interaction 指针交互状态。
- * @param scope 慢速重命名协程作用域。
  */
 private fun handleEntryRowPress(
     event: PointerEvent,
     state: EntryRowState,
     actions: EntryRowActions,
     interaction: EntryRowInteractionState,
-    scope: CoroutineScope,
 ) {
     val modified = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
     interaction.additiveSelection = modified
@@ -1600,26 +1614,26 @@ private fun handleEntryRowPress(
             IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()),
         )
     } else if (event.buttons.isPrimaryPressed) {
-        handleEntryRowPrimaryPress(state, actions, interaction, scope, pointer)
+        handleEntryRowPrimaryPress(state, actions, interaction, pointer)
     }
 }
 
 /**
- * 处理主键按下后的树形展开、选择与重命名。
+ * 处理主键按下后的树形展开与选择。
  *
  * @param state 详情行显示状态。
  * @param actions 详情行交互回调。
  * @param interaction 指针交互状态。
- * @param scope 慢速重命名协程作用域。
  * @param pointer 行内指针坐标。
  */
 private fun handleEntryRowPrimaryPress(
     state: EntryRowState,
     actions: EntryRowActions,
     interaction: EntryRowInteractionState,
-    scope: CoroutineScope,
     pointer: androidx.compose.ui.geometry.Offset,
 ) {
+    interaction.cancelRename()
+    interaction.pressCanRename = false
     val toggleExpand = actions.onToggleInlineExpand
     if (toggleExpand != null && interaction.isInExpandArrow(pointer)) {
         actions.onActivate()
@@ -1629,6 +1643,8 @@ private fun handleEntryRowPrimaryPress(
     actions.onActivate()
     actions.onDismissContextMenu()
     interaction.pendingDeselectOthers = false
+    interaction.pressCanRename = state.selected && state.selectedEntryCount == 1 &&
+        !interaction.additiveSelection && !interaction.rangeSelection
     when {
         interaction.additiveSelection || interaction.rangeSelection -> actions.onSelectEntry(
             state.entry.id,
@@ -1638,9 +1654,6 @@ private fun handleEntryRowPrimaryPress(
         state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(state.entry.id, false, false)
     }
-    val canRename = state.selected && state.selectedEntryCount == 1 &&
-        !interaction.additiveSelection && !interaction.rangeSelection
-    if (canRename) interaction.scheduleRename(scope, actions.onBeginRename) else interaction.cancelRename()
 }
 
 /**
