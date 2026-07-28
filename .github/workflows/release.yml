@@ -3,13 +3,68 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布的现有版本标签，例如 v1.3.0'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release-tag.outputs.tag }}
+    steps:
+      - name: Resolve release tag
+        id: release-tag
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.tag }}'
+          } else {
+            '${{ github.ref_name }}'
+          }
+
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Invalid release tag: $tag"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Create draft GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-tag.outputs.tag }}
+        run: |
+          $releaseJson = & gh release view $env:RELEASE_TAG `
+            --repo '${{ github.repository }}' `
+            --json isDraft 2>$null
+
+          if ($LASTEXITCODE -eq 0) {
+            $release = $releaseJson | ConvertFrom-Json
+            if (-not $release.isDraft) {
+              throw "Release already published: $env:RELEASE_TAG"
+            }
+          } else {
+            & gh release create $env:RELEASE_TAG `
+              --repo '${{ github.repository }}' `
+              --verify-tag `
+              --draft `
+              --generate-notes `
+              --title $env:RELEASE_TAG
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create draft release: $env:RELEASE_TAG"
+            }
+          }
+
   build:
+    needs: prepare-release
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -46,6 +101,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
 
       - name: Download pinned JetBrains Runtime SDK
         shell: pwsh
@@ -105,7 +162,7 @@ jobs:
             throw "Portable application directory was not generated: $sourcePath"
           }
 
-          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $version = '${{ needs.prepare-release.outputs.tag }}'.TrimStart('v')
           $outputDirectory = (New-Item -ItemType Directory -Force 'composeApp/build/compose/portable').FullName
           $archivePath = Join-Path $outputDirectory "Onyx-${{ matrix.portable-id }}-$version.zip"
 
@@ -140,30 +197,61 @@ jobs:
             throw "Failed to create portable ZIP: $archivePath"
           }
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist-${{ matrix.os }}
-          path: ${{ matrix.artifact-path }}
-          if-no-files-found: warn
+      - name: Upload release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          ARTIFACT_PATHS: ${{ matrix.artifact-path }}
+        run: |
+          $files = @(
+            $env:ARTIFACT_PATHS -split '\r?\n' |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+              ForEach-Object {
+                Get-ChildItem -Path $_.Trim() -File -ErrorAction SilentlyContinue |
+                  Select-Object -ExpandProperty FullName
+              }
+          )
+
+          if ($files.Count -eq 0) {
+            throw 'No release assets were generated'
+          }
+
+          & gh release upload $env:RELEASE_TAG @files `
+            --repo '${{ github.repository }}' `
+            --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upload release assets: $env:RELEASE_TAG"
+          }
 
   release:
-    needs: build
+    needs: [prepare-release, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
+      - name: Verify and publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          $releaseJson = & gh release view $env:RELEASE_TAG `
+            --repo '${{ github.repository }}' `
+            --json assets,isDraft
+          if ($LASTEXITCODE -ne 0) {
+            throw "Draft release not found: $env:RELEASE_TAG"
+          }
 
-      - name: List artifacts
-        run: find dist -type f | sort
+          $release = $releaseJson | ConvertFrom-Json
+          if (-not $release.isDraft) {
+            throw "Release is not a draft: $env:RELEASE_TAG"
+          }
+          if ($release.assets.Count -ne 7) {
+            throw "Expected 7 release assets, found $($release.assets.Count)"
+          }
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/**/*
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+          & gh release edit $env:RELEASE_TAG `
+            --repo '${{ github.repository }}' `
+            --draft=false
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to publish release: $env:RELEASE_TAG"
+          }
