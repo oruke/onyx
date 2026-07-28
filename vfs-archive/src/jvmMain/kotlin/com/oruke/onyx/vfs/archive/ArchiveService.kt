@@ -244,6 +244,7 @@ class ArchiveService(
                 if (callback.errors.isNotEmpty()) {
                     error("解压失败: ${callback.errors.joinToString(", ")}")
                 }
+                callback.completeProgress()
             }
         }
     }

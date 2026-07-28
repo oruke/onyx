@@ -39,6 +39,9 @@ internal class FileExtractCallback(
     /** 7-Zip 当前解压批次声明的总字节数。 */
     private var totalBytes: Long = 0L
 
+    /** 最近一次已发布的完成字节数。 */
+    private var completedBytes: Long = 0L
+
     override fun getStream(
         index: Int,
         extractAskMode: ExtractAskMode,
@@ -98,6 +101,7 @@ internal class FileExtractCallback(
      */
     override fun setTotal(total: Long) {
         totalBytes = total.coerceAtLeast(0L)
+        completedBytes = 0L
         progressSink.onProgress(0L, totalBytes)
     }
 
@@ -107,11 +111,27 @@ internal class FileExtractCallback(
      * @param complete 当前已完成字节数。
      */
     override fun setCompleted(complete: Long) {
+        completedBytes = complete.coerceAtLeast(0L)
         progressSink.onProgress(
-            completedBytes = complete.coerceAtLeast(0L),
+            completedBytes = completedBytes,
             totalBytes = totalBytes,
         )
     }
+
+    /**
+     * 在成功解压后补齐终态进度，兼容不发送最终完成回调的 7-Zip 平台实现。
+     *
+     * @return 无返回值。
+     */
+    fun completeProgress() {
+        if (totalBytes <= 0L || completedBytes >= totalBytes) return
+        completedBytes = totalBytes
+        progressSink.onProgress(
+            completedBytes = completedBytes,
+            totalBytes = totalBytes,
+        )
+    }
+
     override fun cryptoGetTextPassword(): String = password ?: ""
 }
 
