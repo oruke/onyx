@@ -11,6 +11,8 @@ import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.withVfsCopySuffix
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -187,6 +189,39 @@ class KtorS3Client(
                     throw failure.toS3NetworkException(entry.location)
                 }
             }.flowOn(Dispatchers.IO),
+        )
+    }
+
+    /**
+     * 使用签名 Range 请求打开 S3 对象的只读随机访问句柄。
+     *
+     * @param location 已解析的 S3 对象位置。
+     * @param mode 打开模式，仅支持只读。
+     * @param authContext AWS 访问凭据。
+     * @param connectionConfig S3 Endpoint 与兼容配置。
+     * @return S3 随机访问句柄。
+     */
+    override suspend fun openRandomAccess(
+        location: S3Location,
+        mode: VfsRandomAccessMode,
+        authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
+    ): VfsRandomAccessHandle {
+        if (mode != VfsRandomAccessMode.READ) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.S3,
+                    location = location.toLocation(location.objectKey, directory = false),
+                    capability = VfsProviderCapability.WRITE_RANDOM_ACCESS,
+                )
+            )
+        }
+        return KtorS3RandomAccessHandle.open(
+            httpClient = httpClient,
+            signer = signer,
+            location = location,
+            authContext = authContext,
+            connectionConfig = connectionConfig,
         )
     }
 

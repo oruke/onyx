@@ -16,14 +16,8 @@ import org.jetbrains.skia.MipmapMode
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
-import net.sf.sevenzipjbinding.ISequentialOutStream
-import net.sf.sevenzipjbinding.IInArchive
-import net.sf.sevenzipjbinding.PropID
-import net.sf.sevenzipjbinding.SevenZip
-import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.RandomAccessFile
 import kotlin.math.max
 import kotlin.math.min
 import org.jetbrains.skia.Image as SkiaImage
@@ -142,11 +136,6 @@ internal class JvmThumbnailService(
         }
     }
 
-    /** 图片扩展名集合（用于压缩包内条目筛选） */
-    private val imageExtensions = setOf(
-        "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "tif",
-    )
-
     @Suppress("TooGenericExceptionCaught")
     override suspend fun loadThumbnail(
         location: String,
@@ -256,55 +245,6 @@ internal class JvmThumbnailService(
     private class ThumbnailContentTooLargeException : RuntimeException()
 
     /**
-     * 压缩包中可作为封面缩略图的图片条目。
-     */
-    private data class ArchiveImageEntry(
-        /** 条目在压缩包中的索引。 */
-        val index: Int,
-        /** 用于稳定排序的条目路径。 */
-        val path: String,
-        /** 解压前声明的字节数。 */
-        val size: Long,
-    )
-
-    /**
-     * 收集压缩包中尺寸受控的图片条目。
-     *
-     * @param archive 已打开的 7-Zip 压缩包句柄。
-     * @return 可解码图片条目列表。
-     */
-    private fun collectArchiveImageEntries(archive: IInArchive): List<ArchiveImageEntry> {
-        return (0 until archive.numberOfItems).mapNotNull { index ->
-            archive.readArchiveImageEntry(index)
-        }
-    }
-
-    /**
-     * 将单个压缩包条目转换为图片候选。
-     *
-     * @param index 条目索引。
-     * @return 图片类型且大小未超限时返回候选，否则返回 `null`。
-     */
-    private fun IInArchive.readArchiveImageEntry(index: Int): ArchiveImageEntry? {
-        val isDirectory = getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
-        val path = getProperty(index, PropID.PATH) as? String
-        val size = getProperty(index, PropID.SIZE) as? Long ?: 0L
-        return path
-            ?.takeIf { itemPath -> !isDirectory && itemPath.hasThumbnailImageExtension() }
-            ?.takeIf { size <= MAX_ARCHIVE_IMAGE_BYTES }
-            ?.let { itemPath -> ArchiveImageEntry(index, itemPath, size) }
-    }
-
-    /**
-     * 判断压缩包条目路径是否具有可解码的图片扩展名。
-     *
-     * @return `true` 表示可尝试作为缩略图解码。
-     */
-    private fun String.hasThumbnailImageExtension(): Boolean {
-        return substringAfterLast('.', "").lowercase() in imageExtensions
-    }
-
-    /**
      * 从压缩包中提取第一张图片，生成缩略图。
      *
      * 扫描压缩包内所有条目，按路径排序后取第一张图片类型的文件，
@@ -319,74 +259,21 @@ internal class JvmThumbnailService(
         getCached(cacheKey)?.let { return@withContext it }
 
         return@withContext try {
-            val file = File(location)
-            if (!file.exists() || !file.isFile) return@withContext null
-
-            val raf = RandomAccessFile(location, "r")
-            val inStream = RandomAccessFileInStream(raf)
-            val archive = SevenZip.openInArchive(null, inStream)
-
-            try {
-                val imageEntries = collectArchiveImageEntries(archive)
-
-                if (imageEntries.isEmpty()) return@withContext null
-
-                // 按路径排序取第一张（确保稳定）
-                val target = imageEntries.sortedBy { it.path }.first()
-
-                // 解压到内存
-                val buffer = ByteArrayOutputStream(target.size.toInt().coerceAtLeast(1024))
-                archive.extract(
-                    intArrayOf(target.index),
-                    false,
-                    object : net.sf.sevenzipjbinding.IArchiveExtractCallback {
-                        override fun getStream(
-                            index: Int,
-                            extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode,
-                        ): ISequentialOutStream? {
-                            if (extractAskMode != net.sf.sevenzipjbinding.ExtractAskMode.EXTRACT) return null
-                            if (index != target.index) return null
-                            return ISequentialOutStream { data ->
-                                buffer.write(data)
-                                data.size
-                            }
-                        }
-                        override fun prepareOperation(
-                            extractAskMode: net.sf.sevenzipjbinding.ExtractAskMode,
-                        ) = Unit
-
-                        override fun setOperationResult(
-                            result: net.sf.sevenzipjbinding.ExtractOperationResult,
-                        ) = Unit
-
-                        override fun setTotal(total: Long) = Unit
-
-                        override fun setCompleted(complete: Long) = Unit
-                    },
-                )
-
-                val imageBytes = buffer.toByteArray()
-                if (imageBytes.isEmpty()) return@withContext null
-
-                val skImage = SkiaImage.makeFromEncoded(imageBytes)
-
-                val w = skImage.width
-                val h = skImage.height
-                val scale = min(maxDimension.toFloat() / w, maxDimension.toFloat() / h)
-                    .coerceAtMost(1f)
-                val newW = max(1, (w * scale).toInt())
-                val newH = max(1, (h * scale).toInt())
-
-                val scaled = progressiveDownscale(skImage, newW, newH)
-                val composeBitmap = scaled.toComposeImageBitmap()
-
-                putCache(cacheKey, composeBitmap)
-                composeBitmap
-            } finally {
-                archive.close()
-                inStream.close()
-                raf.close()
-            }
+            val imageBytes = archiveService.extractFirstImageToBytes(
+                archivePath = location,
+                maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
+            ).getOrNull() ?: return@withContext null
+            val skImage = SkiaImage.makeFromEncoded(imageBytes)
+            val width = skImage.width
+            val height = skImage.height
+            val scale = min(maxDimension.toFloat() / width, maxDimension.toFloat() / height)
+                .coerceAtMost(1f)
+            val targetWidth = max(1, (width * scale).toInt())
+            val targetHeight = max(1, (height * scale).toInt())
+            val scaled = progressiveDownscale(skImage, targetWidth, targetHeight)
+            val composeBitmap = scaled.toComposeImageBitmap()
+            putCache(cacheKey, composeBitmap)
+            composeBitmap
         } catch (failure: CancellationException) {
             throw failure
         } catch (failure: Exception) {

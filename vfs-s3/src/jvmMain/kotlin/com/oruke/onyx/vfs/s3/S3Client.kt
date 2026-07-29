@@ -9,6 +9,8 @@ import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -85,6 +87,34 @@ interface S3Client {
                 protocol = VfsProtocol.S3,
                 location = entry.location,
                 capability = VfsProviderCapability.READ_CONTENT,
+            )
+        )
+    }
+
+    /**
+     * 打开 S3 对象的随机访问句柄。
+     *
+     * @param location S3 对象位置。
+     * @param mode 打开模式。
+     * @param authContext AWS 凭据。
+     * @param connectionConfig Endpoint 与寻址配置。
+     * @return HTTP Range 随机访问句柄。
+     */
+    suspend fun openRandomAccess(
+        location: S3Location,
+        mode: VfsRandomAccessMode,
+        authContext: VfsAuthContext.AwsCredentials,
+        connectionConfig: S3ConnectionConfig,
+    ): VfsRandomAccessHandle {
+        throw VfsProviderException(
+            VfsProviderError.UnsupportedOperation(
+                protocol = VfsProtocol.S3,
+                location = location.toLocation(location.objectKey, directory = false),
+                capability = if (mode == VfsRandomAccessMode.READ) {
+                    VfsProviderCapability.READ_RANDOM_ACCESS
+                } else {
+                    VfsProviderCapability.WRITE_RANDOM_ACCESS
+                },
             )
         )
     }

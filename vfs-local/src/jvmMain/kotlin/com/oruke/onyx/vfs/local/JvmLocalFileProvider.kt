@@ -6,8 +6,12 @@ import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.FileTransferProgressSink
 import com.oruke.onyx.vfs.api.ProgressAwareRoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -17,6 +21,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import java.io.RandomAccessFile
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -25,7 +30,11 @@ import kotlin.io.path.pathString
 /**
  * 基于 `java.nio.file` 的本地文件仓库与命令 Provider。
  */
-class JvmLocalFileProvider : FileRepository, ProgressAwareRoutableFileCommandService, RoutableVfsContentService {
+class JvmLocalFileProvider :
+    FileRepository,
+    ProgressAwareRoutableFileCommandService,
+    RoutableVfsContentService,
+    RoutableVfsRandomAccessService {
     /**
      * 判断位置是否属于本地文件系统。
      *
@@ -34,6 +43,31 @@ class JvmLocalFileProvider : FileRepository, ProgressAwareRoutableFileCommandSer
      */
     override fun supports(location: String): Boolean {
         return !location.contains("://")
+    }
+
+    /**
+     * 打开本地或系统挂载网络文件的随机访问句柄。
+     *
+     * @param location 本地文件路径。
+     * @param mode 打开模式。
+     * @return 随机访问句柄或结构化失败。
+     */
+    override suspend fun openRandomAccess(
+        location: String,
+        mode: VfsRandomAccessMode,
+    ): Result<VfsRandomAccessHandle> = withContext(Dispatchers.IO) {
+        if (!supports(location)) {
+            return@withContext Result.failure(VfsProviderNotFoundException(location))
+        }
+        runCatching {
+            val path = Path.of(location).normalize().toAbsolutePath()
+            LocalPathOperations.ensurePathExists(path)
+            require(Files.isRegularFile(path)) {
+                "$location is not a regular file"
+            }
+            val accessMode = if (mode == VfsRandomAccessMode.READ) "r" else "rw"
+            JvmLocalRandomAccessHandle(RandomAccessFile(path.toFile(), accessMode), mode)
+        }.mapLocalError()
     }
 
     /**

@@ -4,6 +4,12 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.api.VfsProviderCapability
+import com.oruke.onyx.vfs.api.VfsProviderError
+import com.oruke.onyx.vfs.api.VfsProviderException
+import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -134,6 +140,32 @@ interface SmbClient : AutoCloseable {
         entry: VFile,
         authContext: VfsAuthContext,
     ): VfsContentSource
+
+    /**
+     * 打开 SMB 文件的随机访问句柄。
+     *
+     * @param location SMB 文件位置。
+     * @param mode 打开模式。
+     * @param authContext 认证上下文。
+     * @return 保持远端文件句柄的随机访问对象。
+     */
+    suspend fun openRandomAccess(
+        location: String,
+        mode: VfsRandomAccessMode,
+        authContext: VfsAuthContext,
+    ): VfsRandomAccessHandle {
+        throw VfsProviderException(
+            VfsProviderError.UnsupportedOperation(
+                protocol = VfsProtocol.SMB,
+                location = location,
+                capability = if (mode == VfsRandomAccessMode.READ) {
+                    VfsProviderCapability.READ_RANDOM_ACCESS
+                } else {
+                    VfsProviderCapability.WRITE_RANDOM_ACCESS
+                },
+            )
+        )
+    }
 
     /**
      * 写入 SMB 文件内容。

@@ -173,18 +173,21 @@ internal class JvmVfsPathService : VfsPathService {
     /**
      * 构建压缩包文件及其内部路径的面包屑。
      *
-     * @param archivePath 压缩包本地路径。
+     * @param archivePath 压缩包本地或远程 VFS 位置。
      * @param innerPath 压缩包内部路径。
      * @return 去重后的面包屑列表。
      */
     private fun archiveBreadcrumbs(archivePath: String, innerPath: String): List<VfsBreadcrumb> {
-        val archiveFilePath = Path.of(archivePath).normalize().toAbsolutePath()
-        val breadcrumbs = localBreadcrumbs(archiveFilePath).toMutableList()
-        val archiveIndex = breadcrumbs.indexOfLast { crumb -> crumb.location == archiveFilePath.toString() }
+        val archiveLocation = ArchiveService.archiveLocation(archivePath)
+        val remoteArchiveUri = remoteUri(archivePath)
+        val breadcrumbs = if (remoteArchiveUri != null) {
+            remoteArchiveUri.remoteBreadcrumbs().toMutableList()
+        } else {
+            localBreadcrumbs(Path.of(archivePath).normalize().toAbsolutePath()).toMutableList()
+        }
+        val archiveIndex = breadcrumbs.lastIndex
         if (archiveIndex >= 0) {
-            breadcrumbs[archiveIndex] = breadcrumbs[archiveIndex].copy(
-                location = ArchiveService.archiveLocation(archivePath),
-            )
+            breadcrumbs[archiveIndex] = breadcrumbs[archiveIndex].copy(location = archiveLocation)
         }
         var innerCurrent = ""
         innerPath.trimEnd('/').split("/").filter { it.isNotEmpty() }.forEach { segment ->

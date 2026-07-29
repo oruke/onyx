@@ -72,6 +72,26 @@ class ArchiveServiceTest {
     }
 
     /**
+     * 校验远程压缩包根位置能返回原协议父目录和稳定标题。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun resolvesRemoteArchiveParentLocationsAndTitles() {
+        val locations = mapOf(
+            "smb://server/share/books/sample.zip" to "smb://server/share/books",
+            "webdav://storage/library/sample.zip" to "webdav://storage/library",
+            "s3://bucket/library/sample.zip" to "s3://bucket/library",
+        )
+
+        locations.forEach { (archivePath, expectedParent) ->
+            val archiveLocation = ArchiveService.archiveLocation(archivePath)
+            assertEquals(expectedParent, ArchiveService.archiveParentLocation(archiveLocation))
+            assertEquals("sample.zip", ArchiveService.archiveLocationTitle(archiveLocation))
+        }
+    }
+
+    /**
      * 校验 ZIP 系列压缩包支持创建目录、追加文件、重命名和删除内部条目。
      *
      * @return 无返回值。

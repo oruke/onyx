@@ -9,6 +9,8 @@ import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.withVfsCopySuffix
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
 import io.ktor.client.HttpClient
@@ -34,8 +36,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.IOException
-import java.nio.charset.StandardCharsets
-import java.util.Base64
 import javax.net.ssl.SSLException
 
 /**
@@ -272,6 +272,31 @@ class KtorWebDavClient(
         )
     }
 
+    /**
+     * 探测 WebDAV Range 能力并打开只读随机访问句柄。
+     *
+     * @param location WebDAV 文件位置。
+     * @param mode 打开模式，仅支持只读。
+     * @param authContext WebDAV 认证上下文。
+     * @return WebDAV 随机访问句柄。
+     */
+    override suspend fun openRandomAccess(
+        location: String,
+        mode: VfsRandomAccessMode,
+        authContext: VfsAuthContext,
+    ): VfsRandomAccessHandle {
+        if (mode != VfsRandomAccessMode.READ) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.WEBDAV,
+                    location = location,
+                    capability = VfsProviderCapability.WRITE_RANDOM_ACCESS,
+                )
+            )
+        }
+        return KtorWebDavRandomAccessHandle.open(httpClient, location, authContext)
+    }
+
     override suspend fun writeFile(
         parentLocation: String,
         name: String,
@@ -441,22 +466,8 @@ class KtorWebDavClient(
         authContext: VfsAuthContext,
         location: String,
     ) {
-        when (authContext) {
-            VfsAuthContext.None -> Unit
-            is VfsAuthContext.UsernamePassword -> {
-                val raw = "${authContext.username}:${authContext.password}"
-                val encoded = Base64.getEncoder().encodeToString(raw.toByteArray(StandardCharsets.UTF_8))
-                header(HttpHeaders.Authorization, "Basic $encoded")
-            }
-
-            is VfsAuthContext.BearerToken -> header(HttpHeaders.Authorization, "Bearer ${authContext.token}")
-            else -> throw VfsProviderException(
-                VfsProviderError.UnsupportedOperation(
-                    protocol = VfsProtocol.WEBDAV,
-                    location = location,
-                    capability = null,
-                )
-            )
+        authContext.webDavAuthorizationHeader(location)?.let { value ->
+            header(HttpHeaders.Authorization, value)
         }
     }
 

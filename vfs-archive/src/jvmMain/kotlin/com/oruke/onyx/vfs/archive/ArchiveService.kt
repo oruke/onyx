@@ -4,6 +4,7 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.sf.sevenzipjbinding.ExtractAskMode
@@ -13,13 +14,9 @@ import net.sf.sevenzipjbinding.ICryptoGetTextPassword
 import net.sf.sevenzipjbinding.IInArchive
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
-import net.sf.sevenzipjbinding.SevenZip
-import net.sf.sevenzipjbinding.impl.RandomAccessFileInStream
 import java.io.ByteArrayOutputStream
-import java.io.Closeable
 import java.io.File
 import java.io.FileOutputStream
-import java.io.RandomAccessFile
 import java.util.Date
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -34,6 +31,9 @@ import java.util.concurrent.TimeUnit
  * 条目路径格式：`archive://<archivePath>!/<entryPath>`
  */
 class ArchiveService(
+    /** 统一 VFS 随机访问服务。 */
+    private val randomAccessService: RoutableVfsRandomAccessService = StandaloneArchiveRandomAccessService,
+
     /** 归档处理日志出口。 */
     private val logger: ArchiveServiceLogger = ArchiveServiceLogger.NoOp,
 
@@ -50,7 +50,10 @@ class ArchiveService(
     private val tarZstdArchiveService = TarZstdArchiveService(tarCommand, tarRuntimeTimeoutSeconds)
 
     /** 7-Zip 归档加密状态与密码检查器。 */
-    private val archiveInspector = SevenZipArchiveInspector(logger)
+    private val archiveInspector = SevenZipArchiveInspector(logger, randomAccessService)
+
+    /** 通过统一随机访问接口读取压缩包封面图片。 */
+    private val archiveThumbnailReader = ArchiveThumbnailReader(randomAccessService)
 
     /**
      * 压缩包格式识别与 `archive://` 地址工具。
@@ -143,7 +146,7 @@ class ArchiveService(
             val (archivePath, innerPath) = parseArchiveLocation(location) ?: return null
             return if (innerPath.isBlank()) {
                 // 已在压缩包根 → 返回压缩包所在的物理目录
-                java.nio.file.Path.of(archivePath).parent?.toString()
+                archivePath.archiveSourceParentLocation()
             } else {
                 val trimmed = innerPath.trimEnd('/')
                 val lastSlash = trimmed.lastIndexOf('/')
@@ -161,7 +164,7 @@ class ArchiveService(
         fun archiveLocationTitle(location: String): String {
             val (archivePath, innerPath) = parseArchiveLocation(location) ?: return location
             return if (innerPath.isBlank()) {
-                java.nio.file.Path.of(archivePath).fileName?.toString() ?: archivePath
+                archivePath.archiveSourceFileName()
             } else {
                 innerPath.trimEnd('/').substringAfterLast('/')
             }
@@ -177,7 +180,7 @@ class ArchiveService(
                 if (archivePath.isTarZstdArchive()) {
                     return@runCatching tarZstdArchiveService.list(archivePath, innerPath)
                 }
-                openSevenZipArchive(archivePath).use { handle ->
+                openSevenZipArchive(archivePath, randomAccessService).use { handle ->
                     val archive = handle.archive
                     val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
                     val parentLoc = archiveLocation(archivePath, innerPath)
@@ -214,7 +217,7 @@ class ArchiveService(
                 tarZstdArchiveService.extract(archivePath, targetDirectory, innerPath)
                 return@runCatching
             }
-            openSevenZipArchive(archivePath, password).use { handle ->
+            openSevenZipArchive(archivePath, randomAccessService, password).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
                 val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
@@ -353,7 +356,7 @@ class ArchiveService(
                 if (maxBytes != null && bytes != null && bytes.size > maxBytes) return@runCatching null
                 return@runCatching bytes
             }
-            openSevenZipArchive(archivePath).use { handle ->
+            openSevenZipArchive(archivePath, randomAccessService).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
                 val targetIndex = (0 until numItems).firstOrNull { index ->
@@ -372,6 +375,20 @@ class ArchiveService(
                 buffer.toByteArray()
             }
         }
+    }
+
+    /**
+     * 从压缩包中提取按路径排序后的第一张图片。
+     *
+     * @param archivePath 压缩包 VFS 位置，可为本地或受支持的网络协议位置。
+     * @param maxBytes 允许提取的最大图片字节数。
+     * @return 图片原始字节；没有合适图片时返回 `null`。
+     */
+    suspend fun extractFirstImageToBytes(
+        archivePath: String,
+        maxBytes: Long,
+    ): Result<ByteArray?> {
+        return archiveThumbnailReader.extractFirstImage(archivePath, maxBytes)
     }
 
     /**
@@ -411,7 +428,7 @@ class ArchiveService(
                 if (parents.all { it.startsWith(common) }) common else ""
             }
 
-            openSevenZipArchive(archivePath, password).use { handle ->
+            openSevenZipArchive(archivePath, randomAccessService, password).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
                 // 收集需要解压的 index

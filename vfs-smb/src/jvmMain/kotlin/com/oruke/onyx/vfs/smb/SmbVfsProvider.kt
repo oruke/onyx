@@ -6,6 +6,7 @@ import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.RoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
@@ -18,6 +19,8 @@ import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.toVfsConnectionTestResult
 import jcifs.CIFSContext
 import jcifs.config.PropertyConfiguration
@@ -45,7 +48,13 @@ import java.util.Properties
 class SmbVfsProvider(
     private val authRepository: SmbAuthRepository = SmbAuthRepository.None,
     private val client: SmbClient = JcifsSmbClient(),
-) : VfsProvider, RoutableFileCommandService, RoutableVfsContentService, VfsConnectionTester, AutoCloseable {
+) :
+    VfsProvider,
+    RoutableFileCommandService,
+    RoutableVfsContentService,
+    RoutableVfsRandomAccessService,
+    VfsConnectionTester,
+    AutoCloseable {
     override val protocol: VfsProtocol = VfsProtocol.SMB
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
@@ -53,6 +62,8 @@ class SmbVfsProvider(
         VfsProviderCapability.CREATE_DIRECTORY,
         VfsProviderCapability.READ_CONTENT,
         VfsProviderCapability.WRITE_CONTENT,
+        VfsProviderCapability.READ_RANDOM_ACCESS,
+        VfsProviderCapability.WRITE_RANDOM_ACCESS,
         VfsProviderCapability.RENAME,
         VfsProviderCapability.DELETE,
         VfsProviderCapability.COPY,
@@ -203,6 +214,29 @@ class SmbVfsProvider(
             client.readFile(
                 entry = entry,
                 authContext = authRepository.authContext(entry.location),
+            )
+        }
+    }
+
+    /**
+     * 使用当前位置对应的认证信息打开 SMB 随机访问文件。
+     *
+     * @param location SMB 文件位置。
+     * @param mode 打开模式。
+     * @return SMB 随机访问句柄或结构化失败。
+     */
+    override suspend fun openRandomAccess(
+        location: String,
+        mode: VfsRandomAccessMode,
+    ): Result<VfsRandomAccessHandle> {
+        if (!supports(location)) {
+            return Result.failure(VfsProviderNotFoundException(location))
+        }
+        return runCatching {
+            client.openRandomAccess(
+                location = location,
+                mode = mode,
+                authContext = authRepository.authContext(location),
             )
         }
     }

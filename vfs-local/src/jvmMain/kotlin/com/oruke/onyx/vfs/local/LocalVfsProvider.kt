@@ -29,6 +29,8 @@ class LocalVfsProvider(
         VfsProviderCapability.READ_PREVIEW,
         VfsProviderCapability.READ_CONTENT,
         VfsProviderCapability.WRITE_CONTENT,
+        VfsProviderCapability.READ_RANDOM_ACCESS,
+        VfsProviderCapability.WRITE_RANDOM_ACCESS,
         VfsProviderCapability.THUMBNAIL,
         VfsProviderCapability.CREATE_FILE,
         VfsProviderCapability.CREATE_DIRECTORY,

@@ -10,6 +10,8 @@ import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
 import jcifs.CIFSContext
 import jcifs.smb.SmbAuthException
@@ -225,6 +227,40 @@ class JcifsSmbClient internal constructor(
                     }
                 }
             }.flowOn(Dispatchers.IO),
+        )
+    }
+
+    /**
+     * 使用 jcifs-ng 打开并保持 SMB 随机访问文件句柄。
+     *
+     * @param location SMB 文件位置。
+     * @param mode 打开模式。
+     * @param authContext SMB 认证上下文。
+     * @return SMB 随机访问句柄。
+     */
+    override suspend fun openRandomAccess(
+        location: String,
+        mode: VfsRandomAccessMode,
+        authContext: VfsAuthContext,
+    ): VfsRandomAccessHandle = withSmbContext(location, authContext) { context ->
+        val source = SmbFile(location, context)
+        if (!source.exists()) {
+            throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SMB, location))
+        }
+        if (source.isDirectory) {
+            throw VfsProviderException(
+                VfsProviderError.UnsupportedOperation(
+                    protocol = VfsProtocol.SMB,
+                    location = location,
+                    capability = VfsProviderCapability.READ_RANDOM_ACCESS,
+                )
+            )
+        }
+        val accessMode = if (mode == VfsRandomAccessMode.READ) "r" else "rw"
+        JcifsSmbRandomAccessHandle(
+            file = source.openRandomAccess(accessMode),
+            location = location,
+            mode = mode,
         )
     }
 

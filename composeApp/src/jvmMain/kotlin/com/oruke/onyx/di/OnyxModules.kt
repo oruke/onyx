@@ -56,6 +56,7 @@ import com.oruke.onyx.vfs.smb.RemoteAuthStoreSmbAuthRepository
 import com.oruke.onyx.vfs.webdav.RemoteAuthStoreWebDavAuthRepository
 import com.oruke.onyx.vfs.api.RoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import com.oruke.onyx.vfs.s3.S3AuthRepository
 import com.oruke.onyx.vfs.s3.S3ConnectionRepository
 import com.oruke.onyx.vfs.s3.S3VfsProvider
@@ -73,6 +74,7 @@ import com.oruke.onyx.vfs.api.TrashService
 import com.oruke.onyx.vfs.api.VfsConnectionTestService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
+import com.oruke.onyx.vfs.api.VfsRandomAccessServiceRegistry
 import com.oruke.onyx.vfs.webdav.WebDavAuthRepository
 import com.oruke.onyx.vfs.webdav.WebDavVfsProvider
 import com.oruke.onyx.app.platform.ExternalFileDragService
@@ -106,6 +108,7 @@ val fileModule = module {
     single { JvmLocalFileProvider() }
     single {
         ArchiveService(
+            randomAccessService = get(),
             logger = object : ArchiveServiceLogger {
                 override fun warn(
                     tag: String,
@@ -138,6 +141,16 @@ val fileModule = module {
     single { SmbVfsProvider(authRepository = get()) } onClose { provider -> provider?.close() }
     single { WebDavVfsProvider(authRepository = get()) }
     single { S3VfsProvider(authRepository = get(), connectionRepository = get()) }
+    single<RoutableVfsRandomAccessService> {
+        VfsRandomAccessServiceRegistry(
+            listOf<RoutableVfsRandomAccessService>(
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
+            )
+        )
+    }
     single {
         VfsProviderRegistry(
             listOf(

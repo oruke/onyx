@@ -4,6 +4,7 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.RoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
 import com.oruke.onyx.vfs.api.VfsConnectionTestResult
@@ -18,6 +19,8 @@ import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.toVfsConnectionTestResult
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +40,7 @@ class S3VfsProvider(
 ) : PagedVfsProvider,
     RoutableFileCommandService,
     RoutableVfsContentService,
+    RoutableVfsRandomAccessService,
     VfsConnectionTester,
     S3TransferGateway {
     /** S3 递归复制与移动服务。 */
@@ -47,6 +51,7 @@ class S3VfsProvider(
     override val capabilities: Set<VfsProviderCapability> = setOf(
         VfsProviderCapability.READ_CONTENT,
         VfsProviderCapability.WRITE_CONTENT,
+        VfsProviderCapability.READ_RANDOM_ACCESS,
         VfsProviderCapability.CREATE_FILE,
         VfsProviderCapability.CREATE_DIRECTORY,
         VfsProviderCapability.RENAME,
@@ -246,6 +251,57 @@ class S3VfsProvider(
                     )
                 )
             }
+        }
+    }
+
+    /**
+     * 使用当前位置对应的凭据和连接配置打开 S3 Range 随机访问对象。
+     *
+     * @param location S3 对象位置。
+     * @param mode 打开模式，仅支持只读。
+     * @return S3 随机访问句柄或结构化失败。
+     */
+    override suspend fun openRandomAccess(
+        location: String,
+        mode: VfsRandomAccessMode,
+    ): Result<VfsRandomAccessHandle> {
+        if (!supports(location)) {
+            return Result.failure(VfsProviderNotFoundException(location))
+        }
+        if (mode != VfsRandomAccessMode.READ) {
+            return Result.failure(
+                VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.S3,
+                        location = location,
+                        capability = VfsProviderCapability.WRITE_RANDOM_ACCESS,
+                    )
+                )
+            )
+        }
+        return when (val authContext = authRepository.authContext(location)) {
+            VfsAuthContext.None -> Result.failure(
+                VfsProviderException(VfsProviderError.AuthenticationRequired(VfsProtocol.S3, location))
+            )
+
+            is VfsAuthContext.AwsCredentials -> runCatching {
+                client.openRandomAccess(
+                    location = S3Location.parse(location),
+                    mode = mode,
+                    authContext = authContext,
+                    connectionConfig = connectionRepository.configuration(location),
+                )
+            }
+
+            else -> Result.failure(
+                VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.S3,
+                        location = location,
+                        capability = VfsProviderCapability.READ_RANDOM_ACCESS,
+                    )
+                )
+            )
         }
     }
 

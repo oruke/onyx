@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.filesystem
 
+import com.oruke.onyx.vfs.archive.ArchiveService
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -82,6 +83,38 @@ class JvmVfsPathServiceTest {
         assertEquals(
             "s3://bucket/prefix/%5Bfolder%5D%20name/",
             service.normalizeLocation("s3://bucket/prefix/[folder] name"),
+        )
+    }
+
+    /**
+     * 校验远程压缩包及内部路径面包屑不会交给本地 Path 解析。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun buildsRemoteArchiveBreadcrumbsWithoutLocalPathParsing() {
+        val archivePath = "smb://host/share/电子书/示例 03.epub"
+        val location = ArchiveService.archiveLocation(archivePath, "OEBPS/章节")
+
+        assertEquals(
+            listOf(
+                VfsBreadcrumb(label = "host", location = "smb://host/"),
+                VfsBreadcrumb(label = "share", location = "smb://host/share/"),
+                VfsBreadcrumb(label = "电子书", location = "smb://host/share/电子书/"),
+                VfsBreadcrumb(
+                    label = "示例 03.epub",
+                    location = ArchiveService.archiveLocation(archivePath),
+                ),
+                VfsBreadcrumb(
+                    label = "OEBPS",
+                    location = ArchiveService.archiveLocation(archivePath, "OEBPS"),
+                ),
+                VfsBreadcrumb(
+                    label = "章节",
+                    location = ArchiveService.archiveLocation(archivePath, "OEBPS/章节"),
+                ),
+            ),
+            service.buildBreadcrumbs(location),
         )
     }
 }

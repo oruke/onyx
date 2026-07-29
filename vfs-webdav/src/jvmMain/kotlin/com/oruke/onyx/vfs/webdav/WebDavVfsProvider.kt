@@ -6,6 +6,7 @@ import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.RoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
@@ -18,6 +19,8 @@ import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.encodeVfsSpaces
 import com.oruke.onyx.vfs.api.toVfsConnectionTestResult
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
@@ -65,12 +68,18 @@ import javax.xml.parsers.DocumentBuilderFactory
 class WebDavVfsProvider(
     private val authRepository: WebDavAuthRepository = WebDavAuthRepository.None,
     private val client: WebDavClient = KtorWebDavClient(),
-) : VfsProvider, RoutableFileCommandService, RoutableVfsContentService, VfsConnectionTester {
+) :
+    VfsProvider,
+    RoutableFileCommandService,
+    RoutableVfsContentService,
+    RoutableVfsRandomAccessService,
+    VfsConnectionTester {
     override val protocol: VfsProtocol = VfsProtocol.WEBDAV
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
         VfsProviderCapability.READ_CONTENT,
         VfsProviderCapability.WRITE_CONTENT,
+        VfsProviderCapability.READ_RANDOM_ACCESS,
         VfsProviderCapability.CREATE_FILE,
         VfsProviderCapability.CREATE_DIRECTORY,
         VfsProviderCapability.RENAME,
@@ -215,6 +224,40 @@ class WebDavVfsProvider(
         }
         return runCatching {
             client.readFile(entry, authRepository.authContext(entry.location))
+        }
+    }
+
+    /**
+     * 使用当前位置对应的认证信息打开 WebDAV Range 随机访问文件。
+     *
+     * @param location WebDAV 文件位置。
+     * @param mode 打开模式，仅支持只读。
+     * @return WebDAV 随机访问句柄或结构化失败。
+     */
+    override suspend fun openRandomAccess(
+        location: String,
+        mode: VfsRandomAccessMode,
+    ): Result<VfsRandomAccessHandle> {
+        if (!supports(location)) {
+            return Result.failure(VfsProviderNotFoundException(location))
+        }
+        if (mode != VfsRandomAccessMode.READ) {
+            return Result.failure(
+                VfsProviderException(
+                    VfsProviderError.UnsupportedOperation(
+                        protocol = VfsProtocol.WEBDAV,
+                        location = location,
+                        capability = VfsProviderCapability.WRITE_RANDOM_ACCESS,
+                    )
+                )
+            )
+        }
+        return runCatching {
+            client.openRandomAccess(
+                location = location,
+                mode = mode,
+                authContext = authRepository.authContext(location),
+            )
         }
     }
 

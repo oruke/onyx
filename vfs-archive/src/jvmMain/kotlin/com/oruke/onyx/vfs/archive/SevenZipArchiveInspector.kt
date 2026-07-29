@@ -1,5 +1,6 @@
 package com.oruke.onyx.vfs.archive
 
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import net.sf.sevenzipjbinding.IInArchive
 import net.sf.sevenzipjbinding.PropID
 import java.io.ByteArrayOutputStream
@@ -10,9 +11,11 @@ import kotlin.coroutines.cancellation.CancellationException
  * 检查 7-Zip 归档的加密状态并验证密码。
  *
  * @param logger 归档处理日志出口。
+ * @param randomAccessService 归档随机访问服务。
  */
 internal class SevenZipArchiveInspector(
     private val logger: ArchiveServiceLogger,
+    private val randomAccessService: RoutableVfsRandomAccessService,
 ) {
     /**
      * 判断归档是否包含加密条目。
@@ -20,12 +23,12 @@ internal class SevenZipArchiveInspector(
      * @param archivePath 归档物理路径。
      * @return 包含加密条目时返回 `true`；探测失败时记录日志并返回 `false`。
      */
-    fun isEncrypted(archivePath: String): Boolean {
+    suspend fun isEncrypted(archivePath: String): Boolean {
         return if (archivePath.isTarZstdArchive()) {
             false
         } else {
             runCatching {
-                openSevenZipArchive(archivePath).use { handle ->
+                openSevenZipArchive(archivePath, randomAccessService).use { handle ->
                     val archive = handle.archive
                     (0 until archive.numberOfItems).any { index ->
                         archive.getProperty(index, PropID.ENCRYPTED) as? Boolean ?: false
@@ -47,7 +50,7 @@ internal class SevenZipArchiveInspector(
      * @param password 待验证密码。
      * @return 密码有效或归档没有加密文件时返回 `true`。
      */
-    fun verifyPassword(
+    suspend fun verifyPassword(
         archivePath: String,
         password: String,
     ): Boolean {
@@ -55,7 +58,7 @@ internal class SevenZipArchiveInspector(
             true
         } else {
             runCatching {
-                openSevenZipArchive(archivePath, password).use { handle ->
+                openSevenZipArchive(archivePath, randomAccessService, password).use { handle ->
                     verifyPassword(handle.archive, password)
                 }
             }.onFailure { failure ->
