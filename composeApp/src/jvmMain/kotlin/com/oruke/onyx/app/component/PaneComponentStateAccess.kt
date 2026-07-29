@@ -94,6 +94,9 @@ internal fun DefaultPaneComponent.updateTab(
         inlineExpandedEntries = paneState.inlineExpandedEntries,
     )
     updateTabComponentState(updated)
+    mutableTabStates.value = mutableTabStates.value.map { tab ->
+        if (tab.id == updated.id) updated else tab
+    }
     if (paneState.activeTabId == tabId) {
         applyActiveTab(
             activeTab = updated,
@@ -132,6 +135,7 @@ internal fun DefaultPaneComponent.applyTabStackUpdate(update: PaneTabDetachUpdat
  */
 internal fun DefaultPaneComponent.navigateTabStack(tabs: List<PaneTabState>, activeTabId: String) {
     mutableTabOrder.value = tabs.map { tab -> tab.id }
+    mutableTabStates.value = tabs
     val configs = tabs.map { tab -> tab.toTabSnapshot().toTabConfig() }
     val activeIndex = configs.indexOfFirst { config -> config.id == activeTabId }
     val orderedConfigs = if (activeIndex in configs.indices && activeIndex != configs.lastIndex) {

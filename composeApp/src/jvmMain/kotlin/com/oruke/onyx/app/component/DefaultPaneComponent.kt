@@ -97,6 +97,12 @@ internal class DefaultPaneComponent(
     /** 标签显示顺序。 */
     override val tabOrder: StateFlow<List<String>> = mutableTabOrder.asStateFlow()
 
+    /** 显示顺序标签状态列表的可变来源。 */
+    internal val mutableTabStates = MutableStateFlow(listOf(initialTab))
+
+    /** 显示顺序的标签状态列表。 */
+    override val tabStates: StateFlow<List<PaneTabState>> = mutableTabStates.asStateFlow()
+
     /** Decompose 标签栈导航器。 */
     internal val tabNavigation = StackNavigation<TabConfig>()
 

@@ -37,10 +37,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import com.oruke.onyx.app.component.PaneCommand
 import com.oruke.onyx.app.component.PaneIntent
-import com.oruke.onyx.app.component.tabStatesInDisplayOrder
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.windowBounds
 import kotlinx.coroutines.delay
@@ -319,9 +317,7 @@ private fun PaneCommandPalette(runtime: PaneSurfaceRuntime) {
  */
 @Composable
 private fun PaneSurfaceTabBar(runtime: PaneSurfaceRuntime) {
-    val tabStack by runtime.model.component.tabStack.subscribeAsState()
-    val tabOrder by runtime.model.component.tabOrder.collectAsState()
-    val orderedTabs = remember(tabStack, tabOrder) { runtime.model.component.tabStatesInDisplayOrder() }
+    val orderedTabs by runtime.model.component.tabStates.collectAsState()
     val state = PaneTabBarState(
         activeTabId = runtime.state.activeTabId,
         tabs = orderedTabs.map { tab -> PaneTabItemState(tab.id, tab.title) },

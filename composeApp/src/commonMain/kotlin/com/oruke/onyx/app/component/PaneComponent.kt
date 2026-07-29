@@ -313,6 +313,8 @@ internal interface PaneComponent {
     val state: StateFlow<PaneState>
     /** 视觉标签顺序；ChildStack 是导航栈顺序，active child 会被放到栈顶。 */
     val tabOrder: StateFlow<List<String>>
+    /** 显示顺序的标签状态列表；导航或标签状态变化时同步更新，供标签栏订阅。 */
+    val tabStates: StateFlow<List<PaneTabState>>
     val tabStack: Value<ChildStack<TabConfig, TabComponent>>
 
     fun dispatch(intent: PaneIntent)
