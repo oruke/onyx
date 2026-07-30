@@ -19,6 +19,7 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.SortDirection
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
+import onyx.composeapp.generated.resources.action_create_zip
 import onyx.composeapp.generated.resources.action_extract_here
 import onyx.composeapp.generated.resources.action_extract_smart
 import onyx.composeapp.generated.resources.action_extract_to_directory
@@ -40,6 +41,9 @@ import onyx.composeapp.generated.resources.msg_cross_provider_transfer_unsupport
 import onyx.composeapp.generated.resources.msg_create_folder_failed
 import onyx.composeapp.generated.resources.msg_create_folders
 import onyx.composeapp.generated.resources.msg_created_folders
+import onyx.composeapp.generated.resources.msg_compress_failed
+import onyx.composeapp.generated.resources.msg_compress_items
+import onyx.composeapp.generated.resources.msg_compressed_items
 import onyx.composeapp.generated.resources.msg_delete_failed
 import onyx.composeapp.generated.resources.msg_delete_items
 import onyx.composeapp.generated.resources.msg_deleted_items
@@ -105,6 +109,7 @@ internal fun I18nMessage.resolve(): String {
 private fun MessageKey.toStringResource(): StringResource {
     return when (this) {
         MessageKey.ACTION_BATCH_RENAME -> Res.string.action_batch_rename
+        MessageKey.ACTION_CREATE_ZIP -> Res.string.action_create_zip
         MessageKey.ACTION_EXTRACT_HERE -> Res.string.action_extract_here
         MessageKey.ACTION_EXTRACT_TO_DIRECTORY -> Res.string.action_extract_to_directory
         MessageKey.ACTION_EXTRACT_SMART -> Res.string.action_extract_smart
@@ -119,6 +124,9 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_CREATE_FOLDER_FAILED -> Res.string.msg_create_folder_failed
         MessageKey.MSG_CREATE_FOLDERS -> Res.string.msg_create_folders
         MessageKey.MSG_CREATED_FOLDERS -> Res.string.msg_created_folders
+        MessageKey.MSG_COMPRESS_FAILED -> Res.string.msg_compress_failed
+        MessageKey.MSG_COMPRESS_ITEMS -> Res.string.msg_compress_items
+        MessageKey.MSG_COMPRESSED_ITEMS -> Res.string.msg_compressed_items
         MessageKey.MSG_DELETE_FAILED -> Res.string.msg_delete_failed
         MessageKey.MSG_DELETE_ITEMS -> Res.string.msg_delete_items
         MessageKey.MSG_DELETED_ITEMS -> Res.string.msg_deleted_items

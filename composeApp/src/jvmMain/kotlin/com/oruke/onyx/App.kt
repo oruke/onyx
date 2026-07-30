@@ -44,6 +44,7 @@ import com.oruke.onyx.ui.ConfirmationDialog
 import com.oruke.onyx.ui.ArchivePasswordDialog
 import com.oruke.onyx.ui.ConflictResolutionDialog
 import com.oruke.onyx.ui.CreateDirectoriesDialog
+import com.oruke.onyx.ui.CreateZipArchiveDialog
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.ui.FileDragOverlay
 import com.oruke.onyx.ui.BoundPaneSurface
@@ -598,6 +599,12 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
         is RootDialogState.CreateDirectories -> CreateDirectoriesDialog(
             state = dialogState,
             onDraftChange = { dispatch(RootIntent.UpdateCreateDirectoriesDraft(it)) },
+            onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+        is RootDialogState.CreateZipArchive -> CreateZipArchiveDialog(
+            state = dialogState,
+            onDraftChange = { dispatch(RootIntent.UpdateZipArchiveNameDraft(it)) },
             onConfirm = { dispatch(RootIntent.ConfirmDialog) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )

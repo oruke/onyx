@@ -278,6 +278,7 @@ internal fun rememberPaneSurfaceRuntime(
             onExtractSelection = model.actions.onExtractSelection,
             onExtractToDirectory = model.actions.onExtractToDirectory,
             onExtractSmart = model.actions.onExtractSmart,
+            onCreateZipArchive = model.actions.onCreateZipArchive,
             onFileContextMenuCommand = model.actions.onFileContextMenuCommand,
             onOpenTerminal = model.actions.onOpenTerminal,
         ),

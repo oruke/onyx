@@ -20,9 +20,11 @@ internal enum class PaneContextMenuText {
     NEW_FILE,
     NEW_DIRECTORY,
     DELETE_SELECTED,
+    ARCHIVE,
     EXTRACT_HERE,
     EXTRACT_TO_DIRECTORY,
     EXTRACT_SMART,
+    CREATE_ZIP,
     BATCH_RENAME,
     COPY_PATH,
     COPY,
@@ -45,6 +47,7 @@ internal enum class PaneContextMenuIcon {
     FILE,
     FOLDER,
     DELETE,
+    ARCHIVE,
     EXTRACT,
     COPY,
     CUT,
@@ -82,6 +85,9 @@ internal sealed interface PaneContextMenuCommand {
 
     /** 使用智能策略解压。 */
     data object ExtractSmart : PaneContextMenuCommand
+
+    /** 将当前选择项压缩为 ZIP 文件。 */
+    data object CreateZipArchive : PaneContextMenuCommand
 
     /** 复制当前选择项路径。 */
     data object CopyPath : PaneContextMenuCommand
@@ -165,6 +171,7 @@ internal data class PaneContextMenuBuildInput(
  * @property onExtractSelection 在当前位置解压选择项。
  * @property onExtractToDirectory 解压到同名目录。
  * @property onExtractSmart 使用智能策略解压。
+ * @property onCreateZipArchive 将当前选择项压缩为 ZIP 文件。
  * @property onFileContextMenuCommand 执行平台右键菜单命令。
  * @property onOpenTerminal 在指定目录打开终端。
  */
@@ -173,6 +180,7 @@ internal data class PaneContextMenuExternalActions(
     val onExtractSelection: () -> Unit,
     val onExtractToDirectory: () -> Unit,
     val onExtractSmart: () -> Unit,
+    val onCreateZipArchive: () -> Unit,
     val onFileContextMenuCommand: (FileContextMenuCommand, List<VFile>) -> Unit,
     val onOpenTerminal: (String) -> Unit,
 )
@@ -222,6 +230,11 @@ internal class PaneContextMenuCommandController(
 
             PaneContextMenuCommand.ExtractSmart -> {
                 externalActions.onExtractSmart()
+                true
+            }
+
+            PaneContextMenuCommand.CreateZipArchive -> {
+                externalActions.onCreateZipArchive()
                 true
             }
 
@@ -301,7 +314,7 @@ internal object PaneContextMenuModelBuilder {
         }
     }
 
-    /** 构建重命名、新建、删除、解压和路径复制节点。 */
+    /** 构建重命名、新建、删除、压缩解压和路径复制节点。 */
     private fun fileOperationNodes(
         input: PaneContextMenuBuildInput,
         selectedCount: Int,
@@ -314,13 +327,52 @@ internal object PaneContextMenuModelBuilder {
         add(PaneContextMenuNode.Divider)
         add(paneItem("delete", PaneContextMenuText.DELETE_SELECTED, PaneContextMenuIcon.DELETE,
             PaneCommand.DELETE_SELECTION, selectedCount > 0))
-        if (input.canExtractSelection) {
-            add(externalItem("extract-here", PaneContextMenuText.EXTRACT_HERE, PaneContextMenuIcon.EXTRACT,
-                PaneContextMenuCommand.ExtractSelection))
-            add(externalItem("extract-to-directory", PaneContextMenuText.EXTRACT_TO_DIRECTORY,
-                PaneContextMenuIcon.EXTRACT, PaneContextMenuCommand.ExtractToDirectory))
-            add(externalItem("extract-smart", PaneContextMenuText.EXTRACT_SMART, PaneContextMenuIcon.EXTRACT,
-                PaneContextMenuCommand.ExtractSmart))
+        if (selectedCount > 0) {
+            val archiveChildren = buildList {
+                if (input.canExtractSelection) {
+                    add(
+                        externalItem(
+                            "extract-here",
+                            PaneContextMenuText.EXTRACT_HERE,
+                            PaneContextMenuIcon.EXTRACT,
+                            PaneContextMenuCommand.ExtractSelection,
+                        )
+                    )
+                    add(
+                        externalItem(
+                            "extract-to-directory",
+                            PaneContextMenuText.EXTRACT_TO_DIRECTORY,
+                            PaneContextMenuIcon.EXTRACT,
+                            PaneContextMenuCommand.ExtractToDirectory,
+                        )
+                    )
+                    add(
+                        externalItem(
+                            "extract-smart",
+                            PaneContextMenuText.EXTRACT_SMART,
+                            PaneContextMenuIcon.EXTRACT,
+                            PaneContextMenuCommand.ExtractSmart,
+                        )
+                    )
+                    add(PaneContextMenuNode.Divider)
+                }
+                add(
+                    externalItem(
+                        "create-zip",
+                        PaneContextMenuText.CREATE_ZIP,
+                        PaneContextMenuIcon.ARCHIVE,
+                        PaneContextMenuCommand.CreateZipArchive,
+                    )
+                )
+            }
+            add(
+                PaneContextMenuNode.Item(
+                    id = "archive",
+                    text = PaneContextMenuText.ARCHIVE,
+                    icon = PaneContextMenuIcon.ARCHIVE,
+                    children = archiveChildren,
+                )
+            )
         }
         if (selectedCount >= 2) {
             add(externalItem("batch-rename", PaneContextMenuText.BATCH_RENAME, PaneContextMenuIcon.EDIT,

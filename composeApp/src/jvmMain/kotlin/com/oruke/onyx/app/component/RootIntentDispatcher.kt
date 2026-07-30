@@ -163,6 +163,8 @@ private fun DefaultRootComponent.dispatchRootArchiveIntent(intent: RootIntent): 
         is RootIntent.ExtractSelectedInPane -> { extractSelectedInPane(intent.paneId); true }
         is RootIntent.ExtractToDirectoryInPane -> { extractToDirectoryInPane(intent.paneId); true }
         is RootIntent.ExtractSmartInPane -> { extractSmartInPane(intent.paneId); true }
+        is RootIntent.BeginCreateZipArchiveInPane -> { beginCreateZipArchiveInPane(intent.paneId); true }
+        is RootIntent.UpdateZipArchiveNameDraft -> { updateZipArchiveNameDraft(intent.draft); true }
         is RootIntent.SubmitArchivePassword -> { submitArchivePassword(intent.password); true }
         is RootIntent.BatchRenameInPane -> { batchRenameInPane(intent.paneId); true }
         is RootIntent.ExecuteBatchRename -> { executeBatchRename(intent.paneId, intent.renameMap); true }

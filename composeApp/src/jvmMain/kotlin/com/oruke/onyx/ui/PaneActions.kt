@@ -19,6 +19,8 @@ data class PaneActions(
     val onExtractSelection: () -> Unit,
     val onExtractToDirectory: () -> Unit,
     val onExtractSmart: () -> Unit,
+    /** 将当前选择项压缩为 ZIP 文件。 */
+    val onCreateZipArchive: () -> Unit,
     val onBatchRename: () -> Unit,
     val onCopySelection: () -> Unit,
     val onCutSelection: () -> Unit,

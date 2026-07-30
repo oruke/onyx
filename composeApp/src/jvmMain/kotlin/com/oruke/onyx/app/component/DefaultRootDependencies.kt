@@ -32,6 +32,7 @@ import com.oruke.onyx.vfs.api.TrashService
 import com.oruke.onyx.vfs.api.VfsConnectionTestService
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.archive.ZipArchiveCreationService
 import com.oruke.onyx.vfs.s3.MutableS3ConnectionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -49,6 +50,8 @@ internal data class RootFileDependencies(
     val externalOpenService: ExternalOpenService,
     /** 压缩包服务。 */
     val archiveService: ArchiveService,
+    /** ZIP 压缩包创建服务。 */
+    val zipArchiveCreationService: ZipArchiveCreationService,
     /** 文件类型识别服务。 */
     val fileTypeService: FileTypeService,
     /** 压缩包条目临时打开服务。 */

@@ -68,6 +68,43 @@ class PaneContextMenuModelTest {
     }
 
     /**
+     * 校验压缩与解压操作会收敛到同一个二级菜单。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun groupsArchiveActionsIntoNestedMenu() {
+        val model = PaneContextMenuModelBuilder.build(
+            PaneContextMenuBuildInput(
+                entries = listOf(file("test://local/archive.zip")),
+                canPaste = false,
+                canUndo = false,
+                canRedo = false,
+                canExtractSelection = true,
+                contextMenuSections = emptyList(),
+            )
+        )
+
+        val archiveMenu = model.nodes
+            .filterIsInstance<PaneContextMenuNode.Item>()
+            .single { node -> node.id == "archive" }
+        val childItems = archiveMenu.children.filterIsInstance<PaneContextMenuNode.Item>()
+
+        assertEquals(PaneContextMenuText.ARCHIVE, archiveMenu.text)
+        assertEquals(
+            listOf("extract-here", "extract-to-directory", "extract-smart", "create-zip"),
+            childItems.map { item -> item.id },
+        )
+        assertEquals(
+            PaneContextMenuCommand.CreateZipArchive,
+            childItems.single { item -> item.id == "create-zip" }.command,
+        )
+        assertFalse(model.nodes.filterIsInstance<PaneContextMenuNode.Item>().any { item ->
+            item.id == "extract-here" || item.id == "create-zip"
+        })
+    }
+
+    /**
      * 创建目录测试条目。
      *
      * @param location 目录位置。
@@ -85,6 +122,26 @@ class PaneContextMenuModelTest {
             modifiedAtEpochMillis = null,
             hidden = false,
             capabilities = if (listable) setOf(VFileCapability.LIST_CHILDREN) else emptySet(),
+        )
+    }
+
+    /**
+     * 创建文件测试条目。
+     *
+     * @param location 文件位置。
+     * @return 文件条目。
+     */
+    private fun file(location: String): VFile {
+        return VFile(
+            id = location,
+            name = location.substringAfterLast('/'),
+            location = location,
+            parentLocation = null,
+            kind = VFileKind.FILE,
+            sizeBytes = null,
+            modifiedAtEpochMillis = null,
+            hidden = false,
+            capabilities = setOf(VFileCapability.READ_CONTENT),
         )
     }
 }

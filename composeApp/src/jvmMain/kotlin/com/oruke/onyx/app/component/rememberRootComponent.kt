@@ -10,6 +10,7 @@ import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
 import com.oruke.onyx.app.component.delegate.ImageViewerController
 import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.archive.ZipArchiveCreationService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ArchiveInfoService
 import com.oruke.onyx.vfs.api.ExternalOpenService
@@ -70,6 +71,7 @@ internal fun rememberRootComponent(
                     trashService = koin.get<TrashService>(),
                     externalOpenService = koin.get<ExternalOpenService>(),
                     archiveService = koin.get<ArchiveService>(),
+                    zipArchiveCreationService = koin.get<ZipArchiveCreationService>(),
                     fileTypeService = koin.get<FileTypeService>(),
                     archiveEntryOpenService = koin.get<ArchiveEntryOpenService>(),
                     entryNameSuggestionService = koin.get<EntryNameSuggestionService>(),

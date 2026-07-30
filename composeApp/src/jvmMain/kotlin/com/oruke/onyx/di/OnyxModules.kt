@@ -12,6 +12,7 @@ import com.oruke.onyx.app.cache.SqliteSettingsRepository
 import com.oruke.onyx.app.component.EntryNameSuggestionService
 import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.archive.ArchiveServiceLogger
+import com.oruke.onyx.vfs.archive.ZipArchiveCreationService
 import com.oruke.onyx.app.filesystem.ArchiveEntryOpenService
 import com.oruke.onyx.app.filesystem.ArchiveInfoService
 import com.oruke.onyx.vfs.archive.ArchiveVfsProvider
@@ -141,6 +142,18 @@ val fileModule = module {
     single { SmbVfsProvider(authRepository = get()) } onClose { provider -> provider?.close() }
     single { WebDavVfsProvider(authRepository = get()) }
     single { S3VfsProvider(authRepository = get(), connectionRepository = get()) }
+    single {
+        ZipArchiveCreationService(
+            fileRepository = get(),
+            contentServices = listOf<RoutableVfsContentService>(
+                get<ArchiveVfsProvider>(),
+                get<JvmLocalFileProvider>(),
+                get<SmbVfsProvider>(),
+                get<WebDavVfsProvider>(),
+                get<S3VfsProvider>(),
+            ),
+        )
+    }
     single<RoutableVfsRandomAccessService> {
         VfsRandomAccessServiceRegistry(
             listOf<RoutableVfsRandomAccessService>(

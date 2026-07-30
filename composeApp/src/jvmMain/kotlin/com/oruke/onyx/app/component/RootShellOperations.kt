@@ -120,11 +120,12 @@ internal fun DefaultRootComponent.updateCreateDirectoriesDraft(draft: String) {
     dialogState.value = currentDialog.copy(draft = draft, error = null)
 }
 
-/** 根据当前对话框类型提交删除、新建目录或设置操作。 */
+/** 根据当前对话框类型提交删除、新建目录、创建 ZIP 或设置操作。 */
 internal fun DefaultRootComponent.confirmDialog() {
     when (val currentDialog = dialogState.value) {
         is RootDialogState.DeleteSelectionConfirmation -> confirmDeleteDialog()
         is RootDialogState.CreateDirectories -> confirmCreateDirectoriesDialog(currentDialog)
+        is RootDialogState.CreateZipArchive -> confirmCreateZipArchive(currentDialog)
         is RootDialogState.Settings -> {
             dialogState.value = null
             updateSettings(currentDialog.draft)

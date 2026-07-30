@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 /** 业务层可引用的稳定国际化消息键。 */
 enum class MessageKey {
     ACTION_BATCH_RENAME,
+    ACTION_CREATE_ZIP,
     ACTION_EXTRACT_HERE,
     ACTION_EXTRACT_TO_DIRECTORY,
     ACTION_EXTRACT_SMART,
@@ -19,6 +20,9 @@ enum class MessageKey {
     MSG_CREATE_FOLDER_FAILED,
     MSG_CREATE_FOLDERS,
     MSG_CREATED_FOLDERS,
+    MSG_COMPRESS_FAILED,
+    MSG_COMPRESS_ITEMS,
+    MSG_COMPRESSED_ITEMS,
     MSG_DELETE_FAILED,
     MSG_DELETE_ITEMS,
     MSG_DELETED_ITEMS,

@@ -55,10 +55,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_batch_rename
+import onyx.composeapp.generated.resources.action_archive
 import onyx.composeapp.generated.resources.action_close_menu
 import onyx.composeapp.generated.resources.action_copy
 import onyx.composeapp.generated.resources.action_copy_path
 import onyx.composeapp.generated.resources.action_cut
+import onyx.composeapp.generated.resources.action_create_zip
 import onyx.composeapp.generated.resources.action_delete_selected
 import onyx.composeapp.generated.resources.action_extract_here
 import onyx.composeapp.generated.resources.action_extract_smart
@@ -424,9 +426,11 @@ private fun PaneContextMenuText.stringResourceKey(): StringResource {
         PaneContextMenuText.NEW_FILE -> Res.string.action_new_file
         PaneContextMenuText.NEW_DIRECTORY -> Res.string.action_new_directory
         PaneContextMenuText.DELETE_SELECTED -> Res.string.action_delete_selected
+        PaneContextMenuText.ARCHIVE -> Res.string.action_archive
         PaneContextMenuText.EXTRACT_HERE -> Res.string.action_extract_here
         PaneContextMenuText.EXTRACT_TO_DIRECTORY -> Res.string.action_extract_to_directory
         PaneContextMenuText.EXTRACT_SMART -> Res.string.action_extract_smart
+        PaneContextMenuText.CREATE_ZIP -> Res.string.action_create_zip
         PaneContextMenuText.BATCH_RENAME -> Res.string.action_batch_rename
         PaneContextMenuText.COPY_PATH -> Res.string.action_copy_path
         PaneContextMenuText.COPY -> Res.string.action_copy
@@ -465,6 +469,7 @@ private fun PaneContextMenuIcon.toIconKey(iconPath: String?): IconKey {
         PaneContextMenuIcon.FILE -> AllIconsKeys.FileTypes.Any_type
         PaneContextMenuIcon.FOLDER -> AllIconsKeys.Nodes.Folder
         PaneContextMenuIcon.DELETE -> AllIconsKeys.General.Delete
+        PaneContextMenuIcon.ARCHIVE -> AllIconsKeys.FileTypes.Archive
         PaneContextMenuIcon.EXTRACT -> AllIconsKeys.Nodes.ExtractedFolder
         PaneContextMenuIcon.COPY -> AllIconsKeys.Actions.Copy
         PaneContextMenuIcon.CUT -> AllIconsKeys.Actions.MenuCut
@@ -493,6 +498,7 @@ private fun PaneContextMenuCommand.shortcutCommandOrNull(): OnyxCommand? {
         PaneContextMenuCommand.ExtractSelection,
         PaneContextMenuCommand.ExtractToDirectory,
         PaneContextMenuCommand.ExtractSmart,
+        PaneContextMenuCommand.CreateZipArchive,
         PaneContextMenuCommand.CopyPath,
         PaneContextMenuCommand.OpenTerminal,
         is PaneContextMenuCommand.FileContext -> null

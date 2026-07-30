@@ -55,6 +55,8 @@
     <string name="label_move_to_destination">Move to %1$s</string>
     <string name="label_extract_to_destination">Extract to %1$s</string>
     <string name="action_extract">Extract</string>
+    <string name="action_archive">Archive</string>
+    <string name="action_create_zip">Create ZIP…</string>
     <string name="action_cut">Cut</string>
     <string name="action_paste">Paste</string>
     <string name="action_undo">Undo</string>
@@ -200,6 +202,12 @@
         2026/04/invoices
     </string>
     <string name="label_create_directories_shortcuts">%1$s to create · %2$s to close</string>
+    <string name="label_create_archive_title">Create ZIP Archive</string>
+    <string name="label_create_archive_description">The selected files and folders will be stored in a ZIP archive. The .zip extension is added automatically.</string>
+    <string name="label_create_archive_name">Archive name</string>
+    <string name="label_create_archive_placeholder">archive.zip</string>
+    <string name="label_create_archive_error_empty">Enter an archive name.</string>
+    <string name="label_create_archive_error_invalid">The archive name cannot contain path separators or invalid characters.</string>
     <string name="label_conflict_resolution_title">Resolve Conflict (%1$d/%2$d)</string>
     <string name="label_conflict_resolution_message">"%1$s" already exists in %2$s. Choose how to continue.</string>
     <string name="label_delete_confirmation_move_to_trash">Move %1$d selected item(s) to trash?</string>
@@ -325,6 +333,9 @@
     <string name="msg_create_folders">Create %1$d folder(s)</string>
     <string name="msg_created_folders">Created %1$d folder(s)</string>
     <string name="msg_create_folder_failed">Create directory failed</string>
+    <string name="msg_compress_items">Compress %1$d item(s)</string>
+    <string name="msg_compressed_items">Compressed %1$d item(s) to %2$s</string>
+    <string name="msg_compress_failed">Compression failed</string>
     <string name="msg_cancelled">Cancelled</string>
     <string name="msg_unknown_error">Unknown error</string>
     <string name="msg_load_settings_failed">Failed to load settings</string>

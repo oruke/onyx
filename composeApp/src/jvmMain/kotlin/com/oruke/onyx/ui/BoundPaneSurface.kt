@@ -49,6 +49,7 @@ internal fun BoundPaneSurface(
         onExtractSelection = { dispatch(RootIntent.ExtractSelectedInPane(paneId)) },
         onExtractToDirectory = { dispatch(RootIntent.ExtractToDirectoryInPane(paneId)) },
         onExtractSmart = { dispatch(RootIntent.ExtractSmartInPane(paneId)) },
+        onCreateZipArchive = { dispatch(RootIntent.BeginCreateZipArchiveInPane(paneId)) },
         onBatchRename = { dispatch(RootIntent.BatchRenameInPane(paneId)) },
         onCopySelection = { dispatch(RootIntent.StageCopySelectedInPane(paneId)) },
         onCutSelection = { dispatch(RootIntent.StageCutSelectedInPane(paneId)) },

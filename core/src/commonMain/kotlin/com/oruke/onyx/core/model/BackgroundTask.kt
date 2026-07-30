@@ -44,6 +44,7 @@ enum class BackgroundTaskKind {
     COPY,
     MOVE,
     DELETE,
+    COMPRESS,
     EXTRACT,
     RENAME,
     EXTERNAL_IMPORT,

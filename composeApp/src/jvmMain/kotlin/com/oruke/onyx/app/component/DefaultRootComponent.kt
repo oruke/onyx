@@ -6,6 +6,7 @@ import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.childContext
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.oruke.onyx.app.component.delegate.ArchiveActionDelegate
+import com.oruke.onyx.app.component.delegate.ArchiveCompressionDelegate
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
 import com.oruke.onyx.app.component.delegate.FileActionDelegateCallbacks
 import com.oruke.onyx.app.component.delegate.FileOperationHistoryDelegate
@@ -82,6 +83,8 @@ internal class DefaultRootComponent(
     internal val externalOpenService = dependencies.files.externalOpenService
     /** 压缩包服务。 */
     internal val archiveService = dependencies.files.archiveService
+    /** ZIP 压缩包创建服务。 */
+    internal val zipArchiveCreationService = dependencies.files.zipArchiveCreationService
     /** 文件类型识别服务。 */
     internal val fileTypeService = dependencies.files.fileTypeService
     /** 压缩包条目打开服务。 */
@@ -189,6 +192,13 @@ internal class DefaultRootComponent(
         archiveService = archiveService,
         taskOrchestrator = taskOrchestrator,
         dialogState = dialogState,
+        onRefreshAllPanes = ::refreshAllPanes,
+    )
+
+    /** ZIP 压缩任务委托。 */
+    internal val archiveCompressionDelegate = ArchiveCompressionDelegate(
+        zipArchiveCreationService = zipArchiveCreationService,
+        taskOrchestrator = taskOrchestrator,
         onRefreshAllPanes = ::refreshAllPanes,
     )
 

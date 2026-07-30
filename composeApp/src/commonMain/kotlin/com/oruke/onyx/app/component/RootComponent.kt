@@ -180,6 +180,28 @@ internal sealed interface RootDialogState {
         val errorMessage: I18nMessage? = null,
     ) : RootDialogState
 
+    /**
+     * 创建 ZIP 压缩包对话框状态。
+     *
+     * @property paneId 发起压缩操作的面板标识。
+     * @property location 新归档写入的父目录位置。
+     * @property entries 待打包的文件或目录。
+     * @property draft 用户输入的归档名称草稿。
+     * @property error 当前名称校验错误。
+     */
+    data class CreateZipArchive(
+        /** 发起压缩操作的面板标识。 */
+        val paneId: PaneId,
+        /** 新归档写入的父目录位置。 */
+        val location: String,
+        /** 待打包的文件或目录。 */
+        val entries: List<VFile>,
+        /** 用户输入的归档名称草稿。 */
+        val draft: String,
+        /** 当前名称校验错误。 */
+        val error: CreateZipArchiveDialogError? = null,
+    ) : RootDialogState
+
     /** 压缩包密码输入对话框 */
     data class ArchivePassword(
         val archiveName: String,
@@ -199,6 +221,14 @@ internal sealed interface RootDialogState {
 
 internal enum class CreateDirectoriesDialogError {
     EMPTY_INPUT,
+}
+
+/** ZIP 归档名称输入对话框的校验错误。 */
+internal enum class CreateZipArchiveDialogError {
+    /** 未输入归档名称。 */
+    EMPTY_INPUT,
+    /** 归档名称包含路径分隔符或跨平台非法字符。 */
+    INVALID_NAME,
 }
 
 internal data class RemoteCredentialsDraft(
@@ -409,6 +439,26 @@ internal sealed interface RootIntent {
 
     data class ExtractSmartInPane(
         val paneId: PaneId,
+    ) : RootIntent
+
+    /**
+     * 打开 ZIP 压缩包名称输入对话框。
+     *
+     * @property paneId 发起操作的面板标识。
+     */
+    data class BeginCreateZipArchiveInPane(
+        /** 发起操作的面板标识。 */
+        val paneId: PaneId,
+    ) : RootIntent
+
+    /**
+     * 更新 ZIP 压缩包名称草稿。
+     *
+     * @property draft 用户输入的名称草稿。
+     */
+    data class UpdateZipArchiveNameDraft(
+        /** 用户输入的名称草稿。 */
+        val draft: String,
     ) : RootIntent
 
     data class SubmitArchivePassword(
