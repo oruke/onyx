@@ -89,12 +89,36 @@ internal fun DefaultPaneComponent.openEntry(entry: VFile) {
     val insideArchive = ArchiveService.isArchiveLocation(entry.location)
     when {
         fileTypeService.isArchiveFileName(entry.name) && !insideArchive -> {
-            openDirectory(ArchiveService.archiveLocation(entry.location))
+            openArchiveEntry(entry, tab.id)
         }
         fileTypeService.isArchiveFileName(entry.name) -> Unit
         onOpenImageViewer != null && fileTypeService.isImageFileName(entry.name) -> openImageEntry(entry)
         insideArchive -> openArchiveContentEntry(entry, tab.id)
         else -> openExternalEntry(entry, tab.id)
+    }
+}
+
+/**
+ * 校验归档访问权限后进入压缩包根目录。
+ *
+ * 密码请求委托给根组件，避免面板组件持有归档密码或直接依赖归档实现。
+ *
+ * @param entry 待打开的归档文件。
+ * @param tabId 当前标签 ID。
+ * @return 无返回值。
+ */
+@Suppress("TooGenericExceptionCaught") // 组件边界需要将归档访问异常转换为面板可见失败状态。
+private fun DefaultPaneComponent.openArchiveEntry(entry: VFile, tabId: String) {
+    scope.launch {
+        try {
+            onPrepareArchiveAccess(entry)
+            openDirectory(ArchiveService.archiveLocation(entry.location))
+            clearOperationFeedback(tabId)
+        } catch (failure: CancellationException) {
+            throw failure
+        } catch (failure: Exception) {
+            updateFailure(tabId, PaneOperationFeedbackKind.OPEN_FAILED, failure.toI18nMessage())
+        }
     }
 }
 

@@ -4,13 +4,18 @@ import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.collect
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Base64
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -221,11 +226,57 @@ class ArchiveServiceTest {
         assertTrue(failure.message?.contains("系统 tar 不可用") == true)
     }
 
+    /**
+     * 校验已验证密码会在当前归档服务会话中复用，以供归档内部文件读取。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun readsEncryptedEntryWithRememberedPassword() = runBlocking {
+        val archive = createEncryptedZipArchive()
+        val service = ArchiveService()
+        try {
+            assertTrue(service.isEncrypted(archive.toString()))
+            val encryptedEntry = service.list(archive.toString()).getOrThrow().single()
+            val provider = ArchiveVfsProvider(service)
+            assertTrue(provider.readFile(encryptedEntry).isFailure)
+            assertFalse(service.verifyAndRememberPassword(archive.toString(), "wrong-password"))
+            assertFalse(service.hasRememberedPassword(archive.toString()))
+
+            assertTrue(service.verifyAndRememberPassword(archive.toString(), ENCRYPTED_PASSWORD))
+
+            val source = provider.readFile(encryptedEntry).getOrThrow()
+            val output = ByteArrayOutputStream()
+            source.chunks.collect { chunk -> output.write(chunk) }
+            assertContentEquals(ENCRYPTED_ENTRY_CONTENT.encodeToByteArray(), output.toByteArray())
+        } finally {
+            Files.deleteIfExists(archive)
+        }
+    }
+
+    /**
+     * 创建可由 7-Zip-JBinding 读取的加密 ZIP 固件。
+     *
+     * @return 临时加密 ZIP 文件路径。
+     */
+    private fun createEncryptedZipArchive(): Path {
+        val archive = Files.createTempFile("onyx-encrypted-archive-test", ".zip")
+        Files.write(archive, Base64.getDecoder().decode(ENCRYPTED_ZIP_BASE64))
+        return archive
+    }
+
     private companion object {
         /** 让原生解压产生多次进度采样的测试内容大小。 */
         const val EXTRACTION_TEST_SIZE = 2 * 1024 * 1024
         /** 生成稳定二进制内容的取值范围。 */
         const val TEST_BYTE_RANGE = 251
+        /** 加密 ZIP 固件的脱敏测试密码。 */
+        const val ENCRYPTED_PASSWORD = "onyx-test-password"
+        /** 加密 ZIP 固件中的预期文本内容。 */
+        const val ENCRYPTED_ENTRY_CONTENT = "encrypted fixture payload"
+        /** 使用 ZipCrypto 生成的加密 ZIP 固件。 */
+        const val ENCRYPTED_ZIP_BASE64 =
+            "UEsDBC0ACQAAAI56/lw8nOGi//////////8BABQALQEAEAAZAAAAAAAAACUAAAAAAAAAh3c4PRg9TbIwTQTcvb1IAujYFWURrNZIudxcSi5ol5nkvV+o/1BLBwg8nOGiJQAAAAAAAAAZAAAAAAAAAFBLAQIeAy0ACQAAAI56/lw8nOGiJQAAABkAAAABAAAAAAAAAAEAAACAEQAAAAAtUEsGBiwAAAAAAAAAHgMtAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAC8AAAAAAAAAcAAAAAAAAABQSwYHAAAAAJ8AAAAAAAAAAQAAAFBLBQYAAAAAAQABAC8AAABwAAAAAAA="
     }
 }
 

@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import net.sf.sevenzipjbinding.ExtractAskMode
 import net.sf.sevenzipjbinding.ExtractOperationResult
 import net.sf.sevenzipjbinding.IArchiveExtractCallback
+import net.sf.sevenzipjbinding.ICryptoGetTextPassword
 import net.sf.sevenzipjbinding.IInArchive
 import net.sf.sevenzipjbinding.ISequentialOutStream
 import net.sf.sevenzipjbinding.PropID
@@ -43,14 +44,16 @@ internal class ArchiveThumbnailReader(
      *
      * @param archivePath 压缩包 VFS 位置，可为本地、SMB、WebDAV 或 S3 位置。
      * @param maxBytes 允许提取的最大图片字节数。
+     * @param password 可选归档密码。
      * @return 图片原始字节；压缩包内没有合适图片时返回 `null`。
      */
     suspend fun extractFirstImage(
         archivePath: String,
         maxBytes: Long,
+        password: String? = null,
     ): Result<ByteArray?> = withContext(Dispatchers.IO) {
         runCatching {
-            openSevenZipArchive(archivePath, randomAccessService).use { handle ->
+            openSevenZipArchive(archivePath, randomAccessService, password).use { handle ->
                 val archive = handle.archive
                 val target = archive.findFirstImage(maxBytes) ?: return@runCatching null
                 val initialCapacity = target.size
@@ -58,7 +61,12 @@ internal class ArchiveThumbnailReader(
                     .toInt()
                     .coerceAtLeast(DEFAULT_BUFFER_SIZE)
                 val output = ByteArrayOutputStream(initialCapacity)
-                val callback = ThumbnailExtractCallback(target.index, output, maxBytes)
+                val callback = ThumbnailExtractCallback(
+                    targetIndex = target.index,
+                    output = output,
+                    maxBytes = maxBytes,
+                    password = password,
+                )
                 archive.extract(intArrayOf(target.index), false, callback)
                 callback.requireSuccessful()
                 output.toByteArray().takeIf(ByteArray::isNotEmpty)
@@ -122,7 +130,9 @@ internal class ArchiveThumbnailReader(
         private val output: ByteArrayOutputStream,
         /** 允许写入内存的最大字节数。 */
         private val maxBytes: Long,
-    ) : IArchiveExtractCallback {
+        /** 可选归档密码。 */
+        private val password: String?,
+    ) : IArchiveExtractCallback, ICryptoGetTextPassword {
         /** 7-Zip 返回的最终提取结果。 */
         private var operationResult: ExtractOperationResult? = null
 
@@ -176,6 +186,9 @@ internal class ArchiveThumbnailReader(
          * @param complete 已完成字节数。
          */
         override fun setCompleted(complete: Long) = Unit
+
+        /** @return 当前归档密码；无密码时返回空字符串供 7-Zip 继续判定。 */
+        override fun cryptoGetTextPassword(): String = password ?: ""
 
         /**
          * 校验提取结果，防止把 CRC 错误或密码错误的数据交给图片解码器。

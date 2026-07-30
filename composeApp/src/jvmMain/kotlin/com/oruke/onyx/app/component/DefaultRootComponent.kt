@@ -441,6 +441,9 @@ private fun DefaultRootComponent.createPaneComponent(paneId: PaneId, childKey: S
         entryNameSuggestionService = entryNameSuggestionService,
         fileTypeService = fileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
+        onPrepareArchiveAccess = { archive ->
+            archiveActionDelegate.prepareArchiveAccess(archive)
+        },
         onOpenImageViewer = ::openImageViewer,
         onOpenDirectoryInNewWindow = launchConfiguration.onOpenDirectoryInNewWindow,
         onRemoteAuthenticationRequired = ::requestRemoteCredentials,

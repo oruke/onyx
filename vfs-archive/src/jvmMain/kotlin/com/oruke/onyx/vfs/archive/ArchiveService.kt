@@ -52,6 +52,9 @@ class ArchiveService(
     /** 7-Zip 归档加密状态与密码检查器。 */
     private val archiveInspector = SevenZipArchiveInspector(logger, randomAccessService)
 
+    /** 当前进程内已验证的归档访问密码。 */
+    private val archivePasswordSession = ArchivePasswordSession()
+
     /** 通过统一随机访问接口读取压缩包封面图片。 */
     private val archiveThumbnailReader = ArchiveThumbnailReader(randomAccessService)
 
@@ -173,6 +176,10 @@ class ArchiveService(
 
     /**
      * 列出压缩包内指定路径下的直接子条目。
+     *
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @param innerPath 归档内待列出的目录路径；空字符串表示根目录。
+     * @return 直接子条目列表。
      */
     suspend fun list(archivePath: String, innerPath: String = ""): Result<List<VFile>> =
         withContext(Dispatchers.IO) {
@@ -180,7 +187,11 @@ class ArchiveService(
                 if (archivePath.isTarZstdArchive()) {
                     return@runCatching tarZstdArchiveService.list(archivePath, innerPath)
                 }
-                openSevenZipArchive(archivePath, randomAccessService).use { handle ->
+                openSevenZipArchive(
+                    archivePath,
+                    randomAccessService,
+                    archivePasswordSession.passwordFor(archivePath),
+                ).use { handle ->
                     val archive = handle.archive
                     val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
                     val parentLoc = archiveLocation(archivePath, innerPath)
@@ -217,7 +228,8 @@ class ArchiveService(
                 tarZstdArchiveService.extract(archivePath, targetDirectory, innerPath)
                 return@runCatching
             }
-            openSevenZipArchive(archivePath, randomAccessService, password).use { handle ->
+            val resolvedPassword = password ?: archivePasswordSession.passwordFor(archivePath)
+            openSevenZipArchive(archivePath, randomAccessService, resolvedPassword).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
                 val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
@@ -236,7 +248,7 @@ class ArchiveService(
                     archive = archive,
                     targetDirectory = targetDir,
                     prefix = prefix,
-                    password = password,
+                    password = resolvedPassword,
                     progressSink = progressSink,
                 )
                 archive.extract(
@@ -318,6 +330,9 @@ class ArchiveService(
 
     /**
      * 检查压缩包是否需要密码（是否加密）。
+     *
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @return 归档包含加密条目时返回 `true`。
      */
     suspend fun isEncrypted(archivePath: String): Boolean = withContext(Dispatchers.IO) {
         archiveInspector.isEncrypted(archivePath)
@@ -331,10 +346,44 @@ class ArchiveService(
      * 2. 如果 test 模式返回 OK，再解压到内存并比对 CRC32
      * 3. 对 ZipCrypto 等不返回 WRONG_PASSWORD 的格式，CRC 比对是唯一可靠手段
      *
-     * @return true = 密码正确，false = 密码错误或验证失败
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @param password 待验证的归档密码。
+     * @return 密码正确时返回 `true`，密码错误或验证失败时返回 `false`。
      */
     suspend fun verifyPassword(archivePath: String, password: String): Boolean = withContext(Dispatchers.IO) {
         archiveInspector.verifyPassword(archivePath, password)
+    }
+
+    /**
+     * 验证并保存当前进程内的归档访问密码。
+     *
+     * 只有校验成功才会写入会话，避免错误密码影响后续预览、缩略图和外部打开。
+     *
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @param password 待验证的归档密码。
+     * @return 密码正确并已保存时返回 `true`，密码错误或验证失败时返回 `false`。
+     */
+    suspend fun verifyAndRememberPassword(
+        archivePath: String,
+        password: String,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val verified = archiveInspector.verifyPassword(archivePath, password)
+        if (verified) {
+            archivePasswordSession.remember(archivePath, password)
+        } else {
+            archivePasswordSession.forget(archivePath)
+        }
+        verified
+    }
+
+    /**
+     * 判断指定归档是否已有可复用的已验证密码。
+     *
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @return 当前进程内已保存密码时返回 `true`。
+     */
+    fun hasRememberedPassword(archivePath: String): Boolean {
+        return archivePasswordSession.hasPassword(archivePath)
     }
 
     /**
@@ -342,13 +391,15 @@ class ArchiveService(
      *
      * @param archivePath 压缩包物理路径
      * @param innerPath   压缩包内条目路径
-     * @param maxBytes    允许读取的最大字节数，超过时返回 null；为空表示不限制
-     * @return 文件字节数组，如果未找到则返回 null
+     * @param maxBytes 允许读取的最大字节数，超过时返回 `null`；为空表示不限制。
+     * @param password 可选归档密码；为空时复用当前进程内已验证的密码。
+     * @return 文件字节数组；未找到或超过读取上限时返回 `null`。
      */
     suspend fun extractToBytes(
         archivePath: String,
         innerPath: String,
         maxBytes: Long? = null,
+        password: String? = null,
     ): Result<ByteArray?> = withContext(Dispatchers.IO) {
         runCatching {
             if (archivePath.isTarZstdArchive()) {
@@ -356,7 +407,8 @@ class ArchiveService(
                 if (maxBytes != null && bytes != null && bytes.size > maxBytes) return@runCatching null
                 return@runCatching bytes
             }
-            openSevenZipArchive(archivePath, randomAccessService).use { handle ->
+            val resolvedPassword = password ?: archivePasswordSession.passwordFor(archivePath)
+            openSevenZipArchive(archivePath, randomAccessService, resolvedPassword).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
                 val targetIndex = (0 until numItems).firstOrNull { index ->
@@ -367,7 +419,7 @@ class ArchiveService(
                 val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
                 if (maxBytes != null && size > maxBytes) return@runCatching null
                 val buffer = ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
-                val callback = MemoryExtractCallback(buffer)
+                val callback = MemoryExtractCallback(buffer, resolvedPassword)
                 archive.extract(intArrayOf(targetIndex), false, callback)
                 if (callback.errors.isNotEmpty()) {
                     error("解压失败: ${callback.errors.joinToString(", ")}")
@@ -388,7 +440,11 @@ class ArchiveService(
         archivePath: String,
         maxBytes: Long,
     ): Result<ByteArray?> {
-        return archiveThumbnailReader.extractFirstImage(archivePath, maxBytes)
+        return archiveThumbnailReader.extractFirstImage(
+            archivePath = archivePath,
+            maxBytes = maxBytes,
+            password = archivePasswordSession.passwordFor(archivePath),
+        )
     }
 
     /**
@@ -428,7 +484,8 @@ class ArchiveService(
                 if (parents.all { it.startsWith(common) }) common else ""
             }
 
-            openSevenZipArchive(archivePath, randomAccessService, password).use { handle ->
+            val resolvedPassword = password ?: archivePasswordSession.passwordFor(archivePath)
+            openSevenZipArchive(archivePath, randomAccessService, resolvedPassword).use { handle ->
                 val archive = handle.archive
                 val numItems = archive.numberOfItems
                 // 收集需要解压的 index
@@ -451,7 +508,7 @@ class ArchiveService(
                     archive = archive,
                     targetDirectory = targetDirectory,
                     prefix = parentPrefix,
-                    password = password,
+                    password = resolvedPassword,
                     progressSink = progressSink,
                 )
                 archive.extract(targetIndices.toIntArray(), false, callback)

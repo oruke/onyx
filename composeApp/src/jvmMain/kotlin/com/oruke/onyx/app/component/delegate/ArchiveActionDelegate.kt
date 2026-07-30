@@ -29,18 +29,28 @@ import java.util.UUID
  * 从 DefaultRootComponent 剥离的纯业务逻辑。
  */
 internal class ArchiveActionDelegate(
+    /** 压缩包读写与密码验证服务。 */
     private val archiveService: ArchiveService,
+    /** 后台任务状态编排器。 */
     private val taskOrchestrator: TaskOrchestrator,
+    /** 根级对话框状态来源。 */
     private val dialogState: MutableStateFlow<RootDialogState?>,
+    /** 解压成功后刷新全部面板的回调。 */
     private val onRefreshAllPanes: () -> Unit,
 ) {
-    var pendingArchiveExtraction: PendingArchiveExtraction? = null
-        private set
+    /** 当前等待用户输入的归档密码。 */
+    private var pendingArchivePassword: CompletableDeferred<String>? = null
+
+    /** 压缩包批量提取业务用例。 */
     private val archiveExtractionUseCase = ArchiveExtractionUseCase(archiveService)
 
     /**
      * 将压缩包内的选中条目解压到目标本地目录。
      * 用于从已打开的压缩包面板拖拽文件到本地目录面板。
+     *
+     * @param entries 待提取的归档内部条目。
+     * @param targetDirectoryLocation 目标目录位置。
+     * @return 无返回值。
      */
     @Suppress("TooGenericExceptionCaught") // 后台任务边界负责将任意业务异常转换为任务失败状态。
     fun launchArchiveExtractToDirectory(
@@ -75,13 +85,9 @@ internal class ArchiveActionDelegate(
                         targetDirectoryLocation = targetDirectoryLocation,
                     ),
                     resolvePassword = { request ->
-                        requestArchivePassword(
+                        resolveArchivePassword(
                             archivePath = request.archivePath,
                             archiveName = request.archiveName,
-                            entries = entries,
-                            targetLocation = targetDirectoryLocation,
-                            taskId = taskId,
-                            taskTitle = I18nMessage(MessageKey.MSG_EXTRACT_ITEMS, entries.size),
                         )
                     },
                 ).collect { progress ->
@@ -122,6 +128,12 @@ internal class ArchiveActionDelegate(
 
     /**
      * 通用压缩包解压任务启动器 — 支持加密压缩包密码输入。
+     *
+     * @param selectedEntries 当前选中的候选压缩文件。
+     * @param currentLocation 解压目标所在的当前面板位置。
+     * @param taskTitle 任务中心展示标题。
+     * @param extractAction 单个压缩文件的实际提取动作。
+     * @return 无返回值。
      */
     @Suppress("TooGenericExceptionCaught") // 后台任务边界负责将任意 Provider 异常转换为任务失败状态。
     fun launchArchiveExtraction(
@@ -164,14 +176,9 @@ internal class ArchiveActionDelegate(
                         extractAction = extractAction,
                     ),
                     resolvePassword = { request ->
-                        requestArchivePassword(
+                        resolveArchivePassword(
                             archivePath = request.archivePath,
                             archiveName = request.archiveName,
-                            entries = archiveEntries,
-                            targetLocation = currentLocation,
-                            taskId = taskId,
-                            taskTitle = taskTitle,
-                            extractAction = extractAction,
                         )
                     },
                 ).collect { progress ->
@@ -189,7 +196,7 @@ internal class ArchiveActionDelegate(
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (failure: CancellationException) {
-                pendingArchiveExtraction = null
+                pendingArchivePassword = null
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -199,7 +206,7 @@ internal class ArchiveActionDelegate(
                 throw failure
             } catch (e: Exception) {
                 OnyxLogger.error("ArchiveActionDelegate", "拖拽解压失败", e)
-                pendingArchiveExtraction = null
+                pendingArchivePassword = null
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -211,55 +218,82 @@ internal class ArchiveActionDelegate(
     }
 
     /**
-     * 提交压缩包密码（从对话框回调）。
+     * 为直接打开归档准备访问密码。
+     *
+     * 已验证的密码会留在当前进程会话中，供预览、缩略图和归档内部文件打开统一复用。
+     *
+     * @param archive 待打开的归档文件。
+     * @return 无返回值。
+     */
+    suspend fun prepareArchiveAccess(archive: VFile) {
+        if (archiveService.hasRememberedPassword(archive.location)) return
+        if (!archiveService.isEncrypted(archive.location)) return
+        requestArchivePassword(
+            archivePath = archive.location,
+            archiveName = archive.name,
+        )
+    }
+
+    /**
+     * 提交压缩包密码。
+     *
+     * @param password 用户在密码对话框中输入的密码。
+     * @return 无返回值。
      */
     fun submitArchivePassword(password: String) {
-        val pending = pendingArchiveExtraction ?: return
-        pending.passwordDeferred.complete(password)
+        pendingArchivePassword?.complete(password)
     }
 
     /**
-     * 清除待处理状态（用于对话框取消时）。
+     * 取消当前等待的压缩包密码请求。
+     *
+     * @return 无返回值。
      */
     fun clearPending() {
-        pendingArchiveExtraction?.passwordDeferred?.cancel()
-        pendingArchiveExtraction = null
+        pendingArchivePassword?.cancel()
+        pendingArchivePassword = null
     }
 
     /**
-     * 通用密码请求循环 — 弹出对话框、验证密码，直到正确或取消。
+     * 复用已验证密码或请求用户输入新的密码。
+     *
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @param archiveName 用于密码对话框展示的归档名称。
+     * @return 新输入且已验证的密码；已存在会话密码时返回 `null`。
+     */
+    private suspend fun resolveArchivePassword(
+        archivePath: String,
+        archiveName: String,
+    ): String? {
+        if (archiveService.hasRememberedPassword(archivePath)) return null
+        return requestArchivePassword(archivePath, archiveName)
+    }
+
+    /**
+     * 弹出密码输入对话框并循环验证，直到密码正确或用户取消。
+     *
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @param archiveName 用于密码对话框展示的归档名称。
+     * @return 已验证并写入当前进程会话的归档密码。
      */
     private suspend fun requestArchivePassword(
         archivePath: String,
         archiveName: String,
-        entries: List<VFile>,
-        targetLocation: String,
-        taskId: String,
-        taskTitle: I18nMessage,
-        extractAction: suspend (VFile, String, String?, ArchiveProgressSink) -> Result<Unit> =
-            { _, _, _, _ -> Result.success(Unit) },
     ): String {
         var errorMsg: I18nMessage? = null
         while (true) {
             kotlin.coroutines.coroutineContext.ensureActive()
             val deferred = CompletableDeferred<String>()
-            pendingArchiveExtraction = PendingArchiveExtraction(
-                entries = entries,
-                currentLocation = targetLocation,
-                taskId = taskId,
-                taskTitle = taskTitle,
-                extractAction = extractAction,
-                passwordDeferred = deferred,
-            )
+            pendingArchivePassword = deferred
             dialogState.value = RootDialogState.ArchivePassword(
                 archiveName = archiveName,
                 error = errorMsg,
             )
             val candidatePassword = deferred.await()
-            val valid = archiveService.verifyPassword(archivePath, candidatePassword)
+            val valid = archiveService.verifyAndRememberPassword(archivePath, candidatePassword)
             if (valid) {
                 dialogState.value = null
-                pendingArchiveExtraction = null
+                pendingArchivePassword = null
                 return candidatePassword
             } else {
                 errorMsg = I18nMessage(MessageKey.MSG_ARCHIVE_PASSWORD_INVALID)
@@ -267,15 +301,13 @@ internal class ArchiveActionDelegate(
         }
     }
 
-    class PendingArchiveExtraction(
-        val entries: List<VFile>,
-        val currentLocation: String,
-        val taskId: String,
-        val taskTitle: I18nMessage,
-        val extractAction: suspend (VFile, String, String?, ArchiveProgressSink) -> Result<Unit>,
-        val passwordDeferred: CompletableDeferred<String>,
-    )
-
+    /**
+     * 将归档用例上报的进度同步到任务中心。
+     *
+     * @param taskId 任务中心中的任务标识。
+     * @param progress 归档用例当前进度。
+     * @return 无返回值。
+     */
     private fun applyTaskProgress(
         taskId: String,
         progress: TaskProgress,
