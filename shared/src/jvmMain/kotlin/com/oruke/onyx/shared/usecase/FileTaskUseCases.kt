@@ -122,7 +122,7 @@ class ArchiveExtractionUseCase(
      */
     fun extractEntriesToDirectory(
         request: ArchiveEntryExtractionRequest,
-        resolvePassword: suspend (ArchivePasswordRequest) -> String,
+        resolvePassword: suspend (ArchivePasswordRequest) -> String?,
     ): Flow<TaskProgress> = channelFlow {
         send(
             TaskProgress(
@@ -200,7 +200,7 @@ class ArchiveExtractionUseCase(
      */
     fun extractArchiveFiles(
         request: ArchiveFileExtractionRequest,
-        resolvePassword: suspend (ArchivePasswordRequest) -> String,
+        resolvePassword: suspend (ArchivePasswordRequest) -> String?,
     ): Flow<TaskProgress> = channelFlow {
         send(
             TaskProgress(

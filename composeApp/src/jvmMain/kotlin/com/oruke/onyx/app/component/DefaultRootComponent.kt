@@ -451,8 +451,8 @@ private fun DefaultRootComponent.createPaneComponent(paneId: PaneId, childKey: S
         entryNameSuggestionService = entryNameSuggestionService,
         fileTypeService = fileTypeService,
         archiveEntryOpenService = archiveEntryOpenService,
-        onPrepareArchiveAccess = { archive ->
-            archiveActionDelegate.prepareArchiveAccess(archive)
+        onPrepareArchiveContentAccess = { entry ->
+            archiveActionDelegate.prepareArchiveContentAccess(entry)
         },
         onOpenImageViewer = ::openImageViewer,
         onOpenDirectoryInNewWindow = launchConfiguration.onOpenDirectoryInNewWindow,

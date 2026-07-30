@@ -58,8 +58,8 @@ internal class DefaultPaneComponent(
     internal val fileTypeService: FileTypeService,
     /** 压缩包条目临时提取打开服务。 */
     internal val archiveEntryOpenService: ArchiveEntryOpenService,
-    /** 在进入归档前由根组件完成密码授权的回调。 */
-    internal val onPrepareArchiveAccess: suspend (archive: VFile) -> Unit = {},
+    /** 在读取归档内部文件前由根组件完成密码授权的回调。 */
+    internal val onPrepareArchiveContentAccess: suspend (entry: VFile) -> Unit = {},
     /** 新标签默认视图模式。 */
     internal val initialViewMode: ViewMode = ViewMode.DETAILS,
     /** 打开图片查看器的跨组件动作。 */

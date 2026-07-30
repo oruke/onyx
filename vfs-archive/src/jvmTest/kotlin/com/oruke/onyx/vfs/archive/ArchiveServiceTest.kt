@@ -227,17 +227,18 @@ class ArchiveServiceTest {
     }
 
     /**
-     * 校验已验证密码会在当前归档服务会话中复用，以供归档内部文件读取。
+     * 校验加密归档可先无密码浏览目录，读取内部文件时再复用已验证密码。
      *
      * @return 无返回值。
      */
     @Test
-    fun readsEncryptedEntryWithRememberedPassword() = runBlocking {
+    fun browsesEncryptedArchiveWithoutPasswordAndReadsEntryAfterRememberingPassword() = runBlocking {
         val archive = createEncryptedZipArchive()
         val service = ArchiveService()
         try {
             assertTrue(service.isEncrypted(archive.toString()))
             val encryptedEntry = service.list(archive.toString()).getOrThrow().single()
+            assertFalse(service.hasRememberedPassword(archive.toString()))
             val provider = ArchiveVfsProvider(service)
             assertTrue(provider.readFile(encryptedEntry).isFailure)
             assertFalse(service.verifyAndRememberPassword(archive.toString(), "wrong-password"))

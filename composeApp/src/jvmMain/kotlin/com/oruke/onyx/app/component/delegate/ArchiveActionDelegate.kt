@@ -218,19 +218,23 @@ internal class ArchiveActionDelegate(
     }
 
     /**
-     * 为直接打开归档准备访问密码。
+     * 为读取压缩包内部文件准备访问密码。
      *
-     * 已验证的密码会留在当前进程会话中，供预览、缩略图和归档内部文件打开统一复用。
+     * 进入压缩包只读取目录清单，不主动询问密码；只有双击读取内部文件或图片时，
+     * 才和拖拽解压复用同一个密码输入与会话缓存。
      *
-     * @param archive 待打开的归档文件。
+     * @param entry 待读取的压缩包内部文件。
      * @return 无返回值。
      */
-    suspend fun prepareArchiveAccess(archive: VFile) {
-        if (archiveService.hasRememberedPassword(archive.location)) return
-        if (!archiveService.isEncrypted(archive.location)) return
+    suspend fun prepareArchiveContentAccess(entry: VFile) {
+        if (entry.kind != VFileKind.FILE) return
+        val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(entry.location) ?: return
+        if (innerPath.isBlank()) return
+        if (archiveService.hasRememberedPassword(archivePath)) return
+        if (!archiveService.isEncrypted(archivePath)) return
         requestArchivePassword(
-            archivePath = archive.location,
-            archiveName = archive.name,
+            archivePath = archivePath,
+            archiveName = ArchiveService.archiveLocationTitle(ArchiveService.archiveLocation(archivePath)),
         )
     }
 
