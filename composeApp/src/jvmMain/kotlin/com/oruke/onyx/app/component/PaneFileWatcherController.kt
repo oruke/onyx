@@ -3,11 +3,15 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.local.FileWatcher
+import com.oruke.onyx.vfs.local.LocalDirectoryAccess
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path
@@ -36,19 +40,25 @@ internal class PaneFileWatcherController(
      */
     fun start(location: String) {
         job?.cancel()
-        val path = location
-            .takeUnless(ArchiveService::isArchiveLocation)
-            ?.takeUnless { it.contains("://") }
-            ?.toLocalPathOrNull()
-            ?.takeIf(Files::isDirectory)
-        if (path != null) {
-            job = fileWatcher.watch(path)
-                .onEach { onChanged(location) }
+        job = scope.launch {
+            val path = withContext(Dispatchers.IO) {
+                location
+                    .takeUnless(ArchiveService::isArchiveLocation)
+                    ?.takeUnless { it.contains("://") }
+                    ?.toLocalPathOrNull()
+                    ?.let { candidate -> LocalDirectoryAccess.resolveForListing(candidate).getOrNull() }
+                    ?.takeIf(Files::isDirectory)
+                    ?.takeIf(Files::isReadable)
+            } ?: return@launch
+            fileWatcher.watch(path)
+                .flowOn(Dispatchers.IO)
                 .catch { failure ->
                     OnyxLogger.warn("PaneFileWatcherController", "文件监听已降级：$location", failure)
                     onWatchDegraded(location, failure)
                 }
-                .launchIn(scope)
+                .collect {
+                    onChanged(location)
+                }
         }
     }
 

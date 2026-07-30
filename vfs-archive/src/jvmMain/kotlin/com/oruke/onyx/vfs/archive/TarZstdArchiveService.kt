@@ -259,7 +259,11 @@ private fun TarEntryPath.toDirectTarChild(
             sizeBytes = null,
             modifiedAtEpochMillis = null,
             hidden = false,
-            capabilities = setOf(VFileCapability.READ_CONTENT, VFileCapability.READ_METADATA),
+            capabilities = if (childIsDirectory) {
+                setOf(VFileCapability.LIST_CHILDREN, VFileCapability.READ_METADATA)
+            } else {
+                setOf(VFileCapability.READ_CONTENT, VFileCapability.READ_METADATA)
+            },
         )
     }
 }

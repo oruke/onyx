@@ -3,7 +3,6 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.app.component.delegate.SelectionReducer
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import kotlinx.coroutines.launch
 
@@ -82,7 +81,7 @@ private fun DefaultPaneComponent.selectedDirectoryForOpen(): VFile? {
     )
     return targetEntryId
         ?.let { id -> entries.firstOrNull { entry -> entry.id == id } }
-        ?.takeIf { entry -> entry.kind == VFileKind.DIRECTORY }
+        ?.takeIf(VFile::isBrowsableDirectory)
 }
 
 /** 将当前选中条目的 VFS 路径复制到系统文本剪贴板。 */

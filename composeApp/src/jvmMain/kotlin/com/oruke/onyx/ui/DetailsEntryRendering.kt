@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.InlineExpandedEntry
+import com.oruke.onyx.app.component.isBrowsableDirectory
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
@@ -264,7 +265,7 @@ internal fun flattenEntries(
                 entry = entry,
                 depth = depth,
                 isExpanded = isExpanded,
-                isExpandable = entry.kind == VFileKind.DIRECTORY,
+                isExpandable = entry.isBrowsableDirectory(),
                 isLoading = isExpanded && expandData?.entries == null,
             ),
         )

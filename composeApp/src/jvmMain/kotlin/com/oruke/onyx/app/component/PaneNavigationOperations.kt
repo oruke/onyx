@@ -4,6 +4,8 @@ import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.shared.filesystem.toI18nMessage
+import com.oruke.onyx.vfs.api.VfsProviderError
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.archive.ArchiveService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -70,6 +72,17 @@ internal fun DefaultPaneComponent.openEntry(entry: VFile) {
     val tab = activeTab() ?: return
     clearInlineEdit(tab.id)
     if (entry.kind == VFileKind.DIRECTORY) {
+        if (!entry.isBrowsableDirectory()) {
+            updateFailure(
+                tab.id,
+                PaneOperationFeedbackKind.OPEN_FAILED,
+                VfsProviderError.PermissionDenied(
+                    protocol = VfsProtocol.LOCAL,
+                    location = entry.location,
+                ).toI18nMessage(),
+            )
+            return
+        }
         openDirectory(entry.location)
         return
     }

@@ -1,5 +1,7 @@
 package com.oruke.onyx.vfs.archive
 
+import com.oruke.onyx.core.model.VFileCapability
+import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
@@ -88,6 +90,31 @@ class ArchiveServiceTest {
             val archiveLocation = ArchiveService.archiveLocation(archivePath)
             assertEquals(expectedParent, ArchiveService.archiveParentLocation(archiveLocation))
             assertEquals("sample.zip", ArchiveService.archiveLocationTitle(archiveLocation))
+        }
+    }
+
+    /**
+     * 校验压缩包目录声明子项枚举能力，供统一面板导航判断使用。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun exposesListChildrenCapabilityForArchiveDirectories() = runBlocking {
+        val archive = createZipArchive(
+            entries = mapOf(
+                "folder/file.txt" to "content".encodeToByteArray(),
+            )
+        )
+        try {
+            val folder = ArchiveService()
+                .list(archive.toString())
+                .getOrThrow()
+                .single { entry -> entry.name == "folder" }
+
+            assertEquals(VFileKind.DIRECTORY, folder.kind)
+            assertTrue(VFileCapability.LIST_CHILDREN in folder.capabilities)
+        } finally {
+            archive.toFile().delete()
         }
     }
 

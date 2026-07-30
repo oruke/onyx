@@ -81,7 +81,9 @@ class JvmLocalFileProvider :
             val directory = Path.of(location).normalize().toAbsolutePath()
             LocalPathOperations.ensurePathExists(directory)
             require(Files.isDirectory(directory)) { "$location is not a directory" }
-            Files.newDirectoryStream(directory).use { stream ->
+            val listingDirectory = LocalDirectoryAccess.resolveForListing(directory)
+                .getOrElse { directory }
+            Files.newDirectoryStream(listingDirectory).use { stream ->
                 stream
                     .map { child -> child.toLocalVFile(directory) }
                     .sortedWith(

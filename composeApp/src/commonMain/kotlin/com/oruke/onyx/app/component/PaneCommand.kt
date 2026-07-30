@@ -1,7 +1,5 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.core.model.VFileKind
-
 /**
  * 面板级命令 ID，用于让快捷键、工具栏、命令面板和右键菜单共享同一套状态判断。
  */
@@ -117,7 +115,7 @@ internal class PaneCommandController(
             PaneCommand.RENAME_SELECTION -> selectedCount == 1
 
             PaneCommand.OPEN_SELECTION_IN_NEW_TAB,
-            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW -> selectedCount == 1 && selectedDirectoryCount() == 1
+            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW -> selectedCount == 1 && selectedBrowsableDirectoryCount() == 1
 
             PaneCommand.DELETE_SELECTION,
             PaneCommand.COPY_SELECTION,
@@ -241,14 +239,14 @@ internal class PaneCommandController(
     }
 
     /**
-     * 统计当前选中目录数量。
+     * 统计当前选中且允许枚举子项的目录数量。
      *
-     * @return 当前选中项中目录条目的数量。
+     * @return 当前选中项中可浏览目录的数量。
      */
-    private fun selectedDirectoryCount(): Int {
+    private fun selectedBrowsableDirectoryCount(): Int {
         val readyEntries = state.entriesState as? PaneEntriesState.Ready ?: return 0
         return readyEntries.entries.count { entry ->
-            entry.id in state.selectedEntryIds && entry.kind == VFileKind.DIRECTORY
+            entry.id in state.selectedEntryIds && entry.isBrowsableDirectory()
         }
     }
 

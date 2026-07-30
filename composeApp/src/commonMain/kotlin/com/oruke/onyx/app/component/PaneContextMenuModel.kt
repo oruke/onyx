@@ -6,7 +6,6 @@ import com.oruke.onyx.vfs.api.FileContextMenuLabel
 import com.oruke.onyx.vfs.api.FileContextMenuSection
 import com.oruke.onyx.vfs.api.FileContextMenuSectionKind
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileKind
 
 /**
  * 右键菜单内置文案语义，由 UI 层映射到 i18n 资源。
@@ -283,9 +282,9 @@ internal object PaneContextMenuModelBuilder {
         add(paneItem("open", PaneContextMenuText.OPEN, PaneContextMenuIcon.OPEN, PaneCommand.OPEN_SELECTION,
             selectedCount == 1))
         add(paneItem("open-new-tab", PaneContextMenuText.OPEN_IN_NEW_TAB, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
-            PaneCommand.OPEN_SELECTION_IN_NEW_TAB, singleEntry?.kind == VFileKind.DIRECTORY))
+            PaneCommand.OPEN_SELECTION_IN_NEW_TAB, singleEntry?.isBrowsableDirectory() == true))
         add(paneItem("open-new-window", PaneContextMenuText.OPEN_IN_NEW_WINDOW, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
-            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW, singleEntry?.kind == VFileKind.DIRECTORY))
+            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW, singleEntry?.isBrowsableDirectory() == true))
         openWithSection?.let { section ->
             add(
                 PaneContextMenuNode.Item(

@@ -40,7 +40,7 @@ internal object SevenZipNativeRuntime {
         // JVM 会按登记顺序逆序删除，先登记父级才能在退出时先删除子级。
         processTempDirectory.deleteOnExit()
         SevenZip.getTemporaryArtifacts()
-            ?.asReversed()
+            ?.reversedArray()
             ?.forEach(File::deleteOnExit)
     }
 

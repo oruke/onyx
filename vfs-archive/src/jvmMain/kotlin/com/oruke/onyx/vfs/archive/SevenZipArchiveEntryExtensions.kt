@@ -45,7 +45,11 @@ internal fun IInArchive.directChildEntry(
             sizeBytes = if (childIsDirectory) null else (getProperty(index, PropID.SIZE) as? Long) ?: 0L,
             modifiedAtEpochMillis = (getProperty(index, PropID.LAST_MODIFICATION_TIME) as? Date)?.time,
             hidden = false,
-            capabilities = setOf(VFileCapability.READ_CONTENT, VFileCapability.READ_METADATA),
+            capabilities = if (childIsDirectory) {
+                setOf(VFileCapability.LIST_CHILDREN, VFileCapability.READ_METADATA)
+            } else {
+                setOf(VFileCapability.READ_CONTENT, VFileCapability.READ_METADATA)
+            },
         )
     }
 }

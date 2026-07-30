@@ -4,8 +4,12 @@ import com.oruke.onyx.core.model.OnyxError
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.vfs.api.VfsProviderError
+import com.oruke.onyx.vfs.api.VfsProviderException
+import com.oruke.onyx.vfs.api.VfsProtocol
 import java.io.IOException
 import java.nio.file.AccessDeniedException
+import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
@@ -22,6 +26,7 @@ import kotlin.io.path.pathString
  */
 internal fun Path.toLocalVFile(parent: Path): VFile {
     val directory = isDirectory()
+    val isListableDirectory = directory && LocalDirectoryAccess.isListable(this)
     val normalizedPath = toAbsolutePath().normalize()
     return VFile(
         id = normalizedPath.pathString,
@@ -36,9 +41,9 @@ internal fun Path.toLocalVFile(parent: Path): VFile {
             add(VFileCapability.READ_METADATA)
             add(VFileCapability.RENAME)
             add(VFileCapability.DELETE)
-            if (directory) {
+            if (isListableDirectory) {
                 add(VFileCapability.LIST_CHILDREN)
-            } else {
+            } else if (!directory) {
                 add(VFileCapability.READ_CONTENT)
                 add(VFileCapability.WRITE_CONTENT)
             }
@@ -53,8 +58,42 @@ internal fun Path.toLocalVFile(parent: Path): VFile {
  */
 internal fun <T> Result<T>.mapLocalError(): Result<T> {
     return exceptionOrNull()?.let { failure ->
-        Result.failure(failure.toLocalOnyxError().toException())
+        Result.failure(failure.toLocalFailure())
     } ?: this
+}
+
+/**
+ * 将可识别的本地文件异常转换为结构化 VFS 异常。
+ *
+ * @return 结构化 VFS 异常或兼容现有调用方的通用本地异常。
+ */
+private fun Throwable.toLocalFailure(): Throwable {
+    val errorMessage = message ?: localizedMessage
+    return when (this) {
+        is AccessDeniedException -> VfsProviderException(
+            VfsProviderError.PermissionDenied(
+                protocol = VfsProtocol.LOCAL,
+                location = file ?: errorMessage,
+                reason = reason,
+            )
+        )
+
+        is NoSuchFileException -> VfsProviderException(
+            VfsProviderError.NotFound(
+                protocol = VfsProtocol.LOCAL,
+                location = file ?: errorMessage,
+            )
+        )
+
+        is FileAlreadyExistsException -> VfsProviderException(
+            VfsProviderError.AlreadyExists(
+                protocol = VfsProtocol.LOCAL,
+                location = file ?: errorMessage,
+            )
+        )
+
+        else -> toLocalOnyxError().toException()
+    }
 }
 
 /**
