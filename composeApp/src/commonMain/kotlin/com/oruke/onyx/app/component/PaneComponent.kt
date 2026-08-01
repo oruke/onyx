@@ -232,7 +232,6 @@ internal sealed interface PaneIntent {
 
     data class ResizeDetailsColumn(
         val column: DetailsColumn,
-        val nextColumn: DetailsColumn,
         val deltaWeight: Float,
     ) : PaneIntent
 
@@ -376,9 +375,8 @@ internal fun PaneComponent.setGalleryItemSize(sizeDp: Int) = dispatch(PaneIntent
 
 internal fun PaneComponent.resizeDetailsColumn(
     column: DetailsColumn,
-    nextColumn: DetailsColumn,
     deltaWeight: Float,
-) = dispatch(PaneIntent.ResizeDetailsColumn(column, nextColumn, deltaWeight))
+) = dispatch(PaneIntent.ResizeDetailsColumn(column, deltaWeight))
 
 internal fun PaneComponent.selectEntry(
     entryId: String,

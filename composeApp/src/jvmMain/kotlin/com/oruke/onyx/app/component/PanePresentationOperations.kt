@@ -100,14 +100,12 @@ internal fun DefaultPaneComponent.setGalleryItemSize(sizeDp: Int) {
 
 internal fun DefaultPaneComponent.resizeDetailsColumn(
     column: DetailsColumn,
-    nextColumn: DetailsColumn,
     deltaWeight: Float,
 ) {
     val tab = activeTab() ?: return
     updateTab(tab.id) { currentTab ->
         currentTab.withResizedDetailsColumnState(
             column = column,
-            nextColumn = nextColumn,
             deltaWeight = deltaWeight,
         )
     }

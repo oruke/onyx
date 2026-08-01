@@ -54,7 +54,7 @@ private fun DefaultPaneComponent.dispatchPresentationIntent(intent: PaneIntent):
         is PaneIntent.ToggleColumnVisibility -> { toggleColumnVisibility(intent.column); true }
         is PaneIntent.SetGalleryItemSize -> { setGalleryItemSize(intent.sizeDp); true }
         is PaneIntent.ResizeDetailsColumn -> {
-            resizeDetailsColumn(intent.column, intent.nextColumn, intent.deltaWeight)
+            resizeDetailsColumn(intent.column, intent.deltaWeight)
             true
         }
         PaneIntent.DismissOperationFeedback -> { dismissOperationFeedback(); true }

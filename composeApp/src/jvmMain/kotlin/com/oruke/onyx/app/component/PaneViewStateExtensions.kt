@@ -65,21 +65,13 @@ internal fun PaneTabState.withGalleryItemSizeState(sizeDp: Int): PaneTabState {
 
 internal fun PaneTabState.withResizedDetailsColumnState(
     column: DetailsColumn,
-    nextColumn: DetailsColumn,
     deltaWeight: Float,
 ): PaneTabState {
     val currentWidth = detailsColumnWeights[column] ?: defaultDetailsColumnWidth(column)
-    val nextWidth = detailsColumnWeights[nextColumn] ?: defaultDetailsColumnWidth(nextColumn)
-    val adjustedDelta = deltaWeight.coerceIn(
-        minimumValue = MIN_DETAILS_COLUMN_WIDTH - currentWidth,
-        maximumValue = nextWidth - MIN_DETAILS_COLUMN_WIDTH,
-    )
+    val adjustedDelta = deltaWeight.coerceAtLeast(MIN_DETAILS_COLUMN_WIDTH - currentWidth)
     return withTabState { current ->
         current.copy(
-            detailsColumnWeights = current.detailsColumnWeights + mapOf(
-                column to currentWidth + adjustedDelta,
-                nextColumn to nextWidth - adjustedDelta,
-            ),
+            detailsColumnWeights = current.detailsColumnWeights + (column to currentWidth + adjustedDelta),
         )
     }
 }

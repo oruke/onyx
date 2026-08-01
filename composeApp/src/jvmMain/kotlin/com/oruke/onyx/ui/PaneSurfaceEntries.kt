@@ -137,8 +137,8 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
         onActivate = model.onActivate,
         onOpenEntry = { entry -> dispatch(PaneIntent.OpenEntry(entry)) },
         onToggleSort = { column -> dispatch(PaneIntent.ToggleSort(column)) },
-        onResizeColumn = { column, nextColumn, deltaWeight ->
-            dispatch(PaneIntent.ResizeDetailsColumn(column, nextColumn, deltaWeight))
+        onResizeColumn = { column, deltaWeight ->
+            dispatch(PaneIntent.ResizeDetailsColumn(column, deltaWeight))
         },
         onToggleColumnVisibility = { column -> dispatch(PaneIntent.ToggleColumnVisibility(column)) },
         onSelectEntry = { entryId, additive, range ->

@@ -195,8 +195,8 @@ internal data class PaneEntriesActions(
     val onOpenEntry: (VFile) -> Unit,
     /** 切换排序列。 */
     val onToggleSort: (DetailsColumn) -> Unit,
-    /** 调整相邻列宽。 */
-    val onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
+    /** 调整列宽。 */
+    val onResizeColumn: (DetailsColumn, Float) -> Unit,
     /** 切换列可见性。 */
     val onToggleColumnVisibility: (DetailsColumn) -> Unit,
     /** 选择单个条目。 */
@@ -443,7 +443,7 @@ internal fun DetailsHeader(
     hiddenColumns: Set<DetailsColumn>,
     sort: DetailsSort,
     onToggleSort: (DetailsColumn) -> Unit,
-    onResizeColumn: (DetailsColumn, DetailsColumn, Float) -> Unit,
+    onResizeColumn: (DetailsColumn, Float) -> Unit,
     onToggleColumnVisibility: (DetailsColumn) -> Unit,
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
@@ -471,8 +471,7 @@ internal fun DetailsHeader(
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            visibleColumns.forEachIndexed { index, column ->
-                val nextColumn = visibleColumns.getOrNull(index + 1)
+            visibleColumns.forEach { column ->
                 val colWidth = detailsColumnWidth(columnWidths, column).dp
                 when (column) {
                     DetailsColumn.NAME -> SortHeaderCell(
@@ -502,14 +501,12 @@ internal fun DetailsHeader(
                         onClick = { onToggleSort(column) },
                     )
                 }
-                if (nextColumn != null) {
-                    DetailsColumnResizeGap(
-                        onResize = { deltaPx ->
-                            val deltaDp = with(density) { deltaPx / this.density }
-                            onResizeColumn(column, nextColumn, deltaDp)
-                        },
-                    )
-                }
+                DetailsColumnResizeGap(
+                    onResize = { deltaPx ->
+                        val deltaDp = with(density) { deltaPx / this.density }
+                        onResizeColumn(column, deltaDp)
+                    },
+                )
             }
         }
 
