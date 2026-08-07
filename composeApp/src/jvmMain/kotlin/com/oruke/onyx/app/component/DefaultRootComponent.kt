@@ -274,7 +274,6 @@ internal class DefaultRootComponent(
         observeRootState()
         observePersistence()
         observeRecentLocations()
-        observeSidebarLocation()
     }
 
     /**
@@ -491,15 +490,6 @@ private fun DefaultRootComponent.observeRecentLocations() {
         }.collect { locations ->
             if (persistenceReady) recordRecentLocations(locations)
         }
-    }
-}
-
-/** 观察活动面板位置并确保侧栏树节点可见。 */
-private fun DefaultRootComponent.observeSidebarLocation() {
-    scope.launch {
-        combine(activePane, primaryPane.state, secondaryPane.state) { pane, primary, secondary ->
-            if (pane == PaneId.PRIMARY) primary.location else secondary.location
-        }.collect(sidebarDelegate::ensureLocationVisible)
     }
 }
 

@@ -23,6 +23,7 @@ import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.ImageFitMode
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
+import com.oruke.onyx.core.model.SidebarSectionKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneRoleState
@@ -351,6 +352,10 @@ internal sealed interface RootIntent {
 
     data class ToggleSidebarTreeNode(
         val location: String,
+    ) : RootIntent
+
+    data class ToggleSidebarSection(
+        val section: SidebarSectionKey,
     ) : RootIntent
 
     data class RetrySidebarTreeNode(

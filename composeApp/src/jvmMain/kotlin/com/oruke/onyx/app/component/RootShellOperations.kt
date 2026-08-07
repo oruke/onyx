@@ -3,6 +3,7 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
+import com.oruke.onyx.core.model.SidebarSectionKey
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 
 /** @param mode 新布局模式。 */
@@ -64,6 +65,13 @@ internal fun DefaultRootComponent.toggleFavoriteLocation(location: String) {
 /** @param location 待切换展开状态的侧栏位置。 */
 internal fun DefaultRootComponent.toggleSidebarTreeNode(location: String) {
     sidebarDelegate.toggleNode(location)
+}
+
+/** @param section 待切换折叠状态的侧边栏分组。 */
+internal fun DefaultRootComponent.toggleSidebarSection(section: SidebarSectionKey) {
+    val collapsed = settings.value.collapsedSidebarSections
+    val nextCollapsed = if (section in collapsed) collapsed - section else collapsed + section
+    updateSettings(settings.value.copy(collapsedSidebarSections = nextCollapsed))
 }
 
 /** @param location 待重试加载的侧栏位置。 */

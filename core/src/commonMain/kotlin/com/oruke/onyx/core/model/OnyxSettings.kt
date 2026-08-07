@@ -19,6 +19,8 @@ data class OnyxSettings(
     val sidebarVisible: Boolean = true,
     /** 是否在侧边栏显示目录树。 */
     val sidebarTreeVisible: Boolean = true,
+    /** 已折叠的侧边栏分组；缺少该字段的旧配置按全部展开处理。 */
+    val collapsedSidebarSections: Set<SidebarSectionKey> = emptySet(),
     /** 是否显示面板状态栏。 */
     val statusBarVisible: Boolean = true,
     /** 收藏 VFS 位置。 */

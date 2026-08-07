@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.nio.file.FileSystems
-import java.nio.file.Path
 
 /**
  * 侧边栏状态委托，负责目录树和操作系统快速访问位置的加载。
@@ -77,28 +76,6 @@ internal class SidebarDelegate(
         scope.launch {
             loadChildren(location, forceReload = true)
         }
-    }
-
-    /**
-     * 确保指定路径在侧边栏中可见（展开所有祖先节点）。
-     *
-     * @param location 需要在目录树中展开的本地位置。
-     */
-    suspend fun ensureLocationVisible(location: String) {
-        val normalizedLocation = normalizeTreeLocation(location) ?: return
-        buildAncestorLocations(normalizedLocation)
-            .dropLast(1)
-            .forEach { ancestorLocation ->
-                val node = _sidebarTreeState.value.findNode(ancestorLocation) ?: return@forEach
-                if (!node.expanded) {
-                    _sidebarTreeState.value = _sidebarTreeState.value.updateNode(ancestorLocation) { currentNode ->
-                        currentNode.copy(expanded = true)
-                    }
-                }
-                if (node.loadState != SidebarTreeNodeLoadState.READY) {
-                    loadChildren(ancestorLocation)
-                }
-            }
     }
 
     /**
@@ -237,33 +214,4 @@ internal fun SidebarTreeState.updateNode(
     }
 
     return copy(roots = roots.update())
-}
-
-/**
- * 构造从文件系统根目录到目标位置的完整祖先链。
- *
- * @param location 目标本地目录位置。
- * @return 按根目录到目标目录顺序排列的位置列表。
- */
-private fun buildAncestorLocations(location: String): List<String> {
-    val path = Path.of(location).normalize().toAbsolutePath()
-    val chain = ArrayDeque<String>()
-    var current: Path? = path
-    while (current != null) {
-        chain.addFirst(current.toString().ifBlank { "/" })
-        current = current.parent
-    }
-    return chain.toList()
-}
-
-/**
- * 将本地位置规范化为目录树使用的绝对路径。
- *
- * @param location 待规范化位置。
- * @return 规范化位置；非法路径返回 null。
- */
-private fun normalizeTreeLocation(location: String): String? {
-    return runCatching {
-        Path.of(location).normalize().toAbsolutePath().toString().ifBlank { "/" }
-    }.getOrNull()
 }

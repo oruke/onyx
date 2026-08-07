@@ -2,6 +2,7 @@ package com.oruke.onyx.ui
 
 import androidx.compose.runtime.Composable
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
+import com.oruke.onyx.core.model.SidebarSectionKey
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_home
 import onyx.composeapp.generated.resources.label_sidebar_section_quick_access
@@ -19,7 +20,12 @@ internal fun SidebarQuickAccess(
     state: PaneSidebarState,
     actions: PaneSidebarActions,
 ) {
-    SidebarSection(title = stringResource(Res.string.label_sidebar_section_quick_access)) {
+    SidebarSection(
+        section = SidebarSectionKey.QUICK_ACCESS,
+        collapsed = SidebarSectionKey.QUICK_ACCESS in state.collapsedSections,
+        onToggle = actions.onToggleSection,
+        title = stringResource(Res.string.label_sidebar_section_quick_access),
+    ) {
         state.systemQuickAccessLocations.forEach { quickAccessLocation ->
             QuickAccessLocationItem(
                 quickAccessLocation = quickAccessLocation,

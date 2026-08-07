@@ -35,6 +35,7 @@ import com.oruke.onyx.app.component.SidebarTreeNodeLoadState
 import com.oruke.onyx.app.component.SidebarTreeState
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
+import com.oruke.onyx.core.model.SidebarSectionKey
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_edit_connection
@@ -71,6 +72,8 @@ internal data class PaneSidebarState(
     val treeState: SidebarTreeState,
     /** 是否展示目录树。 */
     val showTree: Boolean,
+    /** 已折叠的侧边栏分组。 */
+    val collapsedSections: Set<SidebarSectionKey>,
 )
 
 /** 侧边栏用户操作集合。 */
@@ -91,6 +94,8 @@ internal data class PaneSidebarActions(
     val onToggleTreeNode: (String) -> Unit,
     /** 重试目录树节点。 */
     val onRetryTreeNode: (String) -> Unit,
+    /** 切换侧边栏分组折叠状态。 */
+    val onToggleSection: (SidebarSectionKey) -> Unit,
 )
 
 /**
@@ -125,7 +130,12 @@ internal fun PaneSidebar(
 /** 绘制收藏位置区。 */
 @Composable
 private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarActions) {
-    SidebarSection(title = stringResource(Res.string.label_sidebar_section_favorites)) {
+    SidebarSection(
+        section = SidebarSectionKey.FAVORITES,
+        collapsed = state.isSectionCollapsed(SidebarSectionKey.FAVORITES),
+        onToggle = actions.onToggleSection,
+        title = stringResource(Res.string.label_sidebar_section_favorites),
+    ) {
         if (state.favoriteLocations.isEmpty()) {
             SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_favorites))
         } else {
@@ -146,6 +156,9 @@ private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarAction
 @Composable
 private fun SidebarConnections(state: PaneSidebarState, actions: PaneSidebarActions) {
     SidebarSection(
+        section = SidebarSectionKey.CONNECTIONS,
+        collapsed = state.isSectionCollapsed(SidebarSectionKey.CONNECTIONS),
+        onToggle = actions.onToggleSection,
         title = stringResource(Res.string.label_sidebar_section_connections),
         actionIcon = AllIconsKeys.General.Add,
         actionContentDescription = stringResource(Res.string.action_new_connection),
@@ -179,7 +192,12 @@ private fun SidebarConnections(state: PaneSidebarState, actions: PaneSidebarActi
 @Composable
 private fun SidebarRecentLocations(state: PaneSidebarState, actions: PaneSidebarActions) {
     val visibleLocations = state.recentLocations.filterNot { location -> location == state.location }
-    SidebarSection(title = stringResource(Res.string.label_sidebar_section_recent)) {
+    SidebarSection(
+        section = SidebarSectionKey.RECENT,
+        collapsed = state.isSectionCollapsed(SidebarSectionKey.RECENT),
+        onToggle = actions.onToggleSection,
+        title = stringResource(Res.string.label_sidebar_section_recent),
+    ) {
         if (visibleLocations.isEmpty()) {
             SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_recent))
         } else {
@@ -199,7 +217,12 @@ private fun SidebarRecentLocations(state: PaneSidebarState, actions: PaneSidebar
 /** 绘制可展开目录树区。 */
 @Composable
 private fun SidebarDirectoryTree(state: PaneSidebarState, actions: PaneSidebarActions) {
-    SidebarSection(title = stringResource(Res.string.label_sidebar_section_tree)) {
+    SidebarSection(
+        section = SidebarSectionKey.TREE,
+        collapsed = state.isSectionCollapsed(SidebarSectionKey.TREE),
+        onToggle = actions.onToggleSection,
+        title = stringResource(Res.string.label_sidebar_section_tree),
+    ) {
         SidebarTree(
             selectedLocation = state.location,
             treeState = state.treeState,
@@ -220,8 +243,14 @@ internal fun PaneSidebarActions.activateAndOpen(location: String) {
     onOpenLocation(location)
 }
 
+private fun PaneSidebarState.isSectionCollapsed(section: SidebarSectionKey): Boolean =
+    section in collapsedSections
+
 @Composable
 internal fun SidebarSection(
+    section: SidebarSectionKey,
+    collapsed: Boolean,
+    onToggle: (SidebarSectionKey) -> Unit,
     title: String,
     actionIcon: IconKey? = null,
     actionContentDescription: String? = null,
@@ -230,10 +259,17 @@ internal fun SidebarSection(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onToggle(section) },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            Icon(
+                key = if (collapsed) AllIconsKeys.General.ArrowRight else AllIconsKeys.General.ArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(10.dp),
+            )
             Text(
                 text = title,
                 modifier = Modifier.weight(1f),
@@ -251,7 +287,7 @@ internal fun SidebarSection(
                 }
             }
         }
-        content()
+        if (!collapsed) content()
     }
 }
 

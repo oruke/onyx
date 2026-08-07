@@ -7,6 +7,8 @@ import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.core.model.S3AddressingStyle
 import com.oruke.onyx.core.model.S3ConnectionConfig
 import com.oruke.onyx.core.model.S3ProviderPreset
+import com.oruke.onyx.core.model.SidebarSectionKey
+import kotlinx.serialization.json.Json
 import kotlinx.coroutines.test.runTest
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
@@ -74,6 +76,14 @@ class SqliteSettingsRepositoryTest {
         assertNull(settingsJson)
     }
 
+    /** 验证旧设置文档缺少侧边栏折叠字段时仍使用全部展开的默认语义。 */
+    @Test
+    fun oldSettingsDocumentDefaultsSidebarSectionsToExpanded() {
+        val settings = Json.decodeFromString<OnyxSettings>("{}")
+
+        assertEquals(emptySet(), settings.collapsedSidebarSections)
+    }
+
     /**
      * 创建指向临时 SQLite 文件的数据库服务。
      *
@@ -120,6 +130,7 @@ class SqliteSettingsRepositoryTest {
                     savePolicy = RemoteConnectionSavePolicy.SESSION,
                 ),
             ),
+            collapsedSidebarSections = setOf(SidebarSectionKey.FAVORITES, SidebarSectionKey.TREE),
         )
     }
 

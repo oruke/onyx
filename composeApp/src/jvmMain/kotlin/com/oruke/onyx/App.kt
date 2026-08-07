@@ -365,6 +365,7 @@ private fun AppSidebar(
             remoteConnections = state.settings.remoteConnections,
             treeState = state.sidebarTreeState,
             showTree = state.settings.sidebarTreeVisible,
+            collapsedSections = state.settings.collapsedSidebarSections,
         ),
         actions = PaneSidebarActions(
             locationLabel = rootComponent::locationLabel,
@@ -375,6 +376,7 @@ private fun AppSidebar(
             onEditRemoteConnection = { dispatch(RootIntent.EditRemoteConnection(it)) },
             onToggleTreeNode = { dispatch(RootIntent.ToggleSidebarTreeNode(it)) },
             onRetryTreeNode = { dispatch(RootIntent.RetrySidebarTreeNode(it)) },
+            onToggleSection = { dispatch(RootIntent.ToggleSidebarSection(it)) },
         ),
     )
     Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))

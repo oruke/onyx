@@ -36,6 +36,7 @@ private fun DefaultRootComponent.dispatchRootSettingsIntent(intent: RootIntent):
         RootIntent.CleanupInvalidLocations -> { cleanupInvalidLocations(); true }
         is RootIntent.UpdateSettings -> { updateSettings(intent.settings); true }
         is RootIntent.ToggleFavoriteLocation -> { toggleFavoriteLocation(intent.location); true }
+        is RootIntent.ToggleSidebarSection -> { toggleSidebarSection(intent.section); true }
         RootIntent.TogglePreviewPane -> { togglePreviewPane(); true }
         else -> false
     }
