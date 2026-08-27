@@ -4,16 +4,21 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +26,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.verticalResizePointerIcon
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_clear_finished_tasks
 import onyx.composeapp.generated.resources.label_task_center
@@ -44,10 +54,19 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
 
+/** 拖拽手柄高度（dp）。 */
+private const val DRAG_HANDLE_HEIGHT_DP = 16
+/** 任务中心抽屉允许的最小窗口高度比例。 */
+private const val TASK_DRAWER_MIN_HEIGHT_FRACTION = 0.15f
+/** 任务中心抽屉允许的最大窗口高度比例。 */
+private const val TASK_DRAWER_MAX_HEIGHT_FRACTION = 0.6f
+
 /**
- * 主窗口底部任务栏与可展开任务中心。
+ * 主窗口底部任务栏与可展开任务中心抽屉。
  *
  * @param tasks 当前任务快照。
+ * @param drawerHeightFraction 抽屉高度占宿主窗口的比例（0.15f–0.6f）。
+ * @param onSetDrawerHeight 拖拽手柄更新高度比例的回调。
  * @param onPauseTask 暂停任务回调。
  * @param onResumeTask 恢复任务回调。
  * @param onRetryTask 重试任务回调。
@@ -59,6 +78,8 @@ import kotlin.math.roundToInt
 @Composable
 internal fun JobsBar(
     tasks: List<BackgroundTask>,
+    drawerHeightFraction: Float,
+    onSetDrawerHeight: (Float) -> Unit,
     onPauseTask: (String) -> Unit,
     onResumeTask: (String) -> Unit,
     onRetryTask: (String) -> Unit,
@@ -70,8 +91,57 @@ internal fun JobsBar(
     val palette = LocalOnyxPalette.current
     val summary = remember(tasks) { tasks.toTaskCenterSummary() }
     var detailPanelExpanded by remember { mutableStateOf(false) }
+    var parentHeightPx by remember { mutableStateOf(1f) }
+    val drawerHeightModifier = if (detailPanelExpanded) {
+        Modifier.fillMaxHeight(
+            drawerHeightFraction.coerceIn(
+                TASK_DRAWER_MIN_HEIGHT_FRACTION,
+                TASK_DRAWER_MAX_HEIGHT_FRACTION,
+            ),
+        )
+    } else {
+        Modifier
+    }
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(drawerHeightModifier)
+            .onGloballyPositioned { coordinates ->
+                parentHeightPx = (coordinates.parentCoordinates?.size?.height?.toFloat() ?: 1f).coerceAtLeast(1f)
+            }
+            .background(palette.surface.copy(alpha = 0.95f))
+            .border(1.dp, palette.outlineVariant),
+    ) {
+        if (detailPanelExpanded) {
+            // 顶部拖拽手柄仅在任务中心展开后出现，折叠任务栏不占用抽屉高度。
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(DRAG_HANDLE_HEIGHT_DP.dp)
+                    .pointerHoverIcon(verticalResizePointerIcon())
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures { _, dragAmount ->
+                            val deltaFraction = dragAmount / parentHeightPx
+                            val newFraction = (drawerHeightFraction - deltaFraction).coerceIn(
+                                TASK_DRAWER_MIN_HEIGHT_FRACTION,
+                                TASK_DRAWER_MAX_HEIGHT_FRACTION,
+                            )
+                            onSetDrawerHeight(newFraction)
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(palette.outlineVariant),
+                )
+            }
+        }
+
         TaskCenterCollapsedBar(
             summary = summary,
             expanded = detailPanelExpanded,
@@ -83,6 +153,7 @@ internal fun JobsBar(
             visible = detailPanelExpanded && tasks.isNotEmpty(),
             enter = expandVertically(),
             exit = shrinkVertically(),
+            modifier = Modifier.weight(1f, fill = false),
         ) {
             Column(
                 modifier = Modifier

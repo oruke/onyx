@@ -107,20 +107,30 @@ internal class ArchiveCompressionDelegate(
                     progress = null,
                 )
                 throw failure
+            } catch (failure: VfsProviderException) {
+                OnyxLogger.error("ArchiveCompressionDelegate", "创建 ZIP 压缩包失败", failure)
+                markArchiveCreationFailed(taskId, failure.error.toI18nMessage())
             } catch (failure: Exception) {
                 OnyxLogger.error("ArchiveCompressionDelegate", "创建 ZIP 压缩包失败", failure)
-                taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.FAILED,
-                    detail = if (failure is VfsProviderException) {
-                        failure.error.toI18nMessage()
-                    } else {
-                        I18nMessage(MessageKey.MSG_COMPRESS_FAILED)
-                    },
-                    progress = null,
-                )
+                markArchiveCreationFailed(taskId, I18nMessage(MessageKey.MSG_COMPRESS_FAILED))
             }
         }
+    }
+
+    /**
+     * 将 ZIP 创建失败同步为后台任务的可见失败状态。
+     *
+     * @param taskId 待更新的后台任务标识。
+     * @param detail 面向用户展示的失败原因。
+     * @return 无返回值。
+     */
+    private fun markArchiveCreationFailed(taskId: String, detail: I18nMessage) {
+        taskOrchestrator.unregisterJob(taskId)
+        taskOrchestrator.updateTask(
+            taskId = taskId,
+            status = BackgroundTaskStatus.FAILED,
+            detail = detail,
+            progress = null,
+        )
     }
 }

@@ -15,6 +15,7 @@ import com.oruke.onyx.app.component.delegate.RootFileOperationHistoryFacade
 import com.oruke.onyx.app.component.delegate.RootRemoteConnectionManager
 import com.oruke.onyx.app.component.delegate.RootSearchDelegate
 import com.oruke.onyx.app.component.delegate.SidebarDelegate
+import com.oruke.onyx.app.component.delegate.jvmFilesystemRoots
 import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
@@ -247,6 +248,9 @@ internal class DefaultRootComponent(
         activatePane = ::activatePane,
         paneComponent = ::paneComponent,
         getActivePane = { activePane.value },
+        settings = { settings.value },
+        filesystemRoots = { jvmFilesystemRoots() },
+        onRecordSearchHistory = ::recordSearchHistory,
     )
 
     /** 远程连接和认证委托。 */

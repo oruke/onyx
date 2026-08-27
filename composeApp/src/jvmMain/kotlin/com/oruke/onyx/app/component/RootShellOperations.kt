@@ -67,6 +67,27 @@ internal fun DefaultRootComponent.toggleSidebarTreeNode(location: String) {
     sidebarDelegate.toggleNode(location)
 }
 
+/** @param height 新搜索抽屉高度比例（0.2f–0.8f），越界时收敛到合法范围。 */
+internal fun DefaultRootComponent.setSearchDrawerHeight(height: Float) {
+    updateSettings(settings.value.copy(searchDrawerHeight = height))
+}
+
+/** @param height 新任务中心抽屉高度比例（0.15f–0.6f），越界时收敛到合法范围。 */
+internal fun DefaultRootComponent.setJobsDrawerHeight(height: Float) {
+    updateSettings(settings.value.copy(jobsDrawerHeight = height))
+}
+
+/** 清空搜索历史。 */
+internal fun DefaultRootComponent.clearSearchHistory() {
+    updateSettings(settings.value.copy(searchHistory = emptyList()))
+}
+
+/** @param query 成功执行的查询文本，记录到搜索历史。 */
+internal fun DefaultRootComponent.recordSearchHistory(query: String) {
+    val next = settings.value.recordSearchQuery(query)
+    if (next != settings.value) updateSettings(next)
+}
+
 /** @param section 待切换折叠状态的侧边栏分组。 */
 internal fun DefaultRootComponent.toggleSidebarSection(section: SidebarSectionKey) {
     val collapsed = settings.value.collapsedSidebarSections

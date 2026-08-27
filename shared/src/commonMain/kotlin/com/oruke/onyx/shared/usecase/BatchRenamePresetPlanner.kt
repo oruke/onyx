@@ -46,9 +46,8 @@ class BatchRenamePresetPlanner {
         preset: BatchRenamePreset,
     ): Result<BatchRenamePreview> {
         return runCatching {
-            val regex = preset.pattern.takeIf { preset.useRegex && it.isNotBlank() }?.toRegex()
             val items = entries.mapIndexed { index, entry ->
-                val newName = renderName(entry, index, preset, regex)
+                val newName = renderName(entry, index, preset)
                 BatchRenamePreviewItem(
                     entry = entry,
                     newName = newName,
@@ -69,22 +68,25 @@ class BatchRenamePresetPlanner {
      * @param entry 原始条目。
      * @param index 条目序号。
      * @param preset 批量重命名预设。
-     * @param regex 可选正则表达式。
      * @return 目标名称。
      */
     private fun renderName(
         entry: VFile,
         index: Int,
         preset: BatchRenamePreset,
-        regex: Regex?,
     ): String {
         val baseName = entry.name.substringBeforeLast('.', entry.name)
         val extension = entry.name.substringAfterLast('.', missingDelimiterValue = "")
         val sequence = (preset.startIndex + index).toString().padStart(preset.padding, '0')
-        val replaced = if (regex == null) {
+        val replaced = if (preset.pattern.isEmpty()) {
             preset.replacement
         } else {
-            regex.replace(entry.name, preset.replacement)
+            BatchRenameNameTransformations.applyFindReplace(
+                name = entry.name,
+                findText = preset.pattern,
+                replaceText = preset.replacement,
+                useRegex = preset.useRegex,
+            ).getOrThrow()
         }
         val rendered = replaced
             .replace("{name}", baseName)

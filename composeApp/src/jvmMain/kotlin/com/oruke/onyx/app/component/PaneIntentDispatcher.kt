@@ -23,16 +23,18 @@ internal fun DefaultPaneComponent.dispatchPaneIntent(intent: PaneIntent) {
  * @return 已处理时返回 `true`。
  */
 private fun DefaultPaneComponent.dispatchNavigationIntent(intent: PaneIntent): Boolean {
-    return when (intent) {
-        PaneIntent.Refresh -> true.also { refresh() }
-        PaneIntent.GoBack -> true.also { goBack() }
-        PaneIntent.GoForward -> true.also { goForward() }
-        PaneIntent.GoUp -> true.also { goUp() }
-        is PaneIntent.OpenDirectory -> true.also { openDirectory(intent.location) }
-        is PaneIntent.OpenEntry -> true.also { openEntry(intent.entry) }
-        is PaneIntent.ToggleInlineExpand -> true.also { toggleInlineExpand(intent.directoryLocation) }
-        else -> false
+    when (intent) {
+        PaneIntent.Refresh -> refresh()
+        PaneIntent.GoBack -> goBack()
+        PaneIntent.GoForward -> goForward()
+        PaneIntent.GoUp -> goUp()
+        is PaneIntent.OpenDirectory -> openDirectory(intent.location)
+        is PaneIntent.OpenDirectoryAndSelect -> openDirectoryAndSelect(intent.location, intent.entryName)
+        is PaneIntent.OpenEntry -> openEntry(intent.entry)
+        is PaneIntent.ToggleInlineExpand -> toggleInlineExpand(intent.directoryLocation)
+        else -> return false
     }
+    return true
 }
 
 /**

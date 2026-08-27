@@ -38,47 +38,68 @@ class ZipArchiveCreationService(
         request: ZipArchiveCreationRequest,
         progressSink: ZipArchiveCreationProgressSink = ZipArchiveCreationProgressSink.NoOp,
     ): Result<ZipArchiveCreationResult> = withContext(Dispatchers.IO) {
+        val result = runCatching {
+            createArchive(request, progressSink)
+        }
+        result.exceptionOrNull()?.let(::propagateCancellation)
+        result
+    }
+
+    /**
+     * 在本地临时文件中生成 ZIP，并将其流式写入目标 VFS provider。
+     *
+     * @param request ZIP 创建请求。
+     * @param progressSink 压缩文件完成时的进度接收器。
+     * @return 目标归档名称与已写入条目数量。
+     */
+    private suspend fun createArchive(
+        request: ZipArchiveCreationRequest,
+        progressSink: ZipArchiveCreationProgressSink,
+    ): ZipArchiveCreationResult {
+        val archiveName = validateArchiveName(request.archiveName).fileNameOrThrow()
+        require(request.entries.isNotEmpty()) { "至少需要选择一个文件或目录" }
+        require(request.targetDirectoryLocation.isNotBlank()) { "压缩包目标目录不能为空" }
+        val targetContentService = contentServices.firstOrNull { service ->
+            service.supports(request.targetDirectoryLocation)
+        } ?: error("当前目录不支持写入压缩包: ${request.targetDirectoryLocation}")
+        val temporaryArchive = Files.createTempFile(TEMPORARY_ARCHIVE_PREFIX, ZIP_EXTENSION)
         try {
-            val archiveName = validateArchiveName(request.archiveName).fileNameOrThrow()
-            require(request.entries.isNotEmpty()) { "至少需要选择一个文件或目录" }
-            require(request.targetDirectoryLocation.isNotBlank()) { "压缩包目标目录不能为空" }
-            val targetContentService = contentServices.firstOrNull { service ->
-                service.supports(request.targetDirectoryLocation)
-            } ?: error("当前目录不支持写入压缩包: ${request.targetDirectoryLocation}")
-            val temporaryArchive = Files.createTempFile(TEMPORARY_ARCHIVE_PREFIX, ZIP_EXTENSION)
-            try {
-                val entryCount = ZipOutputStream(Files.newOutputStream(temporaryArchive)).use { output ->
-                    ZipArchiveEntryWriter(
-                        fileRepository = fileRepository,
-                        contentServices = contentServices,
-                        output = output,
-                        progressSink = progressSink,
-                    ).writeEntries(request.entries)
-                }
-                val targetEntry = targetContentService.writeFile(
-                    parentLocation = request.targetDirectoryLocation,
-                    name = archiveName,
-                    chunks = temporaryArchive.readArchiveChunks(),
-                    conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
-                ).getOrThrow()
-                Result.success(
-                    ZipArchiveCreationResult(
-                        archiveName = targetEntry?.name ?: archiveName,
-                        entryCount = entryCount,
-                    )
-                )
-            } finally {
-                Files.deleteIfExists(temporaryArchive)
+            val entryCount = ZipOutputStream(Files.newOutputStream(temporaryArchive)).use { output ->
+                ZipArchiveEntryWriter(
+                    fileRepository = fileRepository,
+                    contentServices = contentServices,
+                    output = output,
+                    progressSink = progressSink,
+                ).writeEntries(request.entries)
             }
-        } catch (failure: CancellationException) {
-            // 取消必须沿协程链继续传播，不能被包装成普通压缩失败。
-            throw failure
-        } catch (failure: Exception) {
-            Result.failure(failure)
+            val targetEntry = targetContentService.writeFile(
+                parentLocation = request.targetDirectoryLocation,
+                name = archiveName,
+                chunks = temporaryArchive.readArchiveChunks(),
+                conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+            ).getOrThrow()
+            return ZipArchiveCreationResult(
+                archiveName = targetEntry?.name ?: archiveName,
+                entryCount = entryCount,
+            )
+        } finally {
+            Files.deleteIfExists(temporaryArchive)
         }
     }
 
+    /**
+     * 将被 [runCatching] 包装的协程取消恢复为正常取消信号。
+     *
+     * @param failure 压缩过程中捕获到的异常。
+     * @return 无返回值。
+     */
+    private fun propagateCancellation(failure: Throwable) {
+        if (failure is CancellationException) throw failure
+    }
+
+    /** ZIP 归档名称校验与常量定义。 */
     companion object {
+
         /**
          * 校验并规范化用户输入的 ZIP 文件名。
          *
@@ -87,32 +108,75 @@ class ZipArchiveCreationService(
          */
         fun validateArchiveName(draft: String): ZipArchiveNameValidation {
             val normalized = draft.trim()
-            if (normalized.isBlank()) return ZipArchiveNameValidation.Empty
-            if (
-                normalized == "." ||
-                normalized == ".." ||
-                normalized.any { character ->
-                    character in INVALID_ARCHIVE_FILE_NAME_CHARACTERS || character.code < MIN_PRINTABLE_CODE
-                } ||
-                normalized.endsWith('.') ||
-                normalized.endsWith(' ')
-            ) {
-                return ZipArchiveNameValidation.Invalid
+            val fileName = normalized
+                .takeIf(String::isNotBlank)
+                ?.takeUnless(::hasInvalidArchiveName)
+                ?.let(::appendZipExtension)
+                ?.takeIf(::hasArchiveNameStem)
+            return when {
+                normalized.isBlank() -> ZipArchiveNameValidation.Empty
+                fileName == null -> ZipArchiveNameValidation.Invalid
+                else -> ZipArchiveNameValidation.Valid(fileName)
             }
-            val fileName = if (normalized.endsWith(ZIP_EXTENSION, ignoreCase = true)) {
-                normalized
+        }
+
+        /**
+         * 判断归档名称是否包含跨协议写入不支持的形式。
+         *
+         * @param fileName 已去除首尾空白的用户输入。
+         * @return 名称不适合作为归档文件名时返回 true。
+         */
+        private fun hasInvalidArchiveName(fileName: String): Boolean {
+            return when {
+                fileName in RESERVED_ARCHIVE_NAMES -> true
+                fileName.lastOrNull() in INVALID_ARCHIVE_NAME_ENDINGS -> true
+                else -> fileName.any(::isInvalidArchiveCharacter)
+            }
+        }
+
+        /**
+         * 判断单个字符是否不允许出现在跨协议归档文件名中。
+         *
+         * @param character 待校验的文件名字符。
+         * @return 字符不可用于归档文件名时返回 true。
+         */
+        private fun isInvalidArchiveCharacter(character: Char): Boolean {
+            return character in INVALID_ARCHIVE_FILE_NAME_CHARACTERS ||
+                character.code < MIN_PRINTABLE_CODE
+        }
+
+        /**
+         * 为有效归档名称补齐 ZIP 扩展名。
+         *
+         * @param fileName 已完成字符合法性校验的归档名称。
+         * @return 已包含 `.zip` 扩展名的归档名称。
+         */
+        private fun appendZipExtension(fileName: String): String {
+            return if (fileName.endsWith(ZIP_EXTENSION, ignoreCase = true)) {
+                fileName
             } else {
-                "$normalized$ZIP_EXTENSION"
+                "$fileName$ZIP_EXTENSION"
             }
-            return if (fileName.dropLast(ZIP_EXTENSION.length).isBlank()) {
-                ZipArchiveNameValidation.Invalid
-            } else {
-                ZipArchiveNameValidation.Valid(fileName)
-            }
+        }
+
+        /**
+         * 判断补齐扩展名后是否仍有非空文件名主体。
+         *
+         * @param fileName 已包含 `.zip` 扩展名的归档名称。
+         * @return 文件名主体非空时返回 true。
+         */
+        private fun hasArchiveNameStem(fileName: String): Boolean {
+            return fileName.dropLast(ZIP_EXTENSION.length).isNotBlank()
         }
 
         /** ZIP 文件扩展名。 */
         private const val ZIP_EXTENSION = ".zip"
+
+        /** 不可作为独立归档文件名的导航保留名称。 */
+        private val RESERVED_ARCHIVE_NAMES = setOf(".", "..")
+
+        /** 不可出现在归档名称末尾的跨协议兼容性字符。 */
+        private val INVALID_ARCHIVE_NAME_ENDINGS = setOf('.', ' ')
 
         /** Windows 与跨协议位置均不允许的文件名字符。 */
         private const val INVALID_ARCHIVE_FILE_NAME_CHARACTERS = "\\/:*?\"<>|"

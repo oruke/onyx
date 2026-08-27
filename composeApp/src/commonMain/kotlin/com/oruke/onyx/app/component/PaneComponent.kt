@@ -194,6 +194,17 @@ internal sealed interface PaneIntent {
         val location: String,
     ) : PaneIntent
 
+    /**
+     * 打开指定目录，并在目录加载完成后选中并滚动到指定名称的条目。
+     *
+     * @property location 目标目录 VFS 位置。
+     * @property entryName 待聚焦条目的显示名称。
+     */
+    data class OpenDirectoryAndSelect(
+        val location: String,
+        val entryName: String,
+    ) : PaneIntent
+
     data class OpenEntry(
         val entry: VFile,
     ) : PaneIntent

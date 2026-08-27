@@ -61,6 +61,12 @@ data class OnyxSettings(
     val batchRenameWindowWidth: Int = 800,
     /** 批量重命名窗口高度。 */
     val batchRenameWindowHeight: Int = 620,
+    /** 全局搜索抽屉高度占窗口的比例（0.2f–0.8f，默认 0.45f）。 */
+    val searchDrawerHeight: Float = 0.45f,
+    /** 任务中心抽屉高度占窗口的比例（0.15f–0.6f，默认 0.35f）。 */
+    val jobsDrawerHeight: Float = 0.35f,
+    /** 全局搜索历史，最新在前，上限 20 条。 */
+    val searchHistory: List<String> = emptyList(),
 )
 
 @Serializable

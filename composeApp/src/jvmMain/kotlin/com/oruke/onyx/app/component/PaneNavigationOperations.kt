@@ -64,6 +64,19 @@ internal fun DefaultPaneComponent.openDirectory(location: String) {
 }
 
 /**
+ * 打开指定目录，并在加载完成后聚焦选中指定名称的条目。
+ *
+ * @param location 目标目录 VFS 位置。
+ * @param entryName 待聚焦条目的显示名称。
+ */
+internal fun DefaultPaneComponent.openDirectoryAndSelect(location: String, entryName: String) {
+    activeTab()?.let { tab ->
+        pendingFocusEntryName[tab.id] = entryName
+    }
+    navigateActiveTab(location, recordHistory = true)
+}
+
+/**
  * 根据条目类型打开目录、压缩包、图片或外部程序。
  *
  * @param entry 待打开条目。

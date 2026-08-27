@@ -61,6 +61,8 @@ internal fun BoundPaneSurface(
         onBeginCreateDirectory = { dispatch(RootIntent.BeginCreateDirectoriesInPane(paneId)) },
         onToggleFavoriteLocation = { location -> dispatch(RootIntent.ToggleFavoriteLocation(location)) },
         onOpenSettings = { dispatch(RootIntent.OpenSettings) },
+        onShowQuickOpen = { dispatch(RootIntent.ShowQuickOpen) },
+        onShowSearchPanel = { dispatch(RootIntent.ShowSearchPanel) },
         supportsContextMenuOpenWith = rootComponent::supportsContextMenuOpenWith,
         onFileContextMenuCommand = { command, entries ->
             dispatch(RootIntent.ExecuteFileContextMenuCommand(command, entries))

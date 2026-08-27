@@ -17,6 +17,7 @@ import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneContextMenuCommandController
 import com.oruke.onyx.app.component.PaneContextMenuExternalActions
 import com.oruke.onyx.app.component.PaneIntent
+import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
@@ -147,8 +148,21 @@ internal class PaneSurfaceRuntime(
      * @return 命令已处理时返回 `true`。
      */
     fun executeCommand(command: OnyxCommand): Boolean {
-        val paneCommand = command.toPaneCommand() ?: return false
-        return commands.execute(paneCommand)
+        val paneCommand = command.toPaneCommand()
+        if (paneCommand != null) {
+            return commands.execute(paneCommand)
+        }
+        return when (command) {
+            OnyxCommand.QuickOpen -> {
+                model.actions.onShowQuickOpen()
+                true
+            }
+            OnyxCommand.ShowSearchPanel -> {
+                model.actions.onShowSearchPanel()
+                true
+            }
+            else -> false
+        }
     }
 
     /**
@@ -158,8 +172,15 @@ internal class PaneSurfaceRuntime(
      * @return 命令可执行时返回 `true`。
      */
     fun isCommandEnabled(command: OnyxCommand): Boolean {
-        val paneCommand = command.toPaneCommand() ?: return false
-        return commands.isEnabled(paneCommand)
+        val paneCommand = command.toPaneCommand()
+        if (paneCommand != null) {
+            return commands.isEnabled(paneCommand)
+        }
+        return when (command) {
+            OnyxCommand.QuickOpen,
+            OnyxCommand.ShowSearchPanel -> true
+            else -> false
+        }
     }
 
     /** 打开过滤输入框。 */

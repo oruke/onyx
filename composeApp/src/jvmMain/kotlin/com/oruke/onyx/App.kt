@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -57,7 +58,11 @@ import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
 import com.oruke.onyx.ui.RemoteConnectionsDialog
 import com.oruke.onyx.ui.RemoteCredentialsDialog
+import com.oruke.onyx.app.component.SearchPanelMode
+import com.oruke.onyx.ui.QuickOpenPanel
 import com.oruke.onyx.ui.SearchPanel
+import com.oruke.onyx.ui.SearchPanelActions
+import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.SettingsDialog
 import com.oruke.onyx.ui.StatusBar
 import com.oruke.onyx.ui.JobsBar
@@ -296,19 +301,23 @@ private fun AppWorkspace(
     dragBindings: PaneDragBindings,
     onToggleFavoriteLocation: (String) -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(LocalOnyxPalette.current.appBackground),
-    ) {
-        AppMainArea(
-            state = state,
-            rootComponent = rootComponent,
-            dragBindings = dragBindings,
-            onToggleFavoriteLocation = onToggleFavoriteLocation,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        )
-        AppSearchPanel(state, rootComponent)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().background(LocalOnyxPalette.current.appBackground),
+        ) {
+            AppMainArea(
+                state = state,
+                rootComponent = rootComponent,
+                dragBindings = dragBindings,
+                onToggleFavoriteLocation = onToggleFavoriteLocation,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            AppStatusBar(state, rootComponent)
+        }
+
         AppJobsBar(state, rootComponent::dispatch)
-        AppStatusBar(state, rootComponent)
+        AppSearchPanel(state, rootComponent)
+        AppQuickOpenOverlay(state, rootComponent)
     }
 }
 
@@ -520,16 +529,53 @@ private fun AppPreviewPanel(state: RootState, rootComponent: RootComponent) {
  */
 @Composable
 private fun AppSearchPanel(state: RootState, rootComponent: RootComponent) {
-    if (!state.searchState.visible) return
+    if (!state.searchState.visible || state.searchState.mode != SearchPanelMode.SEARCH_PANEL) return
     val dispatch = rootComponent::dispatch
-    SearchPanel(
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        SearchPanel(
+            state = state.searchState,
+            presentation = SearchPanelPresentation(
+                drawerHeightFraction = state.settings.searchDrawerHeight,
+                searchHistory = state.settings.searchHistory,
+                locationLabel = rootComponent::locationLabel,
+            ),
+            actions = SearchPanelActions(
+                onQueryChange = { dispatch(RootIntent.UpdateSearchQuery(it)) },
+                onSearch = { dispatch(RootIntent.ExecuteSearch) },
+                onCancel = { dispatch(RootIntent.CancelSearch) },
+                onClose = { dispatch(RootIntent.CloseSearchPanel) },
+                onOpenResult = { dispatch(RootIntent.OpenSearchResult(it)) },
+                onOpenResultInFolder = { dispatch(RootIntent.OpenSearchResultInFolder(it)) },
+                onUpdateScope = { dispatch(RootIntent.UpdateSearchScope(it)) },
+                onUpdateFilters = { dispatch(RootIntent.UpdateSearchFilters(it)) },
+                onSetDrawerHeight = { dispatch(RootIntent.SetSearchDrawerHeight(it)) },
+                onClearHistory = { dispatch(RootIntent.ClearSearchHistory) },
+            ),
+        )
+    }
+}
+
+/**
+ * 在 Quick Open 模式启用时显示浮层搜索。
+ *
+ * @param state 根组件当前状态。
+ * @param rootComponent 根组件业务接口。
+ */
+@Composable
+private fun AppQuickOpenOverlay(state: RootState, rootComponent: RootComponent) {
+    if (!state.searchState.visible || state.searchState.mode != SearchPanelMode.QUICK_OPEN) return
+    val dispatch = rootComponent::dispatch
+    QuickOpenPanel(
         state = state.searchState,
         locationLabel = rootComponent::locationLabel,
         onQueryChange = { dispatch(RootIntent.UpdateSearchQuery(it)) },
-        onSearch = { dispatch(RootIntent.ExecuteSearch) },
-        onCancel = { dispatch(RootIntent.CancelSearch) },
-        onClose = { dispatch(RootIntent.CloseSearchPanel) },
+        onExecuteSearch = { dispatch(RootIntent.ExecuteSearch) },
+        onClose = { dispatch(RootIntent.CloseQuickOpen) },
         onOpenResult = { dispatch(RootIntent.OpenSearchResult(it)) },
+        onOpenResultInFolder = { dispatch(RootIntent.OpenSearchResultInFolder(it)) },
     )
 }
 
@@ -542,15 +588,22 @@ private fun AppSearchPanel(state: RootState, rootComponent: RootComponent) {
 @Composable
 private fun AppJobsBar(state: RootState, dispatch: (RootIntent) -> Unit) {
     if (state.tasks.isEmpty()) return
-    JobsBar(
-        tasks = state.tasks,
-        onPauseTask = { dispatch(RootIntent.PauseTask(it)) },
-        onResumeTask = { dispatch(RootIntent.ResumeTask(it)) },
-        onRetryTask = { dispatch(RootIntent.RetryTask(it)) },
-        onCancelTask = { dispatch(RootIntent.CancelTask(it)) },
-        onDismissTask = { dispatch(RootIntent.DismissTask(it)) },
-        onClearAllTasks = { dispatch(RootIntent.ClearAllTasks) },
-    )
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        JobsBar(
+            tasks = state.tasks,
+            drawerHeightFraction = state.settings.jobsDrawerHeight,
+            onSetDrawerHeight = { dispatch(RootIntent.SetJobsDrawerHeight(it)) },
+            onPauseTask = { dispatch(RootIntent.PauseTask(it)) },
+            onResumeTask = { dispatch(RootIntent.ResumeTask(it)) },
+            onRetryTask = { dispatch(RootIntent.RetryTask(it)) },
+            onCancelTask = { dispatch(RootIntent.CancelTask(it)) },
+            onDismissTask = { dispatch(RootIntent.DismissTask(it)) },
+            onClearAllTasks = { dispatch(RootIntent.ClearAllTasks) },
+        )
+    }
 }
 
 /**

@@ -12,6 +12,7 @@ internal fun DefaultRootComponent.dispatchRootIntent(intent: RootIntent) {
         dispatchRootPaneIntent(intent) -> Unit
         dispatchRootDialogIntent(intent) -> Unit
         dispatchRootSearchIntent(intent) -> Unit
+        dispatchRootSearchSettingsIntent(intent) -> Unit
         dispatchRootTransferIntent(intent) -> Unit
         dispatchRootArchiveIntent(intent) -> Unit
         dispatchRootTaskIntent(intent) -> Unit
@@ -115,11 +116,31 @@ private fun DefaultRootComponent.dispatchRootSearchIntent(intent: RootIntent): B
     return when (intent) {
         RootIntent.ShowSearchPanel -> { searchDelegate.showSearchPanel(); true }
         RootIntent.CloseSearchPanel -> { searchDelegate.closeSearchPanel(); true }
+        RootIntent.ShowQuickOpen -> { searchDelegate.showQuickOpen(); true }
+        RootIntent.CloseQuickOpen -> { searchDelegate.closeSearchPanel(); true }
         is RootIntent.UpdateSearchQuery -> { searchDelegate.updateSearchQuery(intent.query); true }
         RootIntent.ExecuteSearch -> { searchDelegate.executeSearch(); true }
         RootIntent.CancelSearch -> { searchDelegate.cancelSearch(); true }
         is RootIntent.OpenSearchResult -> { searchDelegate.openSearchResult(intent.entry); true }
         RootIntent.OpenSearchResultsAsCollection -> { searchDelegate.openSearchResultsAsCollection(); true }
+        is RootIntent.OpenSearchResultInFolder -> { searchDelegate.openSearchResultInFolder(intent.entry); true }
+        is RootIntent.UpdateSearchScope -> { searchDelegate.updateSearchScope(intent.scope); true }
+        is RootIntent.UpdateSearchFilters -> { searchDelegate.updateSearchFilters(intent.filters); true }
+        else -> false
+    }
+}
+
+/**
+ * 派发搜索抽屉高度与搜索历史设置 intent。
+ *
+ * @param intent 待处理 intent。
+ * @return 已处理时返回 `true`。
+ */
+private fun DefaultRootComponent.dispatchRootSearchSettingsIntent(intent: RootIntent): Boolean {
+    return when (intent) {
+        is RootIntent.SetSearchDrawerHeight -> { setSearchDrawerHeight(intent.height); true }
+        is RootIntent.SetJobsDrawerHeight -> { setJobsDrawerHeight(intent.height); true }
+        RootIntent.ClearSearchHistory -> { clearSearchHistory(); true }
         else -> false
     }
 }

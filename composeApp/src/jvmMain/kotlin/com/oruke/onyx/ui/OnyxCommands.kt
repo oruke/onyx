@@ -25,10 +25,12 @@ import onyx.composeapp.generated.resources.action_new_file
 import onyx.composeapp.generated.resources.action_open
 import onyx.composeapp.generated.resources.action_open_settings
 import onyx.composeapp.generated.resources.action_paste
+import onyx.composeapp.generated.resources.action_quick_open
 import onyx.composeapp.generated.resources.action_redo
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.action_rename
 import onyx.composeapp.generated.resources.action_select_all
+import onyx.composeapp.generated.resources.action_show_search_panel
 import onyx.composeapp.generated.resources.action_toggle_favorite
 import onyx.composeapp.generated.resources.action_undo
 import onyx.composeapp.generated.resources.label_with_shortcut
@@ -42,6 +44,7 @@ import onyx.composeapp.generated.resources.shortcut_key_enter
 import onyx.composeapp.generated.resources.shortcut_key_escape
 import onyx.composeapp.generated.resources.shortcut_key_f
 import onyx.composeapp.generated.resources.shortcut_key_f2
+import onyx.composeapp.generated.resources.shortcut_key_k
 import onyx.composeapp.generated.resources.shortcut_key_f5
 import onyx.composeapp.generated.resources.shortcut_key_n
 import onyx.composeapp.generated.resources.shortcut_key_p
@@ -79,6 +82,8 @@ internal enum class OnyxCommand(val defaultShortcut: OnyxShortcut? = null) {
     ToggleFavorite(OnyxShortcut(OnyxShortcutKey.D, setOf(OnyxShortcutModifier.PRIMARY))),
     OpenSettings(OnyxShortcut(OnyxShortcutKey.COMMA, setOf(OnyxShortcutModifier.PRIMARY))),
     CommandPalette(OnyxShortcut(OnyxShortcutKey.P, setOf(OnyxShortcutModifier.PRIMARY, OnyxShortcutModifier.SHIFT))),
+    QuickOpen(OnyxShortcut(OnyxShortcutKey.K, setOf(OnyxShortcutModifier.PRIMARY))),
+    ShowSearchPanel(OnyxShortcut(OnyxShortcutKey.F, setOf(OnyxShortcutModifier.PRIMARY, OnyxShortcutModifier.SHIFT))),
 }
 
 /**
@@ -108,6 +113,8 @@ internal fun OnyxCommand.toPaneCommand(): PaneCommand? {
         OnyxCommand.ToggleFavorite -> PaneCommand.TOGGLE_FAVORITE
         OnyxCommand.OpenSettings -> PaneCommand.OPEN_SETTINGS
         OnyxCommand.CommandPalette -> PaneCommand.COMMAND_PALETTE
+        OnyxCommand.QuickOpen,
+        OnyxCommand.ShowSearchPanel -> null
     }
 }
 
@@ -222,6 +229,7 @@ internal enum class OnyxShortcutKey(val composeKey: Key) {
     Z(Key.Z),
     V(Key.V),
     F(Key.F),
+    K(Key.K),
 }
 
 internal fun KeyEvent.toOnyxShortcutOrNull(): OnyxShortcut? {
@@ -286,6 +294,8 @@ internal object OnyxCommandRegistry {
         OnyxCommandSpec(OnyxCommand.ToggleFavorite, Res.string.action_toggle_favorite, AllIconsKeys.Nodes.HomeFolder),
         OnyxCommandSpec(OnyxCommand.OpenSettings, Res.string.action_open_settings, AllIconsKeys.General.GearPlain),
         OnyxCommandSpec(OnyxCommand.CommandPalette, Res.string.action_command_palette, AllIconsKeys.Actions.Find),
+        OnyxCommandSpec(OnyxCommand.QuickOpen, Res.string.action_quick_open, AllIconsKeys.Actions.Find),
+        OnyxCommandSpec(OnyxCommand.ShowSearchPanel, Res.string.action_show_search_panel, AllIconsKeys.Actions.Find),
     )
 
     fun paneCommandStates(
@@ -408,6 +418,7 @@ private fun shortcutKeyLabel(key: OnyxShortcutKey): String {
         OnyxShortcutKey.Z -> stringResource(Res.string.shortcut_key_z)
         OnyxShortcutKey.V -> stringResource(Res.string.shortcut_key_v)
         OnyxShortcutKey.F -> stringResource(Res.string.shortcut_key_f)
+        OnyxShortcutKey.K -> stringResource(Res.string.shortcut_key_k)
     }
 }
 

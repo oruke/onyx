@@ -1,409 +1,387 @@
 package com.oruke.onyx.ui
 
-import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.SearchPanelState
 import com.oruke.onyx.app.component.SearchStatus
+import com.oruke.onyx.app.component.shouldShowSearchHistory
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.resolve
+import com.oruke.onyx.ui.theme.verticalResizePointerIcon
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_cancel_task
-import onyx.composeapp.generated.resources.action_close_search_panel
-import onyx.composeapp.generated.resources.action_search
-import onyx.composeapp.generated.resources.label_search_cancelled
-import onyx.composeapp.generated.resources.label_search_completed_summary
-import onyx.composeapp.generated.resources.label_search_completed_limited_summary
-import onyx.composeapp.generated.resources.label_search_failed
-import onyx.composeapp.generated.resources.label_search_idle
-import onyx.composeapp.generated.resources.label_search_no_results
-import onyx.composeapp.generated.resources.label_search_placeholder
-import onyx.composeapp.generated.resources.label_search_running_summary
-import onyx.composeapp.generated.resources.label_search_scope
-import onyx.composeapp.generated.resources.label_search_title
-import onyx.composeapp.generated.resources.msg_unknown_error
+import onyx.composeapp.generated.resources.search_failed
+import onyx.composeapp.generated.resources.search_result_count
+import onyx.composeapp.generated.resources.search_scanned_count
+import onyx.composeapp.generated.resources.search_truncated_to
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
-import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
-/** 搜索结果名称列占用的宽度权重。 */
-private const val SEARCH_NAME_COLUMN_WEIGHT = 0.42f
+/** 拖拽手柄高度（dp）。 */
+private const val DRAG_HANDLE_HEIGHT_DP = 16
 
-/** 搜索结果路径列占用的宽度权重。 */
-private const val SEARCH_PATH_COLUMN_WEIGHT = 0.58f
+/** 搜索抽屉允许的最小高度比例。 */
+private const val SEARCH_DRAWER_MIN_HEIGHT_FRACTION = 0.2f
 
+/** 搜索抽屉允许的最大高度比例。 */
+private const val SEARCH_DRAWER_MAX_HEIGHT_FRACTION = 0.8f
+
+/** 面板过滤下拉类型。 */
+internal enum class SearchFilterMenu {
+    NONE,
+    TYPE,
+    MODIFIED,
+    SIZE,
+    CONTENT,
+}
+
+/**
+ * 搜索结果右键菜单的目标信息。
+ */
+internal data class SearchResultContextMenuTarget(
+    /** 触发菜单的搜索结果。 */
+    val file: VFile,
+    /** 菜单在窗口中的锚点坐标。 */
+    val offset: IntOffset,
+)
+
+/**
+ * 搜索面板内部的瞬时交互状态。
+ *
+ * 该状态仅描述当前 Composable 生命周期内的菜单、焦点导航和右键菜单位置，不替代组件层的可持久化搜索状态。
+ */
+private class SearchPanelInteractionState {
+    /** 当前展开的筛选器菜单。 */
+    var activeFilterMenu by mutableStateOf(SearchFilterMenu.NONE)
+
+    /** 搜索面板父容器的像素高度，用于换算拖拽增量。 */
+    var parentHeightPx by mutableStateOf(1f)
+
+    /** 当前键盘导航选中的搜索结果索引。 */
+    var selectedIndex by mutableIntStateOf(0)
+
+    /** 当前待展示右键菜单的搜索结果与窗口坐标。 */
+    var contextMenuTarget by mutableStateOf<SearchResultContextMenuTarget?>(null)
+
+    /**
+     * 记录需要展示右键菜单的结果位置。
+     *
+     * @param file 触发菜单的搜索结果。
+     * @param offset 菜单在窗口中的锚点坐标。
+     */
+    fun showResultContextMenu(file: VFile, offset: IntOffset) {
+        contextMenuTarget = SearchResultContextMenuTarget(file = file, offset = offset)
+    }
+
+    /** 清理右键菜单目标并关闭菜单。 */
+    fun clearContextMenu() {
+        contextMenuTarget = null
+    }
+}
+
+/**
+ * 渲染搜索面板并连接展示配置与用户动作。
+ *
+ * @param state 组件层提供的当前搜索状态。
+ * @param presentation 面板展示配置。
+ * @param actions 面板发往组件层的用户动作。
+ * @param modifier 应用于面板外层容器的修饰符。
+ */
 @Composable
 internal fun SearchPanel(
     state: SearchPanelState,
-    locationLabel: (String) -> String,
-    onQueryChange: (String) -> Unit,
-    onSearch: () -> Unit,
-    onCancel: () -> Unit,
-    onClose: () -> Unit,
-    onOpenResult: (VFile) -> Unit,
+    presentation: SearchPanelPresentation,
+    actions: SearchPanelActions,
     modifier: Modifier = Modifier,
 ) {
-    val palette = LocalOnyxPalette.current
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
-    val canSearch = state.query.isNotBlank() && state.status != SearchStatus.RUNNING
+    val interaction = remember { SearchPanelInteractionState() }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
     }
+    LaunchedEffect(state.results.size) {
+        val lastIndex = state.results.lastIndex.coerceAtLeast(0)
+        interaction.selectedIndex = interaction.selectedIndex.coerceIn(0, lastIndex)
+    }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(palette.surface)
-            .border(1.dp, palette.outlineVariant)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        SearchPanelHeader(
+    Box(modifier = modifier.fillMaxWidth()) {
+        SearchPanelContent(
             state = state,
-            locationLabel = locationLabel,
+            presentation = presentation,
+            actions = actions,
+            interaction = interaction,
             focusRequester = focusRequester,
-            canSearch = canSearch,
-            onQueryChange = onQueryChange,
-            onSearch = onSearch,
-            onCancel = onCancel,
-            onClose = onClose,
+            listState = listState,
         )
-
-        Text(
-            text = searchSummary(state),
-            color = if (state.status == SearchStatus.FAILED) palette.error else palette.mutedForeground,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        SearchResultContextMenu(
+            target = interaction.contextMenuTarget,
+            actions = actions,
+            onDismiss = interaction::clearContextMenu,
         )
-
-        SearchResults(state, listState, locationLabel, onOpenResult)
     }
 }
 
 /**
- * 渲染搜索范围、输入框与搜索控制按钮。
+ * 渲染搜索面板的主体结构。
  *
- * @param state 当前搜索状态。
- * @param locationLabel 位置展示名称转换函数。
- * @param focusRequester 输入框焦点请求器。
- * @param canSearch 当前是否允许开始搜索。
- * @param onQueryChange 查询文本变化回调。
- * @param onSearch 开始搜索回调。
- * @param onCancel 取消搜索回调。
- * @param onClose 关闭面板回调。
+ * @param state 组件层提供的当前搜索状态。
+ * @param presentation 面板展示配置。
+ * @param actions 面板发往组件层的用户动作。
+ * @param interaction 面板内部瞬时交互状态。
+ * @param focusRequester 搜索输入框焦点请求器。
+ * @param listState 搜索结果列表滚动状态。
  */
 @Composable
-private fun SearchPanelHeader(
+private fun SearchPanelContent(
     state: SearchPanelState,
-    locationLabel: (String) -> String,
+    presentation: SearchPanelPresentation,
+    actions: SearchPanelActions,
+    interaction: SearchPanelInteractionState,
     focusRequester: FocusRequester,
-    canSearch: Boolean,
-    onQueryChange: (String) -> Unit,
-    onSearch: () -> Unit,
-    onCancel: () -> Unit,
-    onClose: () -> Unit,
+    listState: LazyListState,
 ) {
     val palette = LocalOnyxPalette.current
-    Row(
-        modifier = Modifier.fillMaxWidth().height(26.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(
+                presentation.drawerHeightFraction.coerceIn(
+                    SEARCH_DRAWER_MIN_HEIGHT_FRACTION,
+                    SEARCH_DRAWER_MAX_HEIGHT_FRACTION,
+                ),
+            )
+            .onGloballyPositioned { coordinates ->
+                interaction.parentHeightPx = (
+                    coordinates.parentCoordinates?.size?.height?.toFloat() ?: 1f
+                ).coerceAtLeast(1f)
+            }
+            .background(palette.surface.copy(alpha = 0.80f))
+            .border(1.dp, palette.outlineVariant)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Icon(AllIconsKeys.Actions.Find, stringResource(Res.string.label_search_title), Modifier.size(14.dp))
-        Text(
-            text = stringResource(Res.string.label_search_title),
-            color = palette.foreground,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
+        SearchPanelResizeHandle(
+            drawerHeightFraction = presentation.drawerHeightFraction,
+            parentHeightPx = interaction.parentHeightPx,
+            onSetDrawerHeight = actions.onSetDrawerHeight,
         )
-        Text(
-            text = stringResource(Res.string.label_search_scope, locationLabel(state.rootLocation)),
-            color = palette.mutedForeground,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(260.dp),
+        SearchPanelHeaderRow(
+            scope = state.scope,
+            filters = state.filters,
+            activeFilterMenu = interaction.activeFilterMenu,
+            onToggleFilterMenu = { menu ->
+                interaction.activeFilterMenu = if (interaction.activeFilterMenu == menu) {
+                    SearchFilterMenu.NONE
+                } else {
+                    menu
+                }
+            },
+            onUpdateScope = actions.onUpdateScope,
+            onUpdateFilters = actions.onUpdateFilters,
+            onClose = actions.onClose,
         )
-        SearchInput(
-            query = state.query,
-            enabled = state.status != SearchStatus.RUNNING,
+        SearchFilterExpandablePanel(
+            activeMenu = interaction.activeFilterMenu,
+            filters = state.filters,
+            onUpdateFilters = actions.onUpdateFilters,
+        )
+        SearchPanelInputRow(
+            state = state,
+            selectedIndex = interaction.selectedIndex,
+            onSelectIndex = { interaction.selectedIndex = it },
             focusRequester = focusRequester,
-            onQueryChange = onQueryChange,
-            onSubmit = { if (canSearch) onSearch() },
-            onClose = { if (state.status == SearchStatus.RUNNING) onCancel() else onClose() },
-            modifier = Modifier.weight(1f),
+            actions = actions,
         )
-        SearchToolbarButton(canSearch, onSearch, Res.string.action_search, AllIconsKeys.Actions.Find)
-        if (state.status == SearchStatus.RUNNING) {
-            SearchToolbarButton(true, onCancel, Res.string.action_cancel_task, AllIconsKeys.Actions.Close)
-        }
-        SearchToolbarButton(true, onClose, Res.string.action_close_search_panel, AllIconsKeys.Actions.Close)
+        SearchPanelBody(
+            state = state,
+            presentation = presentation,
+            actions = actions,
+            listState = listState,
+            selectedIndex = interaction.selectedIndex,
+            onSelectIndex = { interaction.selectedIndex = it },
+            onShowContextMenu = interaction::showResultContextMenu,
+        )
+        SearchPanelStatusBar(state = state)
     }
 }
 
 /**
- * 渲染一个搜索工具栏图标按钮。
+ * 渲染用于调整搜索抽屉高度的拖拽手柄。
  *
- * @param enabled 是否允许点击。
- * @param onClick 点击回调。
- * @param label 按钮文案资源。
- * @param icon Jewel 图标键。
+ * @param drawerHeightFraction 当前抽屉高度比例。
+ * @param parentHeightPx 父容器的像素高度。
+ * @param onSetDrawerHeight 保存新的抽屉高度比例。
  */
 @Composable
-private fun SearchToolbarButton(
-    enabled: Boolean,
-    onClick: () -> Unit,
-    label: org.jetbrains.compose.resources.StringResource,
-    icon: org.jetbrains.jewel.ui.icon.IconKey,
-) {
-    val text = stringResource(label)
-    ToolbarIconButton(enabled = enabled, onClick = onClick, tooltip = text) {
-        Icon(key = icon, contentDescription = text, modifier = Modifier.size(13.dp))
-    }
-}
-
-/**
- * 渲染搜索结果列表或空状态。
- *
- * @param state 当前搜索状态。
- * @param listState 结果列表滚动状态。
- * @param locationLabel 位置展示名称转换函数。
- * @param onOpenResult 打开结果回调。
- */
-@Composable
-private fun SearchResults(
-    state: SearchPanelState,
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    locationLabel: (String) -> String,
-    onOpenResult: (VFile) -> Unit,
+private fun SearchPanelResizeHandle(
+    drawerHeightFraction: Float,
+    parentHeightPx: Float,
+    onSetDrawerHeight: (Float) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
     Box(
-        modifier = Modifier.fillMaxWidth().height(170.dp).background(palette.appBackground),
-    ) {
-        if (state.results.isEmpty()) {
-            Text(
-                text = emptySearchText(state),
-                color = palette.disabledForeground,
-                fontSize = 11.sp,
-                modifier = Modifier.align(Alignment.Center),
-            )
-        } else {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
-                items(items = state.results, key = { entry -> entry.id }) { entry ->
-                    SearchResultRow(
-                        entry = entry,
-                        locationLabel = locationLabel,
-                        onOpen = { onOpenResult(entry) },
-                    )
-                }
-            }
-            VerticalScrollbar(
-                adapter = rememberScrollbarAdapter(listState),
-                modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun SearchInput(
-    query: String,
-    enabled: Boolean,
-    focusRequester: FocusRequester,
-    onQueryChange: (String) -> Unit,
-    onSubmit: () -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val palette = LocalOnyxPalette.current
-    BasicTextField(
-        value = query,
-        onValueChange = onQueryChange,
-        modifier = modifier
-            .height(22.dp)
-            .focusRequester(focusRequester)
-            .background(palette.inputBackground, RoundedCornerShape(4.dp))
-            .border(1.dp, palette.outlineVariant, RoundedCornerShape(4.dp))
-            .padding(horizontal = 7.dp, vertical = 3.dp)
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) {
-                    return@onPreviewKeyEvent false
-                }
-                when (event.key) {
-                    Key.Enter -> {
-                        onSubmit()
-                        true
-                    }
-
-                    Key.Escape -> {
-                        onClose()
-                        true
-                    }
-
-                    else -> false
-                }
-            },
-        enabled = enabled,
-        textStyle = TextStyle(
-            fontSize = 11.sp,
-            color = palette.foreground,
-        ),
-        singleLine = true,
-        cursorBrush = SolidColor(palette.accent),
-        decorationBox = { innerTextField ->
-            Box(contentAlignment = Alignment.CenterStart) {
-                if (query.isEmpty()) {
-                    Text(
-                        text = stringResource(Res.string.label_search_placeholder),
-                        fontSize = 11.sp,
-                        color = palette.disabledForeground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                innerTextField()
-            }
-        },
-    )
-}
-
-@Composable
-private fun SearchResultRow(
-    entry: VFile,
-    locationLabel: (String) -> String,
-    onOpen: () -> Unit,
-) {
-    val palette = LocalOnyxPalette.current
-    val parent = entry.parentLocation ?: entry.location
-    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(28.dp)
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .height(DRAG_HANDLE_HEIGHT_DP.dp)
+            .pointerHoverIcon(verticalResizePointerIcon())
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { _, dragAmount ->
+                    val deltaFraction = dragAmount / parentHeightPx
+                    val newFraction = (drawerHeightFraction - deltaFraction).coerceIn(
+                        SEARCH_DRAWER_MIN_HEIGHT_FRACTION,
+                        SEARCH_DRAWER_MAX_HEIGHT_FRACTION,
+                    )
+                    onSetDrawerHeight(newFraction)
+                }
+            },
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            key = if (entry.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry.name),
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-        )
-        Text(
-            text = entry.name,
-            color = palette.foreground,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(SEARCH_NAME_COLUMN_WEIGHT),
-        )
-        Text(
-            text = locationLabel(parent),
-            color = palette.mutedForeground,
-            fontSize = 10.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(SEARCH_PATH_COLUMN_WEIGHT),
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(palette.outlineVariant),
         )
     }
 }
 
+/**
+ * 根据查询状态在搜索历史和搜索结果之间切换。
+ *
+ * @param state 组件层提供的当前搜索状态。
+ * @param presentation 面板展示配置。
+ * @param actions 面板发往组件层的用户动作。
+ * @param listState 搜索结果列表滚动状态。
+ * @param selectedIndex 当前键盘导航选中的结果索引。
+ * @param onSelectIndex 变更键盘导航选中项。
+ * @param onShowContextMenu 显示搜索结果右键菜单。
+ * @receiver 面板主体所在的 ColumnScope。
+ */
 @Composable
-private fun searchSummary(state: SearchPanelState): String {
-    return when (state.status) {
-        SearchStatus.IDLE -> stringResource(Res.string.label_search_idle)
-        SearchStatus.RUNNING -> stringResource(
-            Res.string.label_search_running_summary,
-            state.scannedEntryCount,
-            state.results.size,
-        )
-        SearchStatus.COMPLETED -> {
-            if (state.limitReached) {
-                stringResource(
-                    Res.string.label_search_completed_limited_summary,
-                    state.results.size,
-                    state.scannedEntryCount,
-                )
-            } else {
-                stringResource(
-                    Res.string.label_search_completed_summary,
-                    state.results.size,
-                    state.scannedEntryCount,
-                )
-            }
+private fun ColumnScope.SearchPanelBody(
+    state: SearchPanelState,
+    presentation: SearchPanelPresentation,
+    actions: SearchPanelActions,
+    listState: LazyListState,
+    selectedIndex: Int,
+    onSelectIndex: (Int) -> Unit,
+    onShowContextMenu: (VFile, IntOffset) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxWidth(),
+    ) {
+        if (state.shouldShowSearchHistory() && presentation.searchHistory.isNotEmpty()) {
+            SearchHistoryView(history = presentation.searchHistory, actions = actions)
+        } else {
+            SearchResultsView(
+                state = state,
+                listState = listState,
+                selectedIndex = selectedIndex,
+                presentation = presentation,
+                actions = actions,
+                listActions = SearchResultListActions(
+                    onSelectIndex = onSelectIndex,
+                    onShowContextMenu = onShowContextMenu,
+                ),
+            )
         }
-        SearchStatus.FAILED -> stringResource(
-            Res.string.label_search_failed,
-            state.error?.resolve() ?: stringResource(Res.string.msg_unknown_error),
-        )
-        SearchStatus.CANCELLED -> stringResource(Res.string.label_search_cancelled, state.results.size)
     }
 }
 
+/**
+ * 渲染搜索扫描进度、结果数量及错误提示。
+ *
+ * @param state 组件层提供的当前搜索状态。
+ */
 @Composable
-private fun emptySearchText(state: SearchPanelState): String {
-    return when (state.status) {
-        SearchStatus.IDLE -> stringResource(Res.string.label_search_idle)
-        SearchStatus.RUNNING -> stringResource(Res.string.label_search_running_summary, state.scannedEntryCount, 0)
-        SearchStatus.COMPLETED -> {
-            if (state.limitReached) {
-                stringResource(
-                    Res.string.label_search_completed_limited_summary,
-                    state.results.size,
-                    state.scannedEntryCount,
+private fun SearchPanelStatusBar(state: SearchPanelState) {
+    val palette = LocalOnyxPalette.current
+    Row(
+        modifier = Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = stringResource(Res.string.search_scanned_count, state.scannedEntryCount),
+                color = palette.mutedForeground,
+                fontSize = 10.sp,
+            )
+            if (state.status == SearchStatus.RUNNING) {
+                Box(
+                    modifier = Modifier
+                        .width(40.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(1.5.dp))
+                        .background(palette.accent),
                 )
-            } else {
-                stringResource(Res.string.label_search_no_results)
             }
         }
-        SearchStatus.FAILED -> stringResource(
-            Res.string.label_search_failed,
-            state.error?.resolve() ?: stringResource(Res.string.msg_unknown_error),
-        )
-        SearchStatus.CANCELLED -> stringResource(Res.string.label_search_cancelled, state.results.size)
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (state.status == SearchStatus.FAILED) {
+                val errorMessage = state.error?.resolve().orEmpty()
+                Text(
+                    text = stringResource(Res.string.search_failed) + ": " + errorMessage,
+                    color = palette.error,
+                    fontSize = 10.sp,
+                )
+            } else {
+                Text(
+                    text = stringResource(Res.string.search_result_count, state.results.size),
+                    color = palette.mutedForeground,
+                    fontSize = 10.sp,
+                )
+                if (state.limitReached) {
+                    Text(
+                        text = stringResource(Res.string.search_truncated_to, state.results.size),
+                        color = palette.favorite,
+                        fontSize = 10.sp,
+                    )
+                }
+            }
+        }
     }
 }

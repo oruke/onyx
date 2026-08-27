@@ -43,13 +43,13 @@ import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.shared.usecase.BatchRenameNameTransformations
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_batch_rename
-import onyx.composeapp.generated.resources.action_cancel_task
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_apply
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.label_batch_rename_after
 import onyx.composeapp.generated.resources.label_batch_rename_before
 import onyx.composeapp.generated.resources.label_batch_rename_changes_count
@@ -143,11 +143,8 @@ private class BatchRenameEditorState(
     /** 当前全部文件及其预览目标名称。 */
     val renameResults: List<Pair<VFile, String>>
         get() {
-            val compiledRegex = findText.takeIf {
-                mode == BatchRenameMode.FIND_REPLACE && useRegex && it.isNotEmpty()
-            }?.let { expression -> runCatching { Regex(expression) }.getOrNull() }
             return entries.mapIndexed { index, entry ->
-                entry to renamedFileName(entry, index, compiledRegex)
+                entry to renamedFileName(entry, index)
             }
         }
 
@@ -164,12 +161,11 @@ private class BatchRenameEditorState(
      *
      * @param entry 源文件条目。
      * @param index 条目在预览列表中的索引。
-     * @param compiledRegex 已校验的正则表达式。
      * @return 保留扩展名规则后的目标名称。
      */
-    private fun renamedFileName(entry: VFile, index: Int, compiledRegex: Regex?): String {
+    private fun renamedFileName(entry: VFile, index: Int): String {
         return when (mode) {
-            BatchRenameMode.FIND_REPLACE -> findReplaceName(entry.name, compiledRegex)
+            BatchRenameMode.FIND_REPLACE -> findReplaceName(entry.name)
             BatchRenameMode.PREFIX_SUFFIX -> entry.name.transformBaseName { name -> "$prefix$name$suffix" }
             BatchRenameMode.COUNTER -> entry.name.transformBaseName {
                 val start = counterStart.toIntOrNull() ?: 1
@@ -192,14 +188,17 @@ private class BatchRenameEditorState(
      * 使用文本或正则表达式执行完整文件名替换。
      *
      * @param name 原始完整文件名。
-     * @param compiledRegex 已校验正则表达式。
      * @return 替换后的完整文件名。
      */
-    private fun findReplaceName(name: String, compiledRegex: Regex?): String {
-        return when {
-            findText.isEmpty() -> name
-            useRegex -> compiledRegex?.let { regex -> name.replace(regex, replaceText) } ?: name
-            else -> name.replace(findText, replaceText)
+    private fun findReplaceName(name: String): String {
+        return BatchRenameNameTransformations.applyFindReplace(
+            name = name,
+            findText = findText,
+            replaceText = replaceText,
+            useRegex = useRegex,
+        ).getOrElse {
+            // 输入过程中的无效正则会由界面显示错误并禁用“应用”，预览仍需保持可渲染。
+            name
         }
     }
 
@@ -230,7 +229,7 @@ internal fun BatchRenameDialog(
 ) {
     val entries = state.entries
     val editor = remember(entries) { BatchRenameEditorState(entries) }
-    val canConfirm by remember(editor.hasChanges, editor.regexValidationFailure) {
+    val canConfirm by remember(editor) {
         derivedStateOf { editor.hasChanges && editor.regexValidationFailure == null }
     }
 
@@ -676,7 +675,7 @@ private fun BatchRenameFooter(
         Spacer(modifier = Modifier.weight(1f))
         if (state.completed || state.errorMessage != null) {
             HoverButton(
-                text = stringResource(Res.string.action_close_menu),
+                text = stringResource(Res.string.action_close_window),
                 emphasized = true,
                 accent = palette.accent,
                 surface = palette.surfaceVariant,
@@ -733,7 +732,7 @@ private fun BatchRenameEditActions(
     val palette = LocalOnyxPalette.current
     val fontSize = LocalOnyxAppearance.current.listFontSize
     HoverButton(
-        text = stringResource(Res.string.action_cancel_task),
+        text = stringResource(Res.string.action_close_window),
         emphasized = false,
         accent = palette.accent,
         surface = palette.surfaceVariant,
@@ -743,7 +742,7 @@ private fun BatchRenameEditActions(
     )
     Spacer(modifier = Modifier.width(8.dp))
     HoverButton(
-        text = stringResource(Res.string.action_batch_rename),
+        text = stringResource(Res.string.action_apply),
         emphasized = canConfirm,
         accent = palette.accent,
         surface = palette.surfaceVariant,

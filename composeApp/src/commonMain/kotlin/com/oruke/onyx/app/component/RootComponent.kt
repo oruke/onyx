@@ -31,6 +31,7 @@ import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.core.model.S3ConnectionConfig
+import com.oruke.onyx.core.model.SearchScope
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.VFile
 import androidx.compose.ui.graphics.ImageBitmap
@@ -85,15 +86,53 @@ internal data class OperationHistoryState(
 
 internal data class SearchPanelState(
     val visible: Boolean = false,
+    /** 当前搜索 UI 的显示形态；浮层与底部抽屉共享同一状态与搜索任务。 */
+    val mode: SearchPanelMode = SearchPanelMode.SEARCH_PANEL,
     val paneId: PaneId = PaneId.PRIMARY,
     val rootLocation: String = "",
     val query: String = "",
+    /** 当前搜索根范围。 */
+    val scope: SearchScope = SearchScope.CURRENT_DIRECTORY,
+    /** 结构化搜索过滤器；执行时转换为现有语法查询参数。 */
+    val filters: SearchFilters = SearchFilters(),
     val status: SearchStatus = SearchStatus.IDLE,
     val results: List<VFile> = emptyList(),
     val scannedEntryCount: Int = 0,
     val limitReached: Boolean = false,
     val error: I18nMessage? = null,
 )
+
+/** 搜索 UI 的显示形态。 */
+internal enum class SearchPanelMode {
+    /** 聚焦式 Quick Open 浮层，与底部抽屉共享搜索状态与任务。 */
+    QUICK_OPEN,
+
+    /** 完整搜索抽屉。 */
+    SEARCH_PANEL,
+}
+
+/**
+ * 结构化搜索过滤器，执行时转换为 FileSearchUseCase 语法查询参数。
+ *
+ * @property types 允许的条目类型；为空表示不限类型。
+ * @property modifiedSinceEpochMillis 最早修改时间（epoch millis）；为空表示不限。
+ * @property minSizeBytes 最小文件大小（字节）；为空表示不限。
+ * @property maxSizeBytes 最大文件大小（字节）；为空表示不限。
+ * @property searchInContent 是否将查询文本作为文件内容检索词。
+ */
+internal data class SearchFilters(
+    val types: Set<SearchFilterFileType> = emptySet(),
+    val modifiedSinceEpochMillis: Long? = null,
+    val minSizeBytes: Long? = null,
+    val maxSizeBytes: Long? = null,
+    val searchInContent: Boolean = false,
+)
+
+/** 搜索过滤允许的条目类型。 */
+internal enum class SearchFilterFileType {
+    FILE,
+    DIRECTORY,
+}
 
 internal enum class SearchStatus {
     IDLE,
@@ -394,6 +433,10 @@ internal sealed interface RootIntent {
 
     data object CloseSearchPanel : RootIntent
 
+    data object ShowQuickOpen : RootIntent
+
+    data object CloseQuickOpen : RootIntent
+
     data class UpdateSearchQuery(
         val query: String,
     ) : RootIntent
@@ -407,6 +450,28 @@ internal sealed interface RootIntent {
     ) : RootIntent
 
     data object OpenSearchResultsAsCollection : RootIntent
+
+    data class OpenSearchResultInFolder(
+        val entry: VFile,
+    ) : RootIntent
+
+    data class UpdateSearchScope(
+        val scope: SearchScope,
+    ) : RootIntent
+
+    data class UpdateSearchFilters(
+        val filters: SearchFilters,
+    ) : RootIntent
+
+    data class SetSearchDrawerHeight(
+        val height: Float,
+    ) : RootIntent
+
+    data class SetJobsDrawerHeight(
+        val height: Float,
+    ) : RootIntent
+
+    data object ClearSearchHistory : RootIntent
 
     data class StageCopySelectedInPane(
         val paneId: PaneId,

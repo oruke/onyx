@@ -64,6 +64,8 @@ private const val OPERATION_FEEDBACK_DURATION_MS = 3_000L
 /** 可由面板键盘焦点直接执行的统一命令。 */
 private val PANE_SHORTCUT_COMMANDS = listOf(
     OnyxCommand.CommandPalette,
+    OnyxCommand.QuickOpen,
+    OnyxCommand.ShowSearchPanel,
     OnyxCommand.OpenSelection,
     OnyxCommand.RenameSelection,
     OnyxCommand.NewDirectory,

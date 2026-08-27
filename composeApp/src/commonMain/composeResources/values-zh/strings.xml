@@ -11,6 +11,8 @@
     <string name="action_open_settings">设置</string>
     <string name="action_open">打开</string>
     <string name="action_command_palette">命令面板</string>
+    <string name="action_quick_open">快速打开</string>
+    <string name="action_show_search_panel">搜索面板</string>
     <string name="action_select_all">全选</string>
     <string name="action_open_in_new_tab">在新标签页打开</string>
     <string name="action_open_in_new_window">在新窗口打开</string>
@@ -87,6 +89,7 @@
     <string name="shortcut_key_z">Z</string>
     <string name="shortcut_key_v">V</string>
     <string name="shortcut_key_f">F</string>
+    <string name="shortcut_key_k">K</string>
     <string name="label_with_shortcut">%1$s（%2$s）</string>
     <string name="label_archive_password">压缩包密码</string>
     <string name="label_archive_password_hint">请输入加密压缩包的密码</string>
@@ -404,6 +407,38 @@
     <string name="label_search_cancelled">搜索已取消，保留 %1$d 个结果</string>
     <string name="label_search_failed">搜索失败：%1$s</string>
     <string name="label_search_no_results">没有结果</string>
+
+    <string name="action_open_in_folder">打开所在文件夹</string>
+    <string name="action_close">关闭</string>
+    <string name="action_clear_search_history">清空历史</string>
+    <string name="action_reset">重置</string>
+    <string name="quick_open_placeholder">输入名称快速打开…</string>
+    <string name="search_placeholder">输入名称、扩展名、内容关键词…</string>
+    <string name="quick_open_hint">Ctrl+K 快速打开</string>
+    <string name="search_scope_label">搜索范围</string>
+    <string name="search_scope_current_directory">当前目录</string>
+    <string name="search_scope_favorites">收藏位置</string>
+    <string name="search_scope_all_roots">全部磁盘</string>
+    <string name="search_filter_type">类型</string>
+    <string name="search_filter_modified">修改时间</string>
+    <string name="search_filter_size">大小</string>
+    <string name="search_filter_content">内容搜索</string>
+    <string name="search_filter_today">今天</string>
+    <string name="search_filter_week">本周</string>
+    <string name="search_filter_month">本月</string>
+    <string name="search_filter_custom">自定义</string>
+    <string name="search_filter_file">文件</string>
+    <string name="search_filter_directory">文件夹</string>
+    <string name="search_filter_size_under_1_mb">小于 1 MB</string>
+    <string name="search_filter_size_1_to_100_mb">1–100 MB</string>
+    <string name="search_filter_size_over_100_mb">大于 100 MB</string>
+    <string name="search_result_count">%1$d 个结果</string>
+    <string name="search_scanned_count">已扫描 %1$d 个条目</string>
+    <string name="search_truncated_to">已截断至 %1$d</string>
+    <string name="search_empty_result">无匹配结果</string>
+    <string name="search_failed">搜索失败</string>
+    <string name="search_history_label">历史搜索</string>
+    <string name="search_scope_chip">范围: %1$s</string>
 
     <string name="action_batch_rename">批量重命名</string>
     <string name="action_batch_rename_continue">继续</string>

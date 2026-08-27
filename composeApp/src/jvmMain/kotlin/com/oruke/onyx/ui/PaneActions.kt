@@ -32,6 +32,8 @@ data class PaneActions(
     val onBeginCreateDirectory: () -> Unit,
     val onToggleFavoriteLocation: (String) -> Unit,
     val onOpenSettings: () -> Unit,
+    val onShowQuickOpen: () -> Unit = {},
+    val onShowSearchPanel: () -> Unit = {},
     val supportsContextMenuOpenWith: (VFile) -> Boolean,
     val onFileContextMenuCommand: (FileContextMenuCommand, List<VFile>) -> Unit,
     val onOpenTerminal: (String) -> Unit,
