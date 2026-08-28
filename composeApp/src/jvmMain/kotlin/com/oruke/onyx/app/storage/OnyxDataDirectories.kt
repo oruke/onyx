@@ -17,8 +17,6 @@ internal object OnyxDataDirectories {
      */
     fun configDirectory(): Path {
         val xdgConfigHome = System.getenv("XDG_CONFIG_HOME")?.takeIf { value -> value.isNotBlank() }
-        if (xdgConfigHome != null) return Path.of(xdgConfigHome).resolve("onyx")
-
         val userHome = System.getProperty("user.home")
         return when {
             isWindows -> {
@@ -27,6 +25,7 @@ internal object OnyxDataDirectories {
                 Path.of(appData).resolve("Onyx")
             }
 
+            xdgConfigHome != null -> Path.of(xdgConfigHome).resolve("onyx")
             isMac -> Path.of(userHome, "Library", "Application Support", "Onyx")
             else -> Path.of(userHome, ".config", "onyx")
         }
@@ -34,21 +33,21 @@ internal object OnyxDataDirectories {
 
     /**
      * 返回状态目录，承载会随本机运行状态变化但不应频繁清理的数据。
+     * Windows 将状态目录放在 `%LOCALAPPDATA%\\OnyxData`，与 MSI 安装目录隔离，避免升级清理安装目录时删除用户数据。
      *
      * @return Onyx 状态目录路径；调用方负责在写入前创建目录。
      */
     fun stateDirectory(): Path {
         val xdgStateHome = System.getenv("XDG_STATE_HOME")?.takeIf { value -> value.isNotBlank() }
-        if (xdgStateHome != null) return Path.of(xdgStateHome).resolve("onyx")
-
         val userHome = System.getProperty("user.home")
         return when {
             isWindows -> {
                 val localAppData = System.getenv("LOCALAPPDATA")?.takeIf { value -> value.isNotBlank() }
                     ?: Path.of(userHome, "AppData", "Local").toString()
-                Path.of(localAppData).resolve("Onyx")
+                Path.of(localAppData, "OnyxData")
             }
 
+            xdgStateHome != null -> Path.of(xdgStateHome).resolve("onyx")
             isMac -> Path.of(userHome, "Library", "Caches", "Onyx")
             else -> Path.of(userHome, ".local", "state", "onyx")
         }
@@ -61,16 +60,15 @@ internal object OnyxDataDirectories {
      */
     fun cacheDirectory(): Path {
         val xdgCacheHome = System.getenv("XDG_CACHE_HOME")?.takeIf { value -> value.isNotBlank() }
-        if (xdgCacheHome != null) return Path.of(xdgCacheHome).resolve("onyx")
-
         val userHome = System.getProperty("user.home")
         return when {
             isWindows -> {
                 val localAppData = System.getenv("LOCALAPPDATA")?.takeIf { value -> value.isNotBlank() }
                     ?: Path.of(userHome, "AppData", "Local").toString()
-                Path.of(localAppData, "Onyx", "Cache")
+                Path.of(localAppData, "OnyxData", "Cache")
             }
 
+            xdgCacheHome != null -> Path.of(xdgCacheHome).resolve("onyx")
             isMac -> Path.of(userHome, "Library", "Caches", "Onyx")
             else -> Path.of(userHome, ".cache", "onyx")
         }

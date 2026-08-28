@@ -42,8 +42,14 @@ internal fun DefaultRootComponent.activatePane(paneId: PaneId) {
 
 /** @param nextSettings 待应用设置。 */
 internal fun DefaultRootComponent.updateSettings(nextSettings: OnyxSettings) {
-    settings.value = nextSettings.sanitizeRootSettings()
+    val sanitizedSettings = nextSettings.sanitizeRootSettings()
+    val settingsChanged = sanitizedSettings != settings.value
+    settings.value = sanitizedSettings
     synchronizeS3ConnectionConfigurations()
+    if (settingsChanged && sessionRestoreState.value is SessionRestoreState.Failed) {
+        // 恢复失败时禁止默认状态自动落盘；用户明确修改设置后才恢复持久化。
+        persistenceReady = true
+    }
 }
 
 /** @param location 待打开 VFS 位置。 */

@@ -9,7 +9,7 @@ import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.archive.ArchiveService
 
 /**
- * 恢复设置与会话，并在完成后启用自动持久化。
+ * 恢复设置与会话；恢复成功或用户明确修改设置后才启用自动持久化。
  *
  * @return 无返回值。
  */
@@ -40,9 +40,12 @@ internal suspend fun DefaultRootComponent.restorePersistedState() {
             primaryPane.openDirectory(location)
         }
     sessionRestoreState.value = restoreError?.let(SessionRestoreState::Failed) ?: SessionRestoreState.Ready
-    persistenceReady = true
-    recordRecentLocations(listOf(primaryPane.state.value.location, secondaryPane.state.value.location))
-    persistCurrentState()
+    if (restoreError == null) {
+        // 只有完整恢复成功才写入启动后的快照，避免默认状态覆盖暂时不可读的旧数据。
+        persistenceReady = true
+        recordRecentLocations(listOf(primaryPane.state.value.location, secondaryPane.state.value.location))
+        persistCurrentState()
+    }
 }
 
 /**

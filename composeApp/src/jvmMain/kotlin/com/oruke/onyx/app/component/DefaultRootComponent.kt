@@ -168,7 +168,7 @@ internal class DefaultRootComponent(
     internal val showPreviewPane = MutableStateFlow(false)
     /** 图片查看器状态。 */
     override val imageViewerState: StateFlow<ImageViewerState> = imageViewerController.state
-    /** 首次恢复完成后才允许自动持久化。 */
+    /** 首次恢复成功或用户明确修改设置后才允许自动持久化。 */
     internal var persistenceReady = false
 
     /** 侧栏目录树委托。 */
