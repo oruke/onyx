@@ -36,8 +36,6 @@ internal fun OnyxSettings.sanitizeRootSettings(): OnyxSettings {
             .filter { query -> query.isNotEmpty() }
             .distinct()
             .take(MAX_SEARCH_HISTORY),
-        searchDrawerHeight = searchDrawerHeight.coerceIn(MIN_SEARCH_DRAWER_HEIGHT, MAX_SEARCH_DRAWER_HEIGHT),
-        jobsDrawerHeight = jobsDrawerHeight.coerceIn(MIN_JOBS_DRAWER_HEIGHT, MAX_JOBS_DRAWER_HEIGHT),
     )
 }
 
@@ -99,18 +97,6 @@ private const val MAX_REMOTE_CONNECTIONS = 24
 
 /** 搜索历史允许保留的最大数量。 */
 private const val MAX_SEARCH_HISTORY = 20
-
-/** 搜索抽屉高度允许的最小比例。 */
-internal const val MIN_SEARCH_DRAWER_HEIGHT = 0.2f
-
-/** 搜索抽屉高度允许的最大比例。 */
-internal const val MAX_SEARCH_DRAWER_HEIGHT = 0.8f
-
-/** 任务中心抽屉高度允许的最小比例。 */
-internal const val MIN_JOBS_DRAWER_HEIGHT = 0.15f
-
-/** 任务中心抽屉高度允许的最大比例。 */
-internal const val MAX_JOBS_DRAWER_HEIGHT = 0.6f
 
 /** UI 缩放允许的最小百分比。 */
 internal const val MIN_UI_SCALE_PERCENT = 75

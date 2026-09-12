@@ -277,6 +277,15 @@
     <string name="label_sort_descending">降序</string>
 
     <string name="label_task_center">任务</string>
+    <string name="label_task_entry_summary">任务：%1$d 个进行中，%2$d 个失败。打开任务窗口</string>
+    <string name="label_task_filter_all">全部 (%1$d)</string>
+    <string name="label_task_filter_active">进行中 (%1$d)</string>
+    <string name="label_task_filter_failed">失败 (%1$d)</string>
+    <string name="label_task_filter_finished">已结束 (%1$d)</string>
+    <string name="label_task_empty">暂无后台任务</string>
+    <string name="label_task_filter_empty">此分类下暂无任务</string>
+    <string name="label_task_background_hint">关闭此窗口后，任务仍会在后台继续。</string>
+    <string name="action_task_clear_finished">清理已结束任务</string>
     <string name="label_task_status_queued">排队中</string>
     <string name="label_task_status_running">执行中</string>
     <string name="label_task_status_paused">已暂停</string>
@@ -478,4 +487,12 @@
     <string name="label_shortcut_reset_default">默认</string>
     <string name="label_shortcut_disabled">禁用</string>
     <string name="label_shortcut_recording">输入快捷键</string>
+    <string name="action_stop_search">停止</string>
+    <string name="action_search_use_current_directory">使用当前目录</string>
+    <string name="action_search_pin_results">将结果固定为文件标签</string>
+    <string name="label_search_advanced_filters">高级筛选 (%1$d)</string>
+    <string name="label_search_include_remote">包含网络位置</string>
+    <string name="label_search_root">来源目录：%1$s</string>
+    <string name="label_search_background_hint">关闭窗口后继续搜索。Enter 打开结果，Ctrl+Enter 定位所在目录。</string>
+    <string name="msg_search_no_eligible_roots">当前范围没有可搜索的位置。请选择本地目录、添加可用收藏，或勾选“包含网络位置”。</string>
 </resources>

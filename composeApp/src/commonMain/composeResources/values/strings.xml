@@ -278,7 +278,16 @@
     <string name="label_sort_ascending">Asc</string>
     <string name="label_sort_descending">Desc</string>
 
-    <string name="label_task_center">Jobs</string>
+    <string name="label_task_center">Tasks</string>
+    <string name="label_task_entry_summary">Tasks: %1$d active, %2$d failed. Open task window</string>
+    <string name="label_task_filter_all">All (%1$d)</string>
+    <string name="label_task_filter_active">Active (%1$d)</string>
+    <string name="label_task_filter_failed">Failed (%1$d)</string>
+    <string name="label_task_filter_finished">Finished (%1$d)</string>
+    <string name="label_task_empty">No background tasks</string>
+    <string name="label_task_filter_empty">No tasks in this category</string>
+    <string name="label_task_background_hint">Tasks continue in the background when this window is closed.</string>
+    <string name="action_task_clear_finished">Clear finished tasks</string>
     <string name="label_task_status_queued">Queued</string>
     <string name="label_task_status_running">Running</string>
     <string name="label_task_status_paused">Paused</string>
@@ -480,4 +489,12 @@
     <string name="label_shortcut_reset_default">Default</string>
     <string name="label_shortcut_disabled">Disabled</string>
     <string name="label_shortcut_recording">Press keys</string>
+    <string name="action_stop_search">Stop</string>
+    <string name="action_search_use_current_directory">Use current folder</string>
+    <string name="action_search_pin_results">Pin results to a file tab</string>
+    <string name="label_search_advanced_filters">Advanced filters (%1$d)</string>
+    <string name="label_search_include_remote">Include network locations</string>
+    <string name="label_search_root">Source: %1$s</string>
+    <string name="label_search_background_hint">Close to keep searching in the background. Enter opens a result; Ctrl+Enter reveals its folder.</string>
+    <string name="msg_search_no_eligible_roots">No searchable locations in this scope. Choose a local folder, add an available favorite, or enable network locations.</string>
 </resources>

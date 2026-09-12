@@ -5,10 +5,10 @@ import com.oruke.onyx.core.model.VFile
 
 /** 将搜索与快速打开的界面操作映射为根组件意图的扩展函数集合。 */
 
-/** 显示完整搜索抽屉。 */
+/** 显示完整搜索的独立窗口，并唤起已有窗口。 */
 internal fun RootComponent.showSearchPanel() = dispatch(RootIntent.ShowSearchPanel)
 
-/** 关闭当前搜索界面。 */
+/** 隐藏完整搜索窗口，后台扫描继续运行。 */
 internal fun RootComponent.closeSearchPanel() = dispatch(RootIntent.CloseSearchPanel)
 
 /** 显示快速打开浮层。 */
@@ -62,20 +62,6 @@ internal fun RootComponent.updateSearchScope(scope: SearchScope) = dispatch(Root
  */
 internal fun RootComponent.updateSearchFilters(filters: SearchFilters) =
     dispatch(RootIntent.UpdateSearchFilters(filters))
-
-/**
- * 更新搜索抽屉高度比例。
- *
- * @param height 高度占应用窗口的比例。
- */
-internal fun RootComponent.setSearchDrawerHeight(height: Float) = dispatch(RootIntent.SetSearchDrawerHeight(height))
-
-/**
- * 更新任务中心抽屉高度比例。
- *
- * @param height 高度占应用窗口的比例。
- */
-internal fun RootComponent.setJobsDrawerHeight(height: Float) = dispatch(RootIntent.SetJobsDrawerHeight(height))
 
 /** 清空已持久化的搜索历史。 */
 internal fun RootComponent.clearSearchHistory() = dispatch(RootIntent.ClearSearchHistory)

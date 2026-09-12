@@ -182,6 +182,8 @@ private val onyxErrorColor = Color(0xFFD74E4E)
  * @param uiScale UI 缩放百分比（75~200），通过修改 LocalDensity 实现全局缩放，
  *                所有子组件的 dp/sp 值自动按比例缩放，无需修改下游代码。
  * @param appearance 动态外观参数，由 OnyxSettings 构建。
+ * @param content 需要统一主题与缩放的界面内容。
+ * @return 无返回值。
  */
 @Composable
 fun OnyxTheme(
@@ -195,7 +197,8 @@ fun OnyxTheme(
         val scaleFactor = uiScale.coerceIn(75, 200) / 100f
         Density(
             density = baseDensity.density * scaleFactor,
-            fontScale = baseDensity.fontScale * scaleFactor,
+            // sp 已通过 density 随 UI 缩放；再次乘 fontScale 会平方放大文字并挤出 Jewel 控件。
+            fontScale = baseDensity.fontScale,
         )
     }
     val dark = isSystemInDarkTheme()

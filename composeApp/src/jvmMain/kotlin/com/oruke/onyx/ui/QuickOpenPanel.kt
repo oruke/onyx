@@ -10,7 +10,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,6 +82,7 @@ internal data class QuickOpenContextMenuRequest(
  * @param onClose 关闭浮层的回调。
  * @param onOpenResult 打开选中结果的回调。
  * @param onOpenResultInFolder 在结果所在目录中定位结果的回调。
+ * @param onSelectedIndexChange 将键盘或鼠标选择同步到当前快速打开会话的回调。
  * @param modifier 应用于全屏浮层的修饰符。
  */
 @Composable
@@ -94,13 +94,12 @@ internal fun QuickOpenPanel(
     onClose: () -> Unit,
     onOpenResult: (VFile) -> Unit,
     onOpenResultInFolder: (VFile) -> Unit,
+    onSelectedIndexChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
-    var selectedIndex by remember {
-        mutableIntStateOf(QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX)
-    }
+    val selectedIndex = state.selectedIndex
     var contextMenuRequest by remember { mutableStateOf<QuickOpenContextMenuRequest?>(null) }
     val actions = QuickOpenPanelActions(
         onQueryChange = onQueryChange,
@@ -113,7 +112,6 @@ internal fun QuickOpenPanel(
     RequestQuickOpenInputFocus(focusRequester)
     KeepQuickOpenSelectionVisible(selectedIndex, state.results, listState)
     ExecuteQuickOpenSearchAfterQuerySettles(state.query, actions)
-    SynchronizeQuickOpenSelectedIndex(state.results.size, selectedIndex) { selectedIndex = it }
 
     Box(
         modifier = modifier
@@ -128,9 +126,9 @@ internal fun QuickOpenPanel(
             selectedIndex = selectedIndex,
             locationLabel = locationLabel,
             actions = actions,
-            onSelectedIndexChange = { selectedIndex = it },
+            onSelectedIndexChange = onSelectedIndexChange,
             onShowContextMenu = { index, file, offset ->
-                selectedIndex = index
+                onSelectedIndexChange(index)
                 contextMenuRequest = QuickOpenContextMenuRequest(file, offset)
             },
             modifier = Modifier
@@ -172,34 +170,6 @@ private fun ExecuteQuickOpenSearchAfterQuerySettles(
         if (query.isNotBlank()) {
             delay(QuickOpenPanelDefaults.SEARCH_DEBOUNCE_MILLIS)
             actions.onExecuteSearch()
-        }
-    }
-}
-
-/**
- * 将选中下标限定在结果列表的有效范围内。
- *
- * @param resultCount 当前结果数量。
- * @param selectedIndex 当前选中下标。
- * @param onSelectedIndexChange 需要修正选中下标时的回调。
- */
-@Composable
-private fun SynchronizeQuickOpenSelectedIndex(
-    resultCount: Int,
-    selectedIndex: Int,
-    onSelectedIndexChange: (Int) -> Unit,
-) {
-    LaunchedEffect(resultCount) {
-        val synchronizedIndex = if (resultCount == QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX) {
-            QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX
-        } else {
-            selectedIndex.coerceIn(
-                QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX,
-                resultCount - 1,
-            )
-        }
-        if (synchronizedIndex != selectedIndex) {
-            onSelectedIndexChange(synchronizedIndex)
         }
     }
 }

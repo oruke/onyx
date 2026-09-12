@@ -69,6 +69,8 @@ internal data class RootState(
     val showPreviewPane: Boolean = false,
     /** 文件搜索面板状态。 */
     val searchState: SearchPanelState = SearchPanelState(),
+    /** 与完整搜索互相独立的快速打开状态。 */
+    val quickOpenState: SearchPanelState = SearchPanelState(mode = SearchPanelMode.QUICK_OPEN),
     /** 可撤销与重做的文件操作历史状态。 */
     val operationHistoryState: OperationHistoryState = OperationHistoryState(),
 )
@@ -83,64 +85,6 @@ internal data class OperationHistoryState(
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
 )
-
-internal data class SearchPanelState(
-    val visible: Boolean = false,
-    /** 当前搜索 UI 的显示形态；浮层与底部抽屉共享同一状态与搜索任务。 */
-    val mode: SearchPanelMode = SearchPanelMode.SEARCH_PANEL,
-    val paneId: PaneId = PaneId.PRIMARY,
-    val rootLocation: String = "",
-    val query: String = "",
-    /** 当前搜索根范围。 */
-    val scope: SearchScope = SearchScope.CURRENT_DIRECTORY,
-    /** 结构化搜索过滤器；执行时转换为现有语法查询参数。 */
-    val filters: SearchFilters = SearchFilters(),
-    val status: SearchStatus = SearchStatus.IDLE,
-    val results: List<VFile> = emptyList(),
-    val scannedEntryCount: Int = 0,
-    val limitReached: Boolean = false,
-    val error: I18nMessage? = null,
-)
-
-/** 搜索 UI 的显示形态。 */
-internal enum class SearchPanelMode {
-    /** 聚焦式 Quick Open 浮层，与底部抽屉共享搜索状态与任务。 */
-    QUICK_OPEN,
-
-    /** 完整搜索抽屉。 */
-    SEARCH_PANEL,
-}
-
-/**
- * 结构化搜索过滤器，执行时转换为 FileSearchUseCase 语法查询参数。
- *
- * @property types 允许的条目类型；为空表示不限类型。
- * @property modifiedSinceEpochMillis 最早修改时间（epoch millis）；为空表示不限。
- * @property minSizeBytes 最小文件大小（字节）；为空表示不限。
- * @property maxSizeBytes 最大文件大小（字节）；为空表示不限。
- * @property searchInContent 是否将查询文本作为文件内容检索词。
- */
-internal data class SearchFilters(
-    val types: Set<SearchFilterFileType> = emptySet(),
-    val modifiedSinceEpochMillis: Long? = null,
-    val minSizeBytes: Long? = null,
-    val maxSizeBytes: Long? = null,
-    val searchInContent: Boolean = false,
-)
-
-/** 搜索过滤允许的条目类型。 */
-internal enum class SearchFilterFileType {
-    FILE,
-    DIRECTORY,
-}
-
-internal enum class SearchStatus {
-    IDLE,
-    RUNNING,
-    COMPLETED,
-    FAILED,
-    CANCELLED,
-}
 
 internal data class SidebarTreeState(
     val roots: List<SidebarTreeNode>,
@@ -437,6 +381,46 @@ internal sealed interface RootIntent {
 
     data object CloseQuickOpen : RootIntent
 
+    /** 更新快速打开的查询，不触碰完整搜索。 */
+    data class UpdateQuickOpenQuery(
+        /** 快速打开的独立查询文本。 */
+        val query: String,
+    ) : RootIntent
+    /** 执行快速打开查询。 */
+    data object ExecuteQuickOpen : RootIntent
+    /** 在快速打开的来源面板打开结果。 */
+    data class OpenQuickOpenResult(
+        /** 要通过来源面板打开的条目。 */
+        val entry: VFile,
+    ) : RootIntent
+    /** 在快速打开的来源面板定位结果。 */
+    data class OpenQuickOpenResultInFolder(
+        /** 要在父目录定位并选中的条目。 */
+        val entry: VFile,
+    ) : RootIntent
+    /** 更新快速打开的选中结果。 */
+    data class SetQuickOpenSelectedIndex(
+        /** 快速打开结果列表中的目标索引。 */
+        val index: Int,
+    ) : RootIntent
+    /** 更新完整搜索的选中结果。 */
+    data class SetSearchSelectedIndex(
+        /** 完整搜索结果列表中的目标索引。 */
+        val index: Int,
+    ) : RootIntent
+    /** 设置完整搜索的高级筛选区域可见性。 */
+    data class SetSearchAdvancedFiltersExpanded(
+        /** 高级条件区域是否展开。 */
+        val expanded: Boolean,
+    ) : RootIntent
+    /** 明确允许或禁止当前搜索包含网络位置。 */
+    data class SetSearchIncludeRemoteLocations(
+        /** 是否明确允许本会话扫描网络位置。 */
+        val include: Boolean,
+    ) : RootIntent
+    /** 显式把完整搜索绑定到当前活动目录。 */
+    data object UseCurrentDirectoryForSearch : RootIntent
+
     data class UpdateSearchQuery(
         val query: String,
     ) : RootIntent
@@ -461,14 +445,6 @@ internal sealed interface RootIntent {
 
     data class UpdateSearchFilters(
         val filters: SearchFilters,
-    ) : RootIntent
-
-    data class SetSearchDrawerHeight(
-        val height: Float,
-    ) : RootIntent
-
-    data class SetJobsDrawerHeight(
-        val height: Float,
     ) : RootIntent
 
     data object ClearSearchHistory : RootIntent
@@ -574,7 +550,8 @@ internal sealed interface RootIntent {
         val taskId: String,
     ) : RootIntent
 
-    data object ClearAllTasks : RootIntent
+    /** 清理已成功或已取消的任务，保留失败记录与活动任务。 */
+    data object ClearFinishedTasks : RootIntent
 
     data object UndoLastFileOperation : RootIntent
 
@@ -677,6 +654,8 @@ internal interface RootComponent : RootPlatformServices, RootPresentationService
     val imageViewerState: StateFlow<ImageViewerState>
     val primaryPane: PaneComponent
     val secondaryPane: PaneComponent
+    /** 所有文件管理器窗口共享的任务中心。 */
+    val taskCenter: TaskCenterComponent
 
     fun dispatch(intent: RootIntent)
 

@@ -124,6 +124,8 @@ internal data class RootRuntimeDelegates(
     val sessionManager: SessionManager,
     /** 所有窗口共享的即时设置状态。 */
     val settings: MutableStateFlow<OnyxSettings>,
+    /** 所有窗口共享的任务中心状态与任务操作入口。 */
+    val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(taskOrchestrator),
 )
 
 /** 默认根组件的全部类型化依赖。 */

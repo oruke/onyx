@@ -11,8 +11,6 @@ import com.oruke.onyx.core.model.VFile
  * 此对象只承载 UI 展示数据，避免搜索面板入口散列传递布局、历史记录和位置格式化能力。
  */
 internal data class SearchPanelPresentation(
-    /** 抽屉面板当前高度占可用区域的比例。 */
-    val drawerHeightFraction: Float,
     /** 可供用户快速复用的历史查询。 */
     val searchHistory: List<String>,
     /** 将底层位置标识转换为可显示目录名称的函数。 */
@@ -31,7 +29,7 @@ internal data class SearchPanelActions(
     val onSearch: () -> Unit,
     /** 取消正在运行的搜索任务。 */
     val onCancel: () -> Unit,
-    /** 关闭搜索面板。 */
+    /** 隐藏搜索窗口并保留当前搜索会话。 */
     val onClose: () -> Unit,
     /** 打开搜索结果。 */
     val onOpenResult: (VFile) -> Unit,
@@ -41,8 +39,16 @@ internal data class SearchPanelActions(
     val onUpdateScope: (SearchScope) -> Unit,
     /** 更新结构化搜索筛选条件。 */
     val onUpdateFilters: (SearchFilters) -> Unit,
-    /** 持久化搜索抽屉的高度比例。 */
-    val onSetDrawerHeight: (Float) -> Unit,
+    /** 保存结果列表的当前选中项。 */
+    val onSelectIndex: (Int) -> Unit,
+    /** 展开或收起高级筛选，收起时保留已有条件。 */
+    val onSetAdvancedFiltersExpanded: (Boolean) -> Unit,
+    /** 明确选择是否扫描搜索范围中的网络位置。 */
+    val onSetIncludeRemoteLocations: (Boolean) -> Unit,
+    /** 使用当前活跃文件面板的目录开始新的搜索会话。 */
+    val onUseCurrentDirectory: () -> Unit,
+    /** 将当前结果快照固定为来源面板中的文件集合标签。 */
+    val onOpenResultsAsCollection: () -> Unit,
     /** 清空用户保存的搜索历史。 */
     val onClearHistory: () -> Unit,
 )

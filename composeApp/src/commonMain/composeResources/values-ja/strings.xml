@@ -278,7 +278,16 @@
     <string name="label_sort_ascending">昇順</string>
     <string name="label_sort_descending">降順</string>
 
-    <string name="label_task_center">ジョブ</string>
+    <string name="label_task_center">タスク</string>
+    <string name="label_task_entry_summary">タスク：実行中 %1$d 件、失敗 %2$d 件。タスクウィンドウを開く</string>
+    <string name="label_task_filter_all">すべて (%1$d)</string>
+    <string name="label_task_filter_active">実行中 (%1$d)</string>
+    <string name="label_task_filter_failed">失敗 (%1$d)</string>
+    <string name="label_task_filter_finished">終了 (%1$d)</string>
+    <string name="label_task_empty">バックグラウンドタスクはありません</string>
+    <string name="label_task_filter_empty">この分類のタスクはありません</string>
+    <string name="label_task_background_hint">このウィンドウを閉じても、タスクはバックグラウンドで続行します。</string>
+    <string name="action_task_clear_finished">終了したタスクを消去</string>
     <string name="label_task_status_queued">待機中</string>
     <string name="label_task_status_running">実行中</string>
     <string name="label_task_status_paused">一時停止</string>
@@ -480,4 +489,12 @@
     <string name="label_shortcut_reset_default">既定</string>
     <string name="label_shortcut_disabled">無効</string>
     <string name="label_shortcut_recording">キー入力</string>
+    <string name="action_stop_search">停止</string>
+    <string name="action_search_use_current_directory">現在のフォルダーを使用</string>
+    <string name="action_search_pin_results">結果をファイルタブに固定</string>
+    <string name="label_search_advanced_filters">詳細フィルター (%1$d)</string>
+    <string name="label_search_include_remote">ネットワークの場所を含める</string>
+    <string name="label_search_root">起点：%1$s</string>
+    <string name="label_search_background_hint">閉じても検索は続行します。Enter で開き、Ctrl+Enter で所在フォルダーを表示します。</string>
+    <string name="msg_search_no_eligible_roots">この範囲に検索可能な場所がありません。ローカルフォルダーを選ぶか、有効なお気に入りを追加するか、ネットワークの場所を有効にしてください。</string>
 </resources>

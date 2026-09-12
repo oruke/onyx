@@ -244,5 +244,6 @@ internal fun TitleBarScope.TitleBarContent(
                 contentDescription = stringResource(Res.string.action_open_settings)
             )
         }
+        TaskCenterButton(rootComponent.taskCenter)
     }
 }

@@ -58,17 +58,13 @@ import com.oruke.onyx.ui.PreviewPane
 import com.oruke.onyx.ui.ResizablePaneDivider
 import com.oruke.onyx.ui.RemoteConnectionsDialog
 import com.oruke.onyx.ui.RemoteCredentialsDialog
-import com.oruke.onyx.app.component.SearchPanelMode
 import com.oruke.onyx.ui.QuickOpenPanel
-import com.oruke.onyx.ui.SearchPanel
-import com.oruke.onyx.ui.SearchPanelActions
-import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.SettingsDialog
 import com.oruke.onyx.ui.StatusBar
-import com.oruke.onyx.ui.JobsBar
 import com.oruke.onyx.ui.TitleBarContent
 import com.oruke.onyx.ui.theme.FileDragState
 import com.oruke.onyx.ui.theme.FileDropTarget
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.LocalTooltipController
@@ -122,7 +118,8 @@ internal fun DecoratedWindowScope.WindowApp(
                 }
             },
         ),
-        LocalOnyxPalette provides palette
+        LocalOnyxPalette provides palette,
+        LocalOnyxAppearance provides appearance,
     ) {
         TitleBar(modifier = Modifier.newFullscreenControls()) { _ ->
             TitleBarContent(
@@ -141,13 +138,7 @@ internal fun DecoratedWindowScope.WindowApp(
                 onTogglePreviewPane = { rootComponent.dispatch(RootIntent.TogglePreviewPane) },
                 searchPanelVisible = state.searchState.visible,
                 onToggleSearchPanel = {
-                    rootComponent.dispatch(
-                        if (state.searchState.visible) {
-                            RootIntent.CloseSearchPanel
-                        } else {
-                            RootIntent.ShowSearchPanel
-                        },
-                    )
+                    rootComponent.dispatch(RootIntent.ShowSearchPanel)
                 },
             )
         }
@@ -287,7 +278,7 @@ private fun AppContent(
 }
 
 /**
- * 显示应用主工作区及其搜索、任务和状态附属区域。
+ * 显示应用主工作区及其搜索和状态附属区域。
  *
  * @param state 根组件当前状态。
  * @param rootComponent 根组件业务接口。
@@ -315,8 +306,6 @@ private fun AppWorkspace(
             AppStatusBar(state, rootComponent)
         }
 
-        AppJobsBar(state, rootComponent::dispatch)
-        AppSearchPanel(state, rootComponent)
         AppQuickOpenOverlay(state, rootComponent)
     }
 }
@@ -522,43 +511,6 @@ private fun AppPreviewPanel(state: RootState, rootComponent: RootComponent) {
 }
 
 /**
- * 在搜索面板可见时显示搜索状态与动作。
- *
- * @param state 根组件当前状态。
- * @param rootComponent 根组件业务接口。
- */
-@Composable
-private fun AppSearchPanel(state: RootState, rootComponent: RootComponent) {
-    if (!state.searchState.visible || state.searchState.mode != SearchPanelMode.SEARCH_PANEL) return
-    val dispatch = rootComponent::dispatch
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.BottomCenter,
-    ) {
-        SearchPanel(
-            state = state.searchState,
-            presentation = SearchPanelPresentation(
-                drawerHeightFraction = state.settings.searchDrawerHeight,
-                searchHistory = state.settings.searchHistory,
-                locationLabel = rootComponent::locationLabel,
-            ),
-            actions = SearchPanelActions(
-                onQueryChange = { dispatch(RootIntent.UpdateSearchQuery(it)) },
-                onSearch = { dispatch(RootIntent.ExecuteSearch) },
-                onCancel = { dispatch(RootIntent.CancelSearch) },
-                onClose = { dispatch(RootIntent.CloseSearchPanel) },
-                onOpenResult = { dispatch(RootIntent.OpenSearchResult(it)) },
-                onOpenResultInFolder = { dispatch(RootIntent.OpenSearchResultInFolder(it)) },
-                onUpdateScope = { dispatch(RootIntent.UpdateSearchScope(it)) },
-                onUpdateFilters = { dispatch(RootIntent.UpdateSearchFilters(it)) },
-                onSetDrawerHeight = { dispatch(RootIntent.SetSearchDrawerHeight(it)) },
-                onClearHistory = { dispatch(RootIntent.ClearSearchHistory) },
-            ),
-        )
-    }
-}
-
-/**
  * 在 Quick Open 模式启用时显示浮层搜索。
  *
  * @param state 根组件当前状态。
@@ -566,44 +518,18 @@ private fun AppSearchPanel(state: RootState, rootComponent: RootComponent) {
  */
 @Composable
 private fun AppQuickOpenOverlay(state: RootState, rootComponent: RootComponent) {
-    if (!state.searchState.visible || state.searchState.mode != SearchPanelMode.QUICK_OPEN) return
+    if (!state.quickOpenState.visible) return
     val dispatch = rootComponent::dispatch
     QuickOpenPanel(
-        state = state.searchState,
+        state = state.quickOpenState,
         locationLabel = rootComponent::locationLabel,
-        onQueryChange = { dispatch(RootIntent.UpdateSearchQuery(it)) },
-        onExecuteSearch = { dispatch(RootIntent.ExecuteSearch) },
+        onQueryChange = { dispatch(RootIntent.UpdateQuickOpenQuery(it)) },
+        onExecuteSearch = { dispatch(RootIntent.ExecuteQuickOpen) },
         onClose = { dispatch(RootIntent.CloseQuickOpen) },
-        onOpenResult = { dispatch(RootIntent.OpenSearchResult(it)) },
-        onOpenResultInFolder = { dispatch(RootIntent.OpenSearchResultInFolder(it)) },
+        onOpenResult = { dispatch(RootIntent.OpenQuickOpenResult(it)) },
+        onOpenResultInFolder = { dispatch(RootIntent.OpenQuickOpenResultInFolder(it)) },
+        onSelectedIndexChange = { dispatch(RootIntent.SetQuickOpenSelectedIndex(it)) },
     )
-}
-
-/**
- * 在存在后台任务时显示任务栏。
- *
- * @param state 根组件当前状态。
- * @param dispatch 根意图分发器。
- */
-@Composable
-private fun AppJobsBar(state: RootState, dispatch: (RootIntent) -> Unit) {
-    if (state.tasks.isEmpty()) return
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.BottomCenter,
-    ) {
-        JobsBar(
-            tasks = state.tasks,
-            drawerHeightFraction = state.settings.jobsDrawerHeight,
-            onSetDrawerHeight = { dispatch(RootIntent.SetJobsDrawerHeight(it)) },
-            onPauseTask = { dispatch(RootIntent.PauseTask(it)) },
-            onResumeTask = { dispatch(RootIntent.ResumeTask(it)) },
-            onRetryTask = { dispatch(RootIntent.RetryTask(it)) },
-            onCancelTask = { dispatch(RootIntent.CancelTask(it)) },
-            onDismissTask = { dispatch(RootIntent.DismissTask(it)) },
-            onClearAllTasks = { dispatch(RootIntent.ClearAllTasks) },
-        )
-    }
 }
 
 /**

@@ -134,6 +134,8 @@ internal class DefaultRootComponent(
     internal val fileContentSearchService = dependencies.search.fileContentSearchService
     /** 后台任务编排器。 */
     internal val taskOrchestrator = dependencies.delegates.taskOrchestrator
+    /** 应用级任务中心，所有根组件使用同一窗口状态。 */
+    override val taskCenter: TaskCenterComponent = dependencies.delegates.taskCenter
     /** 文件剪贴板管理器。 */
     internal val clipboardManager = dependencies.delegates.clipboardManager
     /** 图片查看器控制器。 */
@@ -251,6 +253,21 @@ internal class DefaultRootComponent(
         settings = { settings.value },
         filesystemRoots = { jvmFilesystemRoots() },
         onRecordSearchHistory = ::recordSearchHistory,
+    )
+
+    /** 快速打开独立持有查询、任务与取消标识，不与完整搜索互相覆盖。 */
+    internal val quickOpenDelegate = RootSearchDelegate(
+        scope = scope,
+        fileSearchUseCase = fileSearchUseCase,
+        fileCollectionUseCase = fileCollectionUseCase,
+        paneState = ::paneState,
+        activatePane = ::activatePane,
+        paneComponent = ::paneComponent,
+        getActivePane = { activePane.value },
+        settings = { settings.value },
+        filesystemRoots = { jvmFilesystemRoots() },
+        onRecordSearchHistory = ::recordSearchHistory,
+        mode = SearchPanelMode.QUICK_OPEN,
     )
 
     /** 远程连接和认证委托。 */
@@ -405,10 +422,12 @@ internal class DefaultRootComponent(
             dialogState,
             clipboardManager.clipboard,
             taskOrchestrator.tasks,
-            searchDelegate.searchState,
+            combine(searchDelegate.searchState, quickOpenDelegate.searchState) { search, quick -> search to quick },
             fileOperationHistoryDelegate.state,
         ) { dialog, clipboard, tasks, search, history ->
-            RuntimeContextSlice(dialog, clipboard != null, tasks, search, history.toRootOperationHistoryState())
+            RuntimeContextSlice(
+                dialog, clipboard != null, tasks, search.first, search.second, history.toRootOperationHistoryState(),
+            )
         },
     ) { sidebar, runtime ->
         ContextSlice(
@@ -482,6 +501,7 @@ private fun DefaultRootComponent.initialRootState(): RootState {
         tasks = taskOrchestrator.tasks.value,
         showPreviewPane = showPreviewPane.value,
         searchState = searchDelegate.searchState.value,
+        quickOpenState = quickOpenDelegate.searchState.value,
         operationHistoryState = fileOperationHistoryDelegate.state.value.toRootOperationHistoryState(),
     )
 }
@@ -545,6 +565,8 @@ private data class RuntimeContextSlice(
     val tasks: List<BackgroundTask>,
     /** 搜索状态。 */
     val searchState: SearchPanelState,
+    /** 独立快速打开状态。 */
+    val quickOpenState: SearchPanelState,
     /** 文件操作历史状态。 */
     val operationHistoryState: OperationHistoryState,
 )
@@ -573,6 +595,7 @@ private fun ContextSlice.toRootState(layout: LayoutSlice, panes: Pair<PaneState,
         tasks = runtime.tasks,
         showPreviewPane = layout.showPreviewPane,
         searchState = runtime.searchState,
+        quickOpenState = runtime.quickOpenState,
         operationHistoryState = runtime.operationHistoryState,
     )
 }

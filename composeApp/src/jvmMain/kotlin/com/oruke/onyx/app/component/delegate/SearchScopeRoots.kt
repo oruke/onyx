@@ -1,38 +1,54 @@
 package com.oruke.onyx.app.component.delegate
 
+import com.oruke.onyx.app.filesystem.RemoteVfsLocationParser
 import com.oruke.onyx.core.model.SearchScope
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.vfs.archive.ArchiveService
 import java.nio.file.FileSystems
 
 /**
  * 依据搜索范围构造搜索根列表。
  *
  * @param scope 搜索范围。
- * @param baseRoot 当前活动面板位置；范围回退时的默认根。
+ * @param baseRoot 当前会话显式绑定的位置。
  * @param favorites 用户收藏位置。
  * @param allRoots 文件系统根；仅 [SearchScope.ALL_ROOTS] 使用。
- * @return 去重后的非空搜索根列表；无法构造时回退到 [baseRoot]。
+ * @param includeRemoteLocations 是否允许扫描远程位置。
+ * @return 已授权的去重搜索根；范围为空时不隐式切换到其他目录。
  */
 internal fun buildSearchRoots(
     scope: SearchScope,
     baseRoot: String,
     favorites: List<String>,
     allRoots: List<String>,
+    includeRemoteLocations: Boolean = false,
 ): List<String> {
-    return when (scope) {
+    val candidates = when (scope) {
         SearchScope.CURRENT_DIRECTORY -> listOf(baseRoot)
         SearchScope.FAVORITES -> favorites
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .distinct()
-            .takeIf { it.isNotEmpty() }
-            ?: listOf(baseRoot)
         SearchScope.ALL_ROOTS -> allRoots
-            .map(String::trim)
-            .filter(String::isNotEmpty)
-            .distinct()
-            .takeIf { it.isNotEmpty() }
-            ?: listOf(baseRoot)
+    }
+    return candidates.map(String::trim).filter(String::isNotEmpty).distinct()
+        .filter { location -> includeRemoteLocations || !location.isRemoteSearchLocation() }
+}
+
+/**
+ * 依据现有协议解析器和网络路径结构判断搜索位置是否需要远程访问授权。
+ *
+ * @receiver 已去除首尾空白的 VFS 位置。
+ * @return 远程协议、UNC、file 网络地址或以它们为来源的压缩包返回 `true`。
+ */
+internal fun String.isRemoteSearchLocation(): Boolean {
+    val source = ArchiveService.parseArchiveLocation(this)?.first
+    return when {
+        source != null && source != this -> source.isRemoteSearchLocation()
+        RemoteVfsLocationParser.parse(this) != null -> true
+        startsWith("\\\\") || startsWith("//") -> true
+        startsWith("file://", ignoreCase = true) -> substringAfter("://").let { fileLocation ->
+            // 空 authority 后的双斜线仍表示 UNC，单斜线才是本地绝对路径。
+            fileLocation.startsWith("//") || fileLocation.substringBefore('/').isNotEmpty()
+        }
+        else -> false
     }
 }
 

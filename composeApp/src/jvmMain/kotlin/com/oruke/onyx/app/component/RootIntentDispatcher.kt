@@ -12,6 +12,7 @@ internal fun DefaultRootComponent.dispatchRootIntent(intent: RootIntent) {
         dispatchRootPaneIntent(intent) -> Unit
         dispatchRootDialogIntent(intent) -> Unit
         dispatchRootSearchIntent(intent) -> Unit
+        dispatchRootQuickOpenIntent(intent) -> Unit
         dispatchRootSearchSettingsIntent(intent) -> Unit
         dispatchRootTransferIntent(intent) -> Unit
         dispatchRootArchiveIntent(intent) -> Unit
@@ -116,8 +117,6 @@ private fun DefaultRootComponent.dispatchRootSearchIntent(intent: RootIntent): B
     return when (intent) {
         RootIntent.ShowSearchPanel -> { searchDelegate.showSearchPanel(); true }
         RootIntent.CloseSearchPanel -> { searchDelegate.closeSearchPanel(); true }
-        RootIntent.ShowQuickOpen -> { searchDelegate.showQuickOpen(); true }
-        RootIntent.CloseQuickOpen -> { searchDelegate.closeSearchPanel(); true }
         is RootIntent.UpdateSearchQuery -> { searchDelegate.updateSearchQuery(intent.query); true }
         RootIntent.ExecuteSearch -> { searchDelegate.executeSearch(); true }
         RootIntent.CancelSearch -> { searchDelegate.cancelSearch(); true }
@@ -131,16 +130,43 @@ private fun DefaultRootComponent.dispatchRootSearchIntent(intent: RootIntent): B
 }
 
 /**
- * 派发搜索抽屉高度与搜索历史设置 intent。
+ * 派发独立搜索窗口交互状态与搜索历史设置 intent。
  *
  * @param intent 待处理 intent。
  * @return 已处理时返回 `true`。
  */
 private fun DefaultRootComponent.dispatchRootSearchSettingsIntent(intent: RootIntent): Boolean {
     return when (intent) {
-        is RootIntent.SetSearchDrawerHeight -> { setSearchDrawerHeight(intent.height); true }
-        is RootIntent.SetJobsDrawerHeight -> { setJobsDrawerHeight(intent.height); true }
+        is RootIntent.SetSearchSelectedIndex -> { searchDelegate.setSelectedIndex(intent.index); true }
+        is RootIntent.SetSearchAdvancedFiltersExpanded -> {
+            searchDelegate.setAdvancedFiltersExpanded(intent.expanded)
+            true
+        }
+        is RootIntent.SetSearchIncludeRemoteLocations -> {
+            searchDelegate.setIncludeRemoteLocations(intent.include)
+            true
+        }
+        RootIntent.UseCurrentDirectoryForSearch -> { searchDelegate.useCurrentDirectory(); true }
         RootIntent.ClearSearchHistory -> { clearSearchHistory(); true }
+        else -> false
+    }
+}
+
+/**
+ * 仅向快速打开会话分发其查询和导航事件。
+ *
+ * @param intent 快速打开专用意图。
+ * @return 是否已处理该意图。
+ */
+private fun DefaultRootComponent.dispatchRootQuickOpenIntent(intent: RootIntent): Boolean {
+    return when (intent) {
+        RootIntent.ShowQuickOpen -> { quickOpenDelegate.showQuickOpen(); true }
+        RootIntent.CloseQuickOpen -> { quickOpenDelegate.closeSearchPanel(); true }
+        is RootIntent.UpdateQuickOpenQuery -> { quickOpenDelegate.updateSearchQuery(intent.query); true }
+        RootIntent.ExecuteQuickOpen -> { quickOpenDelegate.executeSearch(); true }
+        is RootIntent.OpenQuickOpenResult -> { quickOpenDelegate.openSearchResult(intent.entry); true }
+        is RootIntent.OpenQuickOpenResultInFolder -> { quickOpenDelegate.openSearchResultInFolder(intent.entry); true }
+        is RootIntent.SetQuickOpenSelectedIndex -> { quickOpenDelegate.setSelectedIndex(intent.index); true }
         else -> false
     }
 }
@@ -203,12 +229,12 @@ private fun DefaultRootComponent.dispatchRootArchiveIntent(intent: RootIntent): 
  */
 private fun DefaultRootComponent.dispatchRootTaskIntent(intent: RootIntent): Boolean {
     return when (intent) {
-        is RootIntent.DismissTask -> { taskOrchestrator.dismissTask(intent.taskId); true }
-        is RootIntent.CancelTask -> { taskOrchestrator.cancelTask(intent.taskId); true }
-        is RootIntent.PauseTask -> { taskOrchestrator.pauseTask(intent.taskId); true }
-        is RootIntent.ResumeTask -> { taskOrchestrator.resumeTask(intent.taskId); true }
-        is RootIntent.RetryTask -> { taskOrchestrator.retryTask(intent.taskId); true }
-        RootIntent.ClearAllTasks -> { taskOrchestrator.clearAllTasks(); true }
+        is RootIntent.DismissTask -> { taskCenter.dispatch(TaskCenterIntent.Dismiss(intent.taskId)); true }
+        is RootIntent.CancelTask -> { taskCenter.dispatch(TaskCenterIntent.Cancel(intent.taskId)); true }
+        is RootIntent.PauseTask -> { taskCenter.dispatch(TaskCenterIntent.Pause(intent.taskId)); true }
+        is RootIntent.ResumeTask -> { taskCenter.dispatch(TaskCenterIntent.Resume(intent.taskId)); true }
+        is RootIntent.RetryTask -> { taskCenter.dispatch(TaskCenterIntent.Retry(intent.taskId)); true }
+        RootIntent.ClearFinishedTasks -> { taskCenter.dispatch(TaskCenterIntent.ClearFinished); true }
         else -> false
     }
 }

@@ -15,6 +15,8 @@ import com.oruke.onyx.app.platform.DesktopFileManagerWindowRequest
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.app.platform.rememberDesktopWindowStates
 import com.oruke.onyx.ui.ImageViewerContent
+import com.oruke.onyx.ui.SearchPanelPresentation
+import com.oruke.onyx.ui.searchWindowActions
 import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import java.awt.Dimension
@@ -88,6 +90,13 @@ internal fun DesktopFileManagerWindow(
         }
         WindowApp(rootComponent, externalFileDragService)
     }
+
+    SearchWindow(
+        state = state.searchState,
+        presentation = SearchPanelPresentation(state.settings.searchHistory, rootComponent::locationLabel),
+        actions = rootComponent.searchWindowActions(),
+        settings = state.settings,
+    )
 
     val imageViewerState by rootComponent.imageViewerState.collectAsState()
     if (imageViewerState.visible) {

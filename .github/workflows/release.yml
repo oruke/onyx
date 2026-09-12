@@ -146,7 +146,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # 发布前执行同样的真实窗口测试；Linux runner 使用独立虚拟桌面。
+      - name: Install Linux desktop test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb openbox
+
+      - name: Verify code and behavior on Linux
+        if: runner.os == 'Linux'
+        run: >-
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24"
+          sh -c 'openbox >/dev/null 2>&1 & ./gradlew jvmTest detekt'
+
       - name: Verify code and behavior
+        if: runner.os != 'Linux'
         run: ./gradlew jvmTest detekt
 
       - name: Build packages

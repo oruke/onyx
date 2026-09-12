@@ -2,7 +2,9 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -28,24 +30,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.PaneCommand
 import com.oruke.onyx.app.component.PaneContextMenuCommand
 import com.oruke.onyx.app.component.PaneContextMenuIcon
@@ -56,6 +56,7 @@ import com.oruke.onyx.app.component.SearchPanelState
 import com.oruke.onyx.app.component.SearchStatus
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
@@ -124,6 +125,7 @@ internal fun BoxScope.SearchResultContextMenu(
  * 根据当前状态展示搜索空态或按目录分组的结果列表。
  *
  * @param state 组件层提供的当前搜索状态。
+ * @return 无返回值。
  * @param listState 搜索结果列表滚动状态。
  * @param selectedIndex 当前键盘导航选中的结果索引。
  * @param presentation 面板展示配置。
@@ -171,7 +173,7 @@ private fun SearchResultsEmptyState(state: SearchPanelState) {
         else -> stringResource(Res.string.search_empty_result)
     }
     Box(
-        modifier = Modifier.fillMaxSize().background(palette.appBackground),
+        modifier = Modifier.fillMaxSize().background(palette.appBackground).testTag("search-results"),
         contentAlignment = Alignment.Center,
     ) {
         if (message.isNotEmpty()) {
@@ -182,7 +184,7 @@ private fun SearchResultsEmptyState(state: SearchPanelState) {
                 } else {
                     palette.disabledForeground
                 },
-                fontSize = 11.sp,
+                fontSize = LocalOnyxAppearance.current.listFontSize,
             )
         }
     }
@@ -208,6 +210,11 @@ private fun SearchResultsList(
     listActions: SearchResultListActions,
 ) {
     val palette = LocalOnyxPalette.current
+    val focusRequester = remember { FocusRequester() }
+    val focusedListActions = listActions.copy(onSelectIndex = { index ->
+        listActions.onSelectIndex(index)
+        focusRequester.requestFocus()
+    })
     val groupedResults = remember(state.results) {
         state.results.groupBy { it.parentLocation ?: it.location }
     }
@@ -219,14 +226,24 @@ private fun SearchResultsList(
         )
     }
 
-    LaunchedEffect(lazyColumnIndex) {
+    // 只在选中条目改变时定位，追加结果或隐藏重开不能将用户手动滚动的位置拉回选中行。
+    LaunchedEffect(state.results.getOrNull(selectedIndex)?.id) {
         listState.revealSearchResult(lazyColumnIndex)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(palette.appBackground)) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(end = 10.dp)
+                .testTag("search-results")
+                .focusRequester(focusRequester)
+                .onPreviewKeyEvent { event ->
+                    // 焦点始终由列表承接，方向键切换后 Enter 必须打开组件当前选中项。
+                    handleSearchQueryKeyEvent(event, state, selectedIndex, listActions.onSelectIndex, false, actions)
+                }
+                .focusable(),
         ) {
             groupedResults.forEach { (parentPath, entries) ->
                 searchResultGroup(
@@ -237,7 +254,7 @@ private fun SearchResultsList(
                     selectedIndex = selectedIndex,
                     presentation = presentation,
                     actions = actions,
-                    listActions = listActions,
+                    listActions = focusedListActions,
                 )
             }
         }
@@ -280,20 +297,23 @@ private fun searchResultLazyColumnIndex(
  * 将指定的搜索结果行滚动到当前可视区域内。
  *
  * @param targetIndex 目标结果在 LazyColumn 中的行索引。
+ * @return 无返回值。
  */
 private suspend fun LazyListState.revealSearchResult(targetIndex: Int) {
     if (targetIndex < 0) return
-    val visibleItems = layoutInfo.visibleItemsInfo
-    if (visibleItems.isEmpty()) return
-    val firstVisible = visibleItems.first().index
-    val lastVisible = visibleItems.last().index
-    val scrollTarget = when {
-        targetIndex < firstVisible -> targetIndex
-        targetIndex > lastVisible -> targetIndex - (lastVisible - firstVisible)
-        else -> null
-    }
-    if (scrollTarget != null) {
-        scrollToItem(scrollTarget)
+    val layout = layoutInfo
+    val visibleItem = layout.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+    if (visibleItem == null) {
+        scrollToItem(targetIndex)
+    } else {
+        // 最后一行即使只有少量像素露出也算 visible，需把整行移入视口才能看清键盘选中项。
+        val overflow = when {
+            visibleItem.offset < layout.viewportStartOffset -> visibleItem.offset - layout.viewportStartOffset
+            visibleItem.offset + visibleItem.size > layout.viewportEndOffset ->
+                visibleItem.offset + visibleItem.size - layout.viewportEndOffset
+            else -> 0
+        }
+        if (overflow != 0) scrollBy(overflow.toFloat())
     }
 }
 
@@ -332,13 +352,10 @@ private fun LazyListScope.searchResultGroup(
             entry = entry,
             query = query,
             isSelected = globalIndex == selectedIndex,
+            onSelect = { listActions.onSelectIndex(globalIndex) },
             onOpen = {
                 listActions.onSelectIndex(globalIndex)
                 actions.onOpenResult(entry)
-            },
-            onOpenInFolder = {
-                listActions.onSelectIndex(globalIndex)
-                actions.onOpenResultInFolder(entry)
             },
             onContextMenu = { offset ->
                 listActions.onSelectIndex(globalIndex)
@@ -354,6 +371,7 @@ private fun LazyListScope.searchResultGroup(
  * @param parentPath 当前分组的父目录位置。
  * @param entryCount 当前分组内的搜索结果数量。
  * @param locationLabel 将底层位置标识转换为可显示目录名称的函数。
+ * @return 无返回值。
  */
 @Composable
 private fun SearchResultGroupHeader(
@@ -362,10 +380,11 @@ private fun SearchResultGroupHeader(
     locationLabel: (String) -> String,
 ) {
     val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(24.dp)
+            .height(appearance.headerHeight)
             .background(palette.headerBackground)
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -379,8 +398,8 @@ private fun SearchResultGroupHeader(
         )
         Text(
             text = locationLabel(parentPath),
-            color = palette.accent,
-            fontSize = 11.sp,
+            color = palette.foreground,
+            fontSize = appearance.headerFontSize,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -388,7 +407,7 @@ private fun SearchResultGroupHeader(
         )
         Text(
             text = entryCount.toString(),
-            fontSize = 10.sp,
+            fontSize = appearance.headerFontSize,
             color = palette.mutedForeground,
             modifier = Modifier
                 .background(palette.surfaceVariant, RoundedCornerShape(8.dp))
@@ -398,14 +417,15 @@ private fun SearchResultGroupHeader(
 }
 
 /**
- * 渲染单条搜索结果及其打开、定位和右键菜单交互。
+ * 渲染单条搜索结果；单击仅选中，双击打开，右键保留选中后显示菜单。
  *
  * @param entry 当前搜索结果。
  * @param query 当前搜索关键词，用于高亮名称命中片段。
  * @param isSelected 当前结果是否被键盘导航选中。
+ * @param onSelect 将当前结果设为组件选中项。
  * @param onOpen 打开当前搜索结果。
- * @param onOpenInFolder 在当前结果所在目录中定位。
  * @param onContextMenu 在指定窗口坐标显示右键菜单。
+ * @return 无返回值。
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -413,15 +433,16 @@ private fun SearchResultRow(
     entry: VFile,
     query: String,
     isSelected: Boolean,
+    onSelect: () -> Unit,
     onOpen: () -> Unit,
-    onOpenInFolder: () -> Unit,
     onContextMenu: (IntOffset) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
     var isHovered by remember { mutableStateOf(false) }
     var rowCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val backgroundColor = when {
-        isSelected -> palette.surfaceVariant
+        isSelected -> palette.selectionBackground
         isHovered -> palette.rowHoverBackground
         else -> Color.Transparent
     }
@@ -429,8 +450,12 @@ private fun SearchResultRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(appearance.listRowHeight)
+            .testTag("search-result-${entry.id}")
+            .semantics { selected = isSelected }
             .onGloballyPositioned { rowCoordinates = it }
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
             .onPointerEvent(PointerEventType.Press) { event ->
                 if (event.buttons.isSecondaryPressed) {
                     val pointer = event.changes.firstOrNull()?.position ?: return@onPointerEvent
@@ -439,19 +464,7 @@ private fun SearchResultRow(
                 }
             }
             .background(backgroundColor)
-            .clickable(onClick = onOpen)
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
-                    if (event.isCtrlPressed || event.isMetaPressed) {
-                        onOpenInFolder()
-                    } else {
-                        onOpen()
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
+            .combinedClickable(onClick = onSelect, onDoubleClick = onOpen)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -470,10 +483,10 @@ private fun SearchResultRow(
             text = highlightMatchText(
                 text = entry.name,
                 query = query,
-                normalColor = palette.foreground,
-                highlightColor = palette.accent,
+                normalColor = if (isSelected) palette.selectionForeground else palette.foreground,
+                highlightColor = if (isSelected) palette.selectionForeground else palette.foreground,
             ),
-            fontSize = 11.sp,
+            fontSize = appearance.listFontSize,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
@@ -481,13 +494,13 @@ private fun SearchResultRow(
         Text(
             text = formatFileSize(entry.sizeBytes),
             color = palette.mutedForeground,
-            fontSize = 10.sp,
+            fontSize = appearance.headerFontSize,
             maxLines = 1,
         )
         Text(
             text = formatModifiedTime(entry.modifiedAtEpochMillis),
             color = palette.mutedForeground,
-            fontSize = 10.sp,
+            fontSize = appearance.headerFontSize,
             maxLines = 1,
         )
     }

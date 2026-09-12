@@ -71,5 +71,19 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # 独立窗口测试需要显示服务和窗口管理器，以验证最小化与重新激活。
+      - name: Install Linux desktop test dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes xvfb openbox
+
+      - name: Verify code and behavior on Linux
+        if: runner.os == 'Linux'
+        run: >-
+          xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24"
+          sh -c 'openbox >/dev/null 2>&1 & ./gradlew jvmTest detekt :composeApp:compileKotlinJvm'
+
       - name: Verify code and behavior
+        if: runner.os != 'Linux'
         run: ./gradlew jvmTest detekt :composeApp:compileKotlinJvm

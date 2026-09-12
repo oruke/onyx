@@ -220,11 +220,22 @@ internal fun FileDragOverlay(
     }
 }
 
+/**
+ * 渲染标题栏中具有选中反馈的紧凑操作入口。
+ *
+ * @param selected 是否显示为已选中。
+ * @param onClick 点击入口时执行的组件动作。
+ * @param tooltip 悬停说明。
+ * @param modifier 入口语义与布局修饰。
+ * @param content 入口图标或文案。
+ * @return 无返回值。
+ */
 @Composable
 internal fun LayoutIconButton(
     selected: Boolean,
     onClick: () -> Unit,
     tooltip: String,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -239,7 +250,7 @@ internal fun LayoutIconButton(
 
     OnyxTooltip(text = tooltip) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .hoverable(interactionSource)
                 .background(background, RoundedCornerShape(4.dp))
                 .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)

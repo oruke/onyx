@@ -4,6 +4,7 @@ import com.oruke.onyx.app.component.PaneChromeState
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.PaneState
+import com.oruke.onyx.app.component.SearchPanelMode
 import com.oruke.onyx.app.component.SearchStatus
 import com.oruke.onyx.app.component.createDefaultPaneTabState
 import com.oruke.onyx.core.model.OnyxSettings
@@ -21,7 +22,6 @@ import java.lang.reflect.Proxy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -30,13 +30,14 @@ import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
-/** RootSearchDelegate 的 Quick Open 关闭与多根搜索取消测试。 */
+/** 独立搜索会话的快速打开关闭与局部失败后台继续测试。 */
 class RootSearchDelegateTest {
     /** 验证 Quick Open 打开结果后会关闭一次性浮层。 */
     @Test
     fun openingQuickOpenResultClosesOverlay() = runBlocking {
-        val delegateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val delegateScope = CoroutineScope(coroutineContext + SupervisorJob())
         val dispatchedIntents = mutableListOf<PaneIntent>()
         try {
             val delegate = createDelegate(
@@ -44,6 +45,7 @@ class RootSearchDelegateTest {
                 fileRepository = EmptyFileRepository,
                 dispatchedIntents = dispatchedIntents,
                 filesystemRoots = listOf(TEST_ROOT),
+                mode = SearchPanelMode.QUICK_OPEN,
             )
             val entry = testFile()
 
@@ -57,10 +59,10 @@ class RootSearchDelegateTest {
         }
     }
 
-    /** 验证局部失败后关闭面板仍会取消尚未完成的搜索根。 */
+    /** 验证局部失败后隐藏完整窗口仍继续其他根，完成事件不会重新显示窗口。 */
     @Test
-    fun closingFailedMultiRootSearchCancelsRemainingRoots() = runBlocking {
-        val delegateScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    fun hidingPartiallyFailedSearchContinuesRemainingRoots() = runBlocking {
+        val delegateScope = CoroutineScope(coroutineContext + SupervisorJob())
         val fileRepository = PartiallyFailingFileRepository()
         try {
             val delegate = createDelegate(
@@ -75,15 +77,20 @@ class RootSearchDelegateTest {
             delegate.updateSearchQuery(TEST_QUERY)
             delegate.executeSearch()
             waitUntilSearchFails(delegate)
+            assertEquals(SearchStatus.RUNNING, delegate.searchState.value.status)
 
             delegate.closeSearchPanel()
             fileRepository.releaseBlockingRoot()
 
             assertEquals(
-                BlockingRootOutcome.CANCELLED,
+                BlockingRootOutcome.COMPLETED,
                 withTimeout(SEARCH_WAIT_TIMEOUT_MILLIS) { fileRepository.blockingRootOutcome.await() },
             )
+            withTimeout(SEARCH_WAIT_TIMEOUT_MILLIS) {
+                while (delegate.searchState.value.status != SearchStatus.FAILED) delay(SEARCH_POLL_INTERVAL_MILLIS)
+            }
             assertFalse(delegate.searchState.value.visible)
+            assertTrue(delegate.searchState.value.error != null)
         } finally {
             delegateScope.cancel()
         }
@@ -96,6 +103,7 @@ class RootSearchDelegateTest {
      * @param fileRepository 测试搜索使用的文件仓储。
      * @param dispatchedIntents 记录发往搜索来源面板的意图。
      * @param filesystemRoots 当前测试可用的文件系统根。
+     * @param mode 当前委托的固定展示模式。
      * @return 已连接测试依赖的搜索委托。
      */
     private fun createDelegate(
@@ -103,6 +111,7 @@ class RootSearchDelegateTest {
         fileRepository: FileRepository,
         dispatchedIntents: MutableList<PaneIntent>,
         filesystemRoots: List<String>,
+        mode: SearchPanelMode = SearchPanelMode.SEARCH_PANEL,
     ): RootSearchDelegate {
         val pane = recordingPane(dispatchedIntents)
         return RootSearchDelegate(
@@ -116,17 +125,18 @@ class RootSearchDelegateTest {
             settings = { OnyxSettings() },
             filesystemRoots = { filesystemRoots },
             onRecordSearchHistory = {},
+            mode = mode,
         )
     }
 
     /**
-     * 等待多根搜索中的失败根将界面状态发布为失败。
+     * 等待多根搜索发布局部错误，其他根仍可能继续运行。
      *
      * @param delegate 待观察状态的搜索委托。
      */
     private suspend fun waitUntilSearchFails(delegate: RootSearchDelegate) {
         withTimeout(SEARCH_WAIT_TIMEOUT_MILLIS) {
-            while (delegate.searchState.value.status != SearchStatus.FAILED) {
+            while (delegate.searchState.value.error == null) {
                 delay(SEARCH_POLL_INTERVAL_MILLIS)
             }
         }

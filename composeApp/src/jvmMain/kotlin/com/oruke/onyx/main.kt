@@ -78,6 +78,8 @@ private fun launchOnyxApplication() = application {
                 platformMenuCacheMaintenanceService.runUntilCancelled()
             }
 
+            TaskCenterWindow(applicationRuntime.taskCenter, applicationRuntime.settings)
+
             windowManager.windows.forEach { request ->
                 key(request.id) {
                     DesktopFileManagerWindow(

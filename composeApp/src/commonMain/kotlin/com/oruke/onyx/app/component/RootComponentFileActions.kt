@@ -60,7 +60,12 @@ internal fun RootComponent.resumeTask(taskId: String) = dispatch(RootIntent.Resu
 
 internal fun RootComponent.retryTask(taskId: String) = dispatch(RootIntent.RetryTask(taskId))
 
-internal fun RootComponent.clearAllTasks() = dispatch(RootIntent.ClearAllTasks)
+/**
+ * 清理成功或取消的任务记录，不影响失败记录或后台执行。
+ *
+ * @return 无返回值。
+ */
+internal fun RootComponent.clearFinishedTasks() = dispatch(RootIntent.ClearFinishedTasks)
 
 internal fun RootComponent.undoLastFileOperation() = dispatch(RootIntent.UndoLastFileOperation)
 

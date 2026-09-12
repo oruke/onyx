@@ -108,6 +108,7 @@ internal fun rememberRootComponent(
                     imageViewerController = imageViewerController,
                     sessionManager = applicationRuntime.sessionManager,
                     settings = applicationRuntime.settings,
+                    taskCenter = applicationRuntime.taskCenter,
                 ),
             ),
             launchConfiguration = launchConfiguration,

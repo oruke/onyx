@@ -14,18 +14,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.resolve
 import com.oruke.onyx.ui.theme.taskStatusLabel
 import onyx.composeapp.generated.resources.Res
@@ -49,6 +50,7 @@ import kotlin.math.roundToInt
  * 使用虚拟化列表展示当前任务详情。
  *
  * @param tasks 当前任务快照。
+ * @param listState 由窗口宿主持有的滚动状态，隐藏与再次打开时复用。
  * @param onPauseTask 暂停任务回调。
  * @param onResumeTask 恢复任务回调。
  * @param onRetryTask 重试任务回调。
@@ -58,6 +60,7 @@ import kotlin.math.roundToInt
 @Composable
 internal fun TaskCenterList(
     tasks: List<BackgroundTask>,
+    listState: LazyListState,
     onPauseTask: (String) -> Unit,
     onResumeTask: (String) -> Unit,
     onRetryTask: (String) -> Unit,
@@ -65,16 +68,14 @@ internal fun TaskCenterList(
     onDismissTask: (String) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
-    val listState = rememberLazyListState()
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(TASK_LIST_HEIGHT)
+            .fillMaxSize()
             .background(palette.appBackground),
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(end = TASK_SCROLLBAR_INSET),
+            modifier = Modifier.fillMaxSize().padding(end = TASK_SCROLLBAR_INSET).testTag("task-list"),
         ) {
             items(
                 items = tasks,
@@ -123,9 +124,11 @@ private fun TaskCenterTaskRow(
     onDismiss: () -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .testTag("task-row-${task.id}")
             .background(palette.appBackground)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -142,7 +145,7 @@ private fun TaskCenterTaskRow(
             )
             Text(
                 text = task.title.resolve(),
-                fontSize = 12.sp,
+                fontSize = appearance.listFontSize,
                 fontWeight = FontWeight.SemiBold,
                 color = palette.foreground,
                 maxLines = 1,
@@ -151,7 +154,7 @@ private fun TaskCenterTaskRow(
             )
             Text(
                 text = taskStatusLabel(task.status),
-                fontSize = 10.sp,
+                fontSize = appearance.headerFontSize,
                 color = taskProgressColor(task.status),
             )
             TaskRowActions(task, onPause, onResume, onRetry, onCancel, onDismiss)
@@ -159,7 +162,7 @@ private fun TaskCenterTaskRow(
 
         Text(
             text = task.currentDetailText(),
-            fontSize = 10.sp,
+            fontSize = appearance.headerFontSize,
             color = palette.mutedForeground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -178,7 +181,7 @@ private fun TaskCenterTaskRow(
             ) {
                 Text(
                     text = metrics,
-                    fontSize = 10.sp,
+                    fontSize = appearance.headerFontSize,
                     color = palette.mutedForeground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -259,7 +262,7 @@ private fun TaskActionIcon(
     description: String,
 ) {
     OnyxTooltip(text = description) {
-        IconButton(onClick = onClick, modifier = Modifier.size(18.dp)) {
+        IconButton(onClick = onClick, modifier = Modifier.size(LocalOnyxAppearance.current.headerHeight)) {
             Icon(icon, description, Modifier.size(12.dp))
         }
     }
@@ -319,13 +322,13 @@ private fun TaskErrorList(task: BackgroundTask) {
     Spacer(modifier = Modifier.height(1.dp))
     Text(
         text = stringResource(Res.string.label_task_errors_count, task.errors.size),
-        fontSize = 10.sp,
+        fontSize = LocalOnyxAppearance.current.headerFontSize,
         color = palette.error,
     )
     task.errors.take(MAX_VISIBLE_TASK_ERRORS).forEach { error ->
         Text(
             text = "${error.fileName}: ${error.message}",
-            fontSize = 9.sp,
+            fontSize = LocalOnyxAppearance.current.headerFontSize,
             color = palette.mutedForeground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -333,8 +336,6 @@ private fun TaskErrorList(task: BackgroundTask) {
     }
 }
 
-/** 展开任务列表固定高度。 */
-private val TASK_LIST_HEIGHT = 230.dp
 /** 为垂直滚动条预留的内容右侧间距。 */
 private val TASK_SCROLLBAR_INSET = 10.dp
 /** 单项任务最多直接展示的错误数。 */

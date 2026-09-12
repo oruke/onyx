@@ -58,6 +58,7 @@ import onyx.composeapp.generated.resources.msg_moved_items
 import onyx.composeapp.generated.resources.msg_restore_session_failed
 import onyx.composeapp.generated.resources.msg_string_literal
 import onyx.composeapp.generated.resources.msg_unknown_error
+import onyx.composeapp.generated.resources.msg_search_no_eligible_roots
 import onyx.composeapp.generated.resources.msg_vfs_already_exists
 import onyx.composeapp.generated.resources.msg_vfs_authentication_rejected
 import onyx.composeapp.generated.resources.msg_vfs_authentication_required
@@ -148,6 +149,7 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_VFS_UNSUPPORTED_OPERATION -> Res.string.msg_vfs_unsupported_operation
         MessageKey.MSG_STRING_LITERAL -> Res.string.msg_string_literal
         MessageKey.MSG_UNKNOWN_ERROR -> Res.string.msg_unknown_error
+        MessageKey.MSG_SEARCH_NO_ELIGIBLE_ROOTS -> Res.string.msg_search_no_eligible_roots
         MessageKey.MSG_ARCHIVE_PASSWORD_INVALID -> Res.string.msg_archive_password_invalid
     }
 }

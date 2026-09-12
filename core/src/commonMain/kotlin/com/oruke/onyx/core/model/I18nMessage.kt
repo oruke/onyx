@@ -45,6 +45,8 @@ enum class MessageKey {
     MSG_VFS_UNSUPPORTED_OPERATION,
     MSG_STRING_LITERAL,
     MSG_UNKNOWN_ERROR,
+    /** 当前范围没有用户授权扫描的位置。 */
+    MSG_SEARCH_NO_ELIGIBLE_ROOTS,
     MSG_ARCHIVE_PASSWORD_INVALID,
 }
 

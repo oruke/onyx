@@ -34,6 +34,9 @@ internal class RootApplicationRuntime(
     /** 所有窗口共享的即时设置状态。 */
     val settings: MutableStateFlow<OnyxSettings>,
 ) {
+    /** 所有窗口共享的任务中心，不随任何单个文件管理器窗口关闭。 */
+    val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(taskOrchestrator)
+
     /**
      * 结束应用级后台工作。
      *
