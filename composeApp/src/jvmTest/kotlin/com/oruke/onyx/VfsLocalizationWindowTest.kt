@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.tooling.ComposeToolingApi
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
@@ -291,10 +292,11 @@ private fun localizationWindow(): ComposeWindow? = java.awt.Window.getWindows().
     .singleOrNull { it.name == "onyx-vfs-localization-test" && it.isShowing }
 
 /**
- * 通过公开 semanticsOwners 读取真实窗口未合并的语义树。
+ * 通过 Compose 语义工具接口读取真实窗口未合并的语义树。
  *
  * @return 已组合的全部语义节点。
  */
+@OptIn(ComposeToolingApi::class)
 private fun ComposeWindow.localizationNodes(): List<SemanticsNode> {
     val pending = ArrayDeque(semanticsOwners.map { it.unmergedRootSemanticsNode })
     return buildList {

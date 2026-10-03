@@ -2,6 +2,7 @@
 
 package com.oruke.onyx
 
+import androidx.compose.runtime.tooling.ComposeToolingApi
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.semantics.SemanticsActions
@@ -64,7 +65,7 @@ internal fun DesktopComposeUiTest.awaitTaskWindowTag(tag: String) {
 /**
  * 对原生窗口中的实际语义节点执行 Compose 点击动作。
  *
- * Compose 1.10.1 的测试场景不会自动注册独立 Window，因此这里使用公开 semanticsOwners API。
+ * 独立 Window 不依赖测试场景注册，通过 Compose 语义工具接口访问实际窗口控件。
  *
  * @param tag 待点击控件的测试标签。
  * @return 无返回值。
@@ -231,6 +232,7 @@ internal fun ComposeWindow.hasTaskWindowTag(tag: String): Boolean {
  *
  * @return 窗口内当前已组合的全部语义节点。
  */
+@OptIn(ComposeToolingApi::class)
 private fun ComposeWindow.taskWindowNodes(): List<SemanticsNode> {
     val pending = ArrayDeque(semanticsOwners.map { owner -> owner.unmergedRootSemanticsNode })
     return buildList {

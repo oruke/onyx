@@ -2,6 +2,7 @@
 
 package com.oruke.onyx
 
+import androidx.compose.runtime.tooling.ComposeToolingApi
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.semantics.SemanticsActions
@@ -308,10 +309,11 @@ private fun ComposeWindow.searchWindowFocusIsInside(tag: String): Boolean = sear
 }
 
 /**
- * 使用官方 semanticsOwners API 遍历独立窗口的完整语义树。
+ * 使用 Compose 语义工具接口遍历独立窗口的完整语义树。
  *
  * @return 当前已经组合的节点，不依赖 UI 测试框架自身的独立场景注册。
  */
+@OptIn(ComposeToolingApi::class)
 private fun ComposeWindow.searchWindowNodes(): List<SemanticsNode> {
     val pending = ArrayDeque(semanticsOwners.map { owner -> owner.unmergedRootSemanticsNode })
     return buildList {

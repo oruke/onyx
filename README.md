@@ -16,7 +16,7 @@ Onyx 是一个面向桌面端的高密度文件管理器，目标是逐步接近
 | 层级 | 技术 |
 | --- | --- |
 | 语言 | Kotlin 2.3.x |
-| UI | Compose Multiplatform Desktop |
+| UI | Compose Multiplatform Desktop 1.12.1 |
 | 组件 | JetBrains Jewel Standalone |
 | 导航与状态 | Decompose + 组件化 MVI |
 | 依赖注入 | Koin |
@@ -60,6 +60,45 @@ onyx/
 ```
 
 本机推荐使用 JDK 21，当前开发环境使用 JetBrains Runtime 21。
+
+### 热重载与 MCP
+
+应用模块已接入 Compose Hot Reload `1.2.0`。编译使用 JDK 21；热重载任务默认使用 JBR 25。没有可用运行时时，已有 Foojay resolver 会自动下载所需运行时。
+
+在项目根目录启动应用并启用自动热重载：
+
+```powershell
+.\gradlew.bat :composeApp:hotRunJvm --auto --console=plain
+```
+
+需要由 MCP 控制重载时，启动应用时省略 `--auto`。随后由 MCP 客户端启动 stdio 服务；支持 `mcpServers` 配置的 Windows 客户端可使用：
+
+```json
+{
+  "mcpServers": {
+    "compose-hot-reload": {
+      "command": "cmd",
+      "args": [
+        "/d",
+        "/c",
+        "gradlew.bat",
+        "--no-daemon",
+        "--quiet",
+        "--console=plain",
+        ":composeApp:hotMcpServerJvm"
+      ]
+    }
+  }
+}
+```
+
+客户端工作目录必须为项目根目录。macOS/Linux 使用 `./gradlew` 启动上述任务；MCP 配置的 `command` 改为 `./gradlew`，并移除 `args` 中的 `/d`、`/c` 和 `gradlew.bat`。
+
+连接后先调用 `status` 和 `list_windows`，再通过语义树执行交互。手动模式使用 `reload`；自动模式使用 `await_reload`。重载后检查 `get_ui_error`、`get_logs` 和截图。MCP 服务会等待应用启动，并在应用重启后自动重连。
+
+Hot Reload `1.2.0` 的截图通过屏幕捕获实现，截图前需让目标窗口处于前台，避免被其他窗口遮挡。
+
+插件和 MCP 的能力、运行限制见 [Compose Hot Reload 官方文档](https://github.com/JetBrains/compose-hot-reload/tree/v1.2.0#MCP-server-for-AI-agents)。
 
 ## 开发规范
 

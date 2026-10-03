@@ -1,5 +1,6 @@
 [versions]
-composeMultiplatform = "1.10.1"
+composeMultiplatform = "1.12.1"
+composeHotReload = "1.2.0"
 decompose = "3.4.0"
 jcifs-ng = "2.1.9"
 jewel = "0.34.0-253.32098.37"
@@ -11,13 +12,13 @@ kotlin = "2.3.20"
 kotlinx-coroutines = "1.10.2"
 kotlinx-serialization = "1.9.0"
 ktor = "3.4.2"
-coil = "3.4.0"
+coil = "3.6.3"
 detekt = "1.23.8"
 exposed = "1.2.0"
 sevenzipjbinding = "16.02-2.01"
 slf4j = "2.0.17"
 jna = "5.14.0"
-zoomimage = "1.4.0"
+zoomimage = "1.7.0"
 sqliteJdbc = "3.50.3.0"
 
 [libraries]
@@ -59,6 +60,7 @@ sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqliteJdbc" }
 [plugins]
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
