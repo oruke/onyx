@@ -5,7 +5,8 @@ import com.oruke.onyx.shared.usecase.isFileCollectionLocation
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.VfsProvider
 import com.oruke.onyx.vfs.api.VfsProviderCapability
-import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
+import com.oruke.onyx.vfs.api.VfsProviderError
+import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
 
 /**
@@ -24,9 +25,17 @@ class FileCollectionVfsProvider(
         return location.isFileCollectionLocation()
     }
 
+    /**
+     * 读取集合快照，集合已失效时返回可本地化的不存在错误。
+     *
+     * @param location 文件集合的虚拟位置。
+     * @return 集合内条目或集合不存在的结构化错误。
+     */
     override suspend fun list(location: String): Result<List<VFile>> {
         val collection = repository.findByLocation(location)
-            ?: return Result.failure(VfsProviderNotFoundException(location))
+            ?: return Result.failure(
+                VfsProviderException(VfsProviderError.NotFound(VfsProtocol.COLLECTION, location)),
+            )
         return Result.success(collection.entries)
     }
 

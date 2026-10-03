@@ -212,7 +212,8 @@ class VfsProviderException(
  * @param location VFS 位置。
  */
 class VfsProviderNotFoundException(
-    location: String,
+    /** 无法由已注册协议处理的位置，供界面作为本地化消息参数。 */
+    val location: String,
 ) : IllegalStateException("No VFS provider supports location: $location")
 
 /**

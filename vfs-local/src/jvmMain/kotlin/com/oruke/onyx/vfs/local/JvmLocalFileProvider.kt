@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 import java.io.RandomAccessFile
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.io.path.pathString
 
@@ -201,7 +202,7 @@ class JvmLocalFileProvider :
             if (target == source) {
                 return@runCatching source.toLocalVFile(source.parent ?: source.root ?: source)
             }
-            if (Files.exists(target)) {
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
                 throw FileAlreadyExistsException(target.pathString)
             }
             Files.move(source, target)

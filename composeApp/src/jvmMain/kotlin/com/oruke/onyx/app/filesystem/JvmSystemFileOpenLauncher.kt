@@ -1,5 +1,8 @@
 package com.oruke.onyx.app.filesystem
 
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import java.awt.Desktop
 import java.nio.file.Files
 import java.nio.file.Path
@@ -42,8 +45,8 @@ internal class JvmSystemFileOpenLauncher(
      * @return 启动结果。
      */
     override fun open(path: Path): Result<Unit> = runCatching {
-        require(Files.isRegularFile(path)) {
-            "System-open target is not available: $path"
+        if (!Files.isRegularFile(path)) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_SYSTEM_OPEN_TARGET_UNAVAILABLE, path.toString()))
         }
         if (isWindowsHost && path.isWindowsExecutable()) {
             executableStarter(path)
@@ -88,12 +91,12 @@ private fun startWindowsExecutable(path: Path) {
  * @param path 待打开文件路径。
  */
 private fun openWithDesktop(path: Path) {
-    check(Desktop.isDesktopSupported()) {
-        "Desktop integration is not available"
+    if (!Desktop.isDesktopSupported()) {
+        throw LocalizedException(I18nMessage(MessageKey.MSG_DESKTOP_INTEGRATION_UNAVAILABLE))
     }
     val desktop = Desktop.getDesktop()
-    check(desktop.isSupported(Desktop.Action.OPEN)) {
-        "Open action is not supported on this platform"
+    if (!desktop.isSupported(Desktop.Action.OPEN)) {
+        throw LocalizedException(I18nMessage(MessageKey.MSG_SYSTEM_OPEN_UNSUPPORTED))
     }
     desktop.open(path.toFile())
 }

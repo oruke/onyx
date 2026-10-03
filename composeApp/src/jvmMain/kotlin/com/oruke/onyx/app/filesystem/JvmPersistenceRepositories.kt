@@ -19,6 +19,8 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.TaskPersistenceRepository
+import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsProviderCapability
 
 private val PersistenceJson = Json {
     prettyPrint = true
@@ -156,7 +158,18 @@ private data class PersistedTask(
     val processedBytes: Long = 0L,
     val totalBytes: Long = 0L,
     val startTimeMillis: Long = 0L,
-    val errors: List<TaskError> = emptyList(),
+    val errors: List<PersistedTaskError> = emptyList(),
+)
+
+/** 保存原始诊断及可在重启后重新本地化的任务错误。 */
+@Serializable
+private data class PersistedTaskError(
+    /** 失败文件名。 */
+    val fileName: String,
+    /** 原始诊断；没有消息键的历史记录仍可读取。 */
+    val message: String,
+    /** 错误消息键与具有类型信息的参数。 */
+    val detail: PersistedI18nMessage? = null,
 )
 
 @Serializable
@@ -171,6 +184,11 @@ private data class PersistedMessageArg(
     val value: String,
 )
 
+/**
+ * 构造任务存储快照，并保留错误的消息键与参数类型。
+ *
+ * @return 可写入 JSON 的任务记录。
+ */
 private fun BackgroundTask.toPersistedTask(): PersistedTask {
     return PersistedTask(
         id = id,
@@ -185,10 +203,17 @@ private fun BackgroundTask.toPersistedTask(): PersistedTask {
         processedBytes = processedBytes,
         totalBytes = totalBytes,
         startTimeMillis = startTimeMillis,
-        errors = errors,
+        errors = errors.map { error ->
+            PersistedTaskError(error.fileName, error.message, error.detail?.toPersistedMessage())
+        },
     )
 }
 
+/**
+ * 恢复任务及可根据当前语言解析的错误。
+ *
+ * @return 与存储记录一致的运行时任务。
+ */
 private fun PersistedTask.toBackgroundTask(): BackgroundTask {
     return BackgroundTask(
         id = id,
@@ -203,7 +228,9 @@ private fun PersistedTask.toBackgroundTask(): BackgroundTask {
         processedBytes = processedBytes,
         totalBytes = totalBytes,
         startTimeMillis = startTimeMillis,
-        errors = errors,
+        errors = errors.map { error ->
+            TaskError(error.fileName, error.message, error.detail?.toI18nMessage())
+        },
     )
 }
 
@@ -218,8 +245,15 @@ private fun PersistedI18nMessage.toI18nMessage(): I18nMessage {
     return I18nMessage(key = key, args = args.map { arg -> arg.toRuntimeArg() })
 }
 
+/**
+ * 保存消息参数类型，避免协议和能力在重启后退化为英文字符串。
+ *
+ * @return 参数类型与稳定存储值。
+ */
 private fun Any.toPersistedMessageArg(): PersistedMessageArg {
     return when (this) {
+        is VfsProtocol -> PersistedMessageArg("vfs_protocol", name)
+        is VfsProviderCapability -> PersistedMessageArg("vfs_capability", name)
         is Int -> PersistedMessageArg("int", toString())
         is Long -> PersistedMessageArg("long", toString())
         is Float -> PersistedMessageArg("float", toString())
@@ -229,8 +263,15 @@ private fun Any.toPersistedMessageArg(): PersistedMessageArg {
     }
 }
 
+/**
+ * 恢复消息参数类型，让 UI 在展示时选择当前语言。
+ *
+ * @return 协议、能力或原有基础类型参数。
+ */
 private fun PersistedMessageArg.toRuntimeArg(): Any {
     return when (type) {
+        "vfs_protocol" -> VfsProtocol.valueOf(value)
+        "vfs_capability" -> VfsProviderCapability.valueOf(value)
         "int" -> value.toIntOrNull() ?: value
         "long" -> value.toLongOrNull() ?: value
         "float" -> value.toFloatOrNull() ?: value

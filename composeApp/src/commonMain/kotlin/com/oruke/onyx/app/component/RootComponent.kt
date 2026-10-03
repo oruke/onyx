@@ -17,6 +17,7 @@ import com.oruke.onyx.app.filesystem.VfsBreadcrumb
 import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
 import com.oruke.onyx.vfs.api.VfsConnectionTestResult
 import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
@@ -255,8 +256,10 @@ internal sealed interface RemoteConnectionTestState {
 
     data object Testing : RemoteConnectionTestState
 
+    /** 连接可用及已验证能力，供界面按当前语言展示。 */
     data class Reachable(
-        val capabilities: Set<String>,
+        /** 已验证的协议能力；由界面按当前语言生成展示文案。 */
+        val capabilities: Set<VfsProviderCapability>,
     ) : RemoteConnectionTestState
 
     data class Failed(

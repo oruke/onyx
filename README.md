@@ -1,6 +1,6 @@
 # Onyx
 
-Onyx 是一个面向桌面端的高密度文件管理器，目标是逐步接近 Directory Opus 这类专业工具，而不是示例级文件浏览器。当前版本为 `1.2.1`，使用 Kotlin Multiplatform、Compose Desktop 与 JetBrains Jewel 构建。
+Onyx 是一个面向桌面端的高密度文件管理器，目标是逐步接近 Directory Opus 这类专业工具，而不是示例级文件浏览器。当前版本为 `1.4.2`，使用 Kotlin Multiplatform、Compose Desktop 与 JetBrains Jewel 构建。
 
 ## 当前状态
 

@@ -70,7 +70,9 @@ internal fun RemoteConnectionFeedback(
             is RemoteConnectionTestState.Reachable -> RemoteConnectionFeedbackValue(
                 text = stringResource(
                     Res.string.label_remote_connection_test_success,
-                    testState.capabilities.joinToString(", "),
+                    testState.capabilities.sortedBy { capability -> capability.ordinal }
+                        .map { capability -> vfsProviderCapabilityLabel(capability) }
+                        .joinToString(", "),
                 ),
                 color = REMOTE_SUCCESS_COLOR,
             )

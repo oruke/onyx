@@ -72,9 +72,17 @@ internal fun DefaultRootComponent.executeFileContextMenuCommand(
     }
 }
 
-/** @param location 待打开终端的 VFS 位置。 */
+/**
+ * 在目标位置打开终端，并将失败原因显示为当前语言的面板反馈。
+ *
+ * @param location 待打开终端的 VFS 位置。
+ */
 internal fun DefaultRootComponent.openTerminalAt(location: String) {
-    scope.launch { terminalLauncherService.openTerminal(location) }
+    scope.launch {
+        terminalLauncherService.openTerminal(location)
+            .onSuccess { dismissActivePaneFeedback() }
+            .onFailure(::showActivePaneOperationFailure)
+    }
 }
 
 /** 清除活动面板操作反馈。 */

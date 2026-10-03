@@ -61,11 +61,12 @@ enum class BackgroundTaskStatus {
     CANCELLED,
 }
 
-@Serializable
 /** 后台任务中的单文件错误。 */
 data class TaskError(
     /** 失败文件名。 */
     val fileName: String,
-    /** 可展示错误详情。 */
+    /** 原始诊断详情；历史记录没有消息键时用于展示。 */
     val message: String,
+    /** 可按当前界面语言重新解析的错误详情。 */
+    val detail: I18nMessage? = null,
 )

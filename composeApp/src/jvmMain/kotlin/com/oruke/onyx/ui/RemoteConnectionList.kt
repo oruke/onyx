@@ -220,7 +220,7 @@ private fun RemoteConnectionProtocolBadge(protocol: RemoteConnectionProtocol, se
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = protocol.name,
+            text = remoteProtocolLabel(protocol),
             fontSize = 9.sp,
             fontWeight = FontWeight.SemiBold,
             color = if (selected) palette.accent else palette.mutedForeground,

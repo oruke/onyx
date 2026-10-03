@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.RemoteConnectionDraft
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.description_remote_protocol_s3
@@ -47,9 +48,6 @@ import onyx.composeapp.generated.resources.label_remote_credentials_save_do_not_
 import onyx.composeapp.generated.resources.label_remote_credentials_save_policy
 import onyx.composeapp.generated.resources.label_remote_credentials_save_session
 import onyx.composeapp.generated.resources.label_remote_credentials_save_system_keyring
-import onyx.composeapp.generated.resources.label_remote_protocol_s3
-import onyx.composeapp.generated.resources.label_remote_protocol_smb
-import onyx.composeapp.generated.resources.label_remote_protocol_webdav
 import onyx.composeapp.generated.resources.label_remote_protocol_webdavs
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Text
@@ -412,10 +410,10 @@ internal fun RemoteConnectionField(
 @Composable
 internal fun remoteProtocolLabel(protocol: RemoteConnectionProtocol): String {
     return when (protocol) {
-        RemoteConnectionProtocol.SMB -> stringResource(Res.string.label_remote_protocol_smb)
-        RemoteConnectionProtocol.WEBDAV -> stringResource(Res.string.label_remote_protocol_webdav)
+        RemoteConnectionProtocol.SMB -> vfsProtocolLabel(VfsProtocol.SMB)
+        RemoteConnectionProtocol.WEBDAV -> vfsProtocolLabel(VfsProtocol.WEBDAV)
         RemoteConnectionProtocol.WEBDAVS -> stringResource(Res.string.label_remote_protocol_webdavs)
-        RemoteConnectionProtocol.S3 -> stringResource(Res.string.label_remote_protocol_s3)
+        RemoteConnectionProtocol.S3 -> vfsProtocolLabel(VfsProtocol.S3)
     }
 }
 

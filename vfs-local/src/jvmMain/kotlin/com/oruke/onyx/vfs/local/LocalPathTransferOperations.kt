@@ -1,13 +1,17 @@
 package com.oruke.onyx.vfs.local
 
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.vfs.api.FileTransferProgressSink
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 
 /**
- * 本地路径目标解析、移动策略、冲突命名与递归删除操作。
+ * 本地路径目标解析、移动策略与冲突命名，删除统一交由入口感知的删除器执行。
  */
 internal object LocalPathTransferOperations {
     /**
@@ -26,7 +30,7 @@ internal object LocalPathTransferOperations {
     ) {
         val normalizedSource = source.normalize().toAbsolutePath()
         val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return
-        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target)) {
+        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             deletePathRecursively(target)
         }
         LocalFileCopyOperations.copyPathWithRollback(normalizedSource, target, progressSink)
@@ -48,7 +52,7 @@ internal object LocalPathTransferOperations {
     ) {
         val normalizedSource = source.normalize().toAbsolutePath()
         val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return
-        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target)) {
+        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             deletePathRecursively(target)
         }
         try {
@@ -78,7 +82,7 @@ internal object LocalPathTransferOperations {
         val extension = if (hasExtension) originalName.substring(dotIndex) else ""
         var candidate = targetDirectory.resolve(originalName).normalize().toAbsolutePath()
         var copyIndex = 1
-        while (Files.exists(candidate)) {
+        while (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
             val suffix = if (copyIndex == 1) " copy" else " copy $copyIndex"
             candidate = targetDirectory.resolve("$baseName$suffix$extension").normalize().toAbsolutePath()
             copyIndex += 1
@@ -87,19 +91,12 @@ internal object LocalPathTransferOperations {
     }
 
     /**
-     * 递归删除文件或目录。
+     * 删除文件或目录树，目录联接和符号链接仅删除入口。
      *
      * @param path 待删除路径。
      */
     fun deletePathRecursively(path: Path) {
-        if (!Files.exists(path)) return
-        if (Files.isDirectory(path)) {
-            Files.walk(path).use { stream ->
-                stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
-            }
-        } else {
-            Files.deleteIfExists(path)
-        }
+        LocalPathDeletion.delete(path)
     }
 
     /**
@@ -118,7 +115,7 @@ internal object LocalPathTransferOperations {
         LocalPathOperations.ensurePathExists(source)
         val directTarget = targetDirectory.resolve(source.fileName.toString()).normalize().toAbsolutePath()
         val target = when {
-            !Files.exists(directTarget) -> directTarget
+            !Files.exists(directTarget, LinkOption.NOFOLLOW_LINKS) -> directTarget
             conflictStrategy == TransferConflictStrategy.KEEP_BOTH -> availableTargetPath(
                 originalName = source.fileName.toString(),
                 isDirectory = Files.isDirectory(source),
@@ -144,9 +141,9 @@ internal object LocalPathTransferOperations {
         targetDirectory: Path,
         target: Path,
     ) {
-        require(target != source) { "Source and target cannot be the same path" }
-        require(!Files.isDirectory(source) || !targetDirectory.startsWith(source)) {
-            "Cannot place a directory into itself"
+        if (target == source) throw LocalizedException(I18nMessage(MessageKey.MSG_TRANSFER_SAME_PATH))
+        if (Files.isDirectory(source) && targetDirectory.startsWith(source)) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_TRANSFER_INTO_SELF))
         }
     }
 

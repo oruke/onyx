@@ -147,7 +147,7 @@ private fun RemoteCredentialsBody(
     ) {
         RemoteCredentialHeader(
             location = state.location,
-            hint = stringResource(Res.string.label_remote_credentials_hint, state.protocol.name),
+            hint = stringResource(Res.string.label_remote_credentials_hint, vfsProtocolLabel(state.protocol)),
         )
         CredentialInputField(
             label = stringResource(Res.string.label_remote_credentials_username),

@@ -13,60 +13,15 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
-import com.oruke.onyx.core.model.I18nMessage
-import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.SortDirection
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_batch_rename
-import onyx.composeapp.generated.resources.action_create_zip
-import onyx.composeapp.generated.resources.action_extract_here
-import onyx.composeapp.generated.resources.action_extract_smart
-import onyx.composeapp.generated.resources.action_extract_to_directory
 import onyx.composeapp.generated.resources.label_task_status_cancelled
 import onyx.composeapp.generated.resources.label_task_status_failed
 import onyx.composeapp.generated.resources.label_task_status_paused
 import onyx.composeapp.generated.resources.label_task_status_queued
 import onyx.composeapp.generated.resources.label_task_status_running
 import onyx.composeapp.generated.resources.label_task_status_succeeded
-import onyx.composeapp.generated.resources.msg_archive_password_invalid
-import onyx.composeapp.generated.resources.msg_batch_rename_files
-import onyx.composeapp.generated.resources.msg_batch_rename_starting
-import onyx.composeapp.generated.resources.msg_batch_renamed_files
-import onyx.composeapp.generated.resources.msg_cancelled
-import onyx.composeapp.generated.resources.msg_copied_items
-import onyx.composeapp.generated.resources.msg_copy_failed
-import onyx.composeapp.generated.resources.msg_copy_items
-import onyx.composeapp.generated.resources.msg_cross_provider_transfer_unsupported
-import onyx.composeapp.generated.resources.msg_create_folder_failed
-import onyx.composeapp.generated.resources.msg_create_folders
-import onyx.composeapp.generated.resources.msg_created_folders
-import onyx.composeapp.generated.resources.msg_compress_failed
-import onyx.composeapp.generated.resources.msg_compress_items
-import onyx.composeapp.generated.resources.msg_compressed_items
-import onyx.composeapp.generated.resources.msg_delete_failed
-import onyx.composeapp.generated.resources.msg_delete_items
-import onyx.composeapp.generated.resources.msg_deleted_items
-import onyx.composeapp.generated.resources.msg_deleted_items_without_undo
-import onyx.composeapp.generated.resources.msg_extract_failed
-import onyx.composeapp.generated.resources.msg_extract_items
-import onyx.composeapp.generated.resources.msg_extracted_items
-import onyx.composeapp.generated.resources.msg_load_settings_failed
-import onyx.composeapp.generated.resources.msg_move_failed
-import onyx.composeapp.generated.resources.msg_move_items
-import onyx.composeapp.generated.resources.msg_moved_items
-import onyx.composeapp.generated.resources.msg_restore_session_failed
-import onyx.composeapp.generated.resources.msg_string_literal
-import onyx.composeapp.generated.resources.msg_unknown_error
-import onyx.composeapp.generated.resources.msg_search_no_eligible_roots
-import onyx.composeapp.generated.resources.msg_vfs_already_exists
-import onyx.composeapp.generated.resources.msg_vfs_authentication_rejected
-import onyx.composeapp.generated.resources.msg_vfs_authentication_required
-import onyx.composeapp.generated.resources.msg_vfs_network_failure
-import onyx.composeapp.generated.resources.msg_vfs_not_found
-import onyx.composeapp.generated.resources.msg_vfs_permission_denied
-import onyx.composeapp.generated.resources.msg_vfs_unsupported_operation
-import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import java.awt.Cursor
 import java.time.Instant
@@ -97,62 +52,6 @@ private const val DEFAULT_SIZE_COLUMN_WIDTH = 100f
 
 /** 修改时间明细列默认宽度。 */
 private const val DEFAULT_MODIFIED_COLUMN_WIDTH = 180f
-
-// ── I18n Extensions ─────────────────────────────────────────────────────────
-
-@Composable
-@Suppress("SpreadOperator") // Compose 资源 API 只接受 vararg，消息参数在模型层以列表存储。
-internal fun I18nMessage.resolve(): String {
-    return stringResource(key.toStringResource(), *args.toTypedArray())
-}
-
-@Suppress("CyclomaticComplexMethod") // 穷举枚举到资源键的声明式映射，不包含业务分支。
-private fun MessageKey.toStringResource(): StringResource {
-    return when (this) {
-        MessageKey.ACTION_BATCH_RENAME -> Res.string.action_batch_rename
-        MessageKey.ACTION_CREATE_ZIP -> Res.string.action_create_zip
-        MessageKey.ACTION_EXTRACT_HERE -> Res.string.action_extract_here
-        MessageKey.ACTION_EXTRACT_TO_DIRECTORY -> Res.string.action_extract_to_directory
-        MessageKey.ACTION_EXTRACT_SMART -> Res.string.action_extract_smart
-        MessageKey.MSG_BATCH_RENAME_FILES -> Res.string.msg_batch_rename_files
-        MessageKey.MSG_BATCH_RENAME_STARTING -> Res.string.msg_batch_rename_starting
-        MessageKey.MSG_BATCH_RENAMED_FILES -> Res.string.msg_batch_renamed_files
-        MessageKey.MSG_CANCELLED -> Res.string.msg_cancelled
-        MessageKey.MSG_COPIED_ITEMS -> Res.string.msg_copied_items
-        MessageKey.MSG_COPY_FAILED -> Res.string.msg_copy_failed
-        MessageKey.MSG_COPY_ITEMS -> Res.string.msg_copy_items
-        MessageKey.MSG_CROSS_PROVIDER_TRANSFER_UNSUPPORTED -> Res.string.msg_cross_provider_transfer_unsupported
-        MessageKey.MSG_CREATE_FOLDER_FAILED -> Res.string.msg_create_folder_failed
-        MessageKey.MSG_CREATE_FOLDERS -> Res.string.msg_create_folders
-        MessageKey.MSG_CREATED_FOLDERS -> Res.string.msg_created_folders
-        MessageKey.MSG_COMPRESS_FAILED -> Res.string.msg_compress_failed
-        MessageKey.MSG_COMPRESS_ITEMS -> Res.string.msg_compress_items
-        MessageKey.MSG_COMPRESSED_ITEMS -> Res.string.msg_compressed_items
-        MessageKey.MSG_DELETE_FAILED -> Res.string.msg_delete_failed
-        MessageKey.MSG_DELETE_ITEMS -> Res.string.msg_delete_items
-        MessageKey.MSG_DELETED_ITEMS -> Res.string.msg_deleted_items
-        MessageKey.MSG_DELETED_ITEMS_WITHOUT_UNDO -> Res.string.msg_deleted_items_without_undo
-        MessageKey.MSG_EXTRACT_FAILED -> Res.string.msg_extract_failed
-        MessageKey.MSG_EXTRACT_ITEMS -> Res.string.msg_extract_items
-        MessageKey.MSG_EXTRACTED_ITEMS -> Res.string.msg_extracted_items
-        MessageKey.MSG_LOAD_SETTINGS_FAILED -> Res.string.msg_load_settings_failed
-        MessageKey.MSG_MOVE_FAILED -> Res.string.msg_move_failed
-        MessageKey.MSG_MOVE_ITEMS -> Res.string.msg_move_items
-        MessageKey.MSG_MOVED_ITEMS -> Res.string.msg_moved_items
-        MessageKey.MSG_RESTORE_SESSION_FAILED -> Res.string.msg_restore_session_failed
-        MessageKey.MSG_VFS_AUTHENTICATION_REQUIRED -> Res.string.msg_vfs_authentication_required
-        MessageKey.MSG_VFS_AUTHENTICATION_REJECTED -> Res.string.msg_vfs_authentication_rejected
-        MessageKey.MSG_VFS_PERMISSION_DENIED -> Res.string.msg_vfs_permission_denied
-        MessageKey.MSG_VFS_NOT_FOUND -> Res.string.msg_vfs_not_found
-        MessageKey.MSG_VFS_ALREADY_EXISTS -> Res.string.msg_vfs_already_exists
-        MessageKey.MSG_VFS_NETWORK_FAILURE -> Res.string.msg_vfs_network_failure
-        MessageKey.MSG_VFS_UNSUPPORTED_OPERATION -> Res.string.msg_vfs_unsupported_operation
-        MessageKey.MSG_STRING_LITERAL -> Res.string.msg_string_literal
-        MessageKey.MSG_UNKNOWN_ERROR -> Res.string.msg_unknown_error
-        MessageKey.MSG_SEARCH_NO_ELIGIBLE_ROOTS -> Res.string.msg_search_no_eligible_roots
-        MessageKey.MSG_ARCHIVE_PASSWORD_INVALID -> Res.string.msg_archive_password_invalid
-    }
-}
 
 // ── Drag & Drop models ──────────────────────────────────────────────────────
 

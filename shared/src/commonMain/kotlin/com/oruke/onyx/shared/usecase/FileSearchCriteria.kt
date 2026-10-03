@@ -1,5 +1,8 @@
 package com.oruke.onyx.shared.usecase
 
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 
@@ -69,8 +72,8 @@ internal data class FileSearchCriteria(
             query == null -> Result.success(true)
             entry.kind != VFileKind.FILE -> Result.success(false)
             !contentSearchService.supports(entry) -> Result.failure(
-                UnsupportedOperationException(
-                    "Content search is not supported for ${entry.location}"
+                LocalizedException(
+                    I18nMessage(MessageKey.MSG_SEARCH_CONTENT_UNSUPPORTED, entry.location),
                 )
             )
 

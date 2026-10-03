@@ -73,7 +73,7 @@ internal class RemoteConnectionOperationService(
         }
         when (val result = connectionTestService.testConnection(request)) {
             is VfsConnectionTestResult.Reachable -> RemoteConnectionTestState.Reachable(
-                capabilities = result.capabilities.mapTo(sortedSetOf()) { capability -> capability.name },
+                capabilities = result.capabilities.toSet(),
             )
 
             is VfsConnectionTestResult.Failed -> RemoteConnectionTestState.Failed(

@@ -1,5 +1,7 @@
 package com.oruke.onyx.vfs.local
 
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -66,9 +68,10 @@ class LocalPathOperationsTest {
     @Test
     fun createDirectoryRejectsParentTraversal() {
         withTempDirectory { root ->
-            assertFailsWith<IllegalArgumentException> {
+            val failure = assertFailsWith<LocalizedException> {
                 LocalPathOperations.resolveCreateDirectoryTarget(root, "../outside")
             }
+            assertEquals(MessageKey.MSG_DIRECTORY_PATH_INVALID_SEGMENTS, failure.userMessage.key)
         }
     }
 

@@ -1,5 +1,8 @@
 package com.oruke.onyx.shared.usecase
 
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
@@ -85,8 +88,8 @@ class FileSearchUseCase(
             return@flow
         }
         if (matcher.requiresContent && !supportsContentSearch(request.rootLocation)) {
-            val failure = UnsupportedOperationException(
-                "Content search is not supported for ${request.rootLocation}"
+            val failure = LocalizedException(
+                I18nMessage(MessageKey.MSG_SEARCH_CONTENT_UNSUPPORTED, request.rootLocation),
             )
             emit(
                 FileSearchEvent.Failed(
@@ -287,8 +290,8 @@ object UnsupportedFileContentSearchService : FileContentSearchService {
         query: String,
         maxBytes: Long,
     ): Result<Boolean> {
-        val failure = UnsupportedOperationException(
-            "Content search is not supported for ${entry.location}"
+        val failure = LocalizedException(
+            I18nMessage(MessageKey.MSG_SEARCH_CONTENT_UNSUPPORTED, entry.location),
         )
         return Result.failure(failure)
     }

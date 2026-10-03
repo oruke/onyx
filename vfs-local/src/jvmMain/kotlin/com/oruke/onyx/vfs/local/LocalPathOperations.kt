@@ -1,8 +1,12 @@
 package com.oruke.onyx.vfs.local
 
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import kotlin.io.path.pathString
@@ -36,8 +40,8 @@ internal object LocalPathOperations {
         val sanitizedName = name.trim()
         validateTargetName(sanitizedName)
         val target = parentDirectory.resolve(sanitizedName).normalize().toAbsolutePath()
-        require(target != parentDirectory) { "Cannot create entry with empty name" }
-        if (Files.exists(target)) {
+        if (target == parentDirectory) throw LocalizedException(I18nMessage(MessageKey.MSG_FILE_NAME_EMPTY))
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             throw FileAlreadyExistsException(target.pathString)
         }
         return target
@@ -56,8 +60,10 @@ internal object LocalPathOperations {
     ): Path {
         val normalizedRelativePath = normalizeRelativeDirectoryPath(rawName)
         val target = parentDirectory.resolve(normalizedRelativePath).normalize().toAbsolutePath()
-        require(target.startsWith(parentDirectory)) { "Directory path must stay inside the current location" }
-        if (Files.exists(target)) {
+        if (!target.startsWith(parentDirectory)) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_PATH_OUTSIDE_CURRENT_LOCATION))
+        }
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             throw FileAlreadyExistsException(target.pathString)
         }
         return target
@@ -72,7 +78,9 @@ internal object LocalPathOperations {
     fun resolveTargetDirectory(targetDirectoryLocation: String): Path {
         val targetDirectory = Path.of(targetDirectoryLocation).normalize().toAbsolutePath()
         ensurePathExists(targetDirectory)
-        require(Files.isDirectory(targetDirectory)) { "$targetDirectoryLocation is not a directory" }
+        if (!Files.isDirectory(targetDirectory)) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_LOCATION_NOT_DIRECTORY, targetDirectoryLocation))
+        }
         return targetDirectory
     }
 
@@ -92,9 +100,11 @@ internal object LocalPathOperations {
         val sanitizedName = name.trim()
         validateTargetName(sanitizedName)
         val directTarget = targetDirectory.resolve(sanitizedName).normalize().toAbsolutePath()
-        require(directTarget.startsWith(targetDirectory)) { "Target path must stay inside the current location" }
+        if (!directTarget.startsWith(targetDirectory)) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_PATH_OUTSIDE_CURRENT_LOCATION))
+        }
         return when {
-            !Files.exists(directTarget) -> directTarget
+            !Files.exists(directTarget, LinkOption.NOFOLLOW_LINKS) -> directTarget
             conflictStrategy == TransferConflictStrategy.KEEP_BOTH -> LocalPathTransferOperations.availableTargetPath(
                 originalName = sanitizedName,
                 isDirectory = false,
@@ -112,8 +122,10 @@ internal object LocalPathOperations {
      * @param targetName 待校验名称。
      */
     fun validateTargetName(targetName: String) {
-        require(targetName.isNotBlank()) { "Name cannot be blank" }
-        require('/' !in targetName && '\\' !in targetName) { "Name cannot contain path separators" }
+        if (targetName.isBlank()) throw LocalizedException(I18nMessage(MessageKey.MSG_FILE_NAME_EMPTY))
+        if ('/' in targetName || '\\' in targetName) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_FILE_NAME_PATH_SEPARATOR))
+        }
     }
 
     /**
@@ -124,14 +136,18 @@ internal object LocalPathOperations {
      */
     private fun normalizeRelativeDirectoryPath(rawPath: String): String {
         val trimmed = rawPath.trim()
-        require(!trimmed.startsWith('/') && !trimmed.startsWith('\\')) { "Directory path must be relative" }
-        require(!trimmed.matches(windowsAbsolutePathPattern)) { "Directory path must be relative" }
         val normalized = trimmed.replace('\\', '/').trim('/')
-        require(normalized.isNotBlank()) { "Directory path cannot be blank" }
         val segments = normalized.split('/')
-        require(segments.all { segment -> segment.isNotBlank() && segment != "." && segment != ".." }) {
-            "Directory path contains invalid segments"
+        // 按原有校验顺序选择最具体的原因，统一抛出可本地化错误。
+        val errorKey = when {
+            trimmed.startsWith('/') || trimmed.startsWith('\\') || trimmed.matches(windowsAbsolutePathPattern) ->
+                MessageKey.MSG_DIRECTORY_PATH_RELATIVE_REQUIRED
+            normalized.isBlank() -> MessageKey.MSG_DIRECTORY_PATH_EMPTY
+            segments.any { segment -> segment.isBlank() || segment == "." || segment == ".." } ->
+                MessageKey.MSG_DIRECTORY_PATH_INVALID_SEGMENTS
+            else -> null
         }
+        if (errorKey != null) throw LocalizedException(I18nMessage(errorKey))
         return segments.joinToString("/")
     }
 

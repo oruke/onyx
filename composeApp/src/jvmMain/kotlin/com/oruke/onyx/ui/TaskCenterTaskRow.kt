@@ -36,6 +36,7 @@ import onyx.composeapp.generated.resources.action_remove_task
 import onyx.composeapp.generated.resources.action_resume_task
 import onyx.composeapp.generated.resources.action_retry_task
 import onyx.composeapp.generated.resources.label_task_errors_count
+import onyx.composeapp.generated.resources.label_task_file_error
 import onyx.composeapp.generated.resources.label_task_item_progress
 import onyx.composeapp.generated.resources.label_task_remaining_time
 import org.jetbrains.compose.resources.stringResource
@@ -327,7 +328,11 @@ private fun TaskErrorList(task: BackgroundTask) {
     )
     task.errors.take(MAX_VISIBLE_TASK_ERRORS).forEach { error ->
         Text(
-            text = "${error.fileName}: ${error.message}",
+            text = stringResource(
+                Res.string.label_task_file_error,
+                error.fileName,
+                error.detail?.resolve() ?: error.message,
+            ),
             fontSize = LocalOnyxAppearance.current.headerFontSize,
             color = palette.mutedForeground,
             maxLines = 1,

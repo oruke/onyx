@@ -4,6 +4,9 @@ import com.oruke.onyx.core.model.FileCollection
 import com.oruke.onyx.core.model.FileCollectionKind
 import com.oruke.onyx.core.model.FileCollectionLocation
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsProviderError
+import com.oruke.onyx.vfs.api.VfsProviderException
 
 /**
  * 文件集合仓库，负责维护可作为虚拟目录打开的集合。
@@ -123,7 +126,9 @@ class FileCollectionUseCase(
      */
     fun list(location: String): Result<List<VFile>> {
         val collection = repository.findByLocation(location)
-            ?: return Result.failure(IllegalArgumentException("File collection not found: $location"))
+            ?: return Result.failure(
+                VfsProviderException(VfsProviderError.NotFound(VfsProtocol.COLLECTION, location)),
+            )
         return Result.success(collection.entries)
     }
 

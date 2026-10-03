@@ -3,6 +3,9 @@ package com.oruke.onyx.app.filesystem
 import androidx.compose.ui.unit.IntSize
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.core.model.FileTransferOperation
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
@@ -232,11 +235,20 @@ internal class JvmVfsPathService : VfsPathService {
     private fun remoteUri(location: String): URI? = RemoteVfsLocationParser.parse(location)
 }
 
+/** 根据宿主平台启动指定目录的终端，启动失败保留系统诊断并提供可本地化的业务原因。 */
 internal class JvmTerminalLauncherService : TerminalLauncherService {
+    /**
+     * 校验目标目录并依次尝试当前平台支持的终端命令。
+     *
+     * @param location 用户选择的本地目录位置。
+     * @return 任一终端成功启动时返回成功，否则返回包含最后一次系统异常的失败。
+     */
     override suspend fun openTerminal(location: String): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             val directory = File(location)
-            check(directory.isDirectory) { "Location is not a directory: $location" }
+            if (!directory.isDirectory) {
+                throw LocalizedException(I18nMessage(MessageKey.MSG_TERMINAL_LOCATION_NOT_DIRECTORY, location))
+            }
             var lastFailure: Throwable? = null
             for (candidate in terminalLaunchCandidates(directory)) {
                 try {
@@ -252,7 +264,7 @@ internal class JvmTerminalLauncherService : TerminalLauncherService {
                     lastFailure = failure
                 }
             }
-            throw IllegalStateException("No terminal command could be started", lastFailure)
+            throw LocalizedException(I18nMessage(MessageKey.MSG_TERMINAL_LAUNCH_FAILED), lastFailure)
         }
     }
 
@@ -577,18 +589,36 @@ internal class JvmFileTypeService : FileTypeService {
     }
 }
 
+/**
+ * 将压缩包内文件解压到临时位置后，通过统一外部打开服务交给系统应用。
+ *
+ * @param archiveService 读取归档条目内容的统一服务。
+ * @param externalOpenService 打开已提取本地文件的平台入口。
+ */
 internal class JvmArchiveEntryOpenService(
+    /** 提取原始归档条目内容的统一服务。 */
     private val archiveService: ArchiveService,
+    /** 启动本地文件默认应用的统一入口。 */
     private val externalOpenService: ExternalOpenService,
 ) : ArchiveEntryOpenService {
+    /**
+     * 校验并提取单个归档文件，向界面返回可本地化的校验失败或原始底层异常。
+     *
+     * @param entry 待打开的统一归档文件条目。
+     * @return 已启动的临时本地文件条目，或保留错误诊断的失败结果。
+     */
     override suspend fun openArchiveEntry(entry: VFile): Result<VFile> = withContext(Dispatchers.IO) {
         runCatching {
             val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(entry.location)
-                ?: error("不是压缩包内条目: ${entry.location}")
-            check(innerPath.isNotBlank()) { "压缩包条目路径为空" }
+                ?: throw LocalizedException(I18nMessage(MessageKey.MSG_ARCHIVE_ENTRY_LOCATION_INVALID, entry.location))
+            if (innerPath.isBlank()) {
+                throw LocalizedException(I18nMessage(MessageKey.MSG_ARCHIVE_ENTRY_PATH_EMPTY))
+            }
             val bytes = archiveService.extractToBytes(archivePath, innerPath).getOrThrow()
-                ?: error("压缩包条目不存在: $innerPath")
-            check(bytes.isNotEmpty()) { "压缩包条目为空: $innerPath" }
+                ?: throw LocalizedException(I18nMessage(MessageKey.MSG_ARCHIVE_ENTRY_NOT_FOUND, innerPath))
+            if (bytes.isEmpty()) {
+                throw LocalizedException(I18nMessage(MessageKey.MSG_ARCHIVE_ENTRY_EMPTY, innerPath))
+            }
             val tempDir = Files.createTempDirectory("onyx-archive-")
             val tempFile = tempDir.resolve(entry.name)
             Files.write(tempFile, bytes)

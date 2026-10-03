@@ -1,11 +1,11 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.shared.filesystem.toI18nMessage
-import com.oruke.onyx.vfs.api.VfsProviderError
-import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.archive.ArchiveService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -89,10 +89,7 @@ internal fun DefaultPaneComponent.openEntry(entry: VFile) {
             updateFailure(
                 tab.id,
                 PaneOperationFeedbackKind.OPEN_FAILED,
-                VfsProviderError.PermissionDenied(
-                    protocol = VfsProtocol.LOCAL,
-                    location = entry.location,
-                ).toI18nMessage(),
+                I18nMessage(MessageKey.MSG_DIRECTORY_UNAVAILABLE, entry.location),
             )
             return
         }

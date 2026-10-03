@@ -7,8 +7,6 @@ import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.app.filesystem.VfsPathService
-import com.oruke.onyx.vfs.api.VfsProviderError
-import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.shared.filesystem.toI18nMessage
@@ -20,7 +18,6 @@ import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
-import com.oruke.onyx.core.model.TaskError
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -461,31 +458,14 @@ internal class FileTransferDelegate(
         }
     }
 
+    /**
+     * 通过统一错误映射保留传输失败原因及本地化参数。
+     *
+     * @param operation 当前传输操作。
+     * @return 可在当前语言下解析的失败消息。
+     */
     private fun Throwable.toTransferFailureMessage(operation: FileTransferOperation): I18nMessage {
-        val providerError = (this as? VfsProviderException)?.error
-        return when (providerError) {
-            is VfsProviderError.CrossProviderTransferUnsupported -> providerError.toI18nMessage()
-            null -> message?.takeIf { it.isNotBlank() }?.let { detail ->
-                I18nMessage(MessageKey.MSG_STRING_LITERAL, detail)
-            } ?: failureMessageFor(operation)
-            else -> providerError.toI18nMessage()
-        }
-    }
-
-    private fun Throwable.toTaskErrors(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-    ): List<TaskError> {
-        val message = message?.takeIf { it.isNotBlank() } ?: this::class.simpleName.orEmpty()
-        if (entries.isEmpty()) {
-            return listOf(TaskError(fileName = targetDirectoryLocation, message = message))
-        }
-        return entries.map { entry ->
-            TaskError(
-                fileName = entry.name,
-                message = message,
-            )
-        }
+        return toI18nMessage(failureMessageFor(operation).key)
     }
 
     data class PendingTransferRequest(
