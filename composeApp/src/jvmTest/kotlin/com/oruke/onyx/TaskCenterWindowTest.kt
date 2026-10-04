@@ -1,6 +1,10 @@
 package com.oruke.onyx
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import com.oruke.onyx.app.platform.JvmApplicationLocaleController
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
@@ -201,11 +205,17 @@ private fun TaskWindowTestApplication(
     component: TaskCenterComponent,
     preferences: MutableStateFlow<OnyxSettings>,
 ) {
+    val localeController = remember(preferences) { JvmApplicationLocaleController(preferences) }
+    val localeScope = rememberCoroutineScope()
+    DisposableEffect(localeController, localeScope) {
+        val binding = localeController.bind(localeScope)
+        onDispose(binding::cancel)
+    }
     IntUiTheme(
         theme = JewelTheme.lightThemeDefinition(),
         styling = ComponentStyling.default().decoratedWindow(titleBarStyle = TitleBarStyle.lightWithLightHeader()),
     ) {
-        TaskCenterWindow(component, preferences)
+        TaskCenterWindow(component, preferences, localeController.appliedLocale)
         OnyxTheme { OnyxTooltipHost { TaskCenterButton(component) } }
     }
 }

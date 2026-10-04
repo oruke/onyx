@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.WindowState
 import com.oruke.onyx.core.model.OnyxSettings
+import com.oruke.onyx.app.component.RootWindowKind
 
 /** 主窗口与图片查看器窗口的 Compose Desktop 状态集合。 */
 internal data class DesktopWindowStates(
@@ -29,17 +30,17 @@ internal data class DesktopWindowStates(
  *
  * @param settings 已完成恢复的应用设置。
  * @param persistMainWindowSize 是否允许当前窗口更新主窗口持久化尺寸。
- * @param onSettingsChanged 窗口尺寸变化后的设置更新回调。
+ * @param onWindowSizeChanged 只更新指定窗口尺寸的组件事件入口。
  * @return 主窗口与图片查看器窗口状态。
  */
 @Composable
 internal fun rememberDesktopWindowStates(
     settings: OnyxSettings,
     persistMainWindowSize: Boolean,
-    onSettingsChanged: (OnyxSettings) -> Unit,
+    onWindowSizeChanged: (RootWindowKind, Int, Int) -> Unit,
 ): DesktopWindowStates {
     val latestSettings by rememberUpdatedState(settings)
-    val latestOnSettingsChanged by rememberUpdatedState(onSettingsChanged)
+    val latestOnWindowSizeChanged by rememberUpdatedState(onWindowSizeChanged)
     val mainWindowState = remember {
         WindowState(
             size = DpSize(settings.mainWindowWidth.dp, settings.mainWindowHeight.dp),
@@ -63,12 +64,7 @@ internal fun rememberDesktopWindowStates(
             if (current.mainWindowWidth == width.value.toInt() &&
                 current.mainWindowHeight == height.value.toInt()
             ) return@collect
-            latestOnSettingsChanged(
-                current.copy(
-                    mainWindowWidth = width.value.toInt(),
-                    mainWindowHeight = height.value.toInt(),
-                )
-            )
+            latestOnWindowSizeChanged(RootWindowKind.MAIN, width.value.toInt(), height.value.toInt())
         }
     }
 
@@ -81,12 +77,7 @@ internal fun rememberDesktopWindowStates(
             if (current.imageViewerWindowWidth == width.value.toInt() &&
                 current.imageViewerWindowHeight == height.value.toInt()
             ) return@collect
-            latestOnSettingsChanged(
-                current.copy(
-                    imageViewerWindowWidth = width.value.toInt(),
-                    imageViewerWindowHeight = height.value.toInt(),
-                )
-            )
+            latestOnWindowSizeChanged(RootWindowKind.IMAGE_VIEWER, width.value.toInt(), height.value.toInt())
         }
     }
 

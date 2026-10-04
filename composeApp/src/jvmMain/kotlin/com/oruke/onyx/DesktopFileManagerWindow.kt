@@ -18,6 +18,7 @@ import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.searchWindowActions
 import com.oruke.onyx.ui.theme.OnyxTheme
+import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import java.awt.Dimension
 import onyx.composeapp.generated.resources.Res
@@ -74,7 +75,9 @@ internal fun DesktopFileManagerWindow(
     val windowStates = rememberDesktopWindowStates(
         settings = state.settings,
         persistMainWindowSize = request.persistsMainSession,
-        onSettingsChanged = { settings -> rootComponent.dispatch(RootIntent.UpdateSettings(settings)) },
+        onWindowSizeChanged = { kind, width, height ->
+            rootComponent.dispatch(RootIntent.UpdateWindowSize(kind, width, height))
+        },
     )
 
     DecoratedWindow(
@@ -88,7 +91,9 @@ internal fun DesktopFileManagerWindow(
             externalFileDragService.install(window)
             onDispose(externalFileDragService::uninstall)
         }
-        WindowApp(rootComponent, externalFileDragService)
+        OnyxLocaleEnvironment(applicationRuntime.resourceLocale) {
+            WindowApp(rootComponent, externalFileDragService)
+        }
     }
 
     SearchWindow(
@@ -96,6 +101,7 @@ internal fun DesktopFileManagerWindow(
         presentation = SearchPanelPresentation(state.settings.searchHistory, rootComponent::locationLabel),
         actions = rootComponent.searchWindowActions(),
         settings = state.settings,
+        resourceLocale = applicationRuntime.resourceLocale,
     )
 
     val imageViewerState by rootComponent.imageViewerState.collectAsState()
@@ -110,6 +116,7 @@ internal fun DesktopFileManagerWindow(
                 listRowHeightDp = state.settings.listRowHeightDp,
                 listFontSizeSp = state.settings.listFontSizeSp,
                 zebraStripeEnabled = state.settings.zebraStripeEnabled,
+                fileListColors = state.settings.fileListColors,
             )
             OnyxTheme(
                 uiScale = state.settings.uiScale,

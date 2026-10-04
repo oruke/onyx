@@ -35,6 +35,12 @@ import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.archive.ZipArchiveCreationService
 import com.oruke.onyx.vfs.s3.MutableS3ConnectionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import com.oruke.onyx.core.model.AppLocale
+import com.oruke.onyx.shared.usecase.FileLabelRuleUseCase
+import com.oruke.onyx.shared.usecase.UserCommandUseCase
+import com.oruke.onyx.app.filesystem.UserCommandLauncherService
+import com.oruke.onyx.app.filesystem.JvmUserCommandLauncherService
 
 /** 根组件的文件读写与条目打开依赖。 */
 internal data class RootFileDependencies(
@@ -126,6 +132,8 @@ internal data class RootRuntimeDelegates(
     val settings: MutableStateFlow<OnyxSettings>,
     /** 所有窗口共享的任务中心状态与任务操作入口。 */
     val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(taskOrchestrator),
+    /** 应用级资源语言就绪信号；独立组件使用系统资源环境。 */
+    val resourceLocale: StateFlow<AppLocale> = MutableStateFlow(AppLocale.SYSTEM),
 )
 
 /** 默认根组件的全部类型化依赖。 */
@@ -140,4 +148,16 @@ internal data class DefaultRootDependencies(
     val search: RootSearchDependencies,
     /** 共享运行期委托。 */
     val delegates: RootRuntimeDelegates,
+    /** 用户规则与自定义工作流用例。 */
+    val customization: RootCustomizationDependencies = RootCustomizationDependencies(),
+)
+
+/** 文件规则匹配和用户命令规划的统一用例。 */
+internal data class RootCustomizationDependencies(
+    /** 文件着色规则匹配能力。 */
+    val labels: FileLabelRuleUseCase = FileLabelRuleUseCase(),
+    /** 自定义命令参数规划能力。 */
+    val commands: UserCommandUseCase = UserCommandUseCase(),
+    /** 平台程序执行服务。 */
+    val commandLauncher: UserCommandLauncherService = JvmUserCommandLauncherService(),
 )

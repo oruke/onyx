@@ -2,14 +2,18 @@ package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.OnyxSettings
 
+/**
+ * 清理设置中的空值和重复项，用户主动保存的收藏和连接不按数量截断。
+ *
+ * @return 可持久化的规范化设置。
+ */
 internal fun OnyxSettings.sanitizeRootSettings(): OnyxSettings {
     return copy(
         uiScale = uiScale.coerceIn(MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT),
         favoriteLocations = favoriteLocations
             .map { favorite -> favorite.trim() }
             .filter { favorite -> favorite.isNotEmpty() }
-            .distinct()
-            .take(MAX_FAVORITE_LOCATIONS),
+            .distinct(),
         recentLocations = recentLocations
             .map { recent -> recent.trim() }
             .filter { recent -> recent.isNotEmpty() }
@@ -29,8 +33,7 @@ internal fun OnyxSettings.sanitizeRootSettings(): OnyxSettings {
                 )
             }
             .filter { connection -> connection.name.isNotEmpty() && connection.location.isNotEmpty() }
-            .distinctBy { connection -> connection.id }
-            .take(MAX_REMOTE_CONNECTIONS),
+            .distinctBy { connection -> connection.id },
         searchHistory = searchHistory
             .map { query -> query.trim() }
             .filter { query -> query.isNotEmpty() }
@@ -55,6 +58,13 @@ internal fun OnyxSettings.recordSearchQuery(query: String): OnyxSettings {
     return if (next == searchHistory) this else copy(searchHistory = next)
 }
 
+/**
+ * 记录最近浏览的位置；自动生成的历史仅保留最近十条。
+ *
+ * @param locations 本次访问的位置。
+ * @param isArchiveLocation 判断位置是否为不应记录的压缩包内部路径。
+ * @return 更新后的设置。
+ */
 internal fun OnyxSettings.recordRecentLocations(
     locations: List<String>,
     isArchiveLocation: (String) -> Boolean,
@@ -77,6 +87,12 @@ internal fun OnyxSettings.recordRecentLocations(
     }
 }
 
+/**
+ * 按明确的可用性判断清理收藏与最近位置。
+ *
+ * @param isLocationAvailable 统一位置服务的可用性判断。
+ * @return 清理后的设置。
+ */
 internal fun OnyxSettings.cleanupInvalidLocations(
     isLocationAvailable: (String) -> Boolean,
 ): OnyxSettings {
@@ -86,14 +102,8 @@ internal fun OnyxSettings.cleanupInvalidLocations(
     ).sanitizeRootSettings()
 }
 
-/** 收藏位置允许保留的最大数量。 */
-private const val MAX_FAVORITE_LOCATIONS = 12
-
 /** 最近位置允许保留的最大数量。 */
 private const val MAX_RECENT_LOCATIONS = 10
-
-/** 网络连接配置允许保留的最大数量。 */
-private const val MAX_REMOTE_CONNECTIONS = 24
 
 /** 搜索历史允许保留的最大数量。 */
 private const val MAX_SEARCH_HISTORY = 20

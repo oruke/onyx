@@ -41,6 +41,8 @@ data class OnyxSettings(
     val commandShortcutOverrides: List<CommandShortcutOverride> = emptyList(),
     /** 文件标签与颜色规则。 */
     val fileLabelRules: List<FileLabelRule> = emptyList(),
+    /** 文件区域独立颜色，不影响窗口、菜单与对话框主题。 */
+    val fileListColors: FileListColors = FileListColors(),
     /** 批量重命名预设。 */
     val batchRenamePresets: List<BatchRenamePreset> = emptyList(),
     /** 用户自定义工具栏、菜单和脚本命令。 */

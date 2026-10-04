@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
+import com.oruke.onyx.app.platform.JvmApplicationLocaleController
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.SettingsRepository
@@ -34,6 +35,17 @@ internal class RootApplicationRuntime(
     /** 所有窗口共享的即时设置状态。 */
     val settings: MutableStateFlow<OnyxSettings>,
 ) {
+    /** 唯一负责更新 JVM 资源语言的应用级控制器。 */
+    private val localeController = JvmApplicationLocaleController(settings)
+
+    /** 已完成语言环境切换的共享资源更新信号。 */
+    val resourceLocale = localeController.appliedLocale
+
+    init {
+        // 在恢复设置和创建窗口前绑定唯一语言入口，旧窗口重组不能覆盖最新偏好。
+        localeController.bind(scope)
+    }
+
     /** 所有窗口共享的任务中心，不随任何单个文件管理器窗口关闭。 */
     val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(taskOrchestrator)
 

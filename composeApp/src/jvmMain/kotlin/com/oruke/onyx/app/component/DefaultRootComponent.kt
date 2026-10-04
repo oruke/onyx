@@ -71,75 +71,115 @@ internal class DefaultRootComponent(
     componentContext: ComponentContext,
     internal val dependencies: DefaultRootDependencies,
     internal val launchConfiguration: RootLaunchConfiguration,
-) : RootComponent, ComponentContext by componentContext {
+) : RootComponent,
+    RootCustomizationServices by RootCustomizationDelegate(dependencies.customization, dependencies.delegates.settings),
+    ComponentContext by componentContext {
+
     /** 文件查询仓库。 */
     internal val fileRepository = dependencies.files.fileRepository
+
     /** 文件写入命令服务。 */
     internal val fileCommandService = dependencies.files.fileCommandService
+
     /** 系统文本剪贴板服务。 */
     internal val textClipboardService = dependencies.files.textClipboardService
+
     /** 回收站服务。 */
     internal val trashService = dependencies.files.trashService
+
     /** 外部程序打开服务。 */
     internal val externalOpenService = dependencies.files.externalOpenService
+
     /** 压缩包服务。 */
     internal val archiveService = dependencies.files.archiveService
+
     /** ZIP 压缩包创建服务。 */
     internal val zipArchiveCreationService = dependencies.files.zipArchiveCreationService
+
     /** 文件类型识别服务。 */
     internal val fileTypeService = dependencies.files.fileTypeService
+
     /** 压缩包条目打开服务。 */
     internal val archiveEntryOpenService = dependencies.files.archiveEntryOpenService
+
     /** 新建条目名称建议服务。 */
     internal val entryNameSuggestionService = dependencies.files.entryNameSuggestionService
+
     /** 设置仓库。 */
     internal val settingsRepository = dependencies.platform.settingsRepository
+
     /** 会话仓库。 */
     internal val sessionRepository = dependencies.platform.sessionRepository
+
     /** 系统打开方式服务。 */
     internal val openWithService = dependencies.platform.openWithService
+
     /** 系统菜单服务。 */
     internal val systemMenuService = dependencies.platform.systemMenuService
+
     /** 文件上下文菜单服务。 */
     internal val fileContextMenuService = dependencies.platform.fileContextMenuService
+
     /** 外部文件拖放服务。 */
     internal val externalFileDragService = dependencies.platform.externalFileDragService
+
     /** VFS 路径服务。 */
     internal val pathService = dependencies.platform.pathService
+
     /** VFS Provider 注册表。 */
     internal val providerRegistry = dependencies.platform.providerRegistry
+
     /** 终端启动服务。 */
     internal val terminalLauncherService = dependencies.platform.terminalLauncherService
+
     /** 操作系统快速访问位置读取服务。 */
     internal val systemQuickAccessService = dependencies.platform.systemQuickAccessService
+
     /** 文本预览服务。 */
     internal val previewService = dependencies.inspection.previewService
+
     /** 文件哈希服务。 */
     internal val fileHashService = dependencies.inspection.fileHashService
+
     /** 压缩包信息服务。 */
     internal val archiveInfoService = dependencies.inspection.archiveInfoService
+
     /** 缩略图服务。 */
     internal val thumbnailService = dependencies.inspection.thumbnailService
+
     /** 图片元数据服务。 */
     internal val imageMetadataService = dependencies.inspection.imageMetadataService
+
     /** 远程连接测试服务。 */
     internal val connectionTestService = dependencies.inspection.connectionTestService
+
     /** 远程认证存储。 */
     internal val remoteAuthStore = dependencies.inspection.remoteAuthStore
+
     /** 运行期 S3 Endpoint 配置仓库。 */
     internal val s3ConnectionRepository = dependencies.inspection.s3ConnectionRepository
+
     /** 文件集合用例。 */
     internal val fileCollectionUseCase = dependencies.search.fileCollectionUseCase
+
     /** 文件内容搜索服务。 */
     internal val fileContentSearchService = dependencies.search.fileContentSearchService
+
     /** 后台任务编排器。 */
     internal val taskOrchestrator = dependencies.delegates.taskOrchestrator
+
     /** 应用级任务中心，所有根组件使用同一窗口状态。 */
     override val taskCenter: TaskCenterComponent = dependencies.delegates.taskCenter
+
+    /** 统一消费应用级控制器发布的资源语言就绪状态。 */
+    override val resourceLocale = dependencies.delegates.resourceLocale
+
     /** 文件剪贴板管理器。 */
     internal val clipboardManager = dependencies.delegates.clipboardManager
+
     /** 图片查看器控制器。 */
     internal val imageViewerController = dependencies.delegates.imageViewerController
+
     /** 设置与会话持久化管理器。 */
     internal val sessionManager = dependencies.delegates.sessionManager
 
@@ -156,20 +196,28 @@ internal class DefaultRootComponent(
 
     /** 当前布局模式。 */
     internal val layoutMode = MutableStateFlow(PaneLayoutMode.DUAL_VERTICAL)
+
     /** 双面板分割比例。 */
     internal val paneSplitFraction = MutableStateFlow(0.5f)
+
     /** 当前活动面板。 */
     internal val activePane = MutableStateFlow(PaneId.PRIMARY)
+
     /** 当前应用设置。 */
     internal val settings = dependencies.delegates.settings
+
     /** 会话恢复状态。 */
     internal val sessionRestoreState = MutableStateFlow<SessionRestoreState>(SessionRestoreState.Loading)
+
     /** 当前根对话框。 */
     internal val dialogState = MutableStateFlow<RootDialogState?>(null)
+
     /** 是否显示预览面板。 */
     internal val showPreviewPane = MutableStateFlow(false)
+
     /** 图片查看器状态。 */
     override val imageViewerState: StateFlow<ImageViewerState> = imageViewerController.state
+
     /** 首次恢复成功或用户明确修改设置后才允许自动持久化。 */
     internal var persistenceReady = false
 
@@ -188,6 +236,11 @@ internal class DefaultRootComponent(
         providerRegistry = providerRegistry,
         onRefreshAllPanes = ::refreshAllPanes,
         onMoveSucceeded = ::recordMoveOperation,
+        onCopySucceeded = { entries, target ->
+            fileOperationHistoryDelegate.recordCopy(entries, target)
+                .onFailure(::showActivePaneOperationFailure)
+        },
+        onHistoryInvalidated = { fileOperationHistoryDelegate.clear() },
     )
 
     /** 压缩包动作委托。 */
@@ -225,6 +278,7 @@ internal class DefaultRootComponent(
         fileCommandService,
         fileRepository,
         trashService,
+        fileHashService,
     )
 
     /** 根组件文件操作历史门面。 */
@@ -395,9 +449,10 @@ internal class DefaultRootComponent(
     /** 观察各根状态源并生成单一 RootState。 */
     private fun observeRootState() {
         scope.launch {
-            val layoutFlow = combine(layoutMode, paneSplitFraction, activePane, showPreviewPane) {
-                    mode, fraction, pane, preview -> LayoutSlice(mode, fraction, pane, preview)
-            }
+            val layoutFlow =
+                combine(layoutMode, paneSplitFraction, activePane, showPreviewPane) { mode, fraction, pane, preview ->
+                    LayoutSlice(mode, fraction, pane, preview)
+                }
             val paneFlow = combine(primaryPane.state, secondaryPane.state) { primary, secondary ->
                 primary to secondary
             }
@@ -442,8 +497,8 @@ internal class DefaultRootComponent(
     /** 观察可持久化状态并防抖保存。 */
     private fun observePersistence() {
         scope.launch {
-            combine(layoutMode, paneSplitFraction, activePane, primaryPane.state, secondaryPane.state, settings) {
-                _ -> Unit
+            combine(layoutMode, paneSplitFraction, activePane, primaryPane.state, secondaryPane.state, settings) { _ ->
+                Unit
             }.debounce(ROOT_STATE_SAVE_DEBOUNCE_MS).collect {
                 if (persistenceReady) persistCurrentState()
             }

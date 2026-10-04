@@ -48,10 +48,17 @@ internal class FileTransferDelegate(
     private val providerRegistry: VfsProviderRegistry,
     private val onRefreshAllPanes: () -> Unit,
     private val onMoveSucceeded: (entries: List<VFile>, targetDirectoryLocation: String) -> Unit = { _, _ -> },
+    /** 无冲突复制完成后同步登记历史快照。 */
+    private val onCopySucceeded: suspend (List<VFile>, String) -> Unit = { _, _ -> },
+    /** 冲突或部分完成导致无法可靠反向执行时，停止暴露旧历史。 */
+    private val onHistoryInvalidated: () -> Unit = {},
 ) {
     var pendingTransferRequest: PendingTransferRequest? = null
         private set
     private val transferUseCase = FileTransferUseCase(fileCommandService, providerRegistry)
+
+    /** 提交后的可逆历史登记入口。 */
+    private val historyRecorder = TransferHistoryRecordDelegate(onMoveSucceeded, onCopySucceeded, onHistoryInvalidated)
 
     /**
      * 请求文件传输 — 检测冲突后决定直接执行或弹出冲突对话框。
@@ -286,6 +293,8 @@ internal class FileTransferDelegate(
                     applyTaskProgress(taskId, progress)
                 }
 
+                // 在任务显示完成前建立撤销记录，避免用户立即撤销时误操作上一条历史。
+                historyRecorder.record(operation, entries, targetDirectoryLocation, conflictStrategies)
                 taskOrchestrator.unregisterJob(taskId)
                 val completedBytes = taskOrchestrator.tasks.value
                     .firstOrNull { task -> task.id == taskId }
@@ -312,12 +321,10 @@ internal class FileTransferDelegate(
                 if (clearClipboardOnSuccess) {
                     clipboardManager.clear()
                 }
-                if (operation == FileTransferOperation.MOVE && conflictStrategies.isEmpty()) {
-                    onMoveSucceeded(entries, targetDirectoryLocation)
-                }
                 onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (failure: CancellationException) {
+                onHistoryInvalidated()
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -328,6 +335,7 @@ internal class FileTransferDelegate(
                 onRefreshAllPanes()
                 throw failure
             } catch (failure: Exception) {
+                onHistoryInvalidated()
                 OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(

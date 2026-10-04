@@ -8,9 +8,11 @@ import androidx.compose.ui.test.runDesktopComposeUiTest
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.SearchStatus
 import com.oruke.onyx.core.model.FileCollectionKind
+import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.SearchScope
 import java.awt.Frame
 import java.nio.file.Files
+import java.util.Locale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
 import org.junit.Rule
@@ -28,6 +30,48 @@ class SearchWindowTest {
     /** 各用例使用独立文件目录，并在用例结束后由 JUnit 回收。 */
     @get:Rule
     val temporaryFolder = TemporaryFolder()
+
+    /**
+     * 从共享设置切换三种语言，原生窗口标题同步更新且查询保留，切换后仍能搜索真实文件。
+     * @return 无返回值；语言资源未更新、查询丢失或真实搜索结果不正确时失败。
+     */
+    @Test
+    fun localePreferenceUpdatesVisibleWindowAndPreservesSearch() = runDesktopComposeUiTest {
+        val previousLocale = Locale.getDefault()
+        val fixture = SearchWindowFixture(temporaryFolder.newFolder("locale-search").toPath())
+        try {
+            setContent { SearchWindowTestApplication(fixture) }
+            runOnUiThread { fixture.delegate.showSearchPanel() }
+            enterSearchWindowQuery("report")
+            for ((locale, title) in listOf(
+                AppLocale.ENGLISH to "Search",
+                AppLocale.SIMPLIFIED_CHINESE to "搜索",
+                AppLocale.JAPANESE to "検索",
+                AppLocale.ENGLISH to "Search",
+            )) {
+                runOnUiThread { fixture.preferences.value = fixture.preferences.value.copy(preferredLocale = locale) }
+                waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) {
+                    runOnUiThread {
+                        val window = visibleSearchWindows().singleOrNull()
+                        window?.renderImmediately()
+                        window?.title == title && window.searchWindowNode("search-query")
+                            ?.config?.getOrNull(SemanticsProperties.EditableText)?.text == "report"
+                    }
+                }
+                assertEquals(locale, fixture.localeController.appliedLocale.value)
+                assertEquals("report", fixture.delegate.searchState.value.query)
+            }
+            clickSearchWindowTag("search-execute")
+            waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) {
+                fixture.delegate.searchState.value.status == SearchStatus.COMPLETED
+            }
+            assertEquals(3, fixture.delegate.searchState.value.results.size)
+        } finally {
+            runOnUiThread { fixture.delegate.closeSearchPanel(); fixture.scope.cancel() }
+            waitForIdle()
+            Locale.setDefault(previousLocale)
+        }
+    }
 
     /**
      * 通过窗口输入查询并搜索真实文件，确认单击选择、键盘导航和固定结果的可观察结果。
@@ -54,7 +98,11 @@ class SearchWindowTest {
             val results = fixture.delegate.searchState.value.results
             assertEquals(3, results.size)
             assertEquals(
-                setOf("report-alpha.txt", "report-beta-with-a-long-descriptive-name-for-window-layout.txt", "report-gamma.txt"),
+                setOf(
+                    "report-alpha.txt",
+                    "report-beta-with-a-long-descriptive-name-for-window-layout.txt",
+                    "report-gamma.txt"
+                ),
                 results.map { entry -> entry.name }.toSet(),
             )
             assertEquals(4, fixture.delegate.searchState.value.scannedEntryCount)
@@ -121,7 +169,7 @@ class SearchWindowTest {
             clickSearchWindowTag("search-execute")
             waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) {
                 fixture.delegate.searchState.value.status == SearchStatus.RUNNING &&
-                    fixture.delegate.searchState.value.results.size == 2
+                        fixture.delegate.searchState.value.results.size == 2
             }
             clickSearchWindowTag("search-result-${fixture.delegate.searchState.value.results[1].id}")
             clickSearchWindowTag("search-window-close")
@@ -171,7 +219,12 @@ class SearchWindowTest {
     fun advancedFiltersAndScaledMinimumWindowRemainUsable() = runDesktopComposeUiTest {
         val root = temporaryFolder.newFolder("scaled-search").toPath()
         val fixture = SearchWindowFixture(root)
-        repeat(60) { index -> Files.writeString(root.resolve("report-additional-$index.txt"), "scrollable search result") }
+        repeat(60) { index ->
+            Files.writeString(
+                root.resolve("report-additional-$index.txt"),
+                "scrollable search result"
+            )
+        }
         try {
             setContent { SearchWindowTestApplication(fixture) }
             runOnUiThread { fixture.delegate.showSearchPanel() }
@@ -206,8 +259,10 @@ class SearchWindowTest {
             assertSame(window, awaitSearchWindow())
             runOnUiThread { window.renderImmediately() }
             val reopenedScroll = runOnUiThread {
-                assertNotNull(window.searchWindowNode("search-results")
-                    ?.config?.getOrNull(SemanticsProperties.VerticalScrollAxisRange)).value()
+                assertNotNull(
+                    window.searchWindowNode("search-results")
+                        ?.config?.getOrNull(SemanticsProperties.VerticalScrollAxisRange)
+                ).value()
             }
             assertEquals(previousScroll, reopenedScroll, absoluteTolerance = 1f)
             assertTrue(fixture.delegate.searchState.value.advancedFiltersExpanded)

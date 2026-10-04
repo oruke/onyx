@@ -32,6 +32,7 @@ import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.component.RootIntent
+import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.app.component.RootLaunchConfiguration
 import com.oruke.onyx.app.component.findVisibleEntry
@@ -69,6 +70,7 @@ import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.LocalTooltipController
 import com.oruke.onyx.ui.theme.OnyxTheme
+import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.TabDropTarget
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.TooltipController
@@ -101,6 +103,7 @@ internal fun DecoratedWindowScope.WindowApp(
         listRowHeightDp = state.settings.listRowHeightDp,
         listFontSizeSp = state.settings.listFontSizeSp,
         zebraStripeEnabled = state.settings.zebraStripeEnabled,
+        fileListColors = state.settings.fileListColors,
     )
     var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     val onUiScaleChange: (Int) -> Unit = { value ->
@@ -197,17 +200,20 @@ internal fun App(
         listRowHeightDp = state.settings.listRowHeightDp,
         listFontSizeSp = state.settings.listFontSizeSp,
         zebraStripeEnabled = state.settings.zebraStripeEnabled,
+        fileListColors = state.settings.fileListColors,
     )
 
-    OnyxTheme(
-        uiScale = state.settings.uiScale,
-        appearance = appearance,
-    ) {
-        AppContent(
-            rootComponent = rootComponent,
-            state = state,
-            externalFileDragService = externalFileDragService,
-        )
+    OnyxLocaleEnvironment(rootComponent.resourceLocale) {
+        OnyxTheme(
+            uiScale = state.settings.uiScale,
+            appearance = appearance,
+        ) {
+            AppContent(
+                rootComponent = rootComponent,
+                state = state,
+                externalFileDragService = externalFileDragService,
+            )
+        }
     }
 }
 
@@ -227,6 +233,7 @@ private fun AppContent(
     fun dispatch(intent: RootIntent) {
         rootComponent.dispatch(intent)
     }
+
     val toggleFavoriteLocation: (String) -> Unit = { location ->
         dispatch(RootIntent.ToggleFavoriteLocation(location))
     }
@@ -403,6 +410,7 @@ private fun AppPaneLayout(
             modifier = modifier,
             dragBindings = dragBindings,
         )
+
         PaneLayoutMode.DUAL_VERTICAL -> VerticalPaneLayout(state, rootComponent, dragBindings, modifier)
         PaneLayoutMode.DUAL_HORIZONTAL -> HorizontalPaneLayout(state, rootComponent, dragBindings, modifier)
     }
@@ -570,6 +578,7 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             onConfirm = { dispatch(RootIntent.ConfirmDialog) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
+
         is RootDialogState.ConflictResolution -> ConflictResolutionDialog(
             state = dialogState,
             onResolve = { strategy, applyToAll ->
@@ -577,18 +586,21 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
+
         is RootDialogState.CreateDirectories -> CreateDirectoriesDialog(
             state = dialogState,
             onDraftChange = { dispatch(RootIntent.UpdateCreateDirectoriesDraft(it)) },
             onConfirm = { dispatch(RootIntent.ConfirmDialog) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
+
         is RootDialogState.CreateZipArchive -> CreateZipArchiveDialog(
             state = dialogState,
             onDraftChange = { dispatch(RootIntent.UpdateZipArchiveNameDraft(it)) },
             onConfirm = { dispatch(RootIntent.ConfirmDialog) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
+
         is RootDialogState.Settings -> SettingsDialog(
             state = dialogState,
             onDraftChange = { dispatch(RootIntent.UpdateSettingsDraft(it)) },
@@ -598,10 +610,10 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             initialWidth = state.settings.settingsWindowWidth,
             initialHeight = state.settings.settingsWindowHeight,
             onWindowSizeChanged = { width, height ->
-                val settings = state.settings.copy(settingsWindowWidth = width, settingsWindowHeight = height)
-                dispatch(RootIntent.UpdateSettings(settings))
+                dispatch(RootIntent.UpdateWindowSize(RootWindowKind.SETTINGS, width, height))
             },
         )
+
         is RootDialogState.RemoteConnections -> RemoteConnectionsDialog(
             state = dialogState,
             connections = state.settings.remoteConnections,
@@ -614,8 +626,11 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             onOpen = { dispatch(RootIntent.OpenRemoteConnection(it)) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
+
         is RootDialogState.BatchRename -> BatchRenameDialog(
             state = dialogState,
+            onIntent = dispatch,
+            settings = state.settings,
             onConfirm = { renames ->
                 dispatch(RootIntent.ExecuteBatchRename(dialogState.paneId, renames))
             },
@@ -623,25 +638,24 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             initialWidth = state.settings.batchRenameWindowWidth,
             initialHeight = state.settings.batchRenameWindowHeight,
             onWindowSizeChanged = { width, height ->
-                val settings = state.settings.copy(
-                    batchRenameWindowWidth = width,
-                    batchRenameWindowHeight = height,
-                )
-                dispatch(RootIntent.UpdateSettings(settings))
+                dispatch(RootIntent.UpdateWindowSize(RootWindowKind.BATCH_RENAME, width, height))
             },
         )
+
         is RootDialogState.ArchivePassword -> ArchivePasswordDialog(
             archiveName = dialogState.archiveName,
             error = dialogState.error,
             onConfirm = { dispatch(RootIntent.SubmitArchivePassword(it)) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
+
         is RootDialogState.RemoteCredentials -> RemoteCredentialsDialog(
             state = dialogState,
             onDraftChange = { dispatch(RootIntent.UpdateRemoteCredentialsDraft(it)) },
             onConfirm = { dispatch(RootIntent.SubmitRemoteCredentials) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
+
         null -> Unit
     }
 }

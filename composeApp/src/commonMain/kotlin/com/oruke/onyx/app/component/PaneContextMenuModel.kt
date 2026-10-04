@@ -6,6 +6,7 @@ import com.oruke.onyx.vfs.api.FileContextMenuLabel
 import com.oruke.onyx.vfs.api.FileContextMenuSection
 import com.oruke.onyx.vfs.api.FileContextMenuSectionKind
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.UserCommandDefinition
 
 /**
  * 右键菜单内置文案语义，由 UI 层映射到 i18n 资源。
@@ -65,6 +66,12 @@ internal enum class PaneContextMenuIcon {
  * 统一右键菜单命令，覆盖面板命令、跨组件动作和平台系统动作。
  */
 internal sealed interface PaneContextMenuCommand {
+    /** 用户配置的程序命令，与内置命令和系统 Shell 动作分别分发。 */
+    data class UserCommand(
+        /** 持久化命令标识。 */
+        val id: String
+    ) : PaneContextMenuCommand
+
     /**
      * 面板内命令。
      *
@@ -162,6 +169,8 @@ internal data class PaneContextMenuBuildInput(
     val canRedo: Boolean,
     val canExtractSelection: Boolean,
     val contextMenuSections: List<FileContextMenuSection>,
+    /** 当前入口可展示的用户命令。 */
+    val userCommands: List<UserCommandDefinition> = emptyList(),
 )
 
 /**
@@ -183,6 +192,8 @@ internal data class PaneContextMenuExternalActions(
     val onCreateZipArchive: () -> Unit,
     val onFileContextMenuCommand: (FileContextMenuCommand, List<VFile>) -> Unit,
     val onOpenTerminal: (String) -> Unit,
+    /** 使用菜单目标条目执行用户配置程序。 */
+    val onUserCommand: (String, List<VFile>?) -> Unit = { _, _ -> },
 )
 
 /**
@@ -209,6 +220,10 @@ internal class PaneContextMenuCommandController(
         location: String,
     ): Boolean {
         return when (command) {
+            is PaneContextMenuCommand.UserCommand -> {
+                externalActions.onUserCommand(command.id, entries); true
+            }
+
             is PaneContextMenuCommand.Pane -> {
                 command.command == PaneCommand.CLOSE_MENU || paneCommandController.execute(command.command)
             }
@@ -280,6 +295,18 @@ internal object PaneContextMenuModelBuilder {
             addAll(openNodes(selectedCount, singleEntry, openWithSection, systemSection))
             addAll(fileOperationNodes(input, selectedCount))
             addAll(clipboardNodes(input, selectedCount))
+            if (input.userCommands.isNotEmpty()) {
+                add(PaneContextMenuNode.Divider)
+                addAll(input.userCommands.map { command ->
+                    PaneContextMenuNode.Item(
+                        id = "user-${command.id}",
+                        displayName = command.name,
+                        icon = PaneContextMenuIcon.EXECUTE,
+                        enabled = command.executable.isNotBlank(),
+                        command = PaneContextMenuCommand.UserCommand(command.id),
+                    )
+                })
+            }
             addAll(utilityNodes())
         }
         return PaneContextMenuModel(nodes)
@@ -292,12 +319,24 @@ internal object PaneContextMenuModelBuilder {
         openWithSection: FileContextMenuSection?,
         systemSection: FileContextMenuSection?,
     ): List<PaneContextMenuNode> = buildList {
-        add(paneItem("open", PaneContextMenuText.OPEN, PaneContextMenuIcon.OPEN, PaneCommand.OPEN_SELECTION,
-            selectedCount == 1))
-        add(paneItem("open-new-tab", PaneContextMenuText.OPEN_IN_NEW_TAB, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
-            PaneCommand.OPEN_SELECTION_IN_NEW_TAB, singleEntry?.isBrowsableDirectory() == true))
-        add(paneItem("open-new-window", PaneContextMenuText.OPEN_IN_NEW_WINDOW, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
-            PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW, singleEntry?.isBrowsableDirectory() == true))
+        add(
+            paneItem(
+                "open", PaneContextMenuText.OPEN, PaneContextMenuIcon.OPEN, PaneCommand.OPEN_SELECTION,
+                selectedCount == 1
+            )
+        )
+        add(
+            paneItem(
+                "open-new-tab", PaneContextMenuText.OPEN_IN_NEW_TAB, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
+                PaneCommand.OPEN_SELECTION_IN_NEW_TAB, singleEntry?.isBrowsableDirectory() == true
+            )
+        )
+        add(
+            paneItem(
+                "open-new-window", PaneContextMenuText.OPEN_IN_NEW_WINDOW, PaneContextMenuIcon.OPEN_IN_NEW_TAB,
+                PaneCommand.OPEN_SELECTION_IN_NEW_WINDOW, singleEntry?.isBrowsableDirectory() == true
+            )
+        )
         openWithSection?.let { section ->
             add(
                 PaneContextMenuNode.Item(
@@ -319,14 +358,26 @@ internal object PaneContextMenuModelBuilder {
         input: PaneContextMenuBuildInput,
         selectedCount: Int,
     ): List<PaneContextMenuNode> = buildList {
-        add(paneItem("rename", PaneContextMenuText.RENAME, PaneContextMenuIcon.EDIT,
-            PaneCommand.RENAME_SELECTION, selectedCount == 1))
+        add(
+            paneItem(
+                "rename", PaneContextMenuText.RENAME, PaneContextMenuIcon.EDIT,
+                PaneCommand.RENAME_SELECTION, selectedCount == 1
+            )
+        )
         add(paneItem("new-file", PaneContextMenuText.NEW_FILE, PaneContextMenuIcon.FILE, PaneCommand.NEW_FILE))
-        add(paneItem("new-directory", PaneContextMenuText.NEW_DIRECTORY, PaneContextMenuIcon.FOLDER,
-            PaneCommand.NEW_DIRECTORY))
+        add(
+            paneItem(
+                "new-directory", PaneContextMenuText.NEW_DIRECTORY, PaneContextMenuIcon.FOLDER,
+                PaneCommand.NEW_DIRECTORY
+            )
+        )
         add(PaneContextMenuNode.Divider)
-        add(paneItem("delete", PaneContextMenuText.DELETE_SELECTED, PaneContextMenuIcon.DELETE,
-            PaneCommand.DELETE_SELECTION, selectedCount > 0))
+        add(
+            paneItem(
+                "delete", PaneContextMenuText.DELETE_SELECTED, PaneContextMenuIcon.DELETE,
+                PaneCommand.DELETE_SELECTION, selectedCount > 0
+            )
+        )
         if (selectedCount > 0) {
             val archiveChildren = buildList {
                 if (input.canExtractSelection) {
@@ -375,11 +426,19 @@ internal object PaneContextMenuModelBuilder {
             )
         }
         if (selectedCount >= 2) {
-            add(externalItem("batch-rename", PaneContextMenuText.BATCH_RENAME, PaneContextMenuIcon.EDIT,
-                PaneContextMenuCommand.BatchRename))
+            add(
+                externalItem(
+                    "batch-rename", PaneContextMenuText.BATCH_RENAME, PaneContextMenuIcon.EDIT,
+                    PaneContextMenuCommand.BatchRename
+                )
+            )
         }
-        add(externalItem("copy-path", PaneContextMenuText.COPY_PATH, PaneContextMenuIcon.COPY,
-            PaneContextMenuCommand.CopyPath, selectedCount > 0))
+        add(
+            externalItem(
+                "copy-path", PaneContextMenuText.COPY_PATH, PaneContextMenuIcon.COPY,
+                PaneContextMenuCommand.CopyPath, selectedCount > 0
+            )
+        )
     }
 
     /** 构建剪贴板和撤销历史节点。 */
@@ -387,23 +446,33 @@ internal object PaneContextMenuModelBuilder {
         input: PaneContextMenuBuildInput,
         selectedCount: Int,
     ): List<PaneContextMenuNode> = listOf(
-        paneItem("copy", PaneContextMenuText.COPY, PaneContextMenuIcon.COPY,
-            PaneCommand.COPY_SELECTION, selectedCount > 0),
-        paneItem("cut", PaneContextMenuText.CUT, PaneContextMenuIcon.CUT,
-            PaneCommand.CUT_SELECTION, selectedCount > 0),
+        paneItem(
+            "copy", PaneContextMenuText.COPY, PaneContextMenuIcon.COPY,
+            PaneCommand.COPY_SELECTION, selectedCount > 0
+        ),
+        paneItem(
+            "cut", PaneContextMenuText.CUT, PaneContextMenuIcon.CUT,
+            PaneCommand.CUT_SELECTION, selectedCount > 0
+        ),
         paneItem("paste", PaneContextMenuText.PASTE, PaneContextMenuIcon.PASTE, PaneCommand.PASTE, input.canPaste),
-        paneItem("undo", PaneContextMenuText.UNDO, PaneContextMenuIcon.UNDO,
-            PaneCommand.UNDO_LAST_OPERATION, input.canUndo),
-        paneItem("redo", PaneContextMenuText.REDO, PaneContextMenuIcon.REDO,
-            PaneCommand.REDO_LAST_OPERATION, input.canRedo),
+        paneItem(
+            "undo", PaneContextMenuText.UNDO, PaneContextMenuIcon.UNDO,
+            PaneCommand.UNDO_LAST_OPERATION, input.canUndo
+        ),
+        paneItem(
+            "redo", PaneContextMenuText.REDO, PaneContextMenuIcon.REDO,
+            PaneCommand.REDO_LAST_OPERATION, input.canRedo
+        ),
     )
 
     /** 构建刷新、终端和关闭节点。 */
     private fun utilityNodes(): List<PaneContextMenuNode> = listOf(
         PaneContextMenuNode.Divider,
         paneItem("refresh", PaneContextMenuText.REFRESH, PaneContextMenuIcon.REFRESH, PaneCommand.REFRESH),
-        externalItem("open-terminal", PaneContextMenuText.OPEN_TERMINAL, PaneContextMenuIcon.TERMINAL,
-            PaneContextMenuCommand.OpenTerminal),
+        externalItem(
+            "open-terminal", PaneContextMenuText.OPEN_TERMINAL, PaneContextMenuIcon.TERMINAL,
+            PaneContextMenuCommand.OpenTerminal
+        ),
         paneItem("close", PaneContextMenuText.CLOSE_MENU, PaneContextMenuIcon.CLOSE, PaneCommand.CLOSE_MENU),
     )
 

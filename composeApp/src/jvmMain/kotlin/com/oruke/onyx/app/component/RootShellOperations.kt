@@ -6,9 +6,14 @@ import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.SidebarSectionKey
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 
-/** @param mode 新布局模式。 */
+/**
+ * 切换布局，单栏模式同时激活唯一可见的主面板。
+ * @param mode 新布局模式。
+ */
 internal fun DefaultRootComponent.setLayoutMode(mode: PaneLayoutMode) {
     layoutMode.value = mode
+    // 单栏只渲染主面板，不能让视图切换和快捷键继续作用于已隐藏的次面板。
+    if (mode == PaneLayoutMode.SINGLE) activePane.value = PaneId.PRIMARY
 }
 
 /** @param fraction 新面板分割比例。 */
@@ -155,6 +160,7 @@ internal fun DefaultRootComponent.confirmDialog() {
             dialogState.value = null
             updateSettings(currentDialog.draft)
         }
+
         else -> Unit
     }
 }

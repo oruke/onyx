@@ -11,6 +11,8 @@ import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.vfs.api.FileContextMenuRequest
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.ui.theme.key
+import com.oruke.onyx.core.model.UserCommandPlacement
+import com.oruke.onyx.app.component.PaneEntriesState
 
 /**
  * PaneSurface 的绑定调用，将 RootComponent + PaneId 的重复参数封装为单次调用。
@@ -40,11 +42,13 @@ internal fun BoundPaneSurface(
         PaneId.PRIMARY -> rootComponent.primaryPane
         PaneId.SECONDARY -> rootComponent.secondaryPane
     }
+
     fun dispatch(intent: RootIntent) {
         rootComponent.dispatch(intent)
     }
 
     val actions = PaneActions(
+        onUserCommand = { id, entries -> dispatch(RootIntent.ExecuteUserCommand(paneId, id, entries)) },
         onDeleteSelection = { dispatch(RootIntent.RequestDeleteSelectedInPane(paneId)) },
         onExtractSelection = { dispatch(RootIntent.ExtractSelectedInPane(paneId)) },
         onExtractToDirectory = { dispatch(RootIntent.ExtractToDirectoryInPane(paneId)) },
@@ -82,12 +86,23 @@ internal fun BoundPaneSurface(
         model = PaneSurfaceModel(
             state = paneState,
             active = state.activePane == paneId,
+            userCommands = UserCommandPlacement.entries.associateWith(rootComponent::userCommandsForPlacement),
             component = paneComponent,
             actions = actions,
             commandShortcuts = commandShortcuts,
             canPaste = state.canPaste,
             favoriteLocations = state.settings.favoriteLocations,
             onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
+            fileLabels = remember(
+                paneState.entriesState,
+                paneState.inlineExpandedEntries,
+                state.settings.fileLabelRules
+            ) {
+                rootComponent.matchFileLabels(
+                    (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty() +
+                            paneState.inlineExpandedEntries.values.flatMap { it.entries.orEmpty() },
+                )
+            },
         ),
         dragBindings = dragBindings,
         services = PaneSurfaceServices(

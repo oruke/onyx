@@ -15,6 +15,8 @@ import com.oruke.onyx.core.model.VFile
  * 此类消除了 PaneSurface 参数列表中 20+ 个独立回调的散列传参。
  */
 data class PaneActions(
+    /** 在根组件执行指定自定义命令，菜单可显式指定目标文件。 */
+    val onUserCommand: (String, List<VFile>?) -> Unit = { _, _ -> },
     val onDeleteSelection: () -> Unit,
     val onExtractSelection: () -> Unit,
     val onExtractToDirectory: () -> Unit,

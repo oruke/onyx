@@ -86,10 +86,12 @@ internal data class FlattenedEntry(
 internal fun entryRowBackground(state: EntryRowState): Color {
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
+    val labelBackground = state.labelStyle?.backgroundColorArgb
     return when {
         state.fileDropTarget?.directoryEntryId == state.entry.id -> palette.rowHoverBackground
-        state.selected && state.paneActive -> palette.selectionBackground
-        state.selected -> palette.inactiveSelectionBackground
+        state.selected && state.paneActive -> appearance.selectionBackground ?: palette.selectionBackground
+        state.selected -> appearance.inactiveSelectionBackground ?: palette.inactiveSelectionBackground
+        labelBackground != null -> Color(labelBackground)
         state.zebra && appearance.zebraStripeEnabled -> appearance.zebraStripeColor ?: palette.surfaceVariant
         else -> Color.Transparent
     }
@@ -149,6 +151,7 @@ internal fun EntryNameCell(
                     fontSize = 10.sp,
                     color = LocalOnyxPalette.current.disabledForeground,
                 )
+
                 state.isExpandable -> Icon(
                     key = if (state.isExpanded) AllIconsKeys.General.ArrowDown else AllIconsKeys.General.ArrowRight,
                     contentDescription = null,
@@ -205,7 +208,8 @@ private fun EntryNameContent(
             text = state.entry.name,
             fontWeight = if (state.entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
             fontSize = LocalOnyxAppearance.current.listFontSize,
-            color = LocalOnyxPalette.current.foreground,
+            color = state.labelStyle?.textColorArgb?.let(::Color)
+                ?: LocalOnyxAppearance.current.fileNameColor ?: LocalOnyxPalette.current.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -229,6 +233,7 @@ internal fun EntryMetadataCell(column: DetailsColumn, entry: VFile, width: Dp) {
         } else {
             entry.name.substringAfterLast('.', "").ifEmpty { "-" }
         }
+
         DetailsColumn.NAME -> return
     }
     Text(

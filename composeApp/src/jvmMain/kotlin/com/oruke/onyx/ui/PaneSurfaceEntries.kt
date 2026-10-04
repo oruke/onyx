@@ -25,8 +25,10 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.windowBounds
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
+import com.oruke.onyx.core.model.UserCommandPlacement
 
 /**
  * 渲染面板文件区域和可选检查器。
@@ -80,7 +82,7 @@ private fun PaneEntriesArea(
                     )
                 )
             }
-            .background(paneDropBackground)
+            .background(LocalOnyxAppearance.current.fileListBackground ?: paneDropBackground)
             .clickable(
                 indication = null,
                 interactionSource = interactionSource,
@@ -123,6 +125,7 @@ private fun PaneSurfaceRuntime.toPaneEntriesViewModel(): PaneEntriesViewModel {
         inlineExpandedLocations = state.inlineExpandedLocations,
         inlineExpandedEntries = state.inlineExpandedEntries,
         pendingScrollToEntryId = state.pendingScrollToEntryId,
+        fileLabels = model.fileLabels,
     )
 }
 
@@ -134,7 +137,11 @@ private fun PaneSurfaceRuntime.toPaneEntriesViewModel(): PaneEntriesViewModel {
  */
 private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): PaneEntriesActions {
     return PaneEntriesActions(
-        onActivate = model.onActivate,
+        onActivate = {
+            model.onActivate()
+            // 面板已经活动时也要从标题栏、侧栏等控件取回键盘焦点。
+            focusRequester.requestFocus()
+        },
         onOpenEntry = { entry -> dispatch(PaneIntent.OpenEntry(entry)) },
         onToggleSort = { column -> dispatch(PaneIntent.ToggleSort(column)) },
         onResizeColumn = { column, deltaWeight ->
@@ -224,6 +231,7 @@ private fun BoxScope.PaneContextMenuOverlay(runtime: PaneSurfaceRuntime, readyEn
                 entry.kind == VFileKind.FILE && runtime.model.actions.isArchiveFileName(entry.name)
             },
             contextMenuSections = runtime.ui.contextMenuSections,
+            userCommands = runtime.model.userCommands[UserCommandPlacement.CONTEXT_MENU].orEmpty(),
         )
     )
     PaneContextMenu(

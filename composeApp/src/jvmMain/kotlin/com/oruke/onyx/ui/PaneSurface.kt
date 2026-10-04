@@ -57,6 +57,7 @@ import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
+import com.oruke.onyx.core.model.UserCommandPlacement
 
 /** 面板操作反馈自动消失前的展示时长。 */
 private const val OPERATION_FEEDBACK_DURATION_MS = 3_000L
@@ -117,8 +118,8 @@ internal fun PaneSurface(
                 runtime.reportTabDropZone()
             }
             .focusRequester(runtime.focusRequester)
-            .focusable()
             .onPreviewKeyEvent { event -> handlePaneKeyEvent(event, runtime) }
+            .focusable()
             .clickable(
                 indication = null,
                 interactionSource = interactionSource,
@@ -140,8 +141,8 @@ private fun paneDropBackground(runtime: PaneSurfaceRuntime): Color {
     val target = runtime.dragBindings.fileDropTarget
     val state = runtime.state
     val paneTargeted = target?.paneId == state.paneId &&
-        target.directoryEntryId == null &&
-        target.targetDirectoryLocation == state.location
+            target.directoryEntryId == null &&
+            target.targetDirectoryLocation == state.location
     return if (paneTargeted) {
         LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.28f)
     } else {
@@ -158,10 +159,11 @@ private fun paneDropBackground(runtime: PaneSurfaceRuntime): Color {
 private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
     val inlineEditActive = runtime.state.inlineEditState != null
     val textInputOwnsKeyboard = runtime.ui.addressBarEditing ||
-        runtime.ui.filterFocused ||
-        runtime.state.commandPaletteVisible
-    LaunchedEffect(runtime.model.active) {
-        if (runtime.model.active) runtime.focusRequester.requestFocus()
+            runtime.ui.filterFocused ||
+            runtime.state.commandPaletteVisible
+    LaunchedEffect(runtime.model.active, runtime.state.activeTabId, runtime.state.location) {
+        // 侧栏和工具栏导航也会改变目录；同一活动面板必须在导航后恢复文件快捷键焦点。
+        if (runtime.model.active && !textInputOwnsKeyboard) runtime.focusRequester.requestFocus()
     }
     LaunchedEffect(runtime.model.active, inlineEditActive, textInputOwnsKeyboard) {
         val inlineEditFinished = runtime.ui.inlineEditWasActive && !inlineEditActive
@@ -182,8 +184,8 @@ private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
 private fun handlePaneKeyEvent(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
     if (!runtime.model.active || event.type != KeyEventType.KeyDown) return false
     val textInputOwnsKeyboard = runtime.ui.addressBarEditing ||
-        runtime.ui.filterFocused ||
-        runtime.state.commandPaletteVisible
+            runtime.ui.filterFocused ||
+            runtime.state.commandPaletteVisible
     return when {
         textInputOwnsKeyboard -> false
         runtime.state.inlineEditState != null -> handleInlineEditKey(event, runtime)
@@ -219,10 +221,12 @@ private fun handleInlineEditKey(event: KeyEvent, runtime: PaneSurfaceRuntime): B
             runtime.dispatch(PaneIntent.ConfirmInlineEdit)
             true
         }
+
         Key.Escape -> {
             runtime.dispatch(PaneIntent.CancelInlineEdit)
             true
         }
+
         else -> false
     }
 }
@@ -240,14 +244,17 @@ private fun handlePaneNavigationKey(event: KeyEvent, runtime: PaneSurfaceRuntime
             runtime.dispatch(PaneIntent.MoveSelection(1, event.isShiftPressed))
             true
         }
+
         Key.DirectionUp -> {
             runtime.dispatch(PaneIntent.MoveSelection(-1, event.isShiftPressed))
             true
         }
+
         Key.Escape -> {
             closePaneOverlay(runtime)
             true
         }
+
         else -> false
     }
 }
@@ -296,7 +303,7 @@ private fun PaneCommandPalette(runtime: PaneSurfaceRuntime) {
         .filterNot { commandState -> commandState.spec.command == OnyxCommand.CommandPalette }
         .map { commandState ->
             CommandPaletteItem(
-                command = commandState.spec.command,
+                target = CommandPaletteTarget.BuiltIn(commandState.spec.command),
                 label = stringResource(commandState.spec.label),
                 shortcut = onyxShortcutHint(commandState.shortcut),
                 iconKey = commandState.spec.iconKey,
@@ -304,9 +311,26 @@ private fun PaneCommandPalette(runtime: PaneSurfaceRuntime) {
             )
         }
     CommandPalettePopup(
-        items = items,
-        onExecute = { command ->
-            if (runtime.executeCommand(command)) runtime.dispatch(PaneIntent.HideCommandPalette)
+        items = items + runtime.model.userCommands[UserCommandPlacement.COMMAND_PALETTE].orEmpty().map { command ->
+            CommandPaletteItem(
+                target = CommandPaletteTarget.Custom(command.id),
+                label = command.name,
+                shortcut = null,
+                iconKey = org.jetbrains.jewel.ui.icons.AllIconsKeys.Actions.Execute,
+                enabled = command.executable.isNotBlank(),
+            )
+        },
+        onExecute = { target ->
+            when (target) {
+                is CommandPaletteTarget.BuiltIn -> if (runtime.executeCommand(target.command)) runtime.dispatch(
+                    PaneIntent.HideCommandPalette
+                )
+
+                is CommandPaletteTarget.Custom -> {
+                    runtime.model.actions.onUserCommand(target.id, null)
+                    runtime.dispatch(PaneIntent.HideCommandPalette)
+                }
+            }
         },
         onClose = { runtime.dispatch(PaneIntent.HideCommandPalette) },
     )
@@ -346,143 +370,6 @@ private fun PaneSurfaceTabBar(runtime: PaneSurfaceRuntime) {
     )
 }
 
-/**
- * 渲染面板导航工具栏。
- *
- * @param runtime 面板运行时控制器。
- */
-@Composable
-private fun PaneNavigationToolbar(runtime: PaneSurfaceRuntime) {
-    Row(
-        modifier = Modifier.fillMaxWidth().background(LocalOnyxPalette.current.headerBackground)
-            .height(28.dp).padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(1.dp),
-    ) {
-        PaneHistoryButtons(runtime)
-        PaneLocationButtons(runtime)
-        Spacer(modifier = Modifier.width(4.dp))
-        Box(modifier = Modifier.weight(1f)) {
-            HybridAddressBar(
-                location = runtime.state.location,
-                onActivate = runtime.model.onActivate,
-                onOpenLocation = { location -> runtime.dispatch(PaneIntent.OpenDirectory(location)) },
-                buildBreadcrumbs = runtime.services.buildBreadcrumbs,
-                onEditingChange = { editing -> runtime.ui.addressBarEditing = editing },
-            )
-        }
-        Spacer(modifier = Modifier.width(4.dp))
-        PaneViewButtons(runtime)
-    }
-}
-
-/**
- * 渲染后退与前进按钮。
- *
- * @param runtime 面板运行时控制器。
- */
-@Composable
-private fun PaneHistoryButtons(runtime: PaneSurfaceRuntime) {
-    ToolbarIconButton(
-        enabled = runtime.state.canGoBack,
-        onClick = { runtime.model.onActivate(); runtime.dispatch(PaneIntent.GoBack) },
-        tooltip = stringResource(Res.string.action_go_back),
-    ) {
-        Icon(AllIconsKeys.Actions.Back, stringResource(Res.string.action_go_back))
-    }
-    ToolbarIconButton(
-        enabled = runtime.state.canGoForward,
-        onClick = { runtime.model.onActivate(); runtime.dispatch(PaneIntent.GoForward) },
-        tooltip = stringResource(Res.string.action_go_forward),
-    ) {
-        Icon(AllIconsKeys.Actions.Forward, stringResource(Res.string.action_go_forward))
-    }
-}
-
-/**
- * 渲染上级、主页与收藏按钮。
- *
- * @param runtime 面板运行时控制器。
- */
-@Composable
-private fun PaneLocationButtons(runtime: PaneSurfaceRuntime) {
-    val favorite = runtime.state.location in runtime.model.favoriteLocations
-    ToolbarIconButton(
-        enabled = true,
-        onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.GO_UP) },
-        tooltip = stringResource(Res.string.action_go_up),
-    ) {
-        Icon(AllIconsKeys.General.ArrowUp, stringResource(Res.string.action_go_up))
-    }
-    ToolbarIconButton(
-        enabled = true,
-        onClick = {
-            runtime.model.onActivate()
-            runtime.dispatch(PaneIntent.OpenDirectory(System.getProperty("user.home")))
-        },
-        tooltip = stringResource(Res.string.action_go_home),
-    ) {
-        Icon(AllIconsKeys.Nodes.HomeFolder, stringResource(Res.string.action_go_home))
-    }
-    ToolbarIconButton(
-        enabled = true,
-        onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.TOGGLE_FAVORITE) },
-        tooltip = stringResource(Res.string.action_toggle_favorite),
-        selected = favorite,
-    ) {
-        Text(
-            text = if (favorite) "★" else "☆",
-            fontSize = 11.sp,
-            color = if (favorite) LocalOnyxPalette.current.favorite else LocalOnyxPalette.current.foreground,
-        )
-    }
-}
-
-/**
- * 渲染过滤、刷新与隐藏文件按钮。
- *
- * @param runtime 面板运行时控制器。
- */
-@Composable
-private fun PaneViewButtons(runtime: PaneSurfaceRuntime) {
-    val filterVisible = runtime.state.filterInputVisible || runtime.state.filterQuery.isNotEmpty()
-    ToolbarIconButton(
-        enabled = true,
-        onClick = {
-            runtime.model.onActivate()
-            if (filterVisible) runtime.closeFilterInput() else runtime.openFilterInput()
-        },
-        tooltip = onyxCommandTooltip(
-            stringResource(Res.string.action_filter),
-            OnyxCommand.Filter,
-            runtime.model.commandShortcuts,
-        ),
-        selected = filterVisible,
-    ) {
-        Icon(AllIconsKeys.Actions.Find, stringResource(Res.string.action_filter))
-    }
-    Spacer(modifier = Modifier.width(4.dp))
-    ToolbarIconButton(
-        enabled = true,
-        onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.REFRESH) },
-        tooltip = stringResource(Res.string.action_refresh_active),
-    ) {
-        Icon(AllIconsKeys.Actions.Refresh, stringResource(Res.string.action_refresh_active))
-    }
-    ToolbarIconButton(
-        enabled = true,
-        onClick = { runtime.model.onActivate(); runtime.dispatch(PaneIntent.ToggleHiddenItems) },
-        tooltip = stringResource(Res.string.action_toggle_hidden_files),
-        selected = runtime.state.showHiddenItems,
-    ) {
-        val icon = if (runtime.state.showHiddenItems) {
-            AllIconsKeys.General.Show
-        } else {
-            AllIconsKeys.Actions.ToggleVisibility
-        }
-        Icon(icon, stringResource(Res.string.action_toggle_hidden_files))
-    }
-}
 
 /**
  * 渲染短时操作反馈并安排自动关闭。

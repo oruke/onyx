@@ -6,8 +6,13 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import kotlinx.coroutines.launch
 
-/** 开始重命名当前聚焦条目。 */
+/**
+ * 开始重命名当前聚焦条目，命令面板显示期间拒绝迟到的鼠标改名请求。
+ * @return 无返回值；已有编辑或命令面板取得输入权时保持当前状态。
+ */
 internal fun DefaultPaneComponent.beginRename() {
+    // 慢速单击的计时器可能在快捷键打开命令面板后到期，不能让底层编辑器抢走输入。
+    if (state.value.commandPaletteVisible) return
     val tab = activeTab() ?: return
     if (tab.inlineEditState != null) return
     val entries = currentVisibleEntries()

@@ -38,7 +38,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_delete_selected
 import onyx.composeapp.generated.resources.action_keep_both
 import onyx.composeapp.generated.resources.action_move
@@ -102,19 +102,25 @@ internal fun ConfirmationDialog(
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
-                            Key.Escape -> { onDismiss(); true }
+                            Key.Escape -> {
+                                onDismiss(); true
+                            }
+
                             Key.Enter -> {
                                 if (focusedButton == 1) onConfirm() else onDismiss()
                                 true
                             }
+
                             Key.DirectionLeft, Key.Tab -> {
                                 focusedButton = (focusedButton - 1).coerceAtLeast(0)
                                 true
                             }
+
                             Key.DirectionRight -> {
                                 focusedButton = (focusedButton + 1).coerceAtMost(1)
                                 true
                             }
+
                             else -> false
                         }
                     },
@@ -139,7 +145,7 @@ internal fun ConfirmationDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     DialogTextButton(
-                        text = stringResource(Res.string.action_close_menu),
+                        text = stringResource(Res.string.action_close_window),
                         onClick = onDismiss,
                         focused = focusedButton == 0,
                     )
@@ -192,7 +198,10 @@ internal fun ConflictResolutionDialog(
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
-                            Key.Escape -> { onDismiss(); true }
+                            Key.Escape -> {
+                                onDismiss(); true
+                            }
+
                             Key.Enter -> {
                                 when (focusedButton) {
                                     0 -> onDismiss()
@@ -204,14 +213,17 @@ internal fun ConflictResolutionDialog(
                                 }
                                 true
                             }
+
                             Key.DirectionLeft -> {
                                 focusedButton = (focusedButton - 1).coerceAtLeast(0)
                                 true
                             }
+
                             Key.DirectionRight, Key.Tab -> {
                                 focusedButton = (focusedButton + 1).coerceAtMost(LAST_CONFLICT_ACTION_INDEX)
                                 true
                             }
+
                             else -> false
                         }
                     },
@@ -279,7 +291,7 @@ private fun ConflictResolutionActions(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         DialogTextButton(
-            text = stringResource(Res.string.action_close_menu),
+            text = stringResource(Res.string.action_close_window),
             onClick = onDismiss,
             focused = focusedButton == 0,
         )

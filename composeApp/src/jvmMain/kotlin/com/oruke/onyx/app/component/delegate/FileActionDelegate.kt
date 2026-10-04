@@ -4,6 +4,7 @@ import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootDialogState
+import com.oruke.onyx.app.component.withBatchRenamePreview
 import com.oruke.onyx.shared.usecase.BatchRenameUseCase
 import com.oruke.onyx.shared.usecase.DeleteEntriesUseCase
 import com.oruke.onyx.shared.usecase.TaskProgress
@@ -26,6 +27,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.UUID
+import com.oruke.onyx.core.model.BatchRenameDraft
 
 /**
  * 文件操作委托回调集合，负责把操作结果同步回根组件和面板。
@@ -360,10 +362,14 @@ internal class FileActionDelegate(
             dialogState.value = null
             return
         }
+        val previous = dialogState.value as? RootDialogState.BatchRename
         dialogState.value = RootDialogState.BatchRename(
             paneId = paneId,
             entries = allEntries,
-        )
+            draft = previous?.draft ?: BatchRenameDraft(),
+            selectedPresetId = previous?.selectedPresetId,
+            presetName = previous?.presetName.orEmpty(),
+        ).withBatchRenamePreview()
     }
 
     /**

@@ -28,7 +28,7 @@ import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.orEmpty
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_layout_dual_horizontal
 import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
@@ -104,7 +104,7 @@ internal fun OperationFeedbackBar(
         ) {
             Icon(
                 key = AllIconsKeys.Actions.Close,
-                contentDescription = stringResource(Res.string.action_close_menu),
+                contentDescription = stringResource(Res.string.action_close_window),
                 modifier = Modifier.size(12.dp),
             )
         }

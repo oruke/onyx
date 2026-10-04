@@ -45,7 +45,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_confirm
 import onyx.composeapp.generated.resources.label_remote_credentials_do_not_save_hint
 import onyx.composeapp.generated.resources.label_remote_credentials_domain
@@ -104,7 +104,7 @@ internal fun RemoteCredentialsDialog(
                 },
                 actions = {
                     DialogTextButton(
-                        text = stringResource(Res.string.action_close_menu),
+                        text = stringResource(Res.string.action_close_window),
                         onClick = onDismiss,
                     )
                     DialogTextButton(
@@ -200,9 +200,11 @@ private fun remoteCredentialPolicyHint(savePolicy: RemoteCredentialSavePolicy): 
     RemoteCredentialSavePolicy.DO_NOT_SAVE -> {
         stringResource(Res.string.label_remote_credentials_do_not_save_hint)
     }
+
     RemoteCredentialSavePolicy.SESSION -> {
         stringResource(Res.string.label_remote_credentials_session_only)
     }
+
     RemoteCredentialSavePolicy.SYSTEM_KEYRING -> {
         stringResource(Res.string.label_remote_credentials_save_system_keyring)
     }
@@ -227,12 +229,15 @@ private fun RemoteCredentialFeedbackMessages(state: RootDialogState.RemoteCreden
         RemoteCredentialsDialogError.USERNAME_EMPTY -> {
             stringResource(Res.string.label_remote_credentials_error_username_required)
         }
+
         RemoteCredentialsDialogError.SYSTEM_KEYRING_UNAVAILABLE -> {
             stringResource(Res.string.label_remote_credentials_system_keyring_unavailable)
         }
+
         RemoteCredentialsDialogError.CREDENTIAL_SAVE_FAILED -> {
             stringResource(Res.string.label_remote_credentials_error_save_failed)
         }
+
         null -> null
     }
     errorText?.let { text -> Text(text = text, fontSize = 11.sp, color = palette.error) }
@@ -361,7 +366,7 @@ private fun CredentialInputField(
             color = LocalOnyxPalette.current.mutedForeground,
         )
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        OnyxTextInput(
+            OnyxTextInput(
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier
@@ -384,11 +389,11 @@ private fun CredentialInputField(
 
                             else -> false
                         }
-                },
+                    },
                 fontSize = 12.sp,
                 height = 30.dp,
-            password = password,
-            enabled = enabled,
+                password = password,
+                enabled = enabled,
             )
         }
     }

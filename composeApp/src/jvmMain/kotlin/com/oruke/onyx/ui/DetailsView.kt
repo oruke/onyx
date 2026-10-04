@@ -84,6 +84,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -135,6 +138,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import com.oruke.onyx.core.model.FileLabelStyle
 
 /** 空状态图标的弱化透明度。 */
 private const val EMPTY_STATE_ICON_ALPHA = 0.4f
@@ -183,6 +187,8 @@ internal data class PaneEntriesViewModel(
     val inlineExpandedEntries: Map<String, InlineExpandedEntry> = emptyMap(),
     /** 待滚动到的条目标识。 */
     val pendingScrollToEntryId: String? = null,
+    /** 文件及树形展开子项的规则颜色。 */
+    val fileLabels: Map<String, FileLabelStyle> = emptyMap(),
 )
 
 /**
@@ -245,20 +251,28 @@ private data class PaneEntriesChildDragActions(
 private class PaneRubberBandState {
     /** 当前已布局条目的坐标。 */
     val itemCoordinates = mutableStateMapOf<String, LayoutCoordinates>()
+
     /** 框选起点。 */
     var start by mutableStateOf<androidx.compose.ui.geometry.Offset?>(null)
+
     /** 框选终点。 */
     var end by mutableStateOf<androidx.compose.ui.geometry.Offset?>(null)
+
     /** 是否正在框选。 */
     var active by mutableStateOf(false)
+
     /** 是否在原选择上追加。 */
     var additive by mutableStateOf(false)
+
     /** 框选开始时保留的基础选择。 */
     var baseSelection by mutableStateOf(emptySet<String>())
+
     /** 是否正在执行文件拖拽。 */
     var fileDragging by mutableStateOf(false)
+
     /** 空白区域按下位置。 */
     var pendingOrigin by mutableStateOf<androidx.compose.ui.geometry.Offset?>(null)
+
     /** 内容容器布局坐标。 */
     var containerCoordinates by mutableStateOf<LayoutCoordinates?>(null)
 
@@ -286,7 +300,7 @@ private class PaneRubberBandState {
         )
         return itemCoordinates.filter { (_, coordinates) ->
             coordinates.isAttached &&
-                container.localBoundingBoxOf(coordinates, clipBounds = false).overlaps(selectionRect)
+                    container.localBoundingBoxOf(coordinates, clipBounds = false).overlaps(selectionRect)
         }.keys
     }
 
@@ -300,7 +314,7 @@ private class PaneRubberBandState {
         val container = containerCoordinates ?: return false
         return itemCoordinates.values.any { coordinates ->
             coordinates.isAttached &&
-                container.localBoundingBoxOf(coordinates, clipBounds = false).contains(position)
+                    container.localBoundingBoxOf(coordinates, clipBounds = false).contains(position)
         }
     }
 }
@@ -494,6 +508,7 @@ internal fun DetailsHeader(
                         modifier = Modifier.width(colWidth),
                         onClick = { onToggleSort(column) },
                     )
+
                     DetailsColumn.TYPE -> SortHeaderCell(
                         text = stringResource(Res.string.label_column_type),
                         sortHint = sortHint(column, sort),
@@ -701,6 +716,8 @@ internal data class EntryRowState(
     val isExpandable: Boolean = false,
     /** 当前目录子项是否正在加载。 */
     val isExpandLoading: Boolean = false,
+    /** 当前条目的规则着色。 */
+    val labelStyle: FileLabelStyle? = null,
 )
 
 /**
@@ -737,22 +754,31 @@ internal data class EntryRowActions(
 private class EntryRowInteractionState {
     /** 是否使用增量选择。 */
     var additiveSelection by mutableStateOf(false)
+
     /** 是否使用范围选择。 */
     var rangeSelection by mutableStateOf(false)
+
     /** 当前文件拖拽操作。 */
     var dragOperation by mutableStateOf(FileTransferOperation.MOVE)
+
     /** 当前文件拖拽窗口坐标。 */
     var dragPosition by mutableStateOf<IntOffset?>(null)
+
     /** 详情行布局坐标。 */
     var rowCoordinates by mutableStateOf<LayoutCoordinates?>(null)
+
     /** 名称区域布局坐标。 */
     var nameCoordinates by mutableStateOf<LayoutCoordinates?>(null)
+
     /** 展开箭头布局坐标。 */
     var expandCoordinates by mutableStateOf<LayoutCoordinates?>(null)
+
     /** 是否等待松开后收敛多选。 */
     var pendingDeselectOthers by mutableStateOf(false)
+
     /** 本次主键按下时当前条目是否已满足慢速重命名条件。 */
     var pressCanRename by mutableStateOf(false)
+
     /** 慢速重命名定时任务。 */
     var renameJob by mutableStateOf<Job?>(null)
 
@@ -852,7 +878,7 @@ private fun ReadyPaneEntries(
     ready: PaneEntriesState.Ready,
 ) {
     val createInlineEntry = model.inlineEditState?.mode == PaneInlineEditMode.CREATE_FILE ||
-        model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
+            model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     if (ready.entries.isEmpty() && !createInlineEntry) {
         EmptyPaneEntries(actions)
         return
@@ -1015,7 +1041,7 @@ private fun GalleryEntriesGrid(
     val gridState = rememberLazyGridState()
     val inlineEdit = model.inlineEditState
     val createInlineEntry = inlineEdit?.mode == PaneInlineEditMode.CREATE_FILE ||
-        inlineEdit?.mode == PaneInlineEditMode.CREATE_DIRECTORY
+            inlineEdit?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(model.galleryItemSizeDp.dp),
@@ -1099,12 +1125,13 @@ private fun GalleryFileEntry(
     entry: VFile,
 ) {
     val editing = model.inlineEditState?.mode == PaneInlineEditMode.RENAME &&
-        model.inlineEditState.targetEntryId == entry.id
+            model.inlineEditState.targetEntryId == entry.id
     Box(modifier = Modifier.onGloballyPositioned { selection.itemCoordinates[entry.id] = it }) {
         GalleryItem(
             state = GalleryItemState(
                 entry = entry,
                 draftName = model.inlineEditState?.draftName?.takeIf { editing },
+                labelStyle = model.fileLabels[entry.id],
                 selected = entry.id in model.selectedEntryIds,
                 selectedEntryCount = model.selectedEntryIds.size,
                 paneActive = model.paneActive,
@@ -1175,7 +1202,7 @@ private fun DetailsEntriesList(
     }
     val listState = rememberLazyListState()
     val createInlineEntry = model.inlineEditState?.mode == PaneInlineEditMode.CREATE_FILE ||
-        model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
+            model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -1186,8 +1213,7 @@ private fun DetailsEntriesList(
             if (createInlineEntry) {
                 item(key = "inline-create") { DetailsCreateEntry(model, actions, horizontalScrollState) }
             }
-            itemsIndexed(flattenedEntries, key = { _, item -> "${item.entry.location}@${item.depth}" }) {
-                    index, item ->
+            itemsIndexed(flattenedEntries, key = { _, item -> "${item.entry.location}@${item.depth}" }) { index, item ->
                 DetailsFileEntry(model, actions, dragActions, selection, horizontalScrollState, index, item)
             }
         }
@@ -1265,7 +1291,7 @@ private fun DetailsFileEntry(
 ) {
     val entry = item.entry
     val editing = model.inlineEditState?.mode == PaneInlineEditMode.RENAME &&
-        model.inlineEditState.targetEntryId == entry.id
+            model.inlineEditState.targetEntryId == entry.id
     Box(modifier = Modifier.onGloballyPositioned { selection.itemCoordinates[entry.id] = it }) {
         if (editing) {
             InlineEditEntryRow(
@@ -1326,6 +1352,7 @@ private fun DetailsReadyEntryRow(
             isExpanded = item.isExpanded,
             isExpandable = item.isExpandable,
             isExpandLoading = item.isLoading,
+            labelStyle = model.fileLabels[entry.id],
         ),
         actions = EntryRowActions(
             onActivate = actions.onActivate,
@@ -1513,6 +1540,13 @@ private fun PaneRubberBandOverlay(selection: PaneRubberBandState) {
     )
 }
 
+/**
+ * 渲染详情文件行，语义点击与鼠标按下都通过统一选择事件完成选中。
+ *
+ * @param state 文件行状态。
+ * @param actions 文件行事件。
+ * @param scrollState 与表头共享的水平滚动位置。
+ */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun EntryRow(
@@ -1532,11 +1566,21 @@ internal fun EntryRow(
             .entryRowPressInteractions(state, actions, interaction)
             .entryRowDragInteractions(state, actions, interaction, selectedState)
             .background(rowBackground)
+            .semantics {
+                selected = state.selected
+                // 语义点击没有 Pointer Press；显式选择，且不重复鼠标的 Ctrl/Shift 选择逻辑。
+                onClick {
+                    actions.onActivate()
+                    actions.onDismissContextMenu()
+                    actions.onSelectEntry(state.entry.id, false, false)
+                    true
+                }
+            }
             .combinedClickable(
                 onClick = {
                     actions.onActivate()
                     val canRename = interaction.pressCanRename &&
-                        selectedState.value && entryCountState.value == 1
+                            selectedState.value && entryCountState.value == 1
                     if (canRename) {
                         interaction.scheduleRename(coroutineScope) {
                             if (selectedState.value && entryCountState.value == 1) actions.onBeginRename()
@@ -1641,13 +1685,14 @@ private fun handleEntryRowPrimaryPress(
     actions.onDismissContextMenu()
     interaction.pendingDeselectOthers = false
     interaction.pressCanRename = state.selected && state.selectedEntryCount == 1 &&
-        !interaction.additiveSelection && !interaction.rangeSelection
+            !interaction.additiveSelection && !interaction.rangeSelection
     when {
         interaction.additiveSelection || interaction.rangeSelection -> actions.onSelectEntry(
             state.entry.id,
             interaction.additiveSelection,
             interaction.rangeSelection,
         )
+
         state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(state.entry.id, false, false)
     }
@@ -1774,6 +1819,7 @@ private fun updateEntryRowPointer(
             updateEntryRowFileDrag(actions, interaction, change.position)
             EntryPointerProgress(fileDragStarted = true, continueTracking = true)
         }
+
         !crossedThreshold -> EntryPointerProgress(fileDragStarted = false, continueTracking = true)
         selectedAtPress || inNameArea -> {
             prepareEntryRowDrag(interaction, change)
@@ -1781,6 +1827,7 @@ private fun updateEntryRowPointer(
             startEntryRowFileDrag(state, actions, interaction, change.position)
             EntryPointerProgress(fileDragStarted = true, continueTracking = true)
         }
+
         else -> {
             prepareEntryRowDrag(interaction, change)
             val modified = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed

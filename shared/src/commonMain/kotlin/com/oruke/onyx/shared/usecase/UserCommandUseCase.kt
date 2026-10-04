@@ -55,7 +55,10 @@ class UserCommandUseCase {
         )
         return UserCommandInvocation(
             executable = command.executable.render(context),
-            arguments = command.argumentTemplate.map { argument -> argument.render(context) },
+            arguments = command.argumentTemplate.flatMap { argument ->
+                // 整参数选择变量必须展开为多个独立参数，文件名内的空格不参与 Shell 解析。
+                if (argument == "{selection}") selection.map { it.location } else listOf(argument.render(context))
+            },
             workingDirectory = command.workingDirectoryTemplate?.render(context)
                 ?: context.primaryEntry?.parentLocation
                 ?: currentLocation,

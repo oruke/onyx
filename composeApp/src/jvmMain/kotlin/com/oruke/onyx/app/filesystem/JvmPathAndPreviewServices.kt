@@ -9,6 +9,7 @@ import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.Image
@@ -118,8 +119,8 @@ internal class JvmVfsPathService : VfsPathService {
         val childRemote = remoteUri(child)
         return if (parentRemote != null || childRemote != null) {
             parentRemote != null && childRemote != null &&
-                parentRemote.remoteDirectChildName(childRemote) != null &&
-                childRemote.remoteParentLocation() == parentRemote.toRemoteLocation(directory = true)
+                    parentRemote.remoteDirectChildName(childRemote) != null &&
+                    childRemote.remoteParentLocation() == parentRemote.toRemoteLocation(directory = true)
         } else {
             runCatching {
                 val parentPath = Path.of(parent).toAbsolutePath().normalize()
@@ -482,7 +483,7 @@ internal class JvmFileHashService(
      * @param request 哈希读取请求。
      * @return 哈希值、大小超限或不可读取结果。
      */
-    private fun readLocalHash(request: FileHashRequest): FileHashResult {
+    private suspend fun readLocalHash(request: FileHashRequest): FileHashResult {
         val path = Path.of(request.entry.location)
         if (!Files.exists(path) || Files.isDirectory(path)) return FileHashResult.Unavailable
         return if (Files.size(path) > request.maxBytes) {
@@ -498,11 +499,13 @@ internal class JvmFileHashService(
      * @param path 已确认存在且为普通文件的路径。
      * @return 格式化后的哈希结果。
      */
-    private fun hashLocalPath(path: Path): FileHashResult {
+    private suspend fun hashLocalPath(path: Path): FileHashResult {
+        val taskContext = kotlinx.coroutines.currentCoroutineContext()
         val digest = MessageDigest.getInstance(SHA_256)
         Files.newInputStream(path).use { input ->
             val buffer = ByteArray(HASH_BUFFER_SIZE)
             while (true) {
+                taskContext.ensureActive()
                 val read = input.read(buffer)
                 if (read < 0) break
                 digest.update(buffer, 0, read)
@@ -547,8 +550,8 @@ internal class JvmArchiveInfoService(
         try {
             val entry = request.entry
             val isUnsupportedEntry = entry.kind != VFileKind.FILE ||
-                !ArchiveService.isArchive(entry.name) ||
-                entry.location.contains("://")
+                    !ArchiveService.isArchive(entry.name) ||
+                    entry.location.contains("://")
             if (isUnsupportedEntry) {
                 return@withContext ArchiveInfoResult.Unavailable
             }

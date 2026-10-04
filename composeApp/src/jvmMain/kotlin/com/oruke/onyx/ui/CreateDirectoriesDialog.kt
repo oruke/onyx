@@ -46,7 +46,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.label_create_directories_description
 import onyx.composeapp.generated.resources.label_create_directories_error_empty
@@ -148,7 +148,7 @@ internal fun CreateDirectoriesDialog(
                 },
                 actions = {
                     DialogTextButton(
-                        text = stringResource(Res.string.action_close_menu),
+                        text = stringResource(Res.string.action_close_window),
                         onClick = onDismiss,
                     )
                     DialogTextButton(

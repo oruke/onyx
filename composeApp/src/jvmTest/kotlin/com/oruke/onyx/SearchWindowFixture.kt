@@ -10,6 +10,7 @@ import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.SearchPanelMode
 import com.oruke.onyx.app.component.createDefaultPaneTabState
 import com.oruke.onyx.app.component.delegate.RootSearchDelegate
+import com.oruke.onyx.app.platform.JvmApplicationLocaleController
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
@@ -51,6 +52,9 @@ internal class SearchWindowFixture(root: Path, releaseNested: CompletableDeferre
     /** 测试可调整的真实窗口外观设置。 */
     val preferences = MutableStateFlow(OnyxSettings())
 
+    /** 与生产窗口一致的应用级语言入口，随测试作用域取消。 */
+    val localeController = JvmApplicationLocaleController(preferences).also { it.bind(scope) }
+
     /** 生产用例保存搜索结果快照的真实集合仓储。 */
     val collections = InMemoryFileCollectionRepository()
 
@@ -72,7 +76,10 @@ internal class SearchWindowFixture(root: Path, releaseNested: CompletableDeferre
     init {
         // 先准备真实目录及可识别结果，再将可控读取环节插入统一仓储边界。
         Files.writeString(root.resolve("report-alpha.txt"), "first searchable document")
-        Files.writeString(root.resolve("report-beta-with-a-long-descriptive-name-for-window-layout.txt"), "second document")
+        Files.writeString(
+            root.resolve("report-beta-with-a-long-descriptive-name-for-window-layout.txt"),
+            "second document"
+        )
         val nested = Files.createDirectory(root.resolve("nested"))
         Files.writeString(nested.resolve("report-gamma.txt"), "nested searchable document")
         val repository = WindowSearchRepository(nested.toString(), releaseNested, nestedStarted)
@@ -130,6 +137,7 @@ internal fun SearchWindowTestApplication(fixture: SearchWindowFixture) {
             },
             actions = fixture.actions,
             settings = settings,
+            resourceLocale = fixture.localeController.appliedLocale,
         )
     }
 }
@@ -178,7 +186,10 @@ private class WindowSearchRepository(
  */
 private fun recordingSearchPane(navigation: MutableList<PaneIntent>): PaneComponent {
     return PaneComponent::class.java.cast(
-        Proxy.newProxyInstance(PaneComponent::class.java.classLoader, arrayOf(PaneComponent::class.java)) { _, method, args ->
+        Proxy.newProxyInstance(
+            PaneComponent::class.java.classLoader,
+            arrayOf(PaneComponent::class.java)
+        ) { _, method, args ->
             check(method.name == "dispatch") { "Unexpected pane operation: ${method.name}" }
             navigation += args?.single() as PaneIntent
             null

@@ -3,7 +3,6 @@ package com.oruke.onyx.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -43,6 +42,15 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 // ── Address bar ────────────────────────────────────────────────────────────
 
+/**
+ * 显示面包屑或可编辑路径，确认后通过面板 API 导航。
+ *
+ * @param location 当前 VFS 位置。
+ * @param onActivate 激活所属面板。
+ * @param onOpenLocation 导航请求。
+ * @param buildBreadcrumbs 统一位置服务提供的面包屑。
+ * @param onEditingChange 编辑状态变化回调。
+ */
 @Composable
 internal fun HybridAddressBar(
     location: String,
@@ -131,6 +139,15 @@ internal fun HybridAddressBar(
     }
 }
 
+/**
+ * 显示优先露出末级路径的面包屑，单击空白进入编辑。
+ *
+ * @param location 当前 VFS 位置。
+ * @param onActivate 激活所属面板。
+ * @param onEdit 进入文本编辑。
+ * @param onOpenLocation 请求进入某级路径。
+ * @param buildBreadcrumbs 统一面包屑构建能力。
+ */
 @Composable
 internal fun BreadcrumbAddressBar(
     location: String,
@@ -152,11 +169,7 @@ internal fun BreadcrumbAddressBar(
             .fillMaxWidth()
             .background(LocalOnyxPalette.current.inputBackground, RoundedCornerShape(4.dp))
             .horizontalScroll(scrollState)
-            // 双击空白区域进入编辑模式（替代单击，防止误触）
-            .combinedClickable(
-                onClick = { /* 单击空白 → 不做任何事 */ },
-                onDoubleClick = { onEdit() },
-            )
+            .clickable { onActivate(); onEdit() }
             .padding(horizontal = 6.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),

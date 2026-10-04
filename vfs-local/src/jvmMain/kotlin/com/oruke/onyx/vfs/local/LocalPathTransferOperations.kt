@@ -5,7 +5,6 @@ import com.oruke.onyx.core.model.LocalizedException
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.vfs.api.FileTransferProgressSink
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
-import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -21,19 +20,18 @@ internal object LocalPathTransferOperations {
      * @param targetDirectory 目标目录。
      * @param conflictStrategy 名称冲突处理策略。
      * @param progressSink 实际复制内容的字节增量接收器。
+     * @param checkActive 提交最终目标前检查任务是否已取消。
      */
     fun copyPathToDirectory(
         source: Path,
         targetDirectory: Path,
         conflictStrategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink = FileTransferProgressSink.NoOp,
+        checkActive: () -> Unit = {},
     ) {
         val normalizedSource = source.normalize().toAbsolutePath()
         val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return
-        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            deletePathRecursively(target)
-        }
-        LocalFileCopyOperations.copyPathWithRollback(normalizedSource, target, progressSink)
+        LocalTransferCommitOperations.copy(normalizedSource, target, conflictStrategy, progressSink, checkActive)
     }
 
     /**
@@ -43,24 +41,18 @@ internal object LocalPathTransferOperations {
      * @param targetDirectory 目标目录。
      * @param conflictStrategy 名称冲突处理策略。
      * @param progressSink 跨文件系统回退复制时的字节增量接收器。
+     * @param checkActive 提交最终目标前检查任务是否已取消。
      */
     fun movePathToDirectory(
         source: Path,
         targetDirectory: Path,
         conflictStrategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink = FileTransferProgressSink.NoOp,
+        checkActive: () -> Unit = {},
     ) {
         val normalizedSource = source.normalize().toAbsolutePath()
         val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return
-        if (conflictStrategy == TransferConflictStrategy.OVERWRITE && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-            deletePathRecursively(target)
-        }
-        try {
-            Files.move(normalizedSource, target)
-        } catch (_: IOException) {
-            LocalFileCopyOperations.copyPathWithRollback(normalizedSource, target, progressSink)
-            deleteSourceAfterFallback(normalizedSource, target)
-        }
+        LocalTransferCommitOperations.move(normalizedSource, target, conflictStrategy, progressSink, checkActive)
     }
 
     /**
@@ -121,6 +113,7 @@ internal object LocalPathTransferOperations {
                 isDirectory = Files.isDirectory(source),
                 targetDirectory = targetDirectory,
             )
+
             conflictStrategy == TransferConflictStrategy.OVERWRITE -> directTarget
             conflictStrategy == TransferConflictStrategy.SKIP -> null
             else -> directTarget
@@ -147,19 +140,4 @@ internal object LocalPathTransferOperations {
         }
     }
 
-    /**
-     * 跨文件系统移动复制成功后删除源；删除失败时回滚目标，避免产生两个不确定副本。
-     *
-     * @param source 源路径。
-     * @param target 已复制目标路径。
-     */
-    private fun deleteSourceAfterFallback(
-        source: Path,
-        target: Path,
-    ) {
-        val deleteFailure = runCatching { deletePathRecursively(source) }.exceptionOrNull() ?: return
-        runCatching { deletePathRecursively(target) }
-            .onFailure { rollbackFailure -> deleteFailure.addSuppressed(rollbackFailure) }
-        throw deleteFailure
-    }
 }

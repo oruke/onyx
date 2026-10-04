@@ -2,7 +2,6 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,9 +34,13 @@ import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.OnyxWindowTheme
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.label_settings_colors
+import onyx.composeapp.generated.resources.label_settings_file_labels
+import onyx.composeapp.generated.resources.label_settings_user_commands
 import onyx.composeapp.generated.resources.action_apply
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.label_settings_appearance
 import onyx.composeapp.generated.resources.label_settings_columns
 import onyx.composeapp.generated.resources.label_settings_general
@@ -44,7 +48,6 @@ import onyx.composeapp.generated.resources.label_settings_layout
 import onyx.composeapp.generated.resources.label_settings_shortcuts
 import onyx.composeapp.generated.resources.label_settings_title
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 
 /**
@@ -90,8 +93,14 @@ internal fun SettingsDialog(
         state = dialogState,
         resizable = true,
     ) {
-        window.minimumSize = java.awt.Dimension(SETTINGS_MIN_WIDTH_PX, SETTINGS_MIN_HEIGHT_PX)
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
+        SideEffect {
+            val scale = state.draft.uiScale / 100.0
+            window.minimumSize = java.awt.Dimension(
+                (SETTINGS_MIN_WIDTH_PX * scale).toInt(),
+                (SETTINGS_MIN_HEIGHT_PX * scale).toInt(),
+            )
+        }
+        OnyxWindowTheme(state.draft) {
             val appearance = LocalOnyxAppearance.current
             SettingsDialogLayout(
                 title = title,
@@ -190,7 +199,7 @@ private fun SettingsDialogLayout(
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             DialogTextButton(
-                text = stringResource(Res.string.action_close_menu),
+                text = stringResource(Res.string.action_close_window),
                 fontSize = bodyFontSize,
                 onClick = onDismiss,
             )
@@ -248,6 +257,9 @@ private fun SettingsNavigation(
  */
 @Composable
 private fun settingsCategoryLabel(category: SettingsCategory): String = when (category) {
+    SettingsCategory.COLORS -> stringResource(Res.string.label_settings_colors)
+    SettingsCategory.FILE_LABELS -> stringResource(Res.string.label_settings_file_labels)
+    SettingsCategory.USER_COMMANDS -> stringResource(Res.string.label_settings_user_commands)
     SettingsCategory.GENERAL -> stringResource(Res.string.label_settings_general)
     SettingsCategory.LAYOUT -> stringResource(Res.string.label_settings_layout)
     SettingsCategory.APPEARANCE -> stringResource(Res.string.label_settings_appearance)

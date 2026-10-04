@@ -78,6 +78,9 @@ internal fun SettingsCategoryContent(
     labelFontSize: TextUnit,
 ) {
     when (category) {
+        SettingsCategory.COLORS -> FileListColorSettings(draft, onDraftChange)
+        SettingsCategory.FILE_LABELS -> FileLabelSettings(draft, onDraftChange)
+        SettingsCategory.USER_COMMANDS -> UserCommandSettings(draft, onDraftChange)
         SettingsCategory.GENERAL -> GeneralSettingsContent(
             draft,
             onDraftChange,
@@ -85,6 +88,7 @@ internal fun SettingsCategoryContent(
             bodyFontSize,
             labelFontSize,
         )
+
         SettingsCategory.LAYOUT -> LayoutSettingsContent(draft, onDraftChange, labelFontSize)
         SettingsCategory.APPEARANCE -> AppearanceSettingsContent(
             draft,
@@ -92,6 +96,7 @@ internal fun SettingsCategoryContent(
             bodyFontSize,
             labelFontSize,
         )
+
         SettingsCategory.COLUMNS -> ColumnsSettingsContent(draft, onDraftChange, labelFontSize)
         SettingsCategory.SHORTCUTS -> CommandShortcutSettings(
             settings = draft,

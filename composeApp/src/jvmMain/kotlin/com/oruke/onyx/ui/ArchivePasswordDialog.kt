@@ -38,7 +38,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_confirm
 import onyx.composeapp.generated.resources.label_archive_password
 import onyx.composeapp.generated.resources.label_archive_password_hint
@@ -98,10 +98,12 @@ internal fun ArchivePasswordDialog(
                                             }
                                             true
                                         }
+
                                         Key.Escape -> {
                                             onDismiss()
                                             true
                                         }
+
                                         else -> false
                                     }
                                 },
@@ -142,7 +144,7 @@ internal fun ArchivePasswordDialog(
                 },
                 actions = {
                     DialogTextButton(
-                        text = stringResource(Res.string.action_close_menu),
+                        text = stringResource(Res.string.action_close_window),
                         onClick = onDismiss,
                     )
                     DialogTextButton(

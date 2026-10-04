@@ -78,7 +78,11 @@ private fun launchOnyxApplication() = application {
                 platformMenuCacheMaintenanceService.runUntilCancelled()
             }
 
-            TaskCenterWindow(applicationRuntime.taskCenter, applicationRuntime.settings)
+            TaskCenterWindow(
+                applicationRuntime.taskCenter,
+                applicationRuntime.settings,
+                applicationRuntime.resourceLocale
+            )
 
             windowManager.windows.forEach { request ->
                 key(request.id) {

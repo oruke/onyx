@@ -38,7 +38,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_close_menu
+import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_create_zip
 import onyx.composeapp.generated.resources.label_create_archive_description
 import onyx.composeapp.generated.resources.label_create_archive_error_empty
@@ -129,7 +129,7 @@ internal fun CreateZipArchiveDialog(
                 },
                 actions = {
                     DialogTextButton(
-                        text = stringResource(Res.string.action_close_menu),
+                        text = stringResource(Res.string.action_close_window),
                         onClick = onDismiss,
                     )
                     DialogTextButton(

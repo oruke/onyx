@@ -1,6 +1,8 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +41,15 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
 
 // ── Status bar ──────────────────────────────────────────────────────────────
 
+/**
+ * 展示当前面板统计并保留视图操作区，窄窗口中的统计可水平滚动。
+ * @param primaryPane 主面板状态。
+ * @param secondaryPane 次面板状态。
+ * @param activePane 当前接收视图操作的面板。
+ * @param onSetActiveViewMode 请求切换当前面板视图。
+ * @param galleryItemSizeDp 画廊项目的逻辑尺寸。
+ * @param onGalleryItemSizeChange 请求调整画廊尺寸。
+ */
 @Composable
 internal fun StatusBar(
     primaryPane: PaneState,
@@ -59,6 +70,7 @@ internal fun StatusBar(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(
+            modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {

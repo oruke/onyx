@@ -5,7 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,10 +43,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.RootDialogState
+import com.oruke.onyx.app.component.RootIntent
+import com.oruke.onyx.core.model.BatchRenameEditMode as BatchRenameMode
+import com.oruke.onyx.core.model.BatchRenameEditCaseMode as CaseMode
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.shared.usecase.BatchRenameNameTransformations
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.OnyxWindowTheme
+import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
@@ -62,6 +68,7 @@ import onyx.composeapp.generated.resources.label_batch_rename_file_count
 import onyx.composeapp.generated.resources.label_batch_rename_find
 import onyx.composeapp.generated.resources.label_batch_rename_invalid_regex
 import onyx.composeapp.generated.resources.label_batch_rename_mode_case
+import onyx.composeapp.generated.resources.label_batch_rename_mode_template
 import onyx.composeapp.generated.resources.label_batch_rename_mode_counter
 import onyx.composeapp.generated.resources.label_batch_rename_mode_find_replace
 import onyx.composeapp.generated.resources.label_batch_rename_mode_prefix_suffix
@@ -76,7 +83,6 @@ import onyx.composeapp.generated.resources.label_case_lowercase
 import onyx.composeapp.generated.resources.label_case_titlecase
 import onyx.composeapp.generated.resources.label_case_uppercase
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
@@ -87,151 +93,36 @@ private const val BATCH_RENAME_MIN_WINDOW_WIDTH = 640
 /** 批量重命名窗口允许缩放到的最小高度。 */
 private const val BATCH_RENAME_MIN_WINDOW_HEIGHT = 480
 
-// ── 批量重命名模式 ─────────────────────────────────────────────────────
-
-private enum class BatchRenameMode {
-    FIND_REPLACE,
-    PREFIX_SUFFIX,
-    COUNTER,
-    CASE_CHANGE,
-}
-
-private enum class CaseMode {
-    UPPERCASE,
-    LOWERCASE,
-    TITLE_CASE,
-}
-
-/**
- * 批量重命名编辑器的可变表单状态与名称计算规则。
- *
- * @param entries 当前需要预览重命名的文件条目。
- */
-private class BatchRenameEditorState(
-    /** 当前需要预览重命名的文件条目。 */
-    val entries: List<VFile>,
-) {
-    /** 当前重命名模式。 */
-    var mode by mutableStateOf(BatchRenameMode.FIND_REPLACE)
-    /** 查找文本或正则表达式。 */
-    var findText by mutableStateOf("")
-    /** 替换文本。 */
-    var replaceText by mutableStateOf("")
-    /** 是否启用正则表达式。 */
-    var useRegex by mutableStateOf(false)
-    /** 文件名前缀。 */
-    var prefix by mutableStateOf("")
-    /** 文件名后缀。 */
-    var suffix by mutableStateOf("")
-    /** 序号模式固定模板。 */
-    var counterTemplate by mutableStateOf("IMG_")
-    /** 序号起始值文本。 */
-    var counterStart by mutableStateOf("1")
-    /** 序号位数文本。 */
-    var counterDigits by mutableStateOf("3")
-    /** 大小写转换模式。 */
-    var caseMode by mutableStateOf(CaseMode.LOWERCASE)
-
-    /** 当前正则表达式校验异常；配置有效时为 `null`。 */
-    val regexValidationFailure: Throwable?
-        get() = if (mode == BatchRenameMode.FIND_REPLACE && useRegex && findText.isNotEmpty()) {
-            runCatching { Regex(findText) }.exceptionOrNull()
-        } else {
-            null
-        }
-
-    /** 当前全部文件及其预览目标名称。 */
-    val renameResults: List<Pair<VFile, String>>
-        get() {
-            return entries.mapIndexed { index, entry ->
-                entry to renamedFileName(entry, index)
-            }
-        }
-
-    /** 实际会发生名称变化的文件数量。 */
-    val changeCount: Int
-        get() = renameResults.count { (entry, newName) -> entry.name != newName && newName.isNotBlank() }
-
-    /** 是否至少存在一个有效名称变化。 */
-    val hasChanges: Boolean
-        get() = changeCount > 0
-
-    /**
-     * 根据当前模式计算单个条目的目标名称。
-     *
-     * @param entry 源文件条目。
-     * @param index 条目在预览列表中的索引。
-     * @return 保留扩展名规则后的目标名称。
-     */
-    private fun renamedFileName(entry: VFile, index: Int): String {
-        return when (mode) {
-            BatchRenameMode.FIND_REPLACE -> findReplaceName(entry.name)
-            BatchRenameMode.PREFIX_SUFFIX -> entry.name.transformBaseName { name -> "$prefix$name$suffix" }
-            BatchRenameMode.COUNTER -> entry.name.transformBaseName {
-                val start = counterStart.toIntOrNull() ?: 1
-                val digits = counterDigits.toIntOrNull()?.coerceIn(1, 10) ?: 3
-                "$counterTemplate${(start + index).toString().padStart(digits, '0')}"
-            }
-            BatchRenameMode.CASE_CHANGE -> entry.name.transformBaseName { name ->
-                when (caseMode) {
-                    CaseMode.UPPERCASE -> name.uppercase()
-                    CaseMode.LOWERCASE -> name.lowercase()
-                    CaseMode.TITLE_CASE -> name.split(" ", "_", "-").joinToString(" ") { word ->
-                        word.lowercase().replaceFirstChar { character -> character.uppercase() }
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * 使用文本或正则表达式执行完整文件名替换。
-     *
-     * @param name 原始完整文件名。
-     * @return 替换后的完整文件名。
-     */
-    private fun findReplaceName(name: String): String {
-        return BatchRenameNameTransformations.applyFindReplace(
-            name = name,
-            findText = findText,
-            replaceText = replaceText,
-            useRegex = useRegex,
-        ).getOrElse {
-            // 输入过程中的无效正则会由界面显示错误并禁用“应用”，预览仍需保持可渲染。
-            name
-        }
-    }
-
-    /**
-     * 仅转换文件基础名称，并原样附加扩展名。
-     *
-     * @param transform 基础名称转换函数。
-     * @return 转换后的完整文件名。
-     */
-    private fun String.transformBaseName(transform: (String) -> String): String {
-        val extension = substringAfterLast('.', "")
-        val baseName = if (extension.isNotEmpty()) substringBeforeLast('.') else this
-        val transformed = transform(baseName)
-        return if (extension.isNotEmpty()) "$transformed.$extension" else transformed
-    }
-}
+/** 编辑区最多占用一半弹窗余量，为预览和底部动作保留空间。 */
+private const val BATCH_RENAME_EDITOR_WEIGHT = 0.5f
 
 // ── 对话框 ──────────────────────────────────────────────────────────────
 
+/**
+ * 在独立原生窗口渲染组件草稿、预设与执行预览。
+ * @param state 组件提供的当前草稿及任务状态。
+ * @param onConfirm 执行已经规划的文件名称变更。
+ * @param onDismiss 关闭窗口事件。
+ * @param settings 当前保存的外观与预设。
+ * @param onIntent 更新草稿、加载和管理预设的组件事件入口。
+ * @param initialWidth 初始逻辑窗口宽度。
+ * @param initialHeight 初始逻辑窗口高度。
+ * @param onWindowSizeChanged 保存窗口尺寸的回调。
+ */
 @Composable
 internal fun BatchRenameDialog(
     state: RootDialogState.BatchRename,
     onConfirm: (List<Pair<VFile, String>>) -> Unit,
     onDismiss: () -> Unit,
+    settings: OnyxSettings = OnyxSettings(),
+    onIntent: (RootIntent) -> Unit = {},
     initialWidth: Int = 800,
     initialHeight: Int = 620,
     onWindowSizeChanged: ((width: Int, height: Int) -> Unit)? = null,
 ) {
     val entries = state.entries
-    val editor = remember(entries) { BatchRenameEditorState(entries) }
-    val canConfirm by remember(editor) {
-        derivedStateOf { editor.hasChanges && editor.regexValidationFailure == null }
-    }
+    val editor = BatchRenameEditorState(state) { onIntent(RootIntent.UpdateBatchRenameDraft(it)) }
+    val canConfirm = editor.hasChanges && state.validationMessage == null
 
     val title = stringResource(Res.string.label_batch_rename_title)
 
@@ -240,7 +131,8 @@ internal fun BatchRenameDialog(
     LaunchedEffect(dialogState) {
         snapshotFlow { dialogState.size }
             .collect { size ->
-                val w = size.width; val h = size.height
+                val w = size.width;
+                val h = size.height
                 if (w != Dp.Unspecified && h != Dp.Unspecified) {
                     onWindowSizeChanged?.invoke(w.value.toInt(), h.value.toInt())
                 }
@@ -253,12 +145,15 @@ internal fun BatchRenameDialog(
         state = dialogState,
         resizable = true,
     ) {
-        window.minimumSize = java.awt.Dimension(
-            BATCH_RENAME_MIN_WINDOW_WIDTH,
-            BATCH_RENAME_MIN_WINDOW_HEIGHT,
-        )
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
-            BatchRenameContent(state, editor, title, canConfirm, onConfirm, onDismiss)
+        SideEffect {
+            val scale = settings.uiScale / 100.0
+            window.minimumSize = java.awt.Dimension(
+                (BATCH_RENAME_MIN_WINDOW_WIDTH * scale).toInt(),
+                (BATCH_RENAME_MIN_WINDOW_HEIGHT * scale).toInt(),
+            )
+        }
+        OnyxWindowTheme(settings) {
+            BatchRenameContent(state, editor, title, canConfirm, onConfirm, onDismiss, settings, onIntent)
         }
     }
 }
@@ -272,6 +167,8 @@ internal fun BatchRenameDialog(
  * @param canConfirm 当前规则是否允许提交。
  * @param onConfirm 提交有效重命名结果的回调。
  * @param onDismiss 关闭窗口的回调。
+ * @param settings 已保存的外观及预设。
+ * @param onIntent 规则草稿与预设操作的组件事件。
  */
 @Composable
 private fun BatchRenameContent(
@@ -281,6 +178,8 @@ private fun BatchRenameContent(
     canConfirm: Boolean,
     onConfirm: (List<Pair<VFile, String>>) -> Unit,
     onDismiss: () -> Unit,
+    settings: OnyxSettings,
+    onIntent: (RootIntent) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
@@ -295,7 +194,23 @@ private fun BatchRenameContent(
         )
         Spacer(modifier = Modifier.height(10.dp))
         if (!state.executing && !state.completed) {
-            BatchRenameModeEditor(editor)
+            val editorScroll = rememberScrollState()
+            Box(
+                Modifier.fillMaxWidth().weight(BATCH_RENAME_EDITOR_WEIGHT, fill = false),
+            ) {
+                Column(Modifier.fillMaxWidth().verticalScroll(editorScroll).padding(end = 8.dp)) {
+                    BatchRenamePresetBar(state, settings, onIntent)
+                    BatchRenameModeEditor(editor)
+                    state.validationMessage?.let { Text(it.resolve(), color = palette.error) }
+                }
+                // 预设编辑在大字号下占用较多高度，显式滚动条提示下方仍有模式与规则配置。
+                Box(Modifier.matchParentSize()) {
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(editorScroll),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp),
+                    )
+                }
+            }
         }
         BatchRenameProgress(state)
         Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth())
@@ -320,6 +235,7 @@ private fun BatchRenameModeEditor(editor: BatchRenameEditorState) {
         BatchRenameMode.PREFIX_SUFFIX -> PrefixSuffixEditor(editor)
         BatchRenameMode.COUNTER -> CounterEditor(editor)
         BatchRenameMode.CASE_CHANGE -> CaseChangeEditor(editor)
+        BatchRenameMode.TEMPLATE -> BatchRenameTemplateEditor(editor)
     }
     Spacer(modifier = Modifier.height(8.dp))
 }
@@ -338,6 +254,7 @@ private fun BatchRenameModeTabs(editor: BatchRenameEditorState) {
         BatchRenameMode.PREFIX_SUFFIX to Res.string.label_batch_rename_mode_prefix_suffix,
         BatchRenameMode.COUNTER to Res.string.label_batch_rename_mode_counter,
         BatchRenameMode.CASE_CHANGE to Res.string.label_batch_rename_mode_case,
+        BatchRenameMode.TEMPLATE to Res.string.label_batch_rename_mode_template,
     )
     Row(
         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -387,18 +304,6 @@ private fun FindReplaceEditor(editor: BatchRenameEditorState) {
         fontSize = appearance.headerFontSize,
         onClick = { editor.useRegex = !editor.useRegex },
     )
-    editor.regexValidationFailure?.let { failure ->
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = stringResource(
-                Res.string.label_batch_rename_invalid_regex,
-                failure.message ?: editor.findText,
-            ),
-            fontSize = appearance.headerFontSize,
-            color = palette.error,
-            maxLines = 1,
-        )
-    }
 }
 
 /**
@@ -540,11 +445,13 @@ private fun BatchRenameProgressText(state: RootDialogState.BatchRename) {
             Res.string.label_batch_rename_error_prefix,
             state.errorMessage.resolve(),
         )
+
         state.completed -> stringResource(
             Res.string.label_batch_rename_completed_detail,
             state.processedCount,
             state.entries.size,
         )
+
         else -> stringResource(
             Res.string.label_batch_rename_progress_detail,
             state.processedCount,

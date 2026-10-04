@@ -8,6 +8,13 @@ import com.oruke.onyx.ui.vfsProviderCapabilityLabel
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.msg_batch_rename_invalid_counter
+import onyx.composeapp.generated.resources.msg_batch_rename_invalid_pattern
+import onyx.composeapp.generated.resources.msg_rename_preset_name_required
+import onyx.composeapp.generated.resources.msg_user_command_invalid
+import onyx.composeapp.generated.resources.msg_user_command_local_directory_required
+import onyx.composeapp.generated.resources.msg_user_command_launch_failed
+import onyx.composeapp.generated.resources.msg_user_command_exit_failed
 import onyx.composeapp.generated.resources.msg_vfs_location_unsupported
 import onyx.composeapp.generated.resources.msg_search_content_unsupported
 import onyx.composeapp.generated.resources.msg_file_name_empty
@@ -71,6 +78,8 @@ import onyx.composeapp.generated.resources.msg_string_literal
 import onyx.composeapp.generated.resources.msg_unknown_error
 import onyx.composeapp.generated.resources.msg_search_no_eligible_roots
 import onyx.composeapp.generated.resources.msg_archive_password_invalid
+import onyx.composeapp.generated.resources.msg_copy_history_changed
+import onyx.composeapp.generated.resources.msg_copy_history_unavailable
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -100,6 +109,15 @@ internal fun I18nMessage.resolve(): String {
 @Suppress("CyclomaticComplexMethod") // 穷举枚举到资源键的声明式映射，不包含业务分支。
 private fun MessageKey.toStringResource(): StringResource {
     return when (this) {
+        MessageKey.MSG_COPY_HISTORY_CHANGED -> Res.string.msg_copy_history_changed
+        MessageKey.MSG_BATCH_RENAME_INVALID_COUNTER -> Res.string.msg_batch_rename_invalid_counter
+        MessageKey.MSG_BATCH_RENAME_INVALID_PATTERN -> Res.string.msg_batch_rename_invalid_pattern
+        MessageKey.MSG_RENAME_PRESET_NAME_REQUIRED -> Res.string.msg_rename_preset_name_required
+        MessageKey.MSG_USER_COMMAND_INVALID -> Res.string.msg_user_command_invalid
+        MessageKey.MSG_USER_COMMAND_LOCAL_DIRECTORY_REQUIRED -> Res.string.msg_user_command_local_directory_required
+        MessageKey.MSG_USER_COMMAND_LAUNCH_FAILED -> Res.string.msg_user_command_launch_failed
+        MessageKey.MSG_USER_COMMAND_EXIT_FAILED -> Res.string.msg_user_command_exit_failed
+        MessageKey.MSG_COPY_HISTORY_UNAVAILABLE -> Res.string.msg_copy_history_unavailable
         MessageKey.ACTION_BATCH_RENAME -> Res.string.action_batch_rename
         MessageKey.ACTION_CREATE_ZIP -> Res.string.action_create_zip
         MessageKey.ACTION_EXTRACT_HERE -> Res.string.action_extract_here

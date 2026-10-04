@@ -5,6 +5,9 @@ internal enum class SettingsCategory {
     GENERAL,
     LAYOUT,
     APPEARANCE,
+    COLORS,
+    FILE_LABELS,
+    USER_COMMANDS,
     COLUMNS,
     SHORTCUTS,
 }

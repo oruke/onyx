@@ -63,6 +63,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -88,6 +91,8 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
+import com.oruke.onyx.core.model.FileLabelStyle
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 
 /** 确认单击后延迟请求重命名的时间。 */
 private const val RENAME_AFTER_CLICK_DELAY_MS = 300L
@@ -124,6 +129,8 @@ internal data class GalleryItemState(
     val fileDropTarget: FileDropTarget?,
     /** 画廊项边长设置。 */
     val sizeDp: Int,
+    /** 组件计算后的规则颜色。 */
+    val labelStyle: FileLabelStyle? = null,
 )
 
 /**
@@ -178,20 +185,28 @@ internal data class GalleryThumbnailServices(
 private class GalleryInteractionState {
     /** 是否使用增量选择。 */
     var additiveSelection by mutableStateOf(false)
+
     /** 是否使用范围选择。 */
     var rangeSelection by mutableStateOf(false)
+
     /** 当前拖拽操作。 */
     var dragOperation by mutableStateOf(FileTransferOperation.MOVE)
+
     /** 当前拖拽窗口坐标。 */
     var dragPosition by mutableStateOf<IntOffset?>(null)
+
     /** 当前条目的布局坐标。 */
     var coordinates by mutableStateOf<LayoutCoordinates?>(null)
+
     /** 是否等待松开后收敛多选。 */
     var pendingDeselectOthers by mutableStateOf(false)
+
     /** 本次主键按下时当前条目是否已满足慢速重命名条件。 */
     var pressCanRename by mutableStateOf(false)
+
     /** 慢速重命名定时任务。 */
     var renameJob by mutableStateOf<Job?>(null)
+
     /** 内联编辑框是否曾获得焦点。 */
     var hasFocused by mutableStateOf(false)
 
@@ -237,9 +252,9 @@ internal fun GalleryItem(
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
     val canInlineEdit = state.draftName != null &&
-        actions.onUpdateInlineEditDraft != null &&
-        actions.onConfirmInlineEdit != null &&
-        actions.onCancelInlineEdit != null
+            actions.onUpdateInlineEditDraft != null &&
+            actions.onConfirmInlineEdit != null &&
+            actions.onCancelInlineEdit != null
     val isDropTarget = state.fileDropTarget?.directoryEntryId == state.entry?.id
     val background by animateColorAsState(
         targetValue = galleryItemBackground(state, isDropTarget),
@@ -261,12 +276,27 @@ internal fun GalleryItem(
             )
             .galleryPressInteractions(state, actions, interaction, canInlineEdit)
             .galleryDragInteractions(state, actions, interaction, selectedState)
+            .semantics {
+                selected = state.selected
+                if (state.entry != null && !canInlineEdit) {
+                    // 语义点击没有指针按下事件；独立选择，保留鼠标的 Ctrl/Shift 与慢速改名行为。
+                    onClick {
+                        interaction.cancelRename()
+                        actions.onActivate()
+                        actions.onDismissContextMenu()
+                        actions.onSelectEntry(state.entry.id, false, false)
+                        true
+                    }
+                }
+            }
             .combinedClickable(
-                onClick = {
+                onClick = click@{
+                    // 双击识别会延迟单击回调；F2 已开启编辑时不能再把焦点抢回文件面板。
+                    if (draftNameState.value != null) return@click
                     actions.onActivate()
                     val canRename = state.entry != null && !canInlineEdit &&
-                        interaction.pressCanRename &&
-                        selectedState.value && entryCountState.value == 1
+                            interaction.pressCanRename &&
+                            selectedState.value && entryCountState.value == 1
                     if (canRename) {
                         interaction.scheduleRename(scope) {
                             if (selectedState.value && entryCountState.value == 1 && draftNameState.value == null) {
@@ -301,10 +331,13 @@ internal fun GalleryItem(
 @Composable
 private fun galleryItemBackground(state: GalleryItemState, isDropTarget: Boolean): Color {
     val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
+    val labelBackground = state.labelStyle?.backgroundColorArgb
     return when {
         isDropTarget -> palette.rowHoverBackground
-        state.selected && state.paneActive -> palette.selectionBackground
-        state.selected -> palette.inactiveSelectionBackground
+        state.selected && state.paneActive -> appearance.selectionBackground ?: palette.selectionBackground
+        state.selected -> appearance.inactiveSelectionBackground ?: palette.inactiveSelectionBackground
+        labelBackground != null -> Color(labelBackground)
         else -> Color.Transparent
     }
 }
@@ -389,7 +422,7 @@ private fun handleGalleryPrimaryPress(
     actions.onDismissContextMenu()
     interaction.cancelRename()
     interaction.pressCanRename = state.selected && state.selectedEntryCount == 1 &&
-        !interaction.additiveSelection && !interaction.rangeSelection
+            !interaction.additiveSelection && !interaction.rangeSelection
     interaction.pendingDeselectOthers = false
     when {
         interaction.additiveSelection || interaction.rangeSelection -> actions.onSelectEntry(
@@ -397,6 +430,7 @@ private fun handleGalleryPrimaryPress(
             interaction.additiveSelection,
             interaction.rangeSelection,
         )
+
         state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(entry.id, false, false)
     }
@@ -610,7 +644,9 @@ private fun GalleryItemName(
             text = state.entry?.name.orEmpty(),
             fontWeight = if (state.entry?.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
             fontSize = 12.sp,
-            color = LocalOnyxPalette.current.foreground,
+            color = state.labelStyle?.textColorArgb?.let(::Color)
+                ?: LocalOnyxAppearance.current.fileNameColor
+                ?: LocalOnyxPalette.current.foreground,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,

@@ -29,6 +29,9 @@ import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.key
 import com.oruke.onyx.vfs.api.FileContextMenuSection
+import com.oruke.onyx.core.model.FileLabelStyle
+import com.oruke.onyx.core.model.UserCommandPlacement
+import com.oruke.onyx.core.model.UserCommandDefinition
 
 /**
  * 面板视图所需的稳定状态、组件和跨组件动作。
@@ -50,6 +53,10 @@ internal data class PaneSurfaceModel(
     val favoriteLocations: List<String>,
     /** 激活当前面板的回调。 */
     val onActivate: () -> Unit,
+    /** 组件计算的文件着色，包含已展开子项。 */
+    val fileLabels: Map<String, FileLabelStyle> = emptyMap(),
+    /** 组件按展示入口筛选的用户命令。 */
+    val userCommands: Map<UserCommandPlacement, List<UserCommandDefinition>> = emptyMap(),
 )
 
 /**
@@ -157,10 +164,12 @@ internal class PaneSurfaceRuntime(
                 model.actions.onShowQuickOpen()
                 true
             }
+
             OnyxCommand.ShowSearchPanel -> {
                 model.actions.onShowSearchPanel()
                 true
             }
+
             else -> false
         }
     }
@@ -179,6 +188,7 @@ internal class PaneSurfaceRuntime(
         return when (command) {
             OnyxCommand.QuickOpen,
             OnyxCommand.ShowSearchPanel -> true
+
             else -> false
         }
     }
@@ -302,6 +312,7 @@ internal fun rememberPaneSurfaceRuntime(
             onCreateZipArchive = model.actions.onCreateZipArchive,
             onFileContextMenuCommand = model.actions.onFileContextMenuCommand,
             onOpenTerminal = model.actions.onOpenTerminal,
+            onUserCommand = model.actions.onUserCommand,
         ),
     )
     val platformActionLoader = PaneContextMenuPlatformActionLoader(

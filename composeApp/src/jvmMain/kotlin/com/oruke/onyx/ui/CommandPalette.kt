@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -54,10 +55,16 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 
+/**
+ * 渲染可筛选的统一命令面板，用户命令与内置命令共用执行入口。
+ * @param items 当前可用的命令及启用状态。
+ * @param onExecute 执行当前选中的统一命令目标。
+ * @param onClose 关闭命令面板的事件。
+ */
 @Composable
 internal fun CommandPalettePopup(
     items: List<CommandPaletteItem>,
-    onExecute: (OnyxCommand) -> Unit,
+    onExecute: (CommandPaletteTarget) -> Unit,
     onClose: () -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
@@ -77,7 +84,7 @@ internal fun CommandPalettePopup(
     fun executeSelected() {
         val item = filteredItems.getOrNull(selectedIndex) ?: return
         if (item.enabled) {
-            onExecute(item.command)
+            onExecute(item.target)
         }
     }
 
@@ -166,6 +173,7 @@ private fun CommandPaletteSearchField(
         value = query,
         onValueChange = onQueryChange,
         modifier = Modifier
+            .testTag("command-palette-query")
             .fillMaxWidth()
             .height(28.dp)
             .focusRequester(focusRequester)
@@ -205,7 +213,7 @@ private fun CommandPaletteResults(
     items: List<CommandPaletteItem>,
     selectedIndex: Int,
     listState: androidx.compose.foundation.lazy.LazyListState,
-    onExecute: (OnyxCommand) -> Unit,
+    onExecute: (CommandPaletteTarget) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
     Box(
@@ -230,7 +238,7 @@ private fun CommandPaletteResults(
                     CommandPaletteRow(
                         item = item,
                         selected = index == selectedIndex,
-                        onExecute = { onExecute(item.command) },
+                        onExecute = { onExecute(item.target) },
                     )
                 }
             }
@@ -253,7 +261,7 @@ private fun commandPaletteQueryTokens(query: String): List<String> {
 private fun CommandPaletteItem.matchesQuery(tokens: List<String>): Boolean {
     val searchableText = listOfNotNull(
         label,
-        command.name,
+        (target as? CommandPaletteTarget.BuiltIn)?.command?.name,
         shortcut,
         shortcut?.replace("+", ""),
     ).joinToString(" ").lowercase()

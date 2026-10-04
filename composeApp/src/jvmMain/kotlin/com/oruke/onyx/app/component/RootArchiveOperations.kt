@@ -62,7 +62,7 @@ internal fun DefaultRootComponent.submitArchivePassword(password: String) {
 internal fun DefaultRootComponent.batchRenameInPane(paneId: PaneId) {
     val selectedEntries = selectedEntriesInPane(paneId)
     if (selectedEntries.size < 2) return
-    dialogState.value = RootDialogState.BatchRename(paneId = paneId, entries = selectedEntries)
+    dialogState.value = RootDialogState.BatchRename(paneId = paneId, entries = selectedEntries).withBatchRenamePreview()
 }
 
 /**

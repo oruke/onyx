@@ -18,9 +18,11 @@ import androidx.compose.ui.window.rememberWindowState
 import com.oruke.onyx.app.component.TaskCenterComponent
 import com.oruke.onyx.app.component.TaskCenterIntent
 import com.oruke.onyx.core.model.OnyxSettings
+import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.TaskCenterContent
 import com.oruke.onyx.ui.theme.OnyxTheme
+import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import java.awt.Dimension
 import kotlinx.coroutines.flow.StateFlow
@@ -47,10 +49,15 @@ private const val UI_SCALE_BASE = 100.0
  *
  * @param taskCenter 所有文件窗口共享的任务中心组件。
  * @param settings 应用外观设置流，窗口显示时实时响应外观变化。
+ * @param resourceLocale 已切换完成的应用级资源语言信号。
  * @return 无返回值。
  */
 @Composable
-internal fun TaskCenterWindow(taskCenter: TaskCenterComponent, settings: StateFlow<OnyxSettings>) {
+internal fun TaskCenterWindow(
+    taskCenter: TaskCenterComponent,
+    settings: StateFlow<OnyxSettings>,
+    resourceLocale: StateFlow<AppLocale>,
+) {
     val state by taskCenter.state.collectAsState()
     val windowState = rememberWindowState(width = 760.dp, height = 540.dp)
     val listState = rememberLazyListState()
@@ -60,49 +67,52 @@ internal fun TaskCenterWindow(taskCenter: TaskCenterComponent, settings: StateFl
 
     val tasks by taskCenter.tasks.collectAsState()
     val preferences by settings.collectAsState()
-    DecoratedWindow(
-        onCloseRequest = { taskCenter.dispatch(TaskCenterIntent.Close) },
-        title = stringResource(Res.string.label_task_center),
-        icon = painterResource(Res.drawable.onyx_logo),
-        state = windowState,
-        onPreviewKeyEvent = { event ->
-            if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
-                taskCenter.dispatch(TaskCenterIntent.Close)
-                true
-            } else {
-                false
+    OnyxLocaleEnvironment(resourceLocale) {
+        DecoratedWindow(
+            onCloseRequest = { taskCenter.dispatch(TaskCenterIntent.Close) },
+            title = stringResource(Res.string.label_task_center),
+            icon = painterResource(Res.drawable.onyx_logo),
+            state = windowState,
+            onPreviewKeyEvent = { event ->
+                if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                    taskCenter.dispatch(TaskCenterIntent.Close)
+                    true
+                } else {
+                    false
+                }
+            },
+        ) {
+            SideEffect {
+                window.name = "onyx-task-center"
+                // 同步提高最小尺寸，避免高缩放下工具栏挤掉整个任务列表。
+                val scale = preferences.uiScale / UI_SCALE_BASE
+                window.minimumSize = Dimension(
+                    (TASK_WINDOW_MIN_WIDTH * scale).toInt(),
+                    (TASK_WINDOW_MIN_HEIGHT * scale).toInt(),
+                )
             }
-        },
-    ) {
-        SideEffect {
-            window.name = "onyx-task-center"
-            // 同步提高最小尺寸，避免高缩放下工具栏挤掉整个任务列表。
-            val scale = preferences.uiScale / UI_SCALE_BASE
-            window.minimumSize = Dimension(
-                (TASK_WINDOW_MIN_WIDTH * scale).toInt(),
-                (TASK_WINDOW_MIN_HEIGHT * scale).toInt(),
+            LaunchedEffect(state.activationRequest) {
+                // 只有显式打开才激活窗口；后台进度刷新不得抢走文件面板焦点。
+                windowState.isMinimized = false
+                window.toFront()
+                window.requestFocus()
+            }
+            TitleBar { _ ->
+                Text(
+                    stringResource(Res.string.label_task_center),
+                    modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
+                )
+            }
+            val appearance = rememberOnyxAppearance(
+                listRowHeightDp = preferences.listRowHeightDp,
+                listFontSizeSp = preferences.listFontSizeSp,
+                zebraStripeEnabled = preferences.zebraStripeEnabled,
+                fileListColors = preferences.fileListColors,
             )
-        }
-        LaunchedEffect(state.activationRequest) {
-            // 只有显式打开才激活窗口；后台进度刷新不得抢走文件面板焦点。
-            windowState.isMinimized = false
-            window.toFront()
-            window.requestFocus()
-        }
-        TitleBar { _ ->
-            Text(
-                stringResource(Res.string.label_task_center),
-                modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
-            )
-        }
-        val appearance = rememberOnyxAppearance(
-            listRowHeightDp = preferences.listRowHeightDp,
-            listFontSizeSp = preferences.listFontSizeSp,
-            zebraStripeEnabled = preferences.zebraStripeEnabled,
-        )
-        OnyxTheme(uiScale = preferences.uiScale, appearance = appearance) {
-            OnyxTooltipHost {
-                TaskCenterContent(state, tasks, listState, taskCenter::dispatch)
+            OnyxTheme(uiScale = preferences.uiScale, appearance = appearance) {
+                OnyxTooltipHost {
+                    TaskCenterContent(state, tasks, listState, taskCenter::dispatch)
+                }
             }
         }
     }

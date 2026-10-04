@@ -102,6 +102,11 @@ internal fun rememberRootComponent(
                     fileCollectionUseCase = koin.get<FileCollectionUseCase>(),
                     fileContentSearchService = koin.get<FileContentSearchService>(),
                 ),
+                customization = RootCustomizationDependencies(
+                    labels = koin.get(),
+                    commands = koin.get(),
+                    commandLauncher = koin.get(),
+                ),
                 delegates = RootRuntimeDelegates(
                     taskOrchestrator = applicationRuntime.taskOrchestrator,
                     clipboardManager = applicationRuntime.clipboardManager,
@@ -109,6 +114,7 @@ internal fun rememberRootComponent(
                     sessionManager = applicationRuntime.sessionManager,
                     settings = applicationRuntime.settings,
                     taskCenter = applicationRuntime.taskCenter,
+                    resourceLocale = applicationRuntime.resourceLocale,
                 ),
             ),
             launchConfiguration = launchConfiguration,

@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oruke.onyx.core.model.FileListColors
 
 /**
  * 动态外观参数系统
@@ -33,6 +34,14 @@ data class OnyxAppearance(
     val zebraStripeColor: Color? = null,
     /** 标签栏高度 */
     val tabBarHeight: Dp = 26.dp,
+    /** 文件区域背景，未覆盖时随系统主题。 */
+    val fileListBackground: Color? = null,
+    /** 默认文件名颜色。 */
+    val fileNameColor: Color? = null,
+    /** 活动面板选中背景。 */
+    val selectionBackground: Color? = null,
+    /** 非活动面板选中背景。 */
+    val inactiveSelectionBackground: Color? = null,
 )
 
 val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {
@@ -45,18 +54,26 @@ val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {
  * @param listRowHeightDp 行高（dp 整数值）
  * @param listFontSizeSp 字号（sp 整数值）
  * @param zebraStripeEnabled 斑马纹开关
+ * @param fileListColors 文件列表持久化颜色覆盖。
+ * @return 随设置变化重建的统一外观。
  */
 @Composable
 fun rememberOnyxAppearance(
     listRowHeightDp: Int = 22,
     listFontSizeSp: Int = 12,
     zebraStripeEnabled: Boolean = true,
+    fileListColors: FileListColors = FileListColors(),
 ): OnyxAppearance {
-    return remember(listRowHeightDp, listFontSizeSp, zebraStripeEnabled) {
+    return remember(listRowHeightDp, listFontSizeSp, zebraStripeEnabled, fileListColors) {
         OnyxAppearance(
             listRowHeight = listRowHeightDp.dp,
             listFontSize = listFontSizeSp.sp,
             zebraStripeEnabled = zebraStripeEnabled,
+            zebraStripeColor = fileListColors.zebraArgb?.let(::Color),
+            fileListBackground = fileListColors.backgroundArgb?.let(::Color),
+            fileNameColor = fileListColors.nameArgb?.let(::Color),
+            selectionBackground = fileListColors.selectionArgb?.let(::Color),
+            inactiveSelectionBackground = fileListColors.inactiveSelectionArgb?.let(::Color),
         )
     }
 }

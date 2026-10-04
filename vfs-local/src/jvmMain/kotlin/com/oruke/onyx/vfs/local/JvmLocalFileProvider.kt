@@ -125,6 +125,7 @@ class JvmLocalFileProvider :
      * @param entries 待复制条目。
      * @param targetDirectoryLocation 目标目录位置。
      * @param conflictStrategy 名称冲突处理策略。
+     * @param progressSink 实际字节进度接收器。
      * @return 复制结果。
      */
     override suspend fun copyWithProgress(
@@ -141,11 +142,13 @@ class JvmLocalFileProvider :
         runCatching {
             val targetDirectory = LocalPathOperations.resolveTargetDirectory(targetDirectoryLocation)
             entries.forEach { entry ->
+                taskJob?.ensureActive()
                 LocalPathTransferOperations.copyPathToDirectory(
                     source = Path.of(entry.location),
                     targetDirectory = targetDirectory,
                     conflictStrategy = conflictStrategy,
                     progressSink = cancellationAwareSink,
+                    checkActive = { taskJob?.ensureActive() },
                 )
             }
         }.mapLocalError()
@@ -157,6 +160,7 @@ class JvmLocalFileProvider :
      * @param entries 待移动条目。
      * @param targetDirectoryLocation 目标目录位置。
      * @param conflictStrategy 名称冲突处理策略。
+     * @param progressSink 实际字节进度接收器。
      * @return 移动结果。
      */
     override suspend fun moveWithProgress(
@@ -173,11 +177,13 @@ class JvmLocalFileProvider :
         runCatching {
             val targetDirectory = LocalPathOperations.resolveTargetDirectory(targetDirectoryLocation)
             entries.forEach { entry ->
+                taskJob?.ensureActive()
                 LocalPathTransferOperations.movePathToDirectory(
                     source = Path.of(entry.location),
                     targetDirectory = targetDirectory,
                     conflictStrategy = conflictStrategy,
                     progressSink = cancellationAwareSink,
+                    checkActive = { taskJob?.ensureActive() },
                 )
             }
         }.mapLocalError()

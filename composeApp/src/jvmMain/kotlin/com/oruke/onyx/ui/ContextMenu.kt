@@ -1,7 +1,6 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.Image
@@ -10,14 +9,12 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -132,24 +129,6 @@ internal fun BoxScope.PaneContextMenu(
             )
         }
     }
-}
-
-/**
- * 右键菜单面板容器。
- *
- * @param content 菜单内容。
- */
-@Composable
-private fun ContextMenuPanel(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier = Modifier
-            .width(220.dp)
-            .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(6.dp))
-            .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(6.dp))
-            .padding(vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-        content = content,
-    )
 }
 
 /**
@@ -501,7 +480,8 @@ private fun PaneContextMenuCommand.shortcutCommandOrNull(): OnyxCommand? {
         PaneContextMenuCommand.CreateZipArchive,
         PaneContextMenuCommand.CopyPath,
         PaneContextMenuCommand.OpenTerminal,
-        is PaneContextMenuCommand.FileContext -> null
+        is PaneContextMenuCommand.FileContext,
+        is PaneContextMenuCommand.UserCommand -> null
     }
 }
 

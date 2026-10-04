@@ -41,19 +41,8 @@ internal class CrossProviderFileTransferService(
         conflictStrategy: TransferConflictStrategy,
         byteProgressSink: FileTransferProgressSink,
     ): Result<Boolean> {
-        val hasDirectories = entries.any { entry -> entry.kind == VFileKind.DIRECTORY }
-        val canCopy = contentServices.isNotEmpty() && (!hasDirectories || providerRegistry != null)
-        return if (!canCopy) {
-            Result.success(false)
-        } else {
-            copyWithContentService(
-                entries = entries,
-                targetDirectoryLocation = targetDirectoryLocation,
-                conflictStrategy = conflictStrategy,
-                hasDirectories = hasDirectories,
-                byteProgressSink = byteProgressSink,
-            )
-        }
+        return copyWithContentService(entries, targetDirectoryLocation, conflictStrategy, byteProgressSink)
+            .map { copiedEntries -> copiedEntries != null }
     }
 
     /**
@@ -73,16 +62,18 @@ internal class CrossProviderFileTransferService(
         conflictStrategy: TransferConflictStrategy,
         byteProgressSink: FileTransferProgressSink,
     ): Result<Boolean> {
-        return copy(
+        return copyWithContentService(
             entries = entries,
             targetDirectoryLocation = targetDirectoryLocation,
             conflictStrategy = conflictStrategy,
             byteProgressSink = byteProgressSink,
-        ).mapCatching { copied ->
-            if (copied) {
-                sourceCommandService.delete(entries).getOrThrow()
+        ).mapCatching { copiedEntries ->
+            coroutineContext.ensureActive()
+            // 只有完整复制的文件或目录才允许删除，跳过和部分复制目录中的源必须保留。
+            if (!copiedEntries.isNullOrEmpty()) {
+                sourceCommandService.delete(copiedEntries).getOrThrow()
             }
-            copied
+            copiedEntries != null
         }
     }
 
@@ -92,17 +83,17 @@ internal class CrossProviderFileTransferService(
      * @param entries 待复制条目。
      * @param targetDirectoryLocation 目标目录位置。
      * @param conflictStrategy 名称冲突处理策略。
-     * @param hasDirectories 是否包含目录。
      * @param byteProgressSink 字节增量接收器。
-     * @return 跨 Provider 复制结果。
+     * @return 已完整复制且可安全删除的源条目；不支持路由时为 null。
      */
     private suspend fun copyWithContentService(
         entries: List<VFile>,
         targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
-        hasDirectories: Boolean,
         byteProgressSink: FileTransferProgressSink,
-    ): Result<Boolean> {
+    ): Result<List<VFile>?> {
+        val hasDirectories = entries.any { entry -> entry.kind == VFileKind.DIRECTORY }
+        if (contentServices.isEmpty() || (hasDirectories && providerRegistry == null)) return Result.success(null)
         return contentServiceFor(targetDirectoryLocation, VfsProviderCapability.WRITE_CONTENT).fold(
             onSuccess = { targetContentService ->
                 runCatching {
@@ -115,10 +106,11 @@ internal class CrossProviderFileTransferService(
                         null
                     }
                     val recorder = CrossProviderTransferRecorder(progressSink)
+                    val copiedEntries = mutableListOf<VFile>()
                     entries.forEach { entry ->
                         coroutineContext.ensureActive()
                         runCatching {
-                            copyEntry(
+                            copiedEntries += copyEntry(
                                 entry = entry,
                                 targetDirectoryLocation = targetDirectoryLocation,
                                 targetContentService = targetContentService,
@@ -137,12 +129,12 @@ internal class CrossProviderFileTransferService(
                         }
                     }
                     recorder.throwIfFailed()
-                    true
+                    copiedEntries.distinctBy { entry -> entry.location }
                 }
             },
             onFailure = { failure ->
                 if (failure is VfsProviderNotFoundException) {
-                    Result.success(false)
+                    Result.success(null)
                 } else {
                     Result.failure(failure)
                 }
@@ -160,6 +152,7 @@ internal class CrossProviderFileTransferService(
      * @param conflictStrategy 名称冲突处理策略。
      * @param recorder 传输阶段记录器。
      * @param byteProgressSink 字节增量接收器。
+     * @return 已完整复制的源根条目；部分复制目录返回其已完成子项，跳过则为空。
      */
     private suspend fun copyEntry(
         entry: VFile,
@@ -169,9 +162,9 @@ internal class CrossProviderFileTransferService(
         conflictStrategy: TransferConflictStrategy,
         recorder: CrossProviderTransferRecorder,
         byteProgressSink: FileTransferProgressSink,
-    ) {
+    ): List<VFile> {
         coroutineContext.ensureActive()
-        when (entry.kind) {
+        return when (entry.kind) {
             VFileKind.FILE -> copyFile(
                 entry = entry,
                 targetDirectoryLocation = targetDirectoryLocation,
@@ -193,8 +186,10 @@ internal class CrossProviderFileTransferService(
                     directoryService = directoryService,
                     conflictStrategy = conflictStrategy,
                     recorder = recorder,
-                ) ?: return
+                ) ?: return emptyList()
                 val children = childrenFor(entry, targetDirectoryLocation)
+                val copiedChildren = mutableListOf<VFile>()
+                var complete = true
                 children.forEach { child ->
                     coroutineContext.ensureActive()
                     runCatching {
@@ -207,7 +202,11 @@ internal class CrossProviderFileTransferService(
                             recorder = recorder,
                             byteProgressSink = byteProgressSink,
                         )
+                    }.onSuccess { copied ->
+                        copiedChildren += copied
+                        if (copied.singleOrNull()?.location != child.location) complete = false
                     }.onFailure { failure ->
+                        complete = false
                         failure.throwIfCancellation()
                         recorder.recordFailure(
                             sourceLocation = child.location,
@@ -216,6 +215,7 @@ internal class CrossProviderFileTransferService(
                         )
                     }
                 }
+                if (complete) listOf(entry) else copiedChildren
             }
         }
     }
@@ -250,6 +250,7 @@ internal class CrossProviderFileTransferService(
      * @param conflictStrategy 名称冲突处理策略。
      * @param recorder 传输阶段记录器。
      * @param byteProgressSink 字节增量接收器。
+     * @return 写入成功的源文件；按冲突策略跳过时为空。
      */
     private suspend fun copyFile(
         entry: VFile,
@@ -258,7 +259,7 @@ internal class CrossProviderFileTransferService(
         conflictStrategy: TransferConflictStrategy,
         recorder: CrossProviderTransferRecorder,
         byteProgressSink: FileTransferProgressSink,
-    ) {
+    ): List<VFile> {
         val sourceContentService = contentServiceFor(
             location = entry.location,
             capability = VfsProviderCapability.READ_CONTENT,
@@ -287,6 +288,7 @@ internal class CrossProviderFileTransferService(
                 targetLocation = written.location,
             )
         }
+        return if (written == null) emptyList() else listOf(entry)
     }
 
     /**
@@ -322,11 +324,13 @@ internal class CrossProviderFileTransferService(
                 recorder.recordSkipped(entry.location, existing.location)
                 return null
             }
+
             conflictStrategy == TransferConflictStrategy.OVERWRITE && existing.kind == VFileKind.DIRECTORY -> existing
             conflictStrategy == TransferConflictStrategy.OVERWRITE -> {
                 directoryService.delete(listOf(existing)).getOrThrow()
                 directoryService.createDirectory(targetDirectoryLocation, entry.name).getOrThrow()
             }
+
             else -> {
                 val targetName = entry.name.nextDirectoryCopyName(existingByName.keys)
                 directoryService.createDirectory(targetDirectoryLocation, targetName).getOrThrow()

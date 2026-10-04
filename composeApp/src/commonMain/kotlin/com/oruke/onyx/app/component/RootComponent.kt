@@ -19,6 +19,8 @@ import com.oruke.onyx.vfs.api.VfsConnectionTestResult
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.core.model.BackgroundTask
+import com.oruke.onyx.core.model.AppLocale
+import com.oruke.onyx.core.model.BatchRenameDraft
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.ImageFitMode
@@ -154,15 +156,34 @@ internal sealed interface RootDialogState {
         val saving: Boolean = false,
     ) : RootDialogState
 
+    /** 批量重命名的规则草稿、预设与执行状态。 */
     data class BatchRename(
+        /** 发起操作的文件面板。 */
         val paneId: PaneId,
+        /** 当前待处理条目，保持组件给出的顺序。 */
         val entries: List<VFile>,
+        /** 是否正在执行文件变更。 */
         val executing: Boolean = false,
+        /** 已完成比例。 */
         val progress: Float = 0f,
+        /** 已处理条目数量。 */
         val processedCount: Int = 0,
+        /** 当前任务的进度详情。 */
         val currentDetail: String = "",
+        /** 整批操作是否执行完成。 */
         val completed: Boolean = false,
+        /** 文件执行失败信息，与表单校验错误区分。 */
         val errorMessage: I18nMessage? = null,
+        /** 组件持有的表单草稿。 */
+        val draft: BatchRenameDraft = BatchRenameDraft(),
+        /** 组件规划后的完整名称预览。 */
+        val renameResults: List<Pair<VFile, String>> = emptyList(),
+        /** 预览校验失败，失败时禁止执行。 */
+        val validationMessage: I18nMessage? = null,
+        /** 当前选中的已保存预设。 */
+        val selectedPresetId: String? = null,
+        /** 保存或覆盖预设使用的名称草稿。 */
+        val presetName: String = "",
     ) : RootDialogState
 
     /**
@@ -212,6 +233,7 @@ internal enum class CreateDirectoriesDialogError {
 internal enum class CreateZipArchiveDialogError {
     /** 未输入归档名称。 */
     EMPTY_INPUT,
+
     /** 归档名称包含路径分隔符或跨平台非法字符。 */
     INVALID_NAME,
 }
@@ -280,6 +302,42 @@ internal enum class RemoteConnectionDialogError {
 }
 
 internal sealed interface RootIntent {
+    /** 在指定面板上下文中执行用户命令，菜单可提供显式目标条目。 */
+    data class ExecuteUserCommand(
+        /** 命令来源面板。 */
+        val paneId: PaneId,
+        /** 持久化命令标识。 */
+        val id: String,
+        /** 右键上下文目标；为空时使用面板当前选择。 */
+        val entries: List<VFile>? = null,
+    ) : RootIntent
+
+    /** 更新组件批量重命名草稿并重新计算预览。 */
+    data class UpdateBatchRenameDraft(
+        /** 包含规则与序号输入的完整草稿。 */
+        val draft: BatchRenameDraft,
+    ) : RootIntent
+
+    /** 选择一个已保存的批量重命名预设。 */
+    data class LoadBatchRenamePreset(
+        /** 要恢复到编辑器的预设标识。 */
+        val id: String,
+    ) : RootIntent
+
+    /** 更新预设名称草稿。 */
+    data class UpdateBatchRenamePresetName(
+        /** 待保存的预设显示名称。 */
+        val name: String,
+    ) : RootIntent
+
+    /** 将当前规则保存为预设或覆盖当前选中预设。 */
+    data object SaveBatchRenamePreset : RootIntent
+
+    /** 保留当前规则，清除选中记录以另存为独立预设。 */
+    data object NewBatchRenamePreset : RootIntent
+
+    /** 删除当前选中预设，保留正在编辑的规则。 */
+    data object DeleteBatchRenamePreset : RootIntent
     data class SetLayoutMode(
         val mode: PaneLayoutMode,
     ) : RootIntent
@@ -326,6 +384,16 @@ internal sealed interface RootIntent {
 
     data class UpdateSettings(
         val settings: OnyxSettings,
+    ) : RootIntent
+
+    /** 只更新指定窗口尺寸，不携带可能已经过时的整份设置。 */
+    data class UpdateWindowSize(
+        /** 本次调整的窗口。 */
+        val windowKind: RootWindowKind,
+        /** 窗口逻辑宽度。 */
+        val width: Int,
+        /** 窗口逻辑高度。 */
+        val height: Int,
     ) : RootIntent
 
     data class OpenLocationInActivePane(
@@ -389,38 +457,46 @@ internal sealed interface RootIntent {
         /** 快速打开的独立查询文本。 */
         val query: String,
     ) : RootIntent
+
     /** 执行快速打开查询。 */
     data object ExecuteQuickOpen : RootIntent
+
     /** 在快速打开的来源面板打开结果。 */
     data class OpenQuickOpenResult(
         /** 要通过来源面板打开的条目。 */
         val entry: VFile,
     ) : RootIntent
+
     /** 在快速打开的来源面板定位结果。 */
     data class OpenQuickOpenResultInFolder(
         /** 要在父目录定位并选中的条目。 */
         val entry: VFile,
     ) : RootIntent
+
     /** 更新快速打开的选中结果。 */
     data class SetQuickOpenSelectedIndex(
         /** 快速打开结果列表中的目标索引。 */
         val index: Int,
     ) : RootIntent
+
     /** 更新完整搜索的选中结果。 */
     data class SetSearchSelectedIndex(
         /** 完整搜索结果列表中的目标索引。 */
         val index: Int,
     ) : RootIntent
+
     /** 设置完整搜索的高级筛选区域可见性。 */
     data class SetSearchAdvancedFiltersExpanded(
         /** 高级条件区域是否展开。 */
         val expanded: Boolean,
     ) : RootIntent
+
     /** 明确允许或禁止当前搜索包含网络位置。 */
     data class SetSearchIncludeRemoteLocations(
         /** 是否明确允许本会话扫描网络位置。 */
         val include: Boolean,
     ) : RootIntent
+
     /** 显式把完整搜索绑定到当前活动目录。 */
     data object UseCurrentDirectoryForSearch : RootIntent
 
@@ -626,6 +702,7 @@ internal interface RootPlatformServices {
 
 /** 路径展示、文件类型识别和预览读取能力。 */
 internal interface RootPresentationServices {
+
     fun isArchiveFileName(fileName: String): Boolean
 
     fun isImageFileName(fileName: String): Boolean
@@ -652,11 +729,15 @@ internal interface RootPresentationServices {
 }
 
 /** 根组件状态、子面板和统一意图入口。 */
-internal interface RootComponent : RootPlatformServices, RootPresentationServices {
+internal interface RootComponent : RootPlatformServices, RootPresentationServices, RootCustomizationServices {
+    /** 应用级语言环境就绪信号，所有窗口只消费该信号。 */
+    val resourceLocale: StateFlow<AppLocale>
+
     val state: StateFlow<RootState>
     val imageViewerState: StateFlow<ImageViewerState>
     val primaryPane: PaneComponent
     val secondaryPane: PaneComponent
+
     /** 所有文件管理器窗口共享的任务中心。 */
     val taskCenter: TaskCenterComponent
 
