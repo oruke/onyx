@@ -1,7 +1,6 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.PaneSessionSnapshot
-import com.oruke.onyx.core.model.TabSnapshot
 import java.util.UUID
 
 /**
@@ -10,8 +9,10 @@ import java.util.UUID
  * @param location 初始 VFS 位置。
  */
 internal fun DefaultPaneComponent.createTab(location: String) {
+    captureActiveVisit()
     val tab = createTabState(pathService.normalizeLocation(location))
     val update = tabs().withCreatedTab(tab)
+    restoreExpansions(emptyMap())
     applyTabStackUpdate(update)
     loadTab(update.activeTab.id, update.activeTab.location)
 }
@@ -22,9 +23,12 @@ internal fun DefaultPaneComponent.createTab(location: String) {
  * @param tabId 标签 ID。
  */
 internal fun DefaultPaneComponent.selectTab(tabId: String) {
+    if (tabId == mutableState.value.activeTabId) return
+    captureActiveVisit()
     val update = tabs().withSelectedTab(tabId) ?: return
+    restoreExpansions(tabExpansions[tabId].orEmpty())
     applyTabStackUpdate(update)
-    loadActiveTabIfIdle(update.activeTab)
+    loadTab(update.activeTab.id, update.activeTab.location)
 }
 
 /**
@@ -33,9 +37,13 @@ internal fun DefaultPaneComponent.selectTab(tabId: String) {
  * @param tabId 标签 ID。
  */
 internal fun DefaultPaneComponent.closeTab(tabId: String) {
+    captureActiveVisit()
     val update = tabs().withClosedTab(mutableState.value.activeTabId, tabId) ?: return
+    navigationController.forget(tabId)
+    tabExpansions.remove(tabId)
+    restoreExpansions(tabExpansions[update.activeTab.id].orEmpty())
     applyTabStackUpdate(update)
-    loadActiveTabIfIdle(update.activeTab)
+    loadTab(update.activeTab.id, update.activeTab.location)
 }
 
 /**
@@ -55,9 +63,13 @@ internal fun DefaultPaneComponent.moveTab(tabId: String, targetIndex: Int) {
  * @param tabId 标签 ID。
  * @return 被移出的标签快照。
  */
-internal fun DefaultPaneComponent.detachPaneTab(tabId: String): TabSnapshot? {
+internal fun DefaultPaneComponent.detachPaneTab(tabId: String): PaneTabTransfer? {
+    captureActiveVisit()
     val currentTabs = tabs()
-    val update = currentTabs.withDetachedTab(
+    val detached = currentTabs.firstOrNull { it.id == tabId } ?: return null
+    val transfer = PaneTabTransfer(navigationController.capture(detached), tabExpansions[tabId].orEmpty())
+    // 已从同一不可变标签集合找到目标，唯一标签的替代项也已提供，移出结果必须存在。
+    val update = checkNotNull(currentTabs.withDetachedTab(
         activeTabId = mutableState.value.activeTabId,
         tabId = tabId,
         replacementTab = if (currentTabs.size == 1) {
@@ -65,10 +77,13 @@ internal fun DefaultPaneComponent.detachPaneTab(tabId: String): TabSnapshot? {
         } else {
             null
         },
-    ) ?: return null
+    ))
+    navigationController.forget(tabId)
+    tabExpansions.remove(tabId)
+    restoreExpansions(tabExpansions[update.activeTab.id].orEmpty())
     applyTabStackUpdate(update)
-    loadActiveTabIfIdle(update.activeTab)
-    return update.detachedTabSnapshot
+    loadTab(update.activeTab.id, update.activeTab.location)
+    return transfer
 }
 
 /**
@@ -77,8 +92,9 @@ internal fun DefaultPaneComponent.detachPaneTab(tabId: String): TabSnapshot? {
  * @param tabSnapshot 标签快照。
  * @param targetIndex 目标索引。
  */
-internal fun DefaultPaneComponent.attachPaneTab(tabSnapshot: TabSnapshot, targetIndex: Int) {
-    val restoredTab = tabSnapshot.toPaneTabState(pathService)
+internal fun DefaultPaneComponent.attachPaneTab(tabSnapshot: PaneTabTransfer, targetIndex: Int) {
+    captureActiveVisit()
+    val restoredTab = tabSnapshot.tab
     val currentTabs = tabs()
     val uniqueTab = if (currentTabs.any { tab -> tab.id == restoredTab.id }) {
         restoredTab.copy(id = UUID.randomUUID().toString())
@@ -86,8 +102,10 @@ internal fun DefaultPaneComponent.attachPaneTab(tabSnapshot: TabSnapshot, target
         restoredTab
     }
     val update = currentTabs.withAttachedTab(uniqueTab, targetIndex)
+    tabExpansions[uniqueTab.id] = tabSnapshot.expansions
+    restoreExpansions(tabSnapshot.expansions)
     applyTabStackUpdate(update)
-    loadActiveTabIfIdle(update.activeTab)
+    loadTab(update.activeTab.id, update.activeTab.location)
 }
 
 /**
@@ -96,6 +114,9 @@ internal fun DefaultPaneComponent.attachPaneTab(tabSnapshot: TabSnapshot, target
  * @param snapshot 面板会话快照。
  */
 internal fun DefaultPaneComponent.restorePaneSession(snapshot: PaneSessionSnapshot) {
+    tabs().forEach { navigationController.forget(it.id) }
+    tabExpansions.clear()
+    restoreExpansions(emptyMap())
     val restoredTabs = snapshot.tabs
         .ifEmpty { listOf(createTabState(fileRepository.defaultLocation()).toTabSnapshot()) }
         .map { tabSnapshot -> tabSnapshot.toPaneTabState(pathService) }
@@ -106,13 +127,4 @@ internal fun DefaultPaneComponent.restorePaneSession(snapshot: PaneSessionSnapsh
     navigateTabStack(restoredTabs, activeTabId)
     applyActiveTab(activeTab, activeTabId)
     loadTab(activeTab.id, activeTab.location)
-}
-
-/**
- * 仅在标签尚未加载时触发目录读取。
- *
- * @param tab 活动标签状态。
- */
-private fun DefaultPaneComponent.loadActiveTabIfIdle(tab: PaneTabState) {
-    if (tab.entriesState == PaneEntriesState.Idle) loadTab(tab.id, tab.location)
 }

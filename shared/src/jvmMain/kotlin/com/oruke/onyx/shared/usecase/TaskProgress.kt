@@ -26,4 +26,8 @@ data class TaskProgress(
     val estimatedRemainingSeconds: Long? = null,
     /** 当前步骤产生的回收站记录。 */
     val trashRecords: List<TrashMoveRecord> = emptyList(),
+    /** 当前步骤已确认的目录变化；无准确结果时显式标记待校验目录。 */
+    val directoryChange: com.oruke.onyx.core.model.DirectoryChange? = null,
+    /** 已确认按冲突策略跳过的条目数量。 */
+    val skippedCount: Int = 0,
 )

@@ -132,11 +132,21 @@ internal fun TabSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabSta
     )
 }
 
+/**
+ * 按视图配置派生可见条目、选择与统计；纯计算可以在后台线程执行。
+ * @param inlineExpandedLocations 当前访问展开的目录。
+ * @param inlineExpandedEntries 已加载的展开子项。
+ * @param sortedEntries 内容和排序未变时复用的已有可见列表。
+ * @return 校正后的标签状态。
+ */
 internal fun PaneTabState.withDerivedState(
     inlineExpandedLocations: Set<String>,
     inlineExpandedEntries: Map<String, InlineExpandedEntry>,
+    sortedEntries: List<VFile>? = null,
 ): PaneTabState {
-    val visibleEntries = EntrySorter.visibleSortedEntries(
+    // 历史缓存被淘汰时先保留其选择，真实目录返回后再校正，不能在 Loading 阶段清空。
+    if (entriesState !is PaneEntriesState.Ready && allEntries.isEmpty()) return this
+    val visibleEntries = sortedEntries ?: EntrySorter.visibleSortedEntries(
         allEntries = allEntries,
         showHiddenItems = showHiddenItems,
         sort = detailsSort,
@@ -185,8 +195,9 @@ internal fun PaneTabState.withDerivedState(
 internal fun PaneTabState.prepareForRefresh(): PaneTabState {
     return withTabState { current ->
         current.copy(
-            inlineEditState = null,
-            entriesState = PaneEntriesState.Loading,
+            refreshing = true,
+            entriesState = if (current.entriesState is PaneEntriesState.Ready) current.entriesState
+                else PaneEntriesState.Loading,
         )
     }
 }

@@ -82,16 +82,23 @@ internal fun DefaultPaneComponent.currentTabEntries(tab: PaneTabState): List<VFi
  *
  * @param tabId 标签 ID。
  * @param transform 标签状态转换。
+ * @param derive 是否重新派生可见列表与选择；后台已校正的结果传 false。
  */
 internal fun DefaultPaneComponent.updateTab(
     tabId: String,
+    derive: Boolean = true,
     transform: (PaneTabState) -> PaneTabState,
 ) {
     val paneState = mutableState.value
     val currentTab = tabs().firstOrNull { tab -> tab.id == tabId } ?: return
-    val updated = transform(currentTab).withDerivedState(
+    val transformed = transform(currentTab)
+    val unchangedContent = transformed.allEntries === currentTab.allEntries &&
+        transformed.detailsSort == currentTab.detailsSort && transformed.filterQuery == currentTab.filterQuery &&
+        transformed.showHiddenItems == currentTab.showHiddenItems
+    val updated = if (!derive) transformed else transformed.withDerivedState(
         inlineExpandedLocations = paneState.inlineExpandedLocations,
         inlineExpandedEntries = paneState.inlineExpandedEntries,
+        sortedEntries = if (unchangedContent) (currentTab.entriesState as? PaneEntriesState.Ready)?.entries else null,
     )
     updateTabComponentState(updated)
     mutableTabStates.value = mutableTabStates.value.map { tab ->
@@ -114,7 +121,9 @@ internal fun DefaultPaneComponent.updateTab(
  */
 internal fun DefaultPaneComponent.applyTabStackUpdate(update: PaneTabStackUpdate) {
     navigateTabStack(update.tabs, update.activeTab.id)
-    applyActiveTab(update.activeTab)
+    val chrome = mutableState.value.chromeState
+    applyActiveTab(update.activeTab, inlineExpandedLocations = chrome.inlineExpandedLocations,
+        inlineExpandedEntries = chrome.inlineExpandedEntries)
 }
 
 /**
@@ -124,7 +133,9 @@ internal fun DefaultPaneComponent.applyTabStackUpdate(update: PaneTabStackUpdate
  */
 internal fun DefaultPaneComponent.applyTabStackUpdate(update: PaneTabDetachUpdate) {
     navigateTabStack(update.tabs, update.activeTab.id)
-    applyActiveTab(update.activeTab)
+    val chrome = mutableState.value.chromeState
+    applyActiveTab(update.activeTab, inlineExpandedLocations = chrome.inlineExpandedLocations,
+        inlineExpandedEntries = chrome.inlineExpandedEntries)
 }
 
 /**

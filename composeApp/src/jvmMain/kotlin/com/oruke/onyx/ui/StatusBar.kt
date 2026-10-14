@@ -33,6 +33,7 @@ import onyx.composeapp.generated.resources.label_item_count
 import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_mode_gallery
 import onyx.composeapp.generated.resources.label_selected_size
+import onyx.composeapp.generated.resources.label_directory_refreshing
 
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
@@ -75,6 +76,10 @@ internal fun StatusBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             val status = activeState.statusInfo
+            if (activeState.activeTabState.refreshing) {
+                Text(stringResource(Res.string.label_directory_refreshing), fontSize = 11.sp,
+                    color = LocalOnyxPalette.current.mutedForeground)
+            }
             Text(
                 text = stringResource(
                     Res.string.label_directory_file_count,

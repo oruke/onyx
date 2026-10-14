@@ -108,6 +108,7 @@ internal fun rememberRootComponent(
                     commandLauncher = koin.get(),
                 ),
                 delegates = RootRuntimeDelegates(
+                    directoryStore = applicationRuntime.directories(koin.get(), koin.get()),
                     taskOrchestrator = applicationRuntime.taskOrchestrator,
                     clipboardManager = applicationRuntime.clipboardManager,
                     imageViewerController = imageViewerController,

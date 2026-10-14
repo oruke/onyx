@@ -3,6 +3,7 @@ package com.oruke.onyx.app.component
 import com.oruke.onyx.app.component.delegate.SelectionReducer
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.DirectoryChange
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import kotlinx.coroutines.launch
 
@@ -144,18 +145,20 @@ private fun DefaultPaneComponent.executeInlineEditOperation(tabId: String, opera
 }
 
 /**
- * 执行重命名命令并刷新标签。
+ * 执行重命名命令，把真实结果同步到共享目录并保留当前浏览状态。
  *
  * @param tabId 当前标签 ID。
  * @param operation 重命名操作。
  */
 private fun DefaultPaneComponent.executeRename(tabId: String, operation: InlineEditOperation.Rename) {
+    val origin = tab(tabId)?.tabState ?: return
     scope.launch {
         fileCommandService.rename(operation.entry, operation.targetName)
             .onSuccess { renamedEntry ->
                 onFileRenamed(operation.entry, renamedEntry)
-                clearOperationFeedback(tabId)
-                refreshActiveTab(tabId)
+                applyEntryMutation(tabId, origin, DirectoryChange(removed = listOf(operation.entry),
+                    upserted = listOf(renamedEntry), identityChanges = mapOf(operation.entry.id to renamedEntry.id)),
+                    renamedEntry, selectNew = false)
             }
             .onFailure { failure ->
                 updateFailure(tabId, PaneOperationFeedbackKind.RENAME_FAILED, failure.toI18nMessage())
@@ -164,17 +167,18 @@ private fun DefaultPaneComponent.executeRename(tabId: String, operation: InlineE
 }
 
 /**
- * 执行新建文件命令并刷新标签。
+ * 执行新建文件命令，把真实结果增量同步到共享目录。
  *
  * @param tabId 当前标签 ID。
  * @param operation 新建文件操作。
  */
 private fun DefaultPaneComponent.executeCreateFile(tabId: String, operation: InlineEditOperation.CreateFile) {
+    val origin = tab(tabId)?.tabState ?: return
     scope.launch {
         fileCommandService.createFile(operation.parentLocation, operation.name)
-            .onSuccess {
-                clearOperationFeedback(tabId)
-                refreshActiveTab(tabId)
+            .onSuccess { created ->
+                applyEntryMutation(tabId, origin, DirectoryChange(upserted = listOf(created)),
+                    created, selectNew = true)
             }
             .onFailure { failure ->
                 updateFailure(tabId, PaneOperationFeedbackKind.CREATE_FILE_FAILED, failure.toI18nMessage())
@@ -183,7 +187,7 @@ private fun DefaultPaneComponent.executeCreateFile(tabId: String, operation: Inl
 }
 
 /**
- * 执行新建目录命令并刷新标签。
+ * 执行新建目录命令，按真实目标更新共享目录并校验嵌套创建的父目录。
  *
  * @param tabId 当前标签 ID。
  * @param operation 新建目录操作。
@@ -192,11 +196,15 @@ private fun DefaultPaneComponent.executeCreateDirectory(
     tabId: String,
     operation: InlineEditOperation.CreateDirectory,
 ) {
+    val origin = tab(tabId)?.tabState ?: return
     scope.launch {
         fileCommandService.createDirectory(operation.parentLocation, operation.name)
-            .onSuccess {
-                clearOperationFeedback(tabId)
-                refreshActiveTab(tabId)
+            .onSuccess { created ->
+                val invalidated = if (created.parentLocation != operation.parentLocation) {
+                    setOf(operation.parentLocation)
+                } else emptySet()
+                applyEntryMutation(tabId, origin, DirectoryChange(upserted = listOf(created),
+                    invalidatedDirectories = invalidated), created, selectNew = true)
             }
             .onFailure { failure ->
                 updateFailure(tabId, PaneOperationFeedbackKind.CREATE_DIRECTORY_FAILED, failure.toI18nMessage())

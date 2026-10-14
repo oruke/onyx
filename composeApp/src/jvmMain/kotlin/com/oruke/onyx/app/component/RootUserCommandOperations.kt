@@ -13,6 +13,7 @@ internal fun DefaultRootComponent.executeUserCommand(intent: RootIntent.ExecuteU
     activatePane(intent.paneId)
     val command = settings.value.userCommands.firstOrNull { it.id == intent.id } ?: return
     val selection = intent.entries ?: selectedEntriesInPane(intent.paneId)
+    val affected = selection.mapNotNull { it.parentLocation }.toSet() + paneState(intent.paneId).location
     val invocation =
         dependencies.customization.commands.renderInvocation(command, paneState(intent.paneId).location, selection)
     scope.launch {
@@ -27,7 +28,7 @@ internal fun DefaultRootComponent.executeUserCommand(intent: RootIntent.ExecuteU
                         )
                     )
                 )
-                refreshAllPanes()
+                refreshDirectories(affected)
             }
             .onFailure(::showActivePaneOperationFailure)
     }

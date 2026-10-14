@@ -21,6 +21,8 @@ import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.DirectoryChange
+import com.oruke.onyx.app.component.PaneRemovalContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -32,18 +34,22 @@ import com.oruke.onyx.core.model.BatchRenameDraft
 /**
  * 文件操作委托回调集合，负责把操作结果同步回根组件和面板。
  *
- * @property onRefreshAllPanes 刷新所有面板的回调。
- * @property onRefreshPane 刷新指定面板的回调。
- * @property getPaneState 获取指定面板状态的回调。
- * @property onBatchRenameSucceeded 批量重命名成功后的历史记录回调。
- * @property onTrashDeleteSucceeded 回收站删除成功后的历史记录回调。
  */
 internal data class FileActionDelegateCallbacks(
-    val onRefreshAllPanes: () -> Unit,
-    val onRefreshPane: (PaneId) -> Unit,
+    /** 发布已确认的文件变化。 */
+    val onDirectoryChange: (DirectoryChange) -> Unit,
+    /** 校验部分失败或不确定的受影响目录。 */
+    val onRefreshDirectories: (Set<String>) -> Unit,
+    /** 读取指定面板状态。 */
     val getPaneState: (PaneId) -> PaneState,
+    /** 成功的批量重命名记录。 */
     val onBatchRenameSucceeded: (List<Pair<VFile, String>>) -> Unit = {},
+    /** 可恢复的删除记录。 */
     val onTrashDeleteSucceeded: (List<TrashMoveRecord>) -> Unit = {},
+    /** 捕获一次移除命令的用户上下文。 */
+    val onRemovalStarted: (List<VFile>) -> PaneRemovalContext? = { null },
+    /** 最终结果到达后续接一次选择。 */
+    val onRemovalFinished: (PaneRemovalContext?, Set<String>, Boolean) -> Unit = { _, _, _ -> },
 )
 
 /**
@@ -79,6 +85,9 @@ internal class FileActionDelegate(
             return
         }
         val trashRecords = mutableListOf<TrashMoveRecord>()
+        val context = callbacks.onRemovalStarted(selectedEntries)
+        val removedIds = mutableSetOf<String>()
+        var verify = false
 
         val taskId = UUID.randomUUID().toString()
         taskOrchestrator.appendTask(
@@ -110,6 +119,10 @@ internal class FileActionDelegate(
                     )
                 ).collect { progress ->
                     trashRecords += progress.trashRecords
+                    progress.directoryChange?.let { change ->
+                        removedIds += change.removed.map { it.id }
+                        callbacks.onDirectoryChange(change)
+                    }
                     applyTaskProgress(taskId, progress)
                 }
 
@@ -133,9 +146,10 @@ internal class FileActionDelegate(
                     processedCount = selectedEntries.size,
                 )
                 callbacks.onTrashDeleteSucceeded(trashRecords)
-                callbacks.onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (failure: CancellationException) {
+                callbacks.onTrashDeleteSucceeded(trashRecords)
+                verify = true
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -143,9 +157,10 @@ internal class FileActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
-                callbacks.onRefreshAllPanes()
+                callbacks.onRefreshDirectories(selectedEntries.mapNotNull { it.parentLocation }.toSet())
                 throw failure
             } catch (failure: Exception) {
+                verify = true
                 callbacks.onTrashDeleteSucceeded(trashRecords)
                 OnyxLogger.error("FileActionDelegate", "删除失败", failure)
                 taskOrchestrator.unregisterJob(taskId)
@@ -155,7 +170,9 @@ internal class FileActionDelegate(
                     detail = failure.toI18nMessage(MessageKey.MSG_DELETE_FAILED),
                     progress = null,
                 )
-                callbacks.onRefreshAllPanes()
+                callbacks.onRefreshDirectories(selectedEntries.mapNotNull { it.parentLocation }.toSet())
+            } finally {
+                callbacks.onRemovalFinished(context, removedIds, verify)
             }
         }
     }
@@ -175,11 +192,12 @@ internal class FileActionDelegate(
     }
 
     /**
-     * 执行创建目录。
+     * 创建多个目录并按真实结果同步内容，只有嵌套创建需要额外校验中间父目录。
+     * @param parentLocation 命令发起时的父目录。
+     * @param paths 已解析并校验的相对目录路径。
      */
     @Suppress("TooGenericExceptionCaught") // 文件任务边界统一将 Provider 异常写入任务中心。
     fun executeCreateDirectories(
-        paneId: PaneId,
         parentLocation: String,
         paths: List<String>,
     ) {
@@ -208,12 +226,15 @@ internal class FileActionDelegate(
                     ),
                     progress = 0f,
                 )
+                var needsParentVerification = false
                 paths.forEachIndexed { index, path ->
                     ensureActive()
-                    fileCommandService.createDirectory(
+                    val created = fileCommandService.createDirectory(
                         parentLocation = parentLocation,
                         name = path,
                     ).getOrThrow()
+                    if (created.parentLocation != parentLocation) needsParentVerification = true
+                    callbacks.onDirectoryChange(DirectoryChange(upserted = listOf(created)))
                     taskOrchestrator.updateTask(
                         taskId = taskId,
                         status = BackgroundTaskStatus.RUNNING,
@@ -229,7 +250,7 @@ internal class FileActionDelegate(
                     progress = 1f,
                     processedCount = paths.size,
                 )
-                callbacks.onRefreshPane(paneId)
+                if (needsParentVerification) callbacks.onRefreshDirectories(setOf(parentLocation))
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (failure: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
@@ -239,7 +260,7 @@ internal class FileActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
-                callbacks.onRefreshPane(paneId)
+                callbacks.onRefreshDirectories(setOf(parentLocation))
                 throw failure
             } catch (failure: Exception) {
                 OnyxLogger.error("FileActionDelegate", "创建目录失败", failure)
@@ -250,7 +271,7 @@ internal class FileActionDelegate(
                     detail = failure.toI18nMessage(MessageKey.MSG_CREATE_FOLDER_FAILED),
                     progress = null,
                 )
-                callbacks.onRefreshPane(paneId)
+                callbacks.onRefreshDirectories(setOf(parentLocation))
             }
         }
     }
@@ -285,6 +306,7 @@ internal class FileActionDelegate(
                 batchRenameUseCase.execute(
                     BatchRenameUseCase.BatchRenameRequest(renameMap = renameMap)
                 ).collect { progress ->
+                    progress.directoryChange?.let(callbacks.onDirectoryChange)
                     applyTaskProgress(taskId, progress)
                     // 同步更新对话框进度
                     (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
@@ -314,7 +336,6 @@ internal class FileActionDelegate(
                     )
                 }
                 callbacks.onBatchRenameSucceeded(renameMap)
-                callbacks.onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
                 // 短暂展示完成状态后自动重置为编辑模式
                 delay(BATCH_RENAME_COMPLETION_RESET_DELAY_MS)
@@ -332,6 +353,7 @@ internal class FileActionDelegate(
                         errorMessage = I18nMessage(MessageKey.MSG_CANCELLED),
                     )
                 }
+                callbacks.onRefreshDirectories(renameMap.mapNotNull { it.first.parentLocation }.toSet())
                 throw failure
             } catch (e: Exception) {
                 OnyxLogger.error("FileActionDelegate", "批量重命名失败", e)
@@ -347,7 +369,7 @@ internal class FileActionDelegate(
                         errorMessage = e.toI18nMessage(),
                     )
                 }
-                callbacks.onRefreshAllPanes()
+                callbacks.onRefreshDirectories(renameMap.mapNotNull { it.first.parentLocation }.toSet())
             }
         }
     }

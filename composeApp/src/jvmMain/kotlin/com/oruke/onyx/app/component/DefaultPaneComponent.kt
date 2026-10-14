@@ -70,11 +70,29 @@ internal class DefaultPaneComponent(
     internal val onRemoteAuthenticationRequired: (PaneId, VfsProviderError) -> Unit = { _, _ -> },
     /** 文件重命名完成后的跨组件通知。 */
     internal val onFileRenamed: (source: VFile, renamed: VFile) -> Unit = { _, _ -> },
+    /** 应用级共享目录数据，直接构造面板的测试可使用隔离实例。 */
+    directoryStore: com.oruke.onyx.shared.filesystem.DirectoryContentStore? = null,
 ) : PaneComponent, ComponentContext by componentContext {
     /** 与组件生命周期绑定的主线程协程作用域。 */
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { value ->
         lifecycle.doOnDestroy { value.cancel() }
     }
+
+    /** 共享目录内容与按引用计数管理的观察能力。 */
+    internal val directories = directoryStore ?: com.oruke.onyx.shared.filesystem.DirectoryContentStore(
+        fileRepository, scope, com.oruke.onyx.app.filesystem.JvmDirectoryObservationService(pathService),
+    )
+
+    /** 每个标签独立的访问历史和视口记录。 */
+    internal val navigationController = com.oruke.onyx.app.component.delegate.PaneNavigationController {
+        directories.cached(it)
+    }
+
+    /** 各标签离开时的内联展开位置及深度。 */
+    internal val tabExpansions = mutableMapOf<String, Map<String, Int>>()
+
+    /** 当前展开目录的观察与加载任务。 */
+    internal val inlineDirectoryJobs = mutableMapOf<String, Job>()
 
     /** 启动时创建的首个标签。 */
     private val initialTab = createTabState(
@@ -123,22 +141,6 @@ internal class DefaultPaneComponent(
         },
     )
 
-    /** 活动目录文件系统监听控制器。 */
-    internal val fileWatcherController = PaneFileWatcherController(
-        scope = scope,
-        onChanged = { location ->
-            activeTab()?.takeIf { tab -> tab.location == location }?.let { tab ->
-                loadTab(tab.id, tab.location)
-            }
-        },
-        onWatchDegraded = { location, failure ->
-            activeTab()?.takeIf { tab -> tab.location == location }?.let { tab ->
-                updateFailure(tab.id, com.oruke.onyx.core.model.PaneOperationFeedbackKind.WATCH_DEGRADED,
-                    failure.toI18nMessage())
-            }
-        },
-    )
-
     /** 每个标签当前执行的目录加载任务。 */
     internal val tabLoadJobs = mutableMapOf<String, Job>()
 
@@ -147,7 +149,6 @@ internal class DefaultPaneComponent(
 
     init {
         refresh()
-        fileWatcherController.start(mutableState.value.location)
     }
 
     /**
@@ -165,7 +166,7 @@ internal class DefaultPaneComponent(
      * @param tabId 标签 ID。
      * @return 被移出的标签快照。
      */
-    override fun detachTab(tabId: String): TabSnapshot? = detachPaneTab(tabId)
+    override fun detachTab(tabId: String): PaneTabTransfer? = detachPaneTab(tabId)
 
     /**
      * 将标签快照插入当前面板。
@@ -173,7 +174,7 @@ internal class DefaultPaneComponent(
      * @param tabSnapshot 标签快照。
      * @param targetIndex 目标索引。
      */
-    override fun attachTab(tabSnapshot: TabSnapshot, targetIndex: Int) {
+    override fun attachTab(tabSnapshot: PaneTabTransfer, targetIndex: Int) {
         attachPaneTab(tabSnapshot, targetIndex)
     }
 
@@ -184,5 +185,21 @@ internal class DefaultPaneComponent(
      */
     override fun restoreSession(snapshot: PaneSessionSnapshot) {
         restorePaneSession(snapshot)
+    }
+
+    /**
+     * 通过组件状态捕获移除命令上下文。
+     * @param entries 本次目标条目。
+     * @return 匹配当前选择的访问上下文。
+     */
+    override fun captureRemoval(entries: List<VFile>): PaneRemovalContext? = captureRemovalContext(entries)
+
+    /**
+     * 把确认的移除结果交给浏览状态续接流程。
+     * @param context 发起上下文。
+     * @param removedIds 已消失目标。
+     */
+    override fun completeRemoval(context: PaneRemovalContext, removedIds: Set<String>) {
+        applyRemovalCompletion(context, removedIds)
     }
 }

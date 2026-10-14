@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 internal class RootFileOperationHistoryFacade(
     private val scope: CoroutineScope,
     private val delegate: FileOperationHistoryDelegate,
-    private val refreshAllPanes: () -> Unit,
+    /** 校验本次历史操作实际触及的目录。 */
+    private val refreshDirectories: (Set<String>) -> Unit,
     private val showOperationFailure: (Throwable) -> Unit,
     private val activePane: () -> PaneId,
     private val paneState: (PaneId) -> PaneState,
@@ -31,13 +32,12 @@ internal class RootFileOperationHistoryFacade(
      */
     fun undoLastFileOperation() {
         scope.launch {
+            val affected = delegate.affectedDirectories(redo = false)
             delegate.undoLast()
-                .onSuccess {
-                    refreshAllPanes()
-                }
                 .onFailure { failure ->
                     showOperationFailure(failure)
                 }
+            refreshDirectories(affected)
         }
     }
 
@@ -48,13 +48,12 @@ internal class RootFileOperationHistoryFacade(
      */
     fun redoLastFileOperation() {
         scope.launch {
+            val affected = delegate.affectedDirectories(redo = true)
             delegate.redoLast()
-                .onSuccess {
-                    refreshAllPanes()
-                }
                 .onFailure { failure ->
                     showOperationFailure(failure)
                 }
+            refreshDirectories(affected)
         }
     }
 

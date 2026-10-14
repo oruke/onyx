@@ -39,6 +39,14 @@ internal data class TabState(
     val galleryItemSizeDp: Int,
     val entriesState: PaneEntriesState,
     val pendingScrollToEntryId: String? = null,
+    /** 当前访问的浏览状态，目录刷新不会重置。 */
+    val browserState: PaneBrowserState = PaneBrowserState(),
+    /** 已有快照正在后台校验，列表继续显示。 */
+    val refreshing: Boolean = false,
+    /** 后台更新失败详情，旧列表保持可见。 */
+    val directoryError: I18nMessage? = null,
+    /** 观察能力降级原因，后台轮询仍然可用。 */
+    val directoryObservationError: I18nMessage? = null,
 )
 
 /**
@@ -100,6 +108,10 @@ internal data class PaneTabState(
     val allEntries: List<VFile>,
     val backStack: List<String>,
     val forwardStack: List<String>,
+    /** 与后退路径对应的运行时访问快照，不落盘。 */
+    val backVisits: List<PaneVisitSnapshot> = emptyList(),
+    /** 与前进路径对应的运行时访问快照，不落盘。 */
+    val forwardVisits: List<PaneVisitSnapshot> = emptyList(),
 ) {
     val location: String get() = tabState.location
     val canGoBack: Boolean get() = tabState.canGoBack
@@ -182,6 +194,20 @@ internal data class InlineExpandedEntry(
 )
 
 internal sealed interface PaneIntent {
+    /** 当前渲染访问的视口变化，不能更新另一个标签或访问。 */
+    data class ViewportChanged(
+        /** 事件所属标签。 */
+        val tabId: String,
+        /** 事件所属访问。 */
+        val visitId: Long,
+        /** 事件所属视图。 */
+        val mode: ViewMode,
+        /** 最新视口锚点。 */
+        val anchor: PaneViewportAnchor,
+        /** 是否由用户滚动产生，用于使迟到自动定位失效。 */
+        val userScrolling: Boolean,
+    ) : PaneIntent
+
     data object Refresh : PaneIntent
 
     data object GoBack : PaneIntent
@@ -329,14 +355,28 @@ internal interface PaneComponent {
 
     fun dispatch(intent: PaneIntent)
 
-    fun detachTab(tabId: String): TabSnapshot?
+    fun detachTab(tabId: String): PaneTabTransfer?
 
     fun attachTab(
-        tabSnapshot: TabSnapshot,
+        tabSnapshot: PaneTabTransfer,
         targetIndex: Int,
     )
 
     fun restoreSession(snapshot: PaneSessionSnapshot)
+
+    /**
+     * 捕获删除或移动的发起访问；目标不属于当前选择时不产生自动续接。
+     * @param entries 已确定的命令目标。
+     * @return 可匹配交互版本的上下文，当前访问不匹配时为空。
+     */
+    fun captureRemoval(entries: List<VFile>): PaneRemovalContext?
+
+    /**
+     * 在命令最终完成时续接一次选择，不影响后续用户操作。
+     * @param context 发起上下文。
+     * @param removedIds 已确认消失的命令目标身份。
+     */
+    fun completeRemoval(context: PaneRemovalContext, removedIds: Set<String>)
 }
 
 internal fun PaneComponent.tabStatesInDisplayOrder(): List<PaneTabState> {

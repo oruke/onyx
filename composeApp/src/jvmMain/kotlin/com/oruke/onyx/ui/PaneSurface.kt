@@ -287,6 +287,7 @@ private fun ColumnScope.PaneSurfaceContent(runtime: PaneSurfaceRuntime, paneDrop
     PaneNavigationToolbar(runtime)
     Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
     PaneOperationFeedback(runtime)
+    PaneDirectorySyncStatus(runtime)
     PaneFileArea(runtime, paneDropBackground, Modifier.weight(1f))
 }
 

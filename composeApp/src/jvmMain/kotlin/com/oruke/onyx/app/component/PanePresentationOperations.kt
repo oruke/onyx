@@ -5,10 +5,14 @@ import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.ViewMode
 
+/**
+ * 切换文件视图，先捕获高频视口，使详情与画廊分别恢复自己的浏览位置。
+ * @param mode 目标文件视图。
+ */
 internal fun DefaultPaneComponent.setViewMode(mode: ViewMode) {
     val tab = activeTab() ?: return
     updateTab(tab.id) { currentTab ->
-        currentTab.withViewModeState(mode)
+        navigationController.capture(currentTab).withViewModeState(mode)
     }
 }
 

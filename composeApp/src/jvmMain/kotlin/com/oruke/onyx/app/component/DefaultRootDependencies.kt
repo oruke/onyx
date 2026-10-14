@@ -120,6 +120,8 @@ internal data class RootSearchDependencies(
 
 /** 根组件运行期共享委托。 */
 internal data class RootRuntimeDelegates(
+    /** 应用所有窗口共享的目录内容；测试未注入时由根组件建立隔离实例。 */
+    val directoryStore: com.oruke.onyx.shared.filesystem.DirectoryContentStore? = null,
     /** 后台任务编排器。 */
     val taskOrchestrator: TaskOrchestrator,
     /** 文件剪贴板状态管理器。 */

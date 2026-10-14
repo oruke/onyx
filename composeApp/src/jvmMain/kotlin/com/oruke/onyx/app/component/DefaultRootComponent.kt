@@ -188,6 +188,12 @@ internal class DefaultRootComponent(
         lifecycle.doOnDestroy { value.cancel() }
     }
 
+    /** 独立根组件的隔离目录存储，生产窗口复用应用级注入实例。 */
+    internal val isolatedDirectoryStore by lazy {
+        com.oruke.onyx.shared.filesystem.DirectoryContentStore(fileRepository, scope,
+            com.oruke.onyx.app.filesystem.JvmDirectoryObservationService(pathService))
+    }
+
     /** 主面板组件。 */
     override val primaryPane: PaneComponent = createPaneComponent(PaneId.PRIMARY, "primaryPane")
 
@@ -234,7 +240,10 @@ internal class DefaultRootComponent(
         dialogState = dialogState,
         pathService = pathService,
         providerRegistry = providerRegistry,
-        onRefreshAllPanes = ::refreshAllPanes,
+        onDirectoryChange = ::applyDirectoryChange,
+        onRefreshDirectories = ::refreshDirectories,
+        onRemovalStarted = ::beginRemoval,
+        onRemovalFinished = ::finishRemoval,
         onMoveSucceeded = ::recordMoveOperation,
         onCopySucceeded = { entries, target ->
             fileOperationHistoryDelegate.recordCopy(entries, target)
@@ -248,14 +257,14 @@ internal class DefaultRootComponent(
         archiveService = archiveService,
         taskOrchestrator = taskOrchestrator,
         dialogState = dialogState,
-        onRefreshAllPanes = ::refreshAllPanes,
+        onRefreshDirectories = ::refreshDirectories,
     )
 
     /** ZIP 压缩任务委托。 */
     internal val archiveCompressionDelegate = ArchiveCompressionDelegate(
         zipArchiveCreationService = zipArchiveCreationService,
         taskOrchestrator = taskOrchestrator,
-        onRefreshAllPanes = ::refreshAllPanes,
+        onRefreshDirectories = ::refreshDirectories,
     )
 
     /** 文件创建、删除与批量重命名委托。 */
@@ -265,8 +274,10 @@ internal class DefaultRootComponent(
         taskOrchestrator = taskOrchestrator,
         dialogState = dialogState,
         callbacks = FileActionDelegateCallbacks(
-            onRefreshAllPanes = ::refreshAllPanes,
-            onRefreshPane = { paneId -> paneComponent(paneId).refresh() },
+            onDirectoryChange = ::applyDirectoryChange,
+            onRefreshDirectories = ::refreshDirectories,
+            onRemovalStarted = ::beginRemoval,
+            onRemovalFinished = ::finishRemoval,
             getPaneState = ::paneState,
             onBatchRenameSucceeded = ::recordBatchRenameOperation,
             onTrashDeleteSucceeded = ::recordTrashDeleteOperation,
@@ -285,7 +296,7 @@ internal class DefaultRootComponent(
     internal val fileOperationHistoryFacade = RootFileOperationHistoryFacade(
         scope = scope,
         delegate = fileOperationHistoryDelegate,
-        refreshAllPanes = ::refreshAllPanes,
+        refreshDirectories = ::refreshDirectories,
         showOperationFailure = ::showActivePaneOperationFailure,
         activePane = { activePane.value },
         paneState = ::paneState,
@@ -337,6 +348,7 @@ internal class DefaultRootComponent(
         paneState = ::paneState,
         paneComponent = ::paneComponent,
         openLocationInActivePane = ::openLocationInActivePane,
+        onConnectionChanged = { rootDirectoryStore.resetConnection(it) },
     )
 
     /** 根状态的可变来源。 */
@@ -475,13 +487,13 @@ internal class DefaultRootComponent(
         },
         combine(
             dialogState,
-            clipboardManager.clipboard,
+            clipboardManager.availability,
             taskOrchestrator.tasks,
             combine(searchDelegate.searchState, quickOpenDelegate.searchState) { search, quick -> search to quick },
             fileOperationHistoryDelegate.state,
         ) { dialog, clipboard, tasks, search, history ->
             RuntimeContextSlice(
-                dialog, clipboard != null, tasks, search.first, search.second, history.toRootOperationHistoryState(),
+                dialog, clipboard, tasks, search.first, search.second, history.toRootOperationHistoryState(),
             )
         },
     ) { sidebar, runtime ->
@@ -523,6 +535,7 @@ private fun DefaultRootComponent.createPaneComponent(paneId: PaneId, childKey: S
         fileRepository = fileRepository,
         fileCommandService = fileCommandService,
         textClipboardService = textClipboardService,
+        directoryStore = rootDirectoryStore,
         externalOpenService = externalOpenService,
         pathService = pathService,
         entryNameSuggestionService = entryNameSuggestionService,

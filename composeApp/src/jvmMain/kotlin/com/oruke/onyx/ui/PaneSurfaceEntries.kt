@@ -126,6 +126,8 @@ private fun PaneSurfaceRuntime.toPaneEntriesViewModel(): PaneEntriesViewModel {
         inlineExpandedEntries = state.inlineExpandedEntries,
         pendingScrollToEntryId = state.pendingScrollToEntryId,
         fileLabels = model.fileLabels,
+        tabId = state.activeTabId,
+        browserState = state.activeTabState.browserState,
     )
 }
 
@@ -136,6 +138,9 @@ private fun PaneSurfaceRuntime.toPaneEntriesViewModel(): PaneEntriesViewModel {
  * @return 文件条目动作集合。
  */
 private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): PaneEntriesActions {
+    val tabId = state.activeTabId
+    val visitId = state.activeTabState.browserState.visitId
+    val mode = state.viewMode
     return PaneEntriesActions(
         onActivate = {
             model.onActivate()
@@ -170,6 +175,9 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
         },
         onConsumeScroll = { dispatch(PaneIntent.ConsumePendingScroll) },
         onBlankAreaContextMenu = ::showBlankContextMenu,
+        onViewportChanged = { anchor, scrolling ->
+            dispatch(PaneIntent.ViewportChanged(tabId, visitId, mode, anchor, scrolling))
+        },
     )
 }
 

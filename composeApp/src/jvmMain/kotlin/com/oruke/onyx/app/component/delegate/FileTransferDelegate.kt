@@ -1,67 +1,71 @@
 package com.oruke.onyx.app.component.delegate
 
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.core.model.FileTransferOperation
+import com.oruke.onyx.app.component.PaneRemovalContext
 import com.oruke.onyx.app.component.RootDialogState
+import com.oruke.onyx.app.filesystem.VfsPathService
+import com.oruke.onyx.core.model.DirectoryChange
+import com.oruke.onyx.core.model.FileTransferOperation
+import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
-import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
-import com.oruke.onyx.vfs.api.VfsProtocol
-import com.oruke.onyx.shared.filesystem.toI18nMessage
-import com.oruke.onyx.shared.usecase.FileTransferUseCase
-import com.oruke.onyx.shared.usecase.TaskProgress
-import com.oruke.onyx.shared.usecase.buildTransferTaskDetail
-import com.oruke.onyx.core.model.BackgroundTask
-import com.oruke.onyx.core.model.BackgroundTaskKind
-import com.oruke.onyx.core.model.BackgroundTaskStatus
-import com.oruke.onyx.core.model.I18nMessage
-import com.oruke.onyx.core.model.MessageKey
-import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import java.util.UUID
 
-/** 文件任务暂停期间检查恢复状态的轮询间隔。 */
-private const val TRANSFER_PAUSE_POLL_INTERVAL_MS = 200L
-
-/**
- * 文件传输委托 — 负责复制 / 移动 / 冲突检测 / 进度追踪。
- *
- * 从 DefaultRootComponent 剥离的纯业务逻辑，不直接持有 UI 组件引用。
- * 通过回调 lambda 与宿主组件交互（对话框、面板刷新等）。
- */
+/** 处理传输请求预检和冲突决策，通过独立任务委托执行已确定的文件操作。 */
 internal class FileTransferDelegate(
+    /** 窗口请求预检作用域。 */
     private val scope: CoroutineScope,
-    private val fileCommandService: FileCommandService,
+    /** 执行真实文件操作的统一命令能力。 */
+    fileCommandService: FileCommandService,
+    /** 冲突预检使用的统一目录仓储。 */
     private val fileRepository: FileRepository,
-    private val taskOrchestrator: TaskOrchestrator,
+    /** 应用级后台任务队列。 */
+    taskOrchestrator: TaskOrchestrator,
+    /** 捕获原始载荷及完成后条件清理的剪贴板。 */
     private val clipboardManager: ClipboardManager,
+    /** 窗口冲突对话框状态。 */
     private val dialogState: MutableStateFlow<RootDialogState?>,
+    /** 传输路径关系判断能力。 */
     private val pathService: VfsPathService,
-    private val providerRegistry: VfsProviderRegistry,
-    private val onRefreshAllPanes: () -> Unit,
-    private val onMoveSucceeded: (entries: List<VFile>, targetDirectoryLocation: String) -> Unit = { _, _ -> },
+    /** 协议能力注册表。 */
+    providerRegistry: VfsProviderRegistry,
+    /** 已确认的目录增删结果。 */
+    onDirectoryChange: (DirectoryChange) -> Unit,
+    /** 不确定或部分失败目录的校验入口。 */
+    onRefreshDirectories: (Set<String>) -> Unit = {},
+    /** 只捕获本窗口匹配的发起访问。 */
+    onRemovalStarted: (List<VFile>) -> PaneRemovalContext? = { null },
+    /** 命令最终完成后的选择续接。 */
+    onRemovalFinished: (PaneRemovalContext?, Set<String>, Boolean) -> Unit = { _, _, _ -> },
+    /** 无冲突移动的历史登记入口。 */
+    onMoveSucceeded: (List<VFile>, String) -> Unit = { _, _ -> },
     /** 无冲突复制完成后同步登记历史快照。 */
-    private val onCopySucceeded: suspend (List<VFile>, String) -> Unit = { _, _ -> },
+    onCopySucceeded: suspend (List<VFile>, String) -> Unit = { _, _ -> },
     /** 冲突或部分完成导致无法可靠反向执行时，停止暴露旧历史。 */
-    private val onHistoryInvalidated: () -> Unit = {},
+    onHistoryInvalidated: () -> Unit = {},
 ) {
+    /** 冲突待决期间的原始请求；不会被当前新选择或剪贴板覆盖。 */
     var pendingTransferRequest: PendingTransferRequest? = null
         private set
-    private val transferUseCase = FileTransferUseCase(fileCommandService, providerRegistry)
-
-    /** 提交后的可逆历史登记入口。 */
-    private val historyRecorder = TransferHistoryRecordDelegate(onMoveSucceeded, onCopySucceeded, onHistoryInvalidated)
+    /** 文件任务、真实结果及完成状态的独立编排入口。 */
+    private val transferTasks = FileTransferTaskDelegate(
+        fileCommandService, taskOrchestrator, clipboardManager, providerRegistry, onDirectoryChange,
+        onRefreshDirectories, onRemovalStarted, onRemovalFinished, onMoveSucceeded, onCopySucceeded,
+        onHistoryInvalidated,
+    )
 
     /**
      * 请求文件传输 — 检测冲突后决定直接执行或弹出冲突对话框。
+     * @param entries 本次明确请求传输的条目。
+     * @param targetDirectoryLocation 用户发起操作时的目标目录。
+     * @param operation 复制、移动或解压操作。
+     * @param clearClipboardOnSuccess 是否在成功后清理本次读取的剪切载荷。
+     * @return 无返回值，冲突与失败通过对话框或任务反馈。
      */
     @Suppress("TooGenericExceptionCaught") // 冲突预检边界统一将 Provider 异常转换为失败任务。
     fun requestTransferEntriesToDirectory(
@@ -76,19 +80,23 @@ internal class FileTransferDelegate(
         if (entries.any { entry -> pathService.isSameOrChildOf(targetDirectoryLocation, entry.location) }) {
             return
         }
+        val clipboardToClear = clipboardManager.clipboard.value.takeIf { clearClipboardOnSuccess }
         scope.launch {
             val conflictingEntries = try {
                 detectConflictingEntries(
                     entries = entries,
                     targetDirectoryLocation = targetDirectoryLocation,
                 )
+            } catch (failure: CancellationException) {
+                throw failure
             } catch (failure: Exception) {
                 OnyxLogger.error("FileTransferDelegate", "冲突检测失败 (${operation.name})", failure)
-                appendFailedTransferTask(
+                transferTasks.recordPreflightFailure(
                     entries = entries,
                     targetDirectoryLocation = targetDirectoryLocation,
                     operation = operation,
                     failure = failure,
+                    retry = { requestTransferEntriesToDirectory(entries, targetDirectoryLocation, operation, false) },
                 )
                 return@launch
             }
@@ -97,7 +105,7 @@ internal class FileTransferDelegate(
                     entries = entries,
                     targetDirectoryLocation = targetDirectoryLocation,
                     operation = operation,
-                    clearClipboardOnSuccess = clearClipboardOnSuccess,
+                    clipboardToClear = clipboardToClear,
                     conflictingEntries = conflictingEntries,
                     resolvedStrategies = emptyMap(),
                     nextConflictIndex = 0,
@@ -112,11 +120,11 @@ internal class FileTransferDelegate(
                 )
                 return@launch
             }
-            launchTransferTask(
+            transferTasks.launch(
                 entries = entries,
                 targetDirectoryLocation = targetDirectoryLocation,
                 operation = operation,
-                clearClipboardOnSuccess = clearClipboardOnSuccess,
+                clipboardToClear = clipboardToClear,
                 conflictStrategies = emptyMap(),
             )
         }
@@ -124,6 +132,8 @@ internal class FileTransferDelegate(
 
     /**
      * 解决单个冲突条目，或应用到所有后续冲突。
+     * @param strategy 当前选择的冲突策略。
+     * @param applyToAll 是否应用到后续全部冲突。
      */
     fun resolveConflict(
         strategy: TransferConflictStrategy,
@@ -188,11 +198,11 @@ internal class FileTransferDelegate(
     ) {
         pendingTransferRequest = null
         dialogState.value = null
-        launchTransferTask(
+        transferTasks.launch(
             entries = request.entries,
             targetDirectoryLocation = request.targetDirectoryLocation,
             operation = request.operation,
-            clearClipboardOnSuccess = request.clearClipboardOnSuccess,
+            clipboardToClear = request.clipboardToClear,
             conflictStrategies = strategies,
         )
     }
@@ -231,129 +241,10 @@ internal class FileTransferDelegate(
     }
 
     /**
-     * 启动文件传输后台任务。
-     */
-    @Suppress("TooGenericExceptionCaught") // 传输任务边界统一将 Provider 异常写入任务中心。
-    private fun launchTransferTask(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        operation: FileTransferOperation,
-        clearClipboardOnSuccess: Boolean,
-        conflictStrategies: Map<String, TransferConflictStrategy>,
-    ) {
-        if (entries.isEmpty()) return
-
-        val taskId = UUID.randomUUID().toString()
-        val taskKind = taskKindFor(operation)
-        val pauseFlag = taskOrchestrator.getOrCreatePauseFlag(taskId)
-        val startTime = System.currentTimeMillis()
-        val initialTotalBytes = entries.sumOf { it.sizeBytes ?: 0L }
-
-        taskOrchestrator.appendTask(
-            BackgroundTask(
-                id = taskId,
-                kind = taskKind,
-                title = taskTitleFor(operation, entries.size),
-                status = BackgroundTaskStatus.QUEUED,
-                canPause = canPauseTransfer(entries, targetDirectoryLocation),
-                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
-                progress = 0f,
-                totalCount = entries.size,
-                totalBytes = initialTotalBytes,
-                startTimeMillis = startTime,
-            )
-        )
-        taskOrchestrator.registerRetryHandler(taskId) {
-            launchTransferTask(
-                entries = entries,
-                targetDirectoryLocation = targetDirectoryLocation,
-                operation = operation,
-                clearClipboardOnSuccess = clearClipboardOnSuccess,
-                conflictStrategies = conflictStrategies,
-            )
-        }
-
-        taskOrchestrator.launchQueuedTask(taskId) {
-            try {
-                transferUseCase.execute(
-                    request = FileTransferUseCase.FileTransferRequest(
-                        entries = entries,
-                        targetDirectoryLocation = targetDirectoryLocation,
-                        operation = operation,
-                        conflictStrategies = conflictStrategies,
-                    ),
-                    awaitReady = {
-                        while (pauseFlag.value) {
-                            ensureActive()
-                            delay(TRANSFER_PAUSE_POLL_INTERVAL_MS)
-                        }
-                    },
-                    isPaused = { pauseFlag.value },
-                ).collect { progress ->
-                    applyTaskProgress(taskId, progress)
-                }
-
-                // 在任务显示完成前建立撤销记录，避免用户立即撤销时误操作上一条历史。
-                historyRecorder.record(operation, entries, targetDirectoryLocation, conflictStrategies)
-                taskOrchestrator.unregisterJob(taskId)
-                val completedBytes = taskOrchestrator.tasks.value
-                    .firstOrNull { task -> task.id == taskId }
-                    ?.totalBytes
-                    ?: entries.sumOf { entry -> entry.sizeBytes ?: 0L }
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = when (operation) {
-                        FileTransferOperation.COPY ->
-                            I18nMessage(MessageKey.MSG_COPIED_ITEMS, entries.size, targetDirectoryLocation)
-
-                        FileTransferOperation.MOVE ->
-                            I18nMessage(MessageKey.MSG_MOVED_ITEMS, entries.size, targetDirectoryLocation)
-
-                        FileTransferOperation.EXTRACT ->
-                            I18nMessage(MessageKey.MSG_EXTRACTED_ITEMS, entries.size, targetDirectoryLocation)
-                    },
-                    progress = 1f,
-                    processedCount = entries.size,
-                    processedBytes = completedBytes,
-                )
-                taskOrchestrator.updateTaskFields(taskId) { task -> task.copy(errors = emptyList()) }
-                if (clearClipboardOnSuccess) {
-                    clipboardManager.clear()
-                }
-                onRefreshAllPanes()
-                taskOrchestrator.scheduleAutoCleanup(taskId)
-            } catch (failure: CancellationException) {
-                onHistoryInvalidated()
-                taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(MessageKey.MSG_CANCELLED),
-                    progress = null,
-                )
-                onRefreshAllPanes()
-                throw failure
-            } catch (failure: Exception) {
-                onHistoryInvalidated()
-                OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
-                taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.FAILED,
-                    detail = failure.toTransferFailureMessage(operation),
-                    progress = null,
-                )
-                taskOrchestrator.updateTaskFields(taskId) { task ->
-                    task.copy(errors = failure.toTaskErrors(entries, targetDirectoryLocation))
-                }
-                onRefreshAllPanes()
-            }
-        }
-    }
-
-    /**
      * 检测传输目标目录中已存在的同名条目。
+     * @param entries 原始传输条目。
+     * @param targetDirectoryLocation 目标目录。
+     * @return 目标目录已包含同名内容的源条目。
      */
     private suspend fun detectConflictingEntries(
         entries: List<VFile>,
@@ -365,124 +256,21 @@ internal class FileTransferDelegate(
         return entries.filter { entry -> existingNames.contains(entry.name) }
     }
 
-    private fun applyTaskProgress(
-        taskId: String,
-        progress: TaskProgress,
-    ) {
-        taskOrchestrator.updateTask(
-            taskId = taskId,
-            status = progress.status,
-            detail = progress.detail,
-            progress = progress.progress,
-            processedCount = progress.processedCount,
-            processedBytes = progress.processedBytes,
-            totalBytes = progress.totalBytes,
-            bytesPerSecond = progress.bytesPerSecond,
-            estimatedRemainingSeconds = progress.estimatedRemainingSeconds,
-        )
-        progress.currentFileName?.let { fileName ->
-            taskOrchestrator.updateTaskFields(taskId) { task ->
-                task.copy(currentFileName = fileName)
-            }
-        }
-    }
-
-    private fun appendFailedTransferTask(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-        operation: FileTransferOperation,
-        failure: Throwable,
-    ) {
-        val taskId = UUID.randomUUID().toString()
-        taskOrchestrator.appendTask(
-            BackgroundTask(
-                id = taskId,
-                kind = taskKindFor(operation),
-                title = taskTitleFor(operation, entries.size),
-                status = BackgroundTaskStatus.FAILED,
-                detail = failure.toTransferFailureMessage(operation),
-                progress = null,
-                totalCount = entries.size,
-                startTimeMillis = System.currentTimeMillis(),
-                errors = failure.toTaskErrors(entries, targetDirectoryLocation),
-            )
-        )
-        taskOrchestrator.registerRetryHandler(taskId) {
-            requestTransferEntriesToDirectory(
-                entries = entries,
-                targetDirectoryLocation = targetDirectoryLocation,
-                operation = operation,
-                clearClipboardOnSuccess = false,
-            )
-        }
-    }
-
-    private fun taskKindFor(operation: FileTransferOperation): BackgroundTaskKind {
-        return when (operation) {
-            FileTransferOperation.COPY -> BackgroundTaskKind.COPY
-            FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
-            FileTransferOperation.EXTRACT -> BackgroundTaskKind.EXTRACT
-        }
-    }
-
-    /**
-     * 判断当前传输是否能在内容块或顶层条目边界可靠暂停。
-     *
-     * 同一远端 Provider 的单项服务端复制没有字节回调，因此不暴露无效暂停按钮。
-     *
-     * @param entries 待传输条目。
-     * @param targetDirectoryLocation 目标目录位置。
-     * @return 能可靠暂停时返回 true。
-     */
-    private fun canPauseTransfer(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-    ): Boolean {
-        if (entries.size > 1) return true
-        val sourceProtocol = entries.firstOrNull()
-            ?.let { entry -> providerRegistry.providerFor(entry.location).getOrNull()?.protocol }
-            ?: return false
-        val targetProtocol = providerRegistry.providerFor(targetDirectoryLocation).getOrNull()?.protocol
-            ?: return false
-        return sourceProtocol == VfsProtocol.LOCAL || sourceProtocol != targetProtocol
-    }
-
-    private fun taskTitleFor(
-        operation: FileTransferOperation,
-        entryCount: Int,
-    ): I18nMessage {
-        return when (operation) {
-            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_ITEMS, entryCount)
-            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_ITEMS, entryCount)
-            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_ITEMS, entryCount)
-        }
-    }
-
-    private fun failureMessageFor(operation: FileTransferOperation): I18nMessage {
-        return when (operation) {
-            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_FAILED)
-            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_FAILED)
-            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
-        }
-    }
-
-    /**
-     * 通过统一错误映射保留传输失败原因及本地化参数。
-     *
-     * @param operation 当前传输操作。
-     * @return 可在当前语言下解析的失败消息。
-     */
-    private fun Throwable.toTransferFailureMessage(operation: FileTransferOperation): I18nMessage {
-        return toI18nMessage(failureMessageFor(operation).key)
-    }
-
+    /** 冲突待决期间保留的原始传输请求，剪贴板载荷不得随新选择改变。 */
     data class PendingTransferRequest(
+        /** 本次需要处理的条目。 */
         val entries: List<VFile>,
+        /** 原始目标目录。 */
         val targetDirectoryLocation: String,
+        /** 原始业务操作。 */
         val operation: FileTransferOperation,
-        val clearClipboardOnSuccess: Boolean,
+        /** 完成后允许清理的原始载荷，新复制的内容不受影响。 */
+        val clipboardToClear: ClipboardManager.ClipboardPayload?,
+        /** 需要用户决策的条目。 */
         val conflictingEntries: List<VFile>,
+        /** 用户已经确定的冲突策略。 */
         val resolvedStrategies: Map<String, TransferConflictStrategy>,
+        /** 下一个需要决策的冲突索引。 */
         val nextConflictIndex: Int,
     )
 }

@@ -182,8 +182,10 @@ internal class PaneCommandController(
                 externalActions.onCutSelection()
             }
 
-            PaneCommand.PASTE -> executeIfEnabled(command) {
+            PaneCommand.PASTE -> {
+                // 系统内容可能刚被外部程序重写；键盘命令必须实时读取，不能被较早的按钮快照拦截。
                 externalActions.onPaste()
+                true
             }
 
             PaneCommand.UNDO_LAST_OPERATION -> executeIfEnabled(command) {

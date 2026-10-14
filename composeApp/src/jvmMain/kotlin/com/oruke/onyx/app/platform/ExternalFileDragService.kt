@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.awt.AWTEvent
 import java.awt.Toolkit
-import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.Transferable
 import java.awt.event.AWTEventListener
 import java.awt.event.MouseEvent
@@ -505,63 +504,5 @@ class JvmExternalFileDragService(
     private companion object {
         private const val LOG_TAG = "ExternalFileDragService"
         private const val DRAG_EDGE_MARGIN_PX = 20
-    }
-}
-
-/**
- * 多格式文件 Transferable，兼容 Java、Linux 桌面协议和通用文本回退。
- *
- * @param files 待传输的本地文件列表。
- * @param isCut 是否为剪切操作。
- */
-class FileTransferable(
-    private val files: List<File>,
-    private val isCut: Boolean = false,
-) : Transferable {
-    /** file:// URI 列表。 */
-    private val uriListString: String by lazy {
-        files.joinToString("\r\n") { it.toURI().toString() }
-    }
-
-    /** GNOME copied-files 格式内容。 */
-    private val gnomeCopiedBytes: java.nio.ByteBuffer by lazy {
-        val action = if (isCut) "cut" else "copy"
-        val content = action + "\n" + files.joinToString("\n") { it.toURI().toString() }
-        java.nio.ByteBuffer.wrap(content.toByteArray(Charsets.UTF_8))
-    }
-
-    override fun getTransferDataFlavors(): Array<DataFlavor> = SUPPORTED_FLAVORS.clone()
-
-    override fun isDataFlavorSupported(flavor: DataFlavor): Boolean {
-        return SUPPORTED_FLAVORS.any { candidate -> candidate == flavor }
-    }
-
-    override fun getTransferData(flavor: DataFlavor): Any {
-        return when {
-            DataFlavor.javaFileListFlavor == flavor -> files.toList()
-            URI_LIST_FLAVOR == flavor -> uriListString
-            GNOME_FILES_FLAVOR == flavor -> gnomeCopiedBytes.duplicate()
-            TEXT_PLAIN_FLAVOR == flavor -> uriListString
-            else -> throw java.awt.datatransfer.UnsupportedFlavorException(flavor)
-        }
-    }
-
-    private companion object {
-        /** 标准 URI 列表格式。 */
-        private val URI_LIST_FLAVOR = DataFlavor("text/uri-list;class=java.lang.String")
-
-        /** GNOME 文件复制格式。 */
-        private val GNOME_FILES_FLAVOR = DataFlavor("x-special/gnome-copied-files;class=java.nio.ByteBuffer")
-
-        /** 通用文本回退格式。 */
-        private val TEXT_PLAIN_FLAVOR = DataFlavor.stringFlavor
-
-        /** 当前支持的数据格式。 */
-        private val SUPPORTED_FLAVORS = arrayOf(
-            DataFlavor.javaFileListFlavor,
-            URI_LIST_FLAVOR,
-            GNOME_FILES_FLAVOR,
-            TEXT_PLAIN_FLAVOR,
-        )
     }
 }

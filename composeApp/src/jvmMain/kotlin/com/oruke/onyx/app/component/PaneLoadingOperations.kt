@@ -1,110 +1,57 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 
 /**
- * 切换目录条目的树状内联展开状态。
- *
+ * 切换目录展开，并同步需要的子目录订阅。
  * @param directoryLocation 目录 VFS 位置。
  */
 internal fun DefaultPaneComponent.toggleInlineExpand(directoryLocation: String) {
     val result = mutableState.value.toggleInlineExpandState(directoryLocation)
     mutableState.value = result.state
-    result.loadRequest?.let { request -> loadInlineExpandChildren(request.location, request.depth) }
+    synchronizeInlineDirectories()
 }
 
 /**
- * 加载内联展开目录的直接子项。
- *
- * @param location 目录 VFS 位置。
- * @param depth 目录树深度。
- */
-private fun DefaultPaneComponent.loadInlineExpandChildren(location: String, depth: Int) {
-    scope.launch {
-        fileRepository.list(location).fold(
-            onSuccess = { entries ->
-                mutableState.value = mutableState.value.withInlineExpandChildren(location, depth, entries)
-            },
-            onFailure = {
-                mutableState.value = mutableState.value.withInlineExpandFailure(location, depth)
-            },
-        )
-    }
-}
-
-/**
- * 加载指定标签目录，并丢弃导航后到达的过期结果。
- *
+ * 为活动访问绑定共享目录数据，离开时释放订阅而非清空列表状态。
  * @param tabId 标签 ID。
- * @param location 待读取 VFS 位置。
+ * @param location 目录位置。
+ * @param force 是否强制底层校验。
  */
-@Suppress("TooGenericExceptionCaught")
-internal fun DefaultPaneComponent.loadTab(tabId: String, location: String) {
-    tabLoadJobs[tabId]?.cancel()
-    tabLoadJobs[tabId] = scope.launch {
+internal fun DefaultPaneComponent.loadTab(tabId: String, location: String, force: Boolean = false) {
+    tabLoadJobs.values.forEach { it.cancel() }
+    tabLoadJobs.clear()
+    // 后台标签只保存轻量浏览状态，目录元数据由有界共享存储统一持有。
+    tabs().filter { it.id != tabId && it.allEntries.isNotEmpty() }.forEach { inactive ->
+        updateTab(inactive.id, derive = false) { value -> value.copy(allEntries = emptyList()).withTabState {
+            it.copy(entriesState = PaneEntriesState.Idle)
+        } }
+    }
+    val active = tab(tabId) ?: return
+    val visitId = active.tabState.browserState.visitId
+    navigationController.activate(active)
+    tabLoadJobs[tabId] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+        val subscription = directories.subscribe(location)
+        if (force) directories.load(location, force = true)
         try {
-            val result = fileRepository.list(location)
-            val currentTab = tab(tabId)
-            if (currentTab == null || currentTab.location != location) return@launch
-            result.fold(
-                onSuccess = { entries -> applyLoadedEntries(tabId, entries) },
-                onFailure = { failure -> applyLoadFailure(tabId, location, failure) },
-            )
-        } catch (failure: CancellationException) {
-            throw failure
-        } catch (failure: Exception) {
-            applyLoadFailure(tabId, location, failure)
+            subscription.state.collectLatest { content ->
+                applyDirectoryContent(tabId, location, visitId, content)
+                content.failure?.let(::requestRemoteCredentialsIfSupported)
+            }
         } finally {
-            tabLoadJobs.remove(tabId)
+            subscription.close()
+            if (tabLoadJobs[tabId] === currentCoroutineContext()[Job]) tabLoadJobs.remove(tabId)
         }
     }
-}
-
-/**
- * 应用目录加载成功结果并消费待聚焦条目。
- *
- * @param tabId 标签 ID。
- * @param entries 已加载条目。
- */
-private fun DefaultPaneComponent.applyLoadedEntries(
-    tabId: String,
-    entries: List<com.oruke.onyx.core.model.VFile>,
-) {
-    val focusName = pendingFocusEntryName.remove(tabId)
-    val focusEntry = focusName?.let { name -> entries.firstOrNull { entry -> entry.name == name } }
-    updateTab(tabId) { tab -> tab.withLoadedEntries(entries, focusEntry) }
-}
-
-/**
- * 将目录加载失败转换为可见面板状态，并按需请求远程认证。
- *
- * @param tabId 标签 ID。
- * @param location 加载位置。
- * @param failure 失败原因。
- */
-private fun DefaultPaneComponent.applyLoadFailure(tabId: String, location: String, failure: Throwable) {
-    OnyxLogger.error("PaneComponent", "目录加载失败: $location", failure)
-    requestRemoteCredentialsIfSupported(failure)
-    pendingFocusEntryName.remove(tabId)
-    updateTab(tabId) { tab -> tab.withLoadFailure(failure.toI18nMessage()) }
-}
-
-/**
- * 将标签重置到加载态并重新读取当前位置。
- *
- * @param tabId 标签 ID。
- */
-internal fun DefaultPaneComponent.refreshActiveTab(tabId: String) {
-    updateTab(tabId) { currentTab ->
-        currentTab.navigateToState(currentTab.location, currentTab.title, recordHistory = false)
-    }
-    tab(tabId)?.let { currentTab -> loadTab(currentTab.id, currentTab.location) }
+    synchronizeInlineDirectories()
 }
 
 /**

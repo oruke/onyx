@@ -3,6 +3,7 @@ package com.oruke.onyx.vfs.local
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.FileRepository
+import com.oruke.onyx.vfs.api.FileEntryLookup
 import com.oruke.onyx.vfs.api.FileTransferProgressSink
 import com.oruke.onyx.vfs.api.ProgressAwareRoutableFileCommandService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
@@ -33,9 +34,27 @@ import kotlin.io.path.pathString
  */
 class JvmLocalFileProvider :
     FileRepository,
+    com.oruke.onyx.vfs.api.ResultAwareFileCommandService,
     ProgressAwareRoutableFileCommandService,
     RoutableVfsContentService,
     RoutableVfsRandomAccessService {
+    /**
+     * 委托逐项本地传输，保持 Provider 只负责统一能力接入。
+     * @param entry 源条目。
+     * @param targetDirectoryLocation 目标目录。
+     * @param operation 传输类型。
+     * @param conflictStrategy 冲突策略。
+     * @param progressSink 字节增量接收器。
+     * @return 实际提交结果或结构化失败。
+     */
+    override suspend fun transferEntry(
+        entry: VFile,
+        targetDirectoryLocation: String,
+        operation: com.oruke.onyx.core.model.FileTransferOperation,
+        conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
+    ): Result<com.oruke.onyx.vfs.api.FileTransferResult> = LocalFileTransferService.transfer(
+        entry, targetDirectoryLocation, operation, conflictStrategy, progressSink)
     /**
      * 判断位置是否属于本地文件系统。
      *
@@ -44,6 +63,22 @@ class JvmLocalFileProvider :
      */
     override fun supports(location: String): Boolean {
         return !location.contains("://")
+    }
+
+    /**
+     * 读取本地入口自身元数据，断开联接仍作为真实入口返回。
+     * @param location 本地条目位置。
+     * @return 实际条目、确认不存在或结构化读取失败。
+     */
+    override suspend fun query(location: String): Result<FileEntryLookup> = withContext(Dispatchers.IO) {
+        runCatching {
+            val path = Path.of(location).normalize().toAbsolutePath()
+            try {
+                FileEntryLookup.Found(path.toLocalVFile(path.parent ?: path))
+            } catch (_: java.nio.file.NoSuchFileException) {
+                FileEntryLookup.Missing
+            }
+        }.mapLocalError()
     }
 
     /**

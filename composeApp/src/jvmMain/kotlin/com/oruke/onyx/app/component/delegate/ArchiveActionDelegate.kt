@@ -35,8 +35,8 @@ internal class ArchiveActionDelegate(
     private val taskOrchestrator: TaskOrchestrator,
     /** 根级对话框状态来源。 */
     private val dialogState: MutableStateFlow<RootDialogState?>,
-    /** 解压成功后刷新全部面板的回调。 */
-    private val onRefreshAllPanes: () -> Unit,
+    /** 解压实际触及目录的校验入口。 */
+    private val onRefreshDirectories: (Set<String>) -> Unit,
 ) {
     /** 当前等待用户输入的归档密码。 */
     private var pendingArchivePassword: CompletableDeferred<String>? = null
@@ -101,8 +101,6 @@ internal class ArchiveActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_EXTRACTED_ITEMS, entries.size, targetDirectoryLocation),
                     progress = 1f,
                 )
-                // 刷新目标目录所在面板
-                onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (e: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
@@ -122,6 +120,8 @@ internal class ArchiveActionDelegate(
                     detail = e.toI18nMessage(MessageKey.MSG_EXTRACT_FAILED),
                     progress = 0f,
                 )
+            } finally {
+                onRefreshDirectories(setOf(targetDirectoryLocation))
             }
         }
     }
@@ -193,7 +193,6 @@ internal class ArchiveActionDelegate(
                     progress = 1f,
                     processedCount = archiveEntries.size,
                 )
-                onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (failure: CancellationException) {
                 pendingArchivePassword = null
@@ -213,6 +212,8 @@ internal class ArchiveActionDelegate(
                     status = BackgroundTaskStatus.FAILED,
                     detail = e.toI18nMessage(MessageKey.MSG_EXTRACT_FAILED),
                 )
+            } finally {
+                onRefreshDirectories(setOf(currentLocation))
             }
         }
     }

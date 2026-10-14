@@ -199,7 +199,7 @@ private fun DefaultRootComponent.confirmCreateDirectoriesDialog(dialog: RootDial
         return
     }
     dialogState.value = null
-    fileActionDelegate.executeCreateDirectories(dialog.paneId, dialog.location, directoryPaths)
+    fileActionDelegate.executeCreateDirectories(dialog.location, directoryPaths)
 }
 
 /**

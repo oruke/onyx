@@ -15,6 +15,13 @@ interface FileRepository {
     suspend fun list(location: String): Result<List<VFile>>
 
     /**
+     * 查询单个条目；不支持时明确返回能力缺失，由目录存储执行全量校验。
+     * @param location 条目 VFS 位置。
+     * @return 元数据、不存在、不支持或读取失败。
+     */
+    suspend fun query(location: String): Result<FileEntryLookup> = Result.success(FileEntryLookup.Unsupported)
+
+    /**
      * 获取当前平台或配置下的默认文件入口。
      *
      * @return 默认 VFS 位置。

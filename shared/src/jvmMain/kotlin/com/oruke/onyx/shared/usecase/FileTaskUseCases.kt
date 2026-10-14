@@ -52,6 +52,7 @@ class DeleteEntriesUseCase(
                     currentFileName = entry.name,
                     processedCount = index + 1,
                     trashRecords = trashRecords,
+                    directoryChange = com.oruke.onyx.core.model.DirectoryChange(removed = listOf(entry)),
                 )
             )
         }
@@ -87,7 +88,7 @@ class BatchRenameUseCase(
         )
         request.renameMap.forEachIndexed { index, (entry, newName) ->
             currentCoroutineContext().ensureActive()
-            fileCommandService.rename(entry, newName).getOrThrow()
+            val renamed = fileCommandService.rename(entry, newName).getOrThrow()
             val detailText = "${entry.name} -> $newName"
             emit(
                 TaskProgress(
@@ -96,6 +97,8 @@ class BatchRenameUseCase(
                     progress = progressValue(index + 1, request.renameMap.size),
                     currentFileName = newName,
                     processedCount = index + 1,
+                    directoryChange = com.oruke.onyx.core.model.DirectoryChange(removed = listOf(entry),
+                        upserted = listOf(renamed), identityChanges = mapOf(entry.id to renamed.id)),
                 )
             )
         }

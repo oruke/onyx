@@ -49,6 +49,16 @@ enum class MessageKey {
     MSG_STRING_LITERAL,
     MSG_UNKNOWN_ERROR,
 
+    /** 系统文件剪贴板当前无法读取或写入，需要用户稍后重试。 */
+    MSG_SYSTEM_CLIPBOARD_UNAVAILABLE,
+
+    /** 文件传输已经完成，但系统剪贴板清理失败，不应将传输误标为失败。 */
+    MSG_TRANSFER_CLIPBOARD_CLEAR_FAILED,
+    /** 传输完成并明确报告冲突跳过数量。 */
+    MSG_TRANSFER_SKIPPED_ITEMS,
+    /** 被编辑条目已不可用，自动结束改名编辑。 */
+    MSG_INLINE_EDIT_TARGET_UNAVAILABLE,
+
     /** 当前范围没有用户授权扫描的位置。 */
     MSG_SEARCH_NO_ELIGIBLE_ROOTS,
 

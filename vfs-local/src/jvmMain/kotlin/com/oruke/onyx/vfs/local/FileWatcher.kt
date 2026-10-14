@@ -4,7 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.nio.file.ClosedWatchServiceException
@@ -26,6 +25,8 @@ class FileWatcher {
         CREATED,
         MODIFIED,
         DELETED,
+        /** 事件丢失或观察入口失效，调用方必须重新校验目录。 */
+        INVALIDATED,
     }
 
     /**
@@ -45,9 +46,8 @@ class FileWatcher {
      * 返回 cold Flow；取消收集时会关闭 WatchService 并解除阻塞等待。
      *
      * @param directory 待监听目录。
-     * @return 已去抖的文件变更事件流。
+     * @return 保留全部变更及失效通知的事件流，批次合并由目录存储完成。
      */
-    @OptIn(kotlinx.coroutines.FlowPreview::class)
     fun watch(directory: Path): Flow<FileWatchEvent> {
         return watch(directory, onRegistered = {})
     }
@@ -55,25 +55,25 @@ class FileWatcher {
     /**
      * 监听目录，并在底层 WatchService 完成注册后发出就绪通知。
      *
-     * 该入口用于需要与注册时机同步的模块内部场景，目录事件语义与公开入口一致。
+     * 该入口供统一目录观察适配器与注册时机同步，目录事件语义与普通入口一致。
      *
      * @param directory 待监听目录。
      * @param onRegistered WatchService 注册完成回调。
-     * @return 已去抖的文件变更事件流。
+     * @return 保留全部变更及失效通知的事件流。
      */
-    @OptIn(kotlinx.coroutines.FlowPreview::class)
-    internal fun watch(
+    fun watch(
         directory: Path,
         onRegistered: () -> Unit,
     ): Flow<FileWatchEvent> {
         return callbackFlow {
             val watchService = FileSystems.getDefault().newWatchService()
-            directory.register(
-                watchService,
-                StandardWatchEventKinds.ENTRY_CREATE,
-                StandardWatchEventKinds.ENTRY_MODIFY,
-                StandardWatchEventKinds.ENTRY_DELETE,
-            )
+            try {
+                directory.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
+                    StandardWatchEventKinds.ENTRY_MODIFY, StandardWatchEventKinds.ENTRY_DELETE)
+            } catch (failure: java.io.IOException) {
+                watchService.close()
+                throw failure
+            }
             onRegistered()
             val watchJob = launch(Dispatchers.IO) {
                 var watchKeyValid = true
@@ -82,24 +82,26 @@ class FileWatcher {
                     if (key == null) {
                         watchKeyValid = false
                     } else {
-                        key.pollEvents()
-                            .mapNotNull { event -> event.toFileWatchEvent(directory) }
-                            .forEach { event -> trySend(event) }
+                        key.pollEvents().forEach { event ->
+                            val change = event.toFileWatchEvent(directory) ?: return@forEach
+                            if (trySend(change).isFailure) {
+                                // 有界通道拥塞时保证失效标记送达，不能静默遗漏文件变化。
+                                send(FileWatchEvent(EventKind.INVALIDATED, directory))
+                            }
+                        }
                         watchKeyValid = key.reset()
+                        if (!watchKeyValid) send(FileWatchEvent(EventKind.INVALIDATED, directory))
                     }
                 }
+                close()
             }
             awaitClose {
                 watchService.close()
                 watchJob.cancel()
             }
-        }.debounce(WATCH_DEBOUNCE_MILLIS)
+        }
     }
 
-    /** 文件变更事件去抖毫秒数。 */
-    private companion object {
-        const val WATCH_DEBOUNCE_MILLIS = 300L
-    }
 }
 
 /**
@@ -122,9 +124,12 @@ private fun WatchService.takeOrNull(): WatchKey? {
  * 将 NIO 监听事件转换为领域事件。
  *
  * @param directory 被监听目录。
- * @return 可识别事件；溢出或未知事件返回 `null`。
+ * @return 可识别事件；溢出返回目录失效，未知事件返回 `null`。
  */
 private fun WatchEvent<*>.toFileWatchEvent(directory: Path): FileWatcher.FileWatchEvent? {
+    if (kind() == StandardWatchEventKinds.OVERFLOW) {
+        return FileWatcher.FileWatchEvent(FileWatcher.EventKind.INVALIDATED, directory)
+    }
     val eventKind = when (kind()) {
         StandardWatchEventKinds.ENTRY_CREATE -> FileWatcher.EventKind.CREATED
         StandardWatchEventKinds.ENTRY_DELETE -> FileWatcher.EventKind.DELETED

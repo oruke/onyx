@@ -2,6 +2,8 @@ package com.oruke.onyx.vfs.local
 
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.VfsProvider
+import com.oruke.onyx.vfs.api.QueryableVfsProvider
+import com.oruke.onyx.vfs.api.FileEntryLookup
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProtocol
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +21,7 @@ import java.nio.file.attribute.BasicFileAttributes
  */
 class LocalVfsProvider(
     private val localProvider: JvmLocalFileProvider,
-) : VfsProvider {
+) : QueryableVfsProvider {
     override val protocol: VfsProtocol = VfsProtocol.LOCAL
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
@@ -47,6 +49,13 @@ class LocalVfsProvider(
     override fun defaultLocation(): String = localProvider.defaultLocation()
 
     override suspend fun list(location: String): Result<List<VFile>> = localProvider.list(location)
+
+    /**
+     * 复用本地统一仓储读取单个入口。
+     * @param location 条目位置。
+     * @return 实际元数据、不存在状态或失败。
+     */
+    override suspend fun query(location: String): Result<FileEntryLookup> = localProvider.query(location)
 
     override suspend fun totalSizeBytes(entries: List<VFile>): Result<Long> = withContext(Dispatchers.IO) {
         runCatching {

@@ -10,34 +10,34 @@ import com.oruke.onyx.vfs.archive.ArchiveService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** 刷新活动标签目录。 */
+/** 校验活动标签目录，并重试已降级的目录观察；已加载列表与浏览状态保持可用。 */
 internal fun DefaultPaneComponent.refresh() {
     val tab = activeTab() ?: return
-    updateTab(tab.id) { currentTab -> currentTab.prepareForRefresh() }
-    loadTab(tab.id, tab.location)
+    if (tabLoadJobs[tab.id]?.isActive == true) directories.refresh(tab.location)
+    else loadTab(tab.id, tab.location)
 }
 
 /** 导航到活动标签的上一条历史位置。 */
 internal fun DefaultPaneComponent.goBack() {
-    val tab = activeTab() ?: return
+    val tab = captureActiveVisit() ?: return
     val previousLocation = tab.backStack.lastOrNull() ?: return
-    val currentDirName = locationBaseName(tab.location)
-    if (currentDirName != null && pathService.isDirectParent(previousLocation, tab.location)) {
-        pendingFocusEntryName[tab.id] = currentDirName
-    }
-    updateTab(tab.id) { currentTab ->
-        currentTab.navigateBackState(previousTitle = pathService.title(previousLocation))
-    }
+    val (restored, expansions) = navigationController.back(tab, mutableState.value.chromeState,
+        pathService.title(previousLocation))
+    pendingFocusEntryName.remove(tab.id)
+    restoreExpansions(expansions)
+    updateTab(tab.id) { restored }
     loadTab(tab.id, previousLocation)
 }
 
 /** 导航到活动标签的下一条历史位置。 */
 internal fun DefaultPaneComponent.goForward() {
-    val tab = activeTab() ?: return
+    val tab = captureActiveVisit() ?: return
     val nextLocation = tab.forwardStack.lastOrNull() ?: return
-    updateTab(tab.id) { currentTab ->
-        currentTab.navigateForwardState(nextTitle = pathService.title(nextLocation))
-    }
+    val (restored, expansions) = navigationController.forward(tab, mutableState.value.chromeState,
+        pathService.title(nextLocation))
+    pendingFocusEntryName.remove(tab.id)
+    restoreExpansions(expansions)
+    updateTab(tab.id) { restored }
     loadTab(tab.id, nextLocation)
 }
 
@@ -45,6 +45,10 @@ internal fun DefaultPaneComponent.goForward() {
 internal fun DefaultPaneComponent.goUp() {
     val tab = activeTab() ?: return
     val parentLocation = pathService.parentLocation(tab.location) ?: return
+    if (tab.backStack.lastOrNull() == parentLocation) {
+        goBack()
+        return
+    }
     locationBaseName(tab.location)?.let { name -> pendingFocusEntryName[tab.id] = name }
     navigateActiveTab(parentLocation, recordHistory = true)
 }
@@ -197,20 +201,15 @@ private fun DefaultPaneComponent.openExternalEntry(entry: VFile, tabId: String) 
  * @param recordHistory 是否写入历史栈。
  */
 private fun DefaultPaneComponent.navigateActiveTab(location: String, recordHistory: Boolean) {
-    val tab = activeTab() ?: return
+    val tab = captureActiveVisit() ?: return
     val normalizedLocation = pathService.normalizeLocation(location)
     if (normalizedLocation == tab.location) {
         refresh()
         return
     }
-    updateTab(tab.id) { currentTab ->
-        currentTab.navigateToState(
-            location = normalizedLocation,
-            title = pathService.title(normalizedLocation),
-            recordHistory = recordHistory,
-        )
-    }
-    mutableState.value = mutableState.value.clearInlineExpandState()
+    val destination = navigationController.open(tab, mutableState.value.chromeState,
+        normalizedLocation, pathService.title(normalizedLocation), recordHistory)
+    restoreExpansions(emptyMap())
+    updateTab(tab.id) { destination }
     loadTab(tab.id, normalizedLocation)
-    fileWatcherController.start(normalizedLocation)
 }

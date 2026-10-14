@@ -42,6 +42,16 @@ data class OnyxAppearance(
     val selectionBackground: Color? = null,
     /** 非活动面板选中背景。 */
     val inactiveSelectionBackground: Color? = null,
+    /** 面板反馈条的水平内边距。 */
+    val feedbackHorizontalPadding: Dp = 8.dp,
+    /** 面板反馈条的垂直内边距。 */
+    val feedbackVerticalPadding: Dp = 6.dp,
+    /** 面板反馈文字与操作之间的间距。 */
+    val feedbackItemSpacing: Dp = 8.dp,
+    /** 面板反馈条的文字字号。 */
+    val feedbackFontSize: TextUnit = 11.sp,
+    /** 面板反馈背景叠加主题错误色的透明度。 */
+    val feedbackBackgroundAlpha: Float = 0.2f,
 )
 
 val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {

@@ -5,6 +5,9 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.DirectoryChange
+import com.oruke.onyx.vfs.api.FileTransferResult
+import com.oruke.onyx.vfs.api.ResultAwareFileCommandService
 import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.FileTransferProgressSink
 import com.oruke.onyx.vfs.api.ProgressAwareFileCommandService
@@ -132,15 +135,25 @@ class FileTransferUseCase(
             }
         }
 
-        executeTransfer(
+        val result = executeTransfer(
             request = step.request,
             entry = step.entry,
             conflictStrategy = conflictStrategy,
             progressSink = byteProgressSink,
         ).getOrThrow()
-
+        val change = when (result) {
+            is FileTransferResult.Committed -> DirectoryChange(
+                removed = if (step.request.operation == FileTransferOperation.MOVE) listOf(step.entry) else emptyList(),
+                upserted = listOf(result.target))
+            FileTransferResult.Skipped -> null
+            FileTransferResult.Uncertain -> DirectoryChange(invalidatedDirectories =
+                if (step.request.operation == FileTransferOperation.MOVE)
+                    setOfNotNull(step.entry.parentLocation, step.request.targetDirectoryLocation)
+                else setOf(step.request.targetDirectoryLocation))
+        }
         val completedBytes = step.accumulatedBytes + step.entryBytes
-        send(step.completedProgress(completedBytes, latestBytesPerSecond))
+        send(step.completedProgress(completedBytes, latestBytesPerSecond).copy(directoryChange = change,
+            skippedCount = if (result == FileTransferResult.Skipped) 1 else 0))
         return completedBytes
     }
 
@@ -158,9 +171,12 @@ class FileTransferUseCase(
         entry: VFile,
         conflictStrategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink,
-    ): Result<Unit> {
+    ): Result<FileTransferResult> {
+        val resultAware = fileCommandService as? ResultAwareFileCommandService
+        if (resultAware != null) return resultAware.transferEntry(entry, request.targetDirectoryLocation,
+            request.operation, conflictStrategy, progressSink)
         val progressAwareService = fileCommandService as? ProgressAwareFileCommandService
-        return when (request.operation) {
+        val result = when (request.operation) {
             FileTransferOperation.COPY,
             FileTransferOperation.EXTRACT -> if (progressAwareService != null) {
                 progressAwareService.copyWithProgress(
@@ -192,6 +208,7 @@ class FileTransferUseCase(
                 )
             }
         }
+        return result.map { FileTransferResult.Uncertain }
     }
 
     /** 文件传输请求。 */

@@ -21,6 +21,7 @@ internal object LocalPathTransferOperations {
      * @param conflictStrategy 名称冲突处理策略。
      * @param progressSink 实际复制内容的字节增量接收器。
      * @param checkActive 提交最终目标前检查任务是否已取消。
+     * @return 实际提交路径；按冲突策略跳过时为 null。
      */
     fun copyPathToDirectory(
         source: Path,
@@ -28,10 +29,11 @@ internal object LocalPathTransferOperations {
         conflictStrategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink = FileTransferProgressSink.NoOp,
         checkActive: () -> Unit = {},
-    ) {
+    ): Path? {
         val normalizedSource = source.normalize().toAbsolutePath()
-        val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return
+        val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return null
         LocalTransferCommitOperations.copy(normalizedSource, target, conflictStrategy, progressSink, checkActive)
+        return target
     }
 
     /**
@@ -42,6 +44,7 @@ internal object LocalPathTransferOperations {
      * @param conflictStrategy 名称冲突处理策略。
      * @param progressSink 跨文件系统回退复制时的字节增量接收器。
      * @param checkActive 提交最终目标前检查任务是否已取消。
+     * @return 实际提交路径；按冲突策略跳过时为 null。
      */
     fun movePathToDirectory(
         source: Path,
@@ -49,10 +52,11 @@ internal object LocalPathTransferOperations {
         conflictStrategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink = FileTransferProgressSink.NoOp,
         checkActive: () -> Unit = {},
-    ) {
+    ): Path? {
         val normalizedSource = source.normalize().toAbsolutePath()
-        val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return
+        val target = buildTargetPath(normalizedSource, targetDirectory, conflictStrategy) ?: return null
         LocalTransferCommitOperations.move(normalizedSource, target, conflictStrategy, progressSink, checkActive)
+        return target
     }
 
     /**

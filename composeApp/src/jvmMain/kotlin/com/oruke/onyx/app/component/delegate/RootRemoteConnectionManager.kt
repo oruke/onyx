@@ -44,6 +44,8 @@ internal class RootRemoteConnectionManager(
     private val paneState: (PaneId) -> PaneState,
     private val paneComponent: (PaneId) -> PaneComponent,
     private val openLocationInActivePane: (String) -> Unit,
+    /** 连接或认证身份改变时清除旧内容代次。 */
+    private val onConnectionChanged: (String) -> Unit = {},
 ) {
     /** 远程凭据与连接测试的 IO 操作服务。 */
     private val operationService = RemoteConnectionOperationService(connectionTestService, remoteAuthStore)
@@ -184,6 +186,7 @@ internal class RootRemoteConnectionManager(
                                     val nextConnections = remoteConnections()
                                         .filterNot { connection -> connection.id == profile.id } + profile
                                     replaceRemoteConnections(nextConnections)
+                                    onConnectionChanged(profile.location)
                                     val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
                                     if (latestDialog != null) {
                                         dialogState.value = if (
@@ -271,6 +274,7 @@ internal class RootRemoteConnectionManager(
                 operationService.deleteCredentials(profile)
                     .onSuccess {
                         replaceRemoteConnections(remoteConnections().filterNot { connection -> connection.id == id })
+                        onConnectionChanged(profile.location)
                         val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
                         if (latestDialog != null) {
                             val editingId = latestDialog.editingRemoteConnectionId
@@ -307,6 +311,7 @@ internal class RootRemoteConnectionManager(
     fun openRemoteConnection(location: String) {
         cancelConnectionTest()
         dialogState.value = null
+        onConnectionChanged(location)
         openLocationInActivePane(location)
     }
 
@@ -364,6 +369,7 @@ internal class RootRemoteConnectionManager(
 
                                 else -> {
                                     dialogState.value = null
+                                    onConnectionChanged(paneState(currentDialog.paneId).location)
                                     paneComponent(currentDialog.paneId).refresh()
                                 }
                             }

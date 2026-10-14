@@ -22,12 +22,12 @@ import java.util.UUID
  *
  * @param zipArchiveCreationService 统一 VFS ZIP 创建服务。
  * @param taskOrchestrator 后台任务状态编排器。
- * @param onRefreshAllPanes 归档创建成功后刷新全部面板的回调。
+ * @param onRefreshDirectories 校验归档实际写入的目录。
  */
 internal class ArchiveCompressionDelegate(
     private val zipArchiveCreationService: ZipArchiveCreationService,
     private val taskOrchestrator: TaskOrchestrator,
-    private val onRefreshAllPanes: () -> Unit,
+    private val onRefreshDirectories: (Set<String>) -> Unit,
 ) {
     /**
      * 启动 ZIP 压缩后台任务。
@@ -96,7 +96,6 @@ internal class ArchiveCompressionDelegate(
                     progress = 1f,
                     processedCount = result.entryCount,
                 )
-                onRefreshAllPanes()
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (failure: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
@@ -113,6 +112,8 @@ internal class ArchiveCompressionDelegate(
             } catch (failure: Exception) {
                 OnyxLogger.error("ArchiveCompressionDelegate", "创建 ZIP 压缩包失败", failure)
                 markArchiveCreationFailed(taskId, I18nMessage(MessageKey.MSG_COMPRESS_FAILED))
+            } finally {
+                onRefreshDirectories(setOf(targetDirectoryLocation))
             }
         }
     }

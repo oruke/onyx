@@ -51,6 +51,23 @@ internal class FileOperationHistoryDelegate(
     private var revision = 0L
 
     /**
+     * 获取即将执行的历史操作触及目录，失败也必须校验可能已经提交的部分。
+     * @param redo 是否读取重做栈，false 表示撤销栈。
+     * @return 待校验的目录集合；没有可执行记录时为空。
+     */
+    fun affectedDirectories(redo: Boolean): Set<String> {
+        return when (val record = (if (redo) redoStack else undoStack).lastOrNull()) {
+            is FileOperationRecord.CopyBatch -> setOf(record.copyRecord.targetDirectory)
+            is FileOperationRecord.RenameBatch -> record.steps.mapTo(linkedSetOf()) { it.parentLocation }
+            is FileOperationRecord.MoveBatch -> record.steps.flatMap {
+                listOf(it.sourceParentLocation, it.targetDirectoryLocation)
+            }.toSet()
+            is FileOperationRecord.TrashBatch -> record.records.mapNotNull { it.originalEntry.parentLocation }.toSet()
+            null -> emptySet()
+        }
+    }
+
+    /**
      * 记录单个重命名操作。
      *
      * @param entry 重命名前的文件条目。

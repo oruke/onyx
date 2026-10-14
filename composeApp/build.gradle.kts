@@ -1,3 +1,4 @@
+import org.gradle.api.tasks.testing.Test
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -62,6 +63,16 @@ kotlin {
             implementation(libs.compose.ui.test.junit4)
         }
     }
+}
+
+// 生产入口的 UI 验收也会读写设置、会话和缓存；所有测试进程必须使用构建目录内的隔离数据。
+tasks.withType<Test>().configureEach {
+    val testStateRoot = temporaryDir.resolve("application-state")
+    environment("APPDATA", testStateRoot.resolve("appdata").absolutePath)
+    environment("LOCALAPPDATA", testStateRoot.resolve("localappdata").absolutePath)
+    environment("XDG_CONFIG_HOME", testStateRoot.resolve("config").absolutePath)
+    environment("XDG_STATE_HOME", testStateRoot.resolve("state").absolutePath)
+    environment("XDG_CACHE_HOME", testStateRoot.resolve("cache").absolutePath)
 }
 
 

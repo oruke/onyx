@@ -588,4 +588,11 @@
     <string name="msg_user_command_local_directory_required">アクセスできるローカル作業フォルダーが必要です。リモートの場所にはローカルフォルダーを設定してください。</string>
     <string name="msg_user_command_launch_failed">コマンドを起動できません。実行ファイルと作業フォルダーを確認してください。</string>
     <string name="msg_user_command_exit_failed">コマンド %1$s は終了コード %2$d で終了しました。</string>
+    <string name="msg_system_clipboard_unavailable">システムのクリップボードにアクセスできません。しばらくしてから再試行してください。</string>
+    <string name="msg_transfer_clipboard_clear_failed">ファイル転送は完了しましたが、システムのクリップボードを消去できませんでした。</string>
+    <string name="msg_transfer_skipped_items">%1$d 件を処理し、競合する %2$d 件をスキップしました</string>
+    <string name="label_directory_refreshing">更新中…</string>
+    <string name="msg_inline_edit_target_unavailable">項目が利用できなくなったため、名前の編集を終了しました。</string>
+    <string name="label_directory_update_failed">フォルダーの更新に失敗しました：%1$s</string>
+    <string name="label_directory_observation_degraded">変更通知を利用できないため、定期的に確認しています。%1$s</string>
 </resources>

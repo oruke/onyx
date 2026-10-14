@@ -1,12 +1,10 @@
 package com.oruke.onyx.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,7 +14,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.RootComponent
@@ -50,9 +47,11 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.window.TitleBarScope
 
-/** 操作失败反馈条使用的主题错误色透明度。 */
-private const val FEEDBACK_BACKGROUND_ALPHA = 0.2f
-
+/**
+ * 将操作失败映射为本地化文字，并使用公共面板反馈条提供关闭入口。
+ * @param feedback 统一操作失败模型。
+ * @param onDismiss 关闭本次临时反馈。
+ */
 @Composable
 internal fun OperationFeedbackBar(
     feedback: PaneOperationFeedback,
@@ -80,22 +79,7 @@ internal fun OperationFeedbackBar(
         PaneOperationFeedbackKind.WATCH_DEGRADED ->
             stringResource(Res.string.label_feedback_watch_degraded, feedback.detail?.resolve().orEmpty())
     }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(LocalOnyxPalette.current.error.copy(alpha = FEEDBACK_BACKGROUND_ALPHA))
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.weight(1f),
-            fontSize = 11.sp,
-            color = LocalOnyxPalette.current.foreground,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+    PaneFeedbackBar(text) {
         Box(
             modifier = Modifier
                 .size(18.dp)

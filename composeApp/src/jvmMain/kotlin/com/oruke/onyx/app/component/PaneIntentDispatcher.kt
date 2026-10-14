@@ -6,6 +6,25 @@ package com.oruke.onyx.app.component
  * @param intent 待处理 intent。
  */
 internal fun DefaultPaneComponent.dispatchPaneIntent(intent: PaneIntent) {
+    if (intent is PaneIntent.ViewportChanged) {
+        recordViewport(intent)
+        return
+    }
+    // 系统内容更新不算用户操作；真正交互后，旧任务不能再抢占当前选择或滚动位置。
+    val changesInteraction = when (intent) {
+        PaneIntent.Refresh, PaneIntent.ConsumePendingScroll, PaneIntent.DismissOperationFeedback,
+        is PaneIntent.ShowOperationFeedback -> false
+        else -> true
+    }
+    if (changesInteraction) {
+        activeTab()?.let { tab ->
+            pendingFocusEntryName.remove(tab.id)
+            updateTab(tab.id) { value -> value.withTabState { state ->
+                state.copy(browserState = state.browserState.copy(
+                    interactionRevision = state.browserState.interactionRevision + 1))
+            } }
+        }
+    }
     when {
         dispatchNavigationIntent(intent) -> Unit
         dispatchPresentationIntent(intent) -> Unit

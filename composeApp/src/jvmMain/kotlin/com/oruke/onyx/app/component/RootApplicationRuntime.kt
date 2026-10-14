@@ -7,10 +7,12 @@ import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 import com.oruke.onyx.app.platform.JvmApplicationLocaleController
+import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.SettingsRepository
 import com.oruke.onyx.vfs.api.TaskPersistenceRepository
+import com.oruke.onyx.vfs.api.FileRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +37,21 @@ internal class RootApplicationRuntime(
     /** 所有窗口共享的即时设置状态。 */
     val settings: MutableStateFlow<OnyxSettings>,
 ) {
+    /** 所有窗口共享的目录内容存储，按实际依赖首次创建。 */
+    private var sharedDirectoryStore: com.oruke.onyx.shared.filesystem.DirectoryContentStore? = null
+
+    /**
+     * 获取应用级目录存储，窗口关闭不会终止其他窗口的观察和读取。
+     * @param repository 当前应用统一文件仓储。
+     * @param pathService 统一路径解析服务。
+     * @return 当前应用唯一目录内容存储。
+     */
+    fun directories(repository: FileRepository, pathService: VfsPathService):
+        com.oruke.onyx.shared.filesystem.DirectoryContentStore {
+        return sharedDirectoryStore ?: com.oruke.onyx.shared.filesystem.DirectoryContentStore(
+            repository, scope, com.oruke.onyx.app.filesystem.JvmDirectoryObservationService(pathService),
+        ).also { sharedDirectoryStore = it }
+    }
     /** 唯一负责更新 JVM 资源语言的应用级控制器。 */
     private val localeController = JvmApplicationLocaleController(settings)
 
@@ -44,6 +61,7 @@ internal class RootApplicationRuntime(
     init {
         // 在恢复设置和创建窗口前绑定唯一语言入口，旧窗口重组不能覆盖最新偏好。
         localeController.bind(scope)
+        clipboardManager.bind(scope)
     }
 
     /** 所有窗口共享的任务中心，不随任何单个文件管理器窗口关闭。 */
@@ -75,7 +93,7 @@ internal fun rememberRootApplicationRuntime(): RootApplicationRuntime {
                 scope = scope,
                 taskRepository = koin.get<TaskPersistenceRepository>(),
             ),
-            clipboardManager = ClipboardManager(),
+            clipboardManager = ClipboardManager(koin.get<FileRepository>(), koin.get<VfsPathService>()),
             sessionManager = SessionManager(
                 settingsRepository = koin.get<SettingsRepository>(),
                 sessionRepository = koin.get<SessionRepository>(),

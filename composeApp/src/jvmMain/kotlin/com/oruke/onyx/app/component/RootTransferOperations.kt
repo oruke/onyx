@@ -1,6 +1,5 @@
 package com.oruke.onyx.app.component
 
-import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.FileActionDelegate
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.FileTransferOperation
@@ -9,30 +8,6 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.TrashMoveRecord
 import com.oruke.onyx.vfs.archive.ArchiveService
-
-/** @param paneId 复制来源面板。 */
-internal fun DefaultRootComponent.stageCopySelectedInPane(paneId: PaneId) {
-    clipboardManager.stageCopy(selectedEntriesInPane(paneId))
-}
-
-/** @param paneId 剪切来源面板。 */
-internal fun DefaultRootComponent.stageCutSelectedInPane(paneId: PaneId) {
-    clipboardManager.stageCut(selectedEntriesInPane(paneId))
-}
-
-/** @param paneId 粘贴目标面板。 */
-internal fun DefaultRootComponent.requestPasteIntoPane(paneId: PaneId) {
-    val payload = clipboardManager.consume() ?: return
-    fileTransferDelegate.requestTransferEntriesToDirectory(
-        entries = payload.entries,
-        targetDirectoryLocation = paneState(paneId).location,
-        operation = when (payload.operation) {
-            ClipboardManager.ClipboardOperation.COPY -> FileTransferOperation.COPY
-            ClipboardManager.ClipboardOperation.CUT -> FileTransferOperation.MOVE
-        },
-        clearClipboardOnSuccess = payload.operation == ClipboardManager.ClipboardOperation.CUT,
-    )
-}
 
 /**
  * 将选中项传输到目录；压缩包内条目自动改为解压。
@@ -184,10 +159,4 @@ private fun collectAllVisibleEntries(entries: List<VFile>, paneState: PaneState)
             }
         }
     }
-}
-
-/** 刷新主次两个面板。 */
-internal fun DefaultRootComponent.refreshAllPanes() {
-    primaryPane.refresh()
-    secondaryPane.refresh()
 }

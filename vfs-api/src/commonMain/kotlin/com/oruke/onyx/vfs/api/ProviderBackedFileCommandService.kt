@@ -1,6 +1,7 @@
 package com.oruke.onyx.vfs.api
 
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.FileTransferOperation
 
 /**
  * 基于 VFS Provider 路由的文件命令服务。
@@ -16,7 +17,7 @@ class ProviderBackedFileCommandService(
     private val providerRegistry: VfsProviderRegistry? = null,
     /** 跨 Provider 阶段进度接收器。 */
     progressSink: CrossProviderTransferProgressSink = CrossProviderTransferProgressSink.NoOp,
-) : ProgressAwareFileCommandService {
+) : ProgressAwareFileCommandService, ResultAwareFileCommandService {
     /** 固定的命令服务快照，避免运行期外部列表变化影响路由。 */
     private val services = services.toList()
 
@@ -31,6 +32,37 @@ class ProviderBackedFileCommandService(
     init {
         require(this.services.isNotEmpty()) {
             "At least one file command service must be registered"
+        }
+    }
+
+    /**
+     * 优先使用 Provider 的准确逐项结果，跨 Provider 或旧实现显式返回不确定结果。
+     * @param entry 顶层源条目。
+     * @param targetDirectoryLocation 目标目录。
+     * @param operation 复制、移动或提取。
+     * @param conflictStrategy 当前条目冲突策略。
+     * @param progressSink 实际字节进度入口。
+     * @return 实际提交结果或错误；不猜测 SKIP 与 KEEP_BOTH 的效果。
+     */
+    override suspend fun transferEntry(
+        entry: VFile,
+        targetDirectoryLocation: String,
+        operation: FileTransferOperation,
+        conflictStrategy: TransferConflictStrategy,
+        progressSink: FileTransferProgressSink,
+    ): Result<FileTransferResult> {
+        val capability = if (operation == FileTransferOperation.MOVE) VfsProviderCapability.MOVE
+            else VfsProviderCapability.COPY
+        val service = serviceFor(entry.location, capability).getOrElse { return Result.failure(it) }
+        return if (service is ResultAwareFileCommandService && service.supports(targetDirectoryLocation)) {
+            service.transferEntry(entry, targetDirectoryLocation, operation, conflictStrategy, progressSink)
+        } else {
+            val result = if (operation == FileTransferOperation.MOVE) {
+                moveWithProgress(listOf(entry), targetDirectoryLocation, conflictStrategy, progressSink)
+            } else {
+                copyWithProgress(listOf(entry), targetDirectoryLocation, conflictStrategy, progressSink)
+            }
+            result.map { FileTransferResult.Uncertain }
         }
     }
 

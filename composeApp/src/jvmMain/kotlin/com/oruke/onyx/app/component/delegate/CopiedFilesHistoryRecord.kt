@@ -17,7 +17,7 @@ internal class CopiedFilesHistoryRecord private constructor(
     /** 复制前的源条目位置。 */
     private val sources: List<VFile>,
     /** 复制目标目录。 */
-    private val targetDirectory: String,
+    internal val targetDirectory: String,
     /** 统一文件查询能力。 */
     private val repository: FileRepository,
     /** 统一文件变更能力。 */

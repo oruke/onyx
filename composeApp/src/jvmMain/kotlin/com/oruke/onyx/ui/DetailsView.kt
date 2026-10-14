@@ -189,6 +189,10 @@ internal data class PaneEntriesViewModel(
     val pendingScrollToEntryId: String? = null,
     /** 文件及树形展开子项的规则颜色。 */
     val fileLabels: Map<String, FileLabelStyle> = emptyMap(),
+    /** 视口所属标签，避免标签切换复用其他标签的滚动状态。 */
+    val tabId: String = "",
+    /** 当前访问的视口与内容版本。 */
+    val browserState: com.oruke.onyx.app.component.PaneBrowserState = com.oruke.onyx.app.component.PaneBrowserState(),
 )
 
 /**
@@ -235,10 +239,12 @@ internal data class PaneEntriesActions(
     val onConsumeScroll: () -> Unit = {},
     /** 显示空白区域菜单。 */
     val onBlankAreaContextMenu: (IntOffset) -> Unit = {},
+    /** 上报视口锚点及是否正在用户滚动。 */
+    val onViewportChanged: (com.oruke.onyx.app.component.PaneViewportAnchor, Boolean) -> Unit = { _, _ -> },
 )
 
 /** 子条目组件使用的文件拖拽与框选回调。 */
-private data class PaneEntriesChildDragActions(
+internal data class PaneEntriesChildDragActions(
     /** 开始文件拖拽。 */
     val onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
     /** 结束文件拖拽。 */
@@ -248,7 +254,7 @@ private data class PaneEntriesChildDragActions(
 )
 
 /** 保存文件内容区域框选、条目坐标与文件拖拽互斥状态。 */
-private class PaneRubberBandState {
+internal class PaneRubberBandState {
     /** 当前已布局条目的坐标。 */
     val itemCoordinates = mutableStateMapOf<String, LayoutCoordinates>()
 
@@ -331,7 +337,9 @@ internal fun PaneEntriesContent(
         is PaneEntriesState.Failure -> PaneEntriesFailure(entriesState)
 
         is PaneEntriesState.Ready -> {
-            ReadyPaneEntries(model, actions, thumbnails, entriesState)
+            androidx.compose.runtime.key(model.tabId, model.browserState.visitId, model.viewMode) {
+                ReadyPaneEntries(model, actions, thumbnails, entriesState)
+            }
         }
     }
 }
@@ -999,7 +1007,7 @@ private fun PaneEntriesViews(
     selection: PaneRubberBandState,
     dragActions: PaneEntriesChildDragActions,
 ) {
-    val horizontalScrollState = rememberScrollState()
+    val horizontalScrollState = rememberPaneHorizontalScroll(model)
     Column(modifier = Modifier.fillMaxSize()) {
         if (model.viewMode == ViewMode.DETAILS) {
             DetailsHeader(
@@ -1019,60 +1027,6 @@ private fun PaneEntriesViews(
     }
 }
 
-/**
- * 显示画廊网格、滚动条和一次性滚动定位。
- *
- * @param model 文件内容视图状态。
- * @param actions 文件内容交互回调。
- * @param thumbnails 缩略图服务。
- * @param ready 已加载的文件列表。
- * @param selection 框选状态。
- * @param dragActions 子条目拖拽回调。
- */
-@Composable
-private fun GalleryEntriesGrid(
-    model: PaneEntriesViewModel,
-    actions: PaneEntriesActions,
-    thumbnails: GalleryThumbnailServices,
-    ready: PaneEntriesState.Ready,
-    selection: PaneRubberBandState,
-    dragActions: PaneEntriesChildDragActions,
-) {
-    val gridState = rememberLazyGridState()
-    val inlineEdit = model.inlineEditState
-    val createInlineEntry = inlineEdit?.mode == PaneInlineEditMode.CREATE_FILE ||
-            inlineEdit?.mode == PaneInlineEditMode.CREATE_DIRECTORY
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(model.galleryItemSizeDp.dp),
-            state = gridState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(4.dp),
-            userScrollEnabled = !model.contextMenuVisible,
-        ) {
-            if (createInlineEntry) {
-                item(key = "inline-create") {
-                    GalleryCreateEntry(model, actions, thumbnails, dragActions)
-                }
-            }
-            gridItemsIndexed(ready.entries, key = { _, entry -> entry.id }) { _, entry ->
-                GalleryFileEntry(model, actions, thumbnails, dragActions, selection, entry)
-            }
-        }
-        VerticalScrollbar(
-            adapter = rememberScrollbarAdapter(gridState),
-            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-        )
-        model.pendingScrollToEntryId?.let { entryId ->
-            LaunchedEffect(entryId) {
-                val offset = if (createInlineEntry) 1 else 0
-                val index = ready.entries.indexOfFirst { it.id == entryId }
-                if (index >= 0) gridState.animateScrollToItem(index + offset)
-                actions.onConsumeScroll()
-            }
-        }
-    }
-}
 
 /**
  * 显示画廊中的新建文件占位编辑项。
@@ -1083,7 +1037,7 @@ private fun GalleryEntriesGrid(
  * @param dragActions 子条目拖拽回调。
  */
 @Composable
-private fun GalleryCreateEntry(
+internal fun GalleryCreateEntry(
     model: PaneEntriesViewModel,
     actions: PaneEntriesActions,
     thumbnails: GalleryThumbnailServices,
@@ -1116,7 +1070,7 @@ private fun GalleryCreateEntry(
  * @param entry 当前文件条目。
  */
 @Composable
-private fun GalleryFileEntry(
+internal fun GalleryFileEntry(
     model: PaneEntriesViewModel,
     actions: PaneEntriesActions,
     thumbnails: GalleryThumbnailServices,
@@ -1174,67 +1128,6 @@ private fun galleryEntryActions(
     onBeginRename = actions.onBeginRename,
 )
 
-/**
- * 显示详情树列表、双向滚动条和一次性滚动定位。
- *
- * @param model 文件内容视图状态。
- * @param actions 文件内容交互回调。
- * @param ready 已加载的文件列表。
- * @param selection 框选状态。
- * @param horizontalScrollState 横向滚动状态。
- * @param dragActions 子条目拖拽回调。
- */
-@Composable
-private fun DetailsEntriesList(
-    model: PaneEntriesViewModel,
-    actions: PaneEntriesActions,
-    ready: PaneEntriesState.Ready,
-    selection: PaneRubberBandState,
-    horizontalScrollState: androidx.compose.foundation.ScrollState,
-    dragActions: PaneEntriesChildDragActions,
-) {
-    val flattenedEntries = remember(
-        ready.entries,
-        model.inlineExpandedLocations,
-        model.inlineExpandedEntries,
-    ) {
-        flattenEntries(ready.entries, model.inlineExpandedLocations, model.inlineExpandedEntries, depth = 0)
-    }
-    val listState = rememberLazyListState()
-    val createInlineEntry = model.inlineEditState?.mode == PaneInlineEditMode.CREATE_FILE ||
-            model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
-    Box(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().padding(bottom = 12.dp),
-            contentPadding = PaddingValues(bottom = 4.dp),
-            userScrollEnabled = !model.contextMenuVisible,
-        ) {
-            if (createInlineEntry) {
-                item(key = "inline-create") { DetailsCreateEntry(model, actions, horizontalScrollState) }
-            }
-            itemsIndexed(flattenedEntries, key = { _, item -> "${item.entry.location}@${item.depth}" }) { index, item ->
-                DetailsFileEntry(model, actions, dragActions, selection, horizontalScrollState, index, item)
-            }
-        }
-        HorizontalScrollbar(
-            adapter = rememberScrollbarAdapter(horizontalScrollState),
-            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
-        )
-        VerticalScrollbar(
-            adapter = rememberScrollbarAdapter(listState),
-            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-        )
-        model.pendingScrollToEntryId?.let { entryId ->
-            LaunchedEffect(entryId) {
-                val offset = if (createInlineEntry) 1 else 0
-                val index = flattenedEntries.indexOfFirst { it.entry.id == entryId }
-                if (index >= 0) listState.animateScrollToItem(index + offset)
-                actions.onConsumeScroll()
-            }
-        }
-    }
-}
 
 /**
  * 显示详情列表中的新建文件占位编辑行。
@@ -1244,7 +1137,7 @@ private fun DetailsEntriesList(
  * @param scrollState 横向滚动状态。
  */
 @Composable
-private fun DetailsCreateEntry(
+internal fun DetailsCreateEntry(
     model: PaneEntriesViewModel,
     actions: PaneEntriesActions,
     scrollState: androidx.compose.foundation.ScrollState,
@@ -1280,7 +1173,7 @@ private fun DetailsCreateEntry(
  * @param item 当前扁平树节点。
  */
 @Composable
-private fun DetailsFileEntry(
+internal fun DetailsFileEntry(
     model: PaneEntriesViewModel,
     actions: PaneEntriesActions,
     dragActions: PaneEntriesChildDragActions,
