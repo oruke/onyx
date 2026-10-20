@@ -33,6 +33,8 @@ internal fun Path.toLocalVFile(parent: Path): VFile {
     val normalizedPath = toAbsolutePath().normalize()
     return VFile(
         id = normalizedPath.pathString,
+        // 使用文件系统对象身份追踪路径变化；硬链接歧义由共享目录层排除。
+        identityKey = normalizedPath.readLocalIdentityKey(attributes),
         name = name.ifBlank { pathString },
         location = normalizedPath.pathString,
         parentLocation = parent.toAbsolutePath().normalize().pathString,

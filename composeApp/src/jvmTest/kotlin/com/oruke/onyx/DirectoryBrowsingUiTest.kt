@@ -22,6 +22,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import com.oruke.onyx.app.component.PaneEntriesState
@@ -60,6 +61,61 @@ import org.koin.compose.getKoin
 
 /** 从生产应用根组件、真实文件命令和 Compose 布局验证目录更新的实际可见位置。 */
 class DirectoryBrowsingUiTest {
+    /** 通过生产根界面的真实鼠标按住与松开验证详情、画廊新增文件不会挤动交互目标。 */
+    @Test
+    fun passiveChangesKeepPressedItemInPlaceInBothViews() = runDesktopComposeUiTest(width = 1200, height = 800) {
+        val sample = Files.createTempDirectory("onyx-passive-ui-")
+        repeat(20) { Files.writeString(sample.resolve("item-${it.toString().padStart(4, '0')}.txt"), "sample-$it") }
+        var capturedRoot: RootComponent? = null
+        try {
+            setContent { DirectoryBrowsingApplication(sample.toString()) { capturedRoot = it } }
+            waitUntil(timeoutMillis = 15_000) { capturedRoot?.let { root ->
+                root.state.value.sessionRestoreState == SessionRestoreState.Ready &&
+                    (root.primaryPane.state.value.entriesState as? PaneEntriesState.Ready)?.entries?.size == 20
+            } == true }
+            val root = checkNotNull(capturedRoot)
+            runOnUiThread {
+                root.dispatch(RootIntent.UpdateSettings(root.state.value.settings.copy(sidebarVisible = false, uiScale = 100)))
+                root.dispatch(RootIntent.SetLayoutMode(PaneLayoutMode.SINGLE))
+            }
+            for ((index, mode) in listOf(ViewMode.DETAILS, ViewMode.GALLERY).withIndex()) {
+                runOnUiThread { root.primaryPane.dispatch(PaneIntent.SetViewMode(mode)) }
+                waitForIdle()
+                val selected = (root.primaryPane.state.value.entriesState as PaneEntriesState.Ready).entries
+                    .single { it.name == "item-0007.txt" }
+                runOnUiThread { root.primaryPane.dispatch(PaneIntent.SelectEntry(selected.id)) }
+                waitForIdle()
+                val before = rowTop(selected.name)
+                onNodeWithText(selected.name, useUnmergedTree = true).performMouseInput { moveTo(center); press() }
+                waitUntil { root.primaryPane.state.value.activeTabState.browserState.pointerInteractionActive }
+                val added = "000-before-${mode.name}.txt"
+                Files.writeString(sample.resolve(added), "passive")
+                waitUntil(timeoutMillis = 10_000) {
+                    (root.primaryPane.state.value.entriesState as? PaneEntriesState.Ready)?.entries?.size == 21 + index
+                }
+                waitForIdle()
+                assertPixelPosition(before, rowTop(selected.name))
+                assertTrue(root.primaryPane.state.value.activeTabState.browserState.directoryOrderDeferred)
+                captureBrowsing("passive-pressed-${mode.name.lowercase()}")
+                onNodeWithText(selected.name, useUnmergedTree = true).performMouseInput { release() }
+                waitUntil {
+                    val state = root.primaryPane.state.value
+                    val entries = (state.entriesState as? PaneEntriesState.Ready)?.entries
+                    !state.activeTabState.browserState.pointerInteractionActive &&
+                        !state.activeTabState.browserState.directoryOrderDeferred &&
+                        entries != null && entries == entries.sortedBy { it.name }
+                }
+                assertEquals(setOf(selected.id), root.primaryPane.state.value.selectedEntryIds)
+            }
+            println("PASSIVE_UI: 详情和画廊真实鼠标按住期间条目像素位置不变，松开后恢复排序")
+        } finally {
+            mainClock.autoAdvance = false
+            setContent { }
+            waitForIdle()
+            Files.walk(sample).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+        }
+    }
+
     /** 在一万项真实目录中验证删除、F5、历史返回和详情/画廊各自的实际视口。 */
     @Test
     fun realApplicationKeepsViewportAcrossMutationsNavigationAndViewModes() = runDesktopComposeUiTest(

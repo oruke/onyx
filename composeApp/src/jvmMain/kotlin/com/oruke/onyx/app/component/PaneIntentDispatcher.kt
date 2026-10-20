@@ -6,6 +6,10 @@ package com.oruke.onyx.app.component
  * @param intent 待处理 intent。
  */
 internal fun DefaultPaneComponent.dispatchPaneIntent(intent: PaneIntent) {
+    if (intent is PaneIntent.ListPointerInteraction) {
+        recordListPointerInteraction(intent)
+        return
+    }
     if (intent is PaneIntent.ViewportChanged) {
         recordViewport(intent)
         return

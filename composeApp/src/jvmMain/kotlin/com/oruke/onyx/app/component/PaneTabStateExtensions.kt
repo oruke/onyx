@@ -137,21 +137,28 @@ internal fun TabSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabSta
  * @param inlineExpandedLocations 当前访问展开的目录。
  * @param inlineExpandedEntries 已加载的展开子项。
  * @param sortedEntries 内容和排序未变时复用的已有可见列表。
+ * @param preserveOrder 是否在被动更新期间保护当前顺序，交互结束后恢复配置排序。
  * @return 校正后的标签状态。
  */
 internal fun PaneTabState.withDerivedState(
     inlineExpandedLocations: Set<String>,
     inlineExpandedEntries: Map<String, InlineExpandedEntry>,
     sortedEntries: List<VFile>? = null,
+    preserveOrder: Boolean = false,
 ): PaneTabState {
     // 历史缓存被淘汰时先保留其选择，真实目录返回后再校正，不能在 Loading 阶段清空。
     if (entriesState !is PaneEntriesState.Ready && allEntries.isEmpty()) return this
-    val visibleEntries = sortedEntries ?: EntrySorter.visibleSortedEntries(
+    val sorted = sortedEntries ?: EntrySorter.visibleSortedEntries(
         allEntries = allEntries,
         showHiddenItems = showHiddenItems,
         sort = detailsSort,
         filterQuery = filterQuery,
     )
+    val previous = (entriesState as? PaneEntriesState.Ready)?.entries
+    // 按下或滚动报告通常没有内容变化，直接复用顺序，避免每次手势都建立全目录身份索引。
+    val visibleEntries = if (preserveOrder && previous != null && sorted !== previous) {
+        preserveDirectoryEntryOrder(sorted, previous)
+    } else sorted
     val allVisibleForSelection = if (inlineExpandedLocations.isEmpty()) {
         visibleEntries
     } else {
@@ -179,6 +186,8 @@ internal fun PaneTabState.withDerivedState(
     }
     return withTabState { current ->
         current.copy(
+            browserState = current.browserState.copy(directoryOrderDeferred = preserveOrder &&
+                (current.browserState.directoryOrderDeferred || visibleEntries !== sorted)),
             selectedEntryIds = selection.selectedEntryIds,
             selectionAnchorId = selection.anchorId,
             selectionFocusId = selection.focusId,

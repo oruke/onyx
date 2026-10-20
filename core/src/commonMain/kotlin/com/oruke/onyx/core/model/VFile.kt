@@ -22,6 +22,8 @@ data class VFile(
     val hidden: Boolean,
     /** 当前 provider 对此条目支持的能力。 */
     val capabilities: Set<VFileCapability>,
+    /** Provider 提供的底层对象身份，仅用于同目录改名追踪；缺失或不唯一时不推断身份关系。 */
+    val identityKey: String? = null,
 )
 
 @Serializable

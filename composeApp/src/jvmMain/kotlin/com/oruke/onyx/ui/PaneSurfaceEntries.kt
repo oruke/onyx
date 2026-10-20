@@ -73,6 +73,8 @@ private fun PaneEntriesArea(
     Box(
         modifier = modifier
             .fillMaxHeight()
+            .trackPanePointerInteraction(runtime.state.activeTabId,
+                runtime.state.activeTabState.browserState.visitId, runtime::dispatch)
             .onGloballyPositioned { coordinates ->
                 runtime.updateFileDropZone(
                     FileDropZone(
@@ -158,7 +160,10 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
         },
         onStartFileDrag = dragBindings.onFileDragStart,
         onFileDragPositionChange = dragBindings.onFileDragPositionChange,
-        onFileDragEnd = dragBindings.onFileDragEnd,
+        onFileDragEnd = { position ->
+            dispatch(PaneIntent.ListPointerInteraction(tabId, visitId, false))
+            dragBindings.onFileDragEnd(position)
+        },
         onFileDropZoneChange = ::updateFileDropZone,
         onUpdateInlineEditDraft = { draft -> dispatch(PaneIntent.UpdateInlineEditDraft(draft)) },
         onConfirmInlineEdit = { dispatch(PaneIntent.ConfirmInlineEdit) },

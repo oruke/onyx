@@ -7,6 +7,7 @@ import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
+import com.oruke.onyx.core.model.VFile
 
 /** 将共享目录数据投影到独立标签，刷新状态与浏览状态分开校正。 */
 internal object PaneDirectoryReducer {
@@ -28,9 +29,8 @@ internal object PaneDirectoryReducer {
         val removedIds = content.change?.removed?.mapTo(hashSetOf()) { it.id }.orEmpty()
         val editTarget = tab.inlineEditState?.targetEntryId
         val mappedEditTarget = identities[editTarget] ?: editTarget
-        val wasTopLevel = tab.allEntries.any { it.id == editTarget }
         // F5 和监听降级校验只有完整快照，也必须结束已消失条目的编辑，避免草稿阻塞后续新建。
-        val editTargetRemoved = entries != null && wasTopLevel && entries.none { it.id == mappedEditTarget }
+        val editTargetRemoved = tab.hasRemovedEditTarget(entries, mappedEditTarget)
         val mapped = tab.withTabState { current ->
             current.copy(
                 selectedEntryIds = current.selectedEntryIds.mapTo(linkedSetOf()) { identities[it] ?: it },
@@ -52,7 +52,7 @@ internal object PaneDirectoryReducer {
         }
         return if (entries != null) {
             val focus = focusName?.let { name -> entries.firstOrNull { it.name == name } }
-            mapped.withLoadedEntries(entries, focus)
+            mapped.withDirectoryEntries(entries, focus)
         } else if (failure != null) {
             mapped.withLoadFailure(failure.toI18nMessage())
         } else {
@@ -60,3 +60,12 @@ internal object PaneDirectoryReducer {
         }
     }
 }
+
+/**
+ * 判断当前编辑对象是否从真实顶层快照中消失，身份映射已处理的改名不算删除。
+ * @param entries 最新目录内容，未读取成功时为空。
+ * @param targetId 已应用身份变化的编辑目标。
+ * @return 原顶层编辑对象确实不存在时返回 true。
+ */
+internal fun PaneTabState.hasRemovedEditTarget(entries: List<VFile>?, targetId: String?): Boolean =
+    entries != null && allEntries.any { it.id == inlineEditState?.targetEntryId } && entries.none { it.id == targetId }

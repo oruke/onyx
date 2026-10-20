@@ -12,7 +12,9 @@ import com.oruke.onyx.core.model.ViewMode
 internal fun DefaultPaneComponent.setViewMode(mode: ViewMode) {
     val tab = activeTab() ?: return
     updateTab(tab.id) { currentTab ->
-        navigationController.capture(currentTab).withViewModeState(mode)
+        navigationController.capture(currentTab).withViewModeState(mode).withTabState { state ->
+            state.copy(browserState = state.browserState.copy(scrollInteractionActive = false))
+        }
     }
 }
 

@@ -94,9 +94,6 @@ import kotlin.math.roundToInt
 import com.oruke.onyx.core.model.FileLabelStyle
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 
-/** 确认单击后延迟请求重命名的时间。 */
-private const val RENAME_AFTER_CLICK_DELAY_MS = 300L
-
 /** 画廊缩略图读取时请求的最大边长。 */
 private const val GALLERY_THUMBNAIL_DIMENSION = 512
 
@@ -217,7 +214,7 @@ private class GalleryInteractionState {
     }
 
     /**
-     * 确认单击后延迟请求重命名当前条目。
+     * 确认再次单击已选条目后等待统一的一秒间隔，再请求重命名。
      *
      * @param scope 计时协程作用域。
      * @param onBeginRename 开始重命名回调。
@@ -225,7 +222,7 @@ private class GalleryInteractionState {
     fun scheduleRename(scope: CoroutineScope, onBeginRename: () -> Unit) {
         cancelRename()
         renameJob = scope.launch {
-            delay(RENAME_AFTER_CLICK_DELAY_MS)
+            delay(FILE_ENTRY_RENAME_DELAY_MILLIS)
             onBeginRename()
         }
     }

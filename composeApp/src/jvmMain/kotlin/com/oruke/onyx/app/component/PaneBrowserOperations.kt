@@ -68,12 +68,16 @@ internal fun DefaultPaneComponent.synchronizeInlineDirectories() {
  * @param event 渲染访问上报的视口。
  */
 internal fun DefaultPaneComponent.recordViewport(event: PaneIntent.ViewportChanged) {
-    val current = tab(event.tabId) ?: return
-    if (navigationController.recordViewport(current, event)) {
+    val current = tab(event.tabId)?.takeIf { it.tabState.browserState.visitId == event.visitId } ?: return
+    val interacted = navigationController.recordViewport(current, event)
+    val currentMode = current.viewMode == event.mode
+    if (interacted || (currentMode && current.tabState.browserState.scrollInteractionActive != event.userScrolling)) {
         updateTab(current.id) { value ->
             value.withTabState { state -> state.copy(pendingScrollToEntryId = null,
                 browserState = state.browserState.copy(
-                    interactionRevision = state.browserState.interactionRevision + 1)) }
+                    scrollInteractionActive = if (currentMode) event.userScrolling
+                        else state.browserState.scrollInteractionActive,
+                    interactionRevision = state.browserState.interactionRevision + if (interacted) 1 else 0)) }
         }
     }
 }

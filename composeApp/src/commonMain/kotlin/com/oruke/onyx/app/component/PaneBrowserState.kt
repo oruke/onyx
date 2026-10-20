@@ -30,6 +30,12 @@ internal data class PaneBrowserState(
     val contentRevision: Long = -1,
     /** 共享内容的有界身份变化日志，视口适配器按自己的版本重放。 */
     val identityChanges: List<com.oruke.onyx.core.model.DirectoryRevisionChange> = emptyList(),
+    /** 文件区域仍有按住的指针，覆盖点击、框选和文件拖拽。 */
+    val pointerInteractionActive: Boolean = false,
+    /** 用户正在滚动，后台变化暂不改变已有条目的相对顺序。 */
+    val scrollInteractionActive: Boolean = false,
+    /** 曾因交互推迟排序，最后一项交互结束后需要重新派生顺序。 */
+    val directoryOrderDeferred: Boolean = false,
 )
 
 /** 历史访问的轻量快照，目录内容由应用级目录缓存保存。 */

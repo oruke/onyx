@@ -42,6 +42,9 @@ sealed interface DirectoryWatchEvent {
     /** 事件不完整、监听失效或轮询到期，需要重新校验目录。 */
     data object Invalidated : DirectoryWatchEvent
 
+    /** 定期后台校验，不代表内容已经变化，也不触发前台刷新提示。 */
+    data object Verify : DirectoryWatchEvent
+
     /** 观察不可用，已有快照可以保留，但错误必须可见。 */
     data class Unavailable(
         /** 观察失败原因。 */
@@ -57,4 +60,22 @@ fun interface DirectoryObservationService {
      * @return 注册、条目变化、失效和失败的事件流。
      */
     fun observe(location: String): Flow<DirectoryWatchEvent>
+
+    /**
+     * 接收实际校验结果，平台观察器据此调整轮询频率；默认实现无需反馈。
+     * @param location 被校验的目录位置。
+     * @param result 内容变化、结果与耗时。
+     * @return 无返回值，默认不需要处理反馈。
+     */
+    fun onVerified(location: String, result: DirectoryVerificationResult) = Unit
 }
+
+/** 一次目录读取的真实结果，用于后台校验的频率和 I/O 预算控制。 */
+data class DirectoryVerificationResult(
+    /** 是否发现内容或条目身份变化。 */
+    val changed: Boolean,
+    /** 目录是否成功读取，失败不能解释为没有变化。 */
+    val succeeded: Boolean,
+    /** 实际读取和差异计算耗时，单位毫秒。 */
+    val elapsedMillis: Long,
+)

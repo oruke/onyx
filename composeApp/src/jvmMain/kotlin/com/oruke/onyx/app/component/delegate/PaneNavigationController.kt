@@ -112,12 +112,17 @@ internal class PaneNavigationController(
      * @param chrome 当前展开状态。
      * @return 不含目录列表的访问快照。
      */
-    fun snapshot(tab: PaneTabState, chrome: PaneChromeState): PaneVisitSnapshot = PaneVisitSnapshot(
-        state = capture(tab).tabState.copy(entriesState = PaneEntriesState.Idle, inlineEditState = null,
-            pendingScrollToEntryId = null, refreshing = false),
-        expansions = chrome.inlineExpandedEntries.filterKeys { it in chrome.inlineExpandedLocations }
-            .mapValues { it.value.depth },
-    )
+    fun snapshot(tab: PaneTabState, chrome: PaneChromeState): PaneVisitSnapshot {
+        val captured = capture(tab).tabState
+        return PaneVisitSnapshot(
+            state = captured.copy(entriesState = PaneEntriesState.Idle, inlineEditState = null,
+                pendingScrollToEntryId = null, refreshing = false,
+                browserState = captured.browserState.copy(pointerInteractionActive = false,
+                    scrollInteractionActive = false, directoryOrderDeferred = false)),
+            expansions = chrome.inlineExpandedEntries.filterKeys { it in chrome.inlineExpandedLocations }
+                .mapValues { it.value.depth },
+        )
+    }
 
     /**
      * 激活访问时重置视口报告归属，旧视口事件不能污染新访问。

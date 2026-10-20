@@ -92,13 +92,17 @@ internal fun DefaultPaneComponent.updateTab(
     val paneState = mutableState.value
     val currentTab = tabs().firstOrNull { tab -> tab.id == tabId } ?: return
     val transformed = transform(currentTab)
-    val unchangedContent = transformed.allEntries === currentTab.allEntries &&
-        transformed.detailsSort == currentTab.detailsSort && transformed.filterQuery == currentTab.filterQuery &&
+    val unchangedOrdering = transformed.detailsSort == currentTab.detailsSort &&
+        transformed.filterQuery == currentTab.filterQuery &&
         transformed.showHiddenItems == currentTab.showHiddenItems
+    val preserveOrder = unchangedOrdering && transformed.deferDirectoryOrdering
+    val unchangedContent = transformed.allEntries === currentTab.allEntries && unchangedOrdering &&
+        !(transformed.tabState.browserState.directoryOrderDeferred && !preserveOrder)
     val updated = if (!derive) transformed else transformed.withDerivedState(
         inlineExpandedLocations = paneState.inlineExpandedLocations,
         inlineExpandedEntries = paneState.inlineExpandedEntries,
         sortedEntries = if (unchangedContent) (currentTab.entriesState as? PaneEntriesState.Ready)?.entries else null,
+        preserveOrder = preserveOrder,
     )
     updateTabComponentState(updated)
     mutableTabStates.value = mutableTabStates.value.map { tab ->

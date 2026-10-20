@@ -146,9 +146,6 @@ private const val EMPTY_STATE_ICON_ALPHA = 0.4f
 /** 指针移动超过此距离平方后才开始拖拽或框选。 */
 private const val DRAG_START_DISTANCE_SQUARED = 36f
 
-/** 确认单击后延迟请求重命名的时间。 */
-private const val RENAME_AFTER_CLICK_DELAY_MS = 300L
-
 // ── File entries ────────────────────────────────────────────────────────────
 
 /**
@@ -821,7 +818,7 @@ private class EntryRowInteractionState {
     }
 
     /**
-     * 确认单击后延迟请求重命名当前条目。
+     * 确认再次单击已选条目后等待统一的一秒间隔，再请求重命名。
      *
      * @param scope 计时协程作用域。
      * @param onBeginRename 开始重命名回调。
@@ -829,7 +826,7 @@ private class EntryRowInteractionState {
     fun scheduleRename(scope: CoroutineScope, onBeginRename: () -> Unit) {
         cancelRename()
         renameJob = scope.launch {
-            kotlinx.coroutines.delay(RENAME_AFTER_CLICK_DELAY_MS)
+            kotlinx.coroutines.delay(FILE_ENTRY_RENAME_DELAY_MILLIS)
             onBeginRename()
         }
     }

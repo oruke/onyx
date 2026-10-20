@@ -14,6 +14,10 @@ internal data class DirectoryContentSnapshot(
     val entries: List<VFile>,
     /** 元数据的估算内存占用。 */
     val estimatedBytes: Long,
+    /** 相对旧快照的真实变化；首次读取时为空。 */
+    val change: DirectoryChange? = null,
+    /** 内容是否变化，目录枚举顺序变化不算内容变化。 */
+    val changed: Boolean = true,
 )
 
 /** 已确认变化产生的不可变快照与内存增量，不重复建立整目录身份哈希表。 */
@@ -66,4 +70,17 @@ internal fun List<VFile>.applyDirectoryMutation(parent: String, change: Director
  * @return 固定对象成本与各元数据字符串的估算字节数。
  */
 internal fun VFile.estimatedMetadataBytes(): Long = ENTRY_FIXED_BYTES + CHARACTER_BYTES *
-    (id.length + location.length + (parentLocation?.length ?: 0) + name.length)
+    (id.length + location.length + (parentLocation?.length ?: 0) + name.length + (identityKey?.length ?: 0))
+
+/**
+ * 找出因目录删除或改名而失效的后代缓存，不让旧路径的数据在下次访问时复活。
+ * @param locations 当前缓存目录的位置集合。
+ * @return 本次变化影响的目录及后代位置。
+ */
+internal fun DirectoryChange.invalidatedDescendants(locations: Collection<String>): Set<String> {
+    val directories = removed.filter { it.kind == com.oruke.onyx.core.model.VFileKind.DIRECTORY }
+    return locations.filter { candidate -> directories.any { entry ->
+        candidate == entry.location || candidate.startsWith(entry.location.trimEnd('/', '\\') + "/") ||
+            candidate.startsWith(entry.location.trimEnd('/', '\\') + "\\")
+    } }.toSet()
+}

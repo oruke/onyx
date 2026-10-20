@@ -194,6 +194,16 @@ internal data class InlineExpandedEntry(
 )
 
 internal sealed interface PaneIntent {
+    /** 文件区域指针按下与全部松开，访问身份防止迟到释放干扰新目录。 */
+    data class ListPointerInteraction(
+        /** 指针事件所属标签。 */
+        val tabId: String,
+        /** 指针事件所属访问。 */
+        val visitId: Long,
+        /** 是否仍存在按住的指针。 */
+        val active: Boolean,
+    ) : PaneIntent
+
     /** 当前渲染访问的视口变化，不能更新另一个标签或访问。 */
     data class ViewportChanged(
         /** 事件所属标签。 */

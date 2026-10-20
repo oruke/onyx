@@ -1,10 +1,10 @@
 package com.oruke.onyx.shared.filesystem
 
 import com.oruke.onyx.core.model.DirectoryChange
-import com.oruke.onyx.core.model.DirectoryRevisionChange
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.DirectoryObservationService
 import com.oruke.onyx.vfs.api.DirectoryWatchEvent
+import com.oruke.onyx.vfs.api.DirectoryVerificationResult
 import com.oruke.onyx.vfs.api.FileEntryLookup
 import com.oruke.onyx.vfs.api.FileRepository
 import kotlinx.coroutines.CancellationException
@@ -15,52 +15,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.TimeSource
 
 /** 非活动目录快照的默认估算内存预算，单位字节。 */
 private const val DEFAULT_CACHED_BYTES = 67_108_864L
-
-/** 一个目录的共享内容和同步状态，不携带面板的选择、排序与滚动。 */
-data class DirectoryContentState(
-    /** 最近一次成功快照；null 表示尚未读取，空列表表示成功读取空目录。 */
-    val entries: List<VFile>? = null,
-    /** 是否正在后台读取或校验。 */
-    val refreshing: Boolean = false,
-    /** 最近读取失败原因，保留旧快照供用户恢复操作。 */
-    val failure: Throwable? = null,
-    /** 监听不可用原因，与目录读取失败分开表达。 */
-    val observationFailure: Throwable? = null,
-    /** 内容版本，后台状态变化不递增此版本。 */
-    val revision: Long = 0,
-    /** 当前内容版本包含的已确认身份变化。 */
-    val change: DirectoryChange? = null,
-    /** 有界身份变化日志，订阅者按自身内容版本重放。 */
-    val changeLog: List<DirectoryRevisionChange> = emptyList(),
-)
-
-/**
- * 目录订阅句柄，最后一个订阅释放时关闭底层观察资源。
- * @param state 共享目录状态流。
- * @param release 释放引用的动作，必须在所属作用域线程执行。
- */
-class DirectorySubscription(
-    val state: StateFlow<DirectoryContentState>,
-    private val release: () -> Unit,
-) {
-    /** 句柄是否已经释放。 */
-    private var closed = false
-
-    /** 释放本次订阅；重复关闭不重复减少引用。 */
-    fun close() {
-        if (!closed) {
-            closed = true
-            release()
-        }
-    }
-}
 
 /**
  * 应用级目录内容存储；状态入口在所属主线程调用，I/O 在后台执行。
@@ -143,7 +103,9 @@ class DirectoryContentStore(
     suspend fun settled(location: String): DirectoryContentState {
         val record = record(location)
         if (record.dirty) load(location, force = true)
-        return record.state.first { !it.refreshing }
+        // 静默校验不设置前台 refreshing，等待真实读取任务才能保证返回的是最新结果。
+        while (record.loading?.isActive == true) record.loading?.join()
+        return record.state.value
     }
 
     /**
@@ -171,33 +133,43 @@ class DirectoryContentStore(
      * 请求底层目录读取；并发请求共享当前读取。
      * @param location 规范化目录位置。
      * @param force 是否忽略已有快照，F5 使用 true。
+     * @param background 是否为静默校验；已有内容时不发布加载状态，并合并正在进行的读取。
+     * @return 无返回值，读取结果通过共享目录状态流发布。
      */
     @Suppress("TooGenericExceptionCaught") // 仓储边界既接受 Result 失败，也将意外抛出的异常转为可见状态。
-    fun load(location: String, force: Boolean = false) {
+    fun load(location: String, force: Boolean = false, background: Boolean = false) {
         val record = record(location)
-        if (record.loading?.isActive == true) {
-            if (force) { record.dirty = true; record.mutationRevision++ }
-            return
-        }
-        if (!force && !record.dirty && record.state.value.entries != null) return
+        if (record.deferReadIfActive(force, background)) return
+        if (!record.needsRead(force)) return
         val startRevision = record.mutationRevision
+        val previous = record.state.value.entries
+        val started = TimeSource.Monotonic.markNow()
         record.dirty = false
-        record.state.value = record.state.value.copy(refreshing = true, failure = null)
+        if (!background || previous == null) {
+            record.state.value = record.state.value.copy(refreshing = true, failure = null)
+        }
         record.loading = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 val result = withContext(Dispatchers.IO) { repository.list(location).map { entries ->
-                    DirectoryContentSnapshot(entries, entries.sumOf { it.estimatedMetadataBytes() })
+                    reconcileDirectorySnapshot(previous, entries)
                 } }
                 result.exceptionOrNull()?.let { if (it is CancellationException) throw it }
                 if (record.mutationRevision == startRevision) {
                     record.state.value = result.fold(
                         onSuccess = { snapshot ->
                             record.estimatedBytes = snapshot.estimatedBytes
-                            record.state.value.copy(entries = snapshot.entries, refreshing = false, failure = null,
-                                revision = nextRevision++, change = null)
+                            val updated = record.state.value.withDirectorySnapshot(snapshot, nextRevision)
+                            if (snapshot.changed) nextRevision++
+                            record.identityBytes = updated.changeLog.estimatedIdentityBytes()
+                            updated
                         },
                         onFailure = { failure -> record.state.value.copy(refreshing = false, failure = failure) },
                     )
+                    observationService?.onVerified(location,
+                        result.toDirectoryVerificationResult(started.elapsedNow().inWholeMilliseconds))
+                    result.getOrNull()?.change?.let { change ->
+                        invalidate(change.invalidatedDescendants(records.keys))
+                    }
                 } else {
                     record.dirty = true
                 }
@@ -205,11 +177,15 @@ class DirectoryContentStore(
                 throw failure
             } catch (failure: Exception) {
                 record.state.value = record.state.value.copy(refreshing = false, failure = failure)
+                observationService?.onVerified(location, DirectoryVerificationResult(false, false,
+                    started.elapsedNow().inWholeMilliseconds))
             } finally {
                 // 旧任务只清除自己的引用，不能移除后续导航启动的新请求。
                 if (record.loading === currentCoroutineContext()[Job]) {
                     record.loading = null
-                    if (record.dirty && record.references > 0) load(location, force = true)
+                    if (record.dirty && record.references > 0) {
+                        load(location, force = true, background = !record.state.value.refreshing)
+                    }
                     else if (record.state.value.refreshing) {
                         record.state.value = record.state.value.copy(refreshing = false)
                     }
@@ -229,7 +205,7 @@ class DirectoryContentStore(
             records[location]?.let { record ->
                 record.mutationRevision++
                 record.dirty = true
-                if (record.references > 0) load(location, force = true)
+                if (record.references > 0) load(location, force = true, background = true)
             }
         }
     }
@@ -256,19 +232,13 @@ class DirectoryContentStore(
             val log = record.state.value.changeLog.appendIdentityChanges(revision, change.identityChanges)
             record.identityBytes = log.estimatedIdentityBytes()
             record.state.value = record.state.value.copy(entries = mutation.entries,
-                refreshing = record.loading?.isActive == true, failure = null,
+                failure = null,
                 revision = revision, change = change, changeLog = log)
             // 首次读取尚未得到完整快照时不能用局部结果替代全目录。
             if (record.loading?.isActive == true) record.dirty = true
         }
         // 删除或重命名目录使其后代缓存失效，重新进入不能复用旧目录树。
-        val removedDirectories = change.removed.filter {
-            it.kind == com.oruke.onyx.core.model.VFileKind.DIRECTORY
-        }
-        invalidate(records.keys.filter { candidate -> removedDirectories.any { entry ->
-            candidate == entry.location || candidate.startsWith(entry.location.trimEnd('/', '\\') + "/") ||
-                candidate.startsWith(entry.location.trimEnd('/', '\\') + "\\")
-        } }.toSet())
+        invalidate(change.invalidatedDescendants(records.keys))
         invalidate(change.invalidatedDirectories)
         trimCache()
     }
@@ -283,12 +253,13 @@ class DirectoryContentStore(
         when (event) {
             DirectoryWatchEvent.Ready -> {
                 record.state.value = record.state.value.copy(observationFailure = null)
-                load(location, force = true)
+                load(location, force = true, background = true)
             }
             DirectoryWatchEvent.Invalidated -> invalidate(setOf(location))
+            DirectoryWatchEvent.Verify -> load(location, force = true, background = true)
             is DirectoryWatchEvent.Unavailable -> {
                 record.state.value = record.state.value.copy(observationFailure = event.failure)
-                load(location, force = true)
+                load(location, force = true, background = true)
             }
             is DirectoryWatchEvent.Changed -> {
                 record.pendingLocations += event.location
@@ -353,7 +324,14 @@ class DirectoryContentStore(
                 else -> invalid = true
             }
         }
-        if (invalid) invalidate(setOf(location)) else apply(DirectoryChange(removed = removed, upserted = upserted))
+        if (invalid) invalidate(setOf(location)) else {
+            val previous = record.state.value.entries.orEmpty()
+            val change = withContext(Dispatchers.Default) {
+                detectDirectoryChangeIdentities(previous, DirectoryChange(removed = removed, upserted = upserted))
+            }
+            // 身份计算期间用户操作可能已提交，旧批次必须重新查询，不能覆盖新结果。
+            if (revision != record.mutationRevision) record.pendingLocations.addAll(locations) else apply(change)
+        }
         // 查询期间到达的事件另起一批，不能因上一批尚未结束而遗留在集合中。
     }
 
@@ -426,6 +404,25 @@ class DirectoryContentStore(
         var batch: Job? = null
         /** 合并窗口内待查询的条目。 */
         val pendingLocations = linkedSetOf<String>()
+
+        /**
+         * 判断已有快照是否足以满足本次读取，失效或首次进入必须读取。
+         * @param force 是否显式要求重新校验。
+         * @return 需要访问底层仓储时返回 true。
+         */
+        fun needsRead(force: Boolean): Boolean = force || dirty || state.value.entries == null
+
+        /**
+         * 合并正在执行的读取，前台强制刷新排队，后台定期校验不会堆积或取消在途请求。
+         * @param force 是否要求忽略已有快照。
+         * @param background 是否为静默校验。
+         * @return 已存在活动读取时返回 true。
+         */
+        fun deferReadIfActive(force: Boolean, background: Boolean): Boolean {
+            if (loading?.isActive != true) return false
+            if (force && !background) { dirty = true; mutationRevision++ }
+            return true
+        }
     }
 
     private companion object {

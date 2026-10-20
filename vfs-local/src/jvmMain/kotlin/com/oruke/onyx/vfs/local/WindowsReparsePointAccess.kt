@@ -75,7 +75,7 @@ internal object WindowsReparsePointAccess {
  * @param errorCode 失败调用紧接着取得的 Win32 错误码。
  * @return 携带入口路径和系统诊断的文件系统异常。
  */
-private fun Path.windowsMetadataFailure(errorCode: Int): FileSystemException {
+internal fun Path.windowsMetadataFailure(errorCode: Int): FileSystemException {
     val diagnostic = Win32Exception(errorCode)
     val failure = when (errorCode) {
         WinError.ERROR_FILE_NOT_FOUND, WinError.ERROR_PATH_NOT_FOUND ->
