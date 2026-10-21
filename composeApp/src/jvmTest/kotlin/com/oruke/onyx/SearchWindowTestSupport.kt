@@ -57,7 +57,13 @@ internal fun DesktopComposeUiTest.awaitSearchWindow(): ComposeWindow {
  */
 internal fun DesktopComposeUiTest.awaitSearchWindowTag(tag: String) {
     waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) {
-        runOnUiThread { visibleSearchWindows().singleOrNull()?.searchWindowNode(tag) != null }
+        runOnUiThread {
+            visibleSearchWindows().singleOrNull()?.let { window ->
+                // 独立原生窗口不由测试场景时钟驱动，主动完成首帧再读取其语义树。
+                window.renderImmediately()
+                window.searchWindowNode(tag) != null
+            } == true
+        }
     }
 }
 

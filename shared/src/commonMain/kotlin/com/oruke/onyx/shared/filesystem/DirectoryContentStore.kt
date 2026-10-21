@@ -326,11 +326,16 @@ class DirectoryContentStore(
         }
         if (invalid) invalidate(setOf(location)) else {
             val previous = record.state.value.entries.orEmpty()
+            val observed = DirectoryChange(removed = removed, upserted = upserted)
+            // 某些平台把改名拆成先新增后删除（或相反）的两批通知；先校验完整快照，不能发布丢失身份的半次改名。
             val change = withContext(Dispatchers.Default) {
-                detectDirectoryChangeIdentities(previous, DirectoryChange(removed = removed, upserted = upserted))
+                if (observed.requiresDirectoryIdentityVerification(previous)) null
+                else detectDirectoryChangeIdentities(previous, observed)
             }
             // 身份计算期间用户操作可能已提交，旧批次必须重新查询，不能覆盖新结果。
-            if (revision != record.mutationRevision) record.pendingLocations.addAll(locations) else apply(change)
+            if (revision != record.mutationRevision) record.pendingLocations.addAll(locations)
+            else if (change == null) invalidate(setOf(location))
+            else apply(change)
         }
         // 查询期间到达的事件另起一批，不能因上一批尚未结束而遗留在集合中。
     }

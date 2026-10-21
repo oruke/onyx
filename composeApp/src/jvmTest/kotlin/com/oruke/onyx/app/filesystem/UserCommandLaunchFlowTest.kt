@@ -4,6 +4,11 @@ import com.oruke.onyx.core.model.UserCommandDefinition
 import com.oruke.onyx.shared.usecase.UserCommandInvocation
 import com.oruke.onyx.shared.usecase.UserCommandUseCase
 import com.oruke.onyx.vfs.local.JvmLocalFileProvider
+import com.sun.jna.Native
+import com.sun.jna.Platform
+import com.sun.jna.WString
+import com.sun.jna.platform.win32.Shell32Util
+import com.sun.jna.win32.StdCallLibrary
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -81,7 +86,9 @@ private fun testJavaExecutable(): String = Path.of(
  * 为子进程提供测试探针和 Kotlin 运行库，不依赖 Gradle worker 的专用 classpath。
  * @return 当前构建产物组成的 classpath。
  */
-private fun probeClasspath(): String = listOf(CommandArgumentProbe::class.java, Unit::class.java)
+private fun probeClasspath(): String = listOf(
+    CommandArgumentProbe::class.java, Unit::class.java, Native::class.java, Shell32Util::class.java,
+)
     .map { Path.of(it.protectionDomain.codeSource.location.toURI()).toString() }.distinct()
     .joinToString(File.pathSeparator)
 
@@ -93,7 +100,29 @@ object CommandArgumentProbe {
      */
     @JvmStatic
     fun main(args: Array<String>) {
-        if (args.firstOrNull() == "--fail") System.exit(7)
-        Files.write(Path.of(args.first()), listOf(System.getProperty("user.dir")) + args.drop(1))
+        val received = receivedArguments(args)
+        if (received.firstOrNull() == "--fail") System.exit(7)
+        Files.write(Path.of(received.first()), listOf(System.getProperty("user.dir")) + received.drop(1))
     }
+
+    /**
+     * 读取子进程实际接收的参数；Windows 使用原始宽字符命令行，避免 Java 启动器按 ANSI 码页丢字。
+     * @param args 非 Windows 平台由 JVM 无损传入的参数。
+     * @return 操作系统实际传入探针的完整参数，保留 Unicode 和各参数边界。
+     */
+    private fun receivedArguments(args: Array<String>): Array<String> {
+        if (!Platform.isWindows()) return args
+        // Java 21 的 Windows 启动器仍受系统 ANSI 码页约束，不能把其解码损失误判为 ProcessBuilder 拼参。
+        val api = Native.load("kernel32", WindowsProbeCommandLine::class.java)
+        val command = Shell32Util.CommandLineToArgv(api.GetCommandLineW().toString())
+        val mainClassIndex = command.indexOf(CommandArgumentProbe::class.java.name)
+        check(mainClassIndex >= 0) { "测试探针主类未出现在真实命令行中" }
+        return command.drop(mainClassIndex + 1).toTypedArray()
+    }
+}
+
+/** 仅供独立测试进程读取操作系统原始 UTF-16 命令行，生产启动器保持统一 ProcessBuilder 实现。 */
+internal interface WindowsProbeCommandLine : StdCallLibrary {
+    /** @return 当前探针进程由 Windows 实际接收的原始宽字符命令行。 */
+    fun GetCommandLineW(): WString
 }

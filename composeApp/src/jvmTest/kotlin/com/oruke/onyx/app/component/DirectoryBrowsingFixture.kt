@@ -79,15 +79,16 @@ internal class BrowsingRepository(private val root: String, private val provider
 
 /**
  * 真实双面板、统一文件命令、后台任务和共享目录存储的业务集成环境。
- * @param observe 是否注册真实系统目录观察。
- * @param storageDevices 可控平台边界之上的生产设备服务，为空时使用真实宿主服务。
- * @param pathService 生产路径服务，设备场景使用桌面虚拟位置装饰器。
  */
 internal class DirectoryBrowsingFixture(
+    /** 是否注册真实系统目录观察。 */
     observe: Boolean = false,
     /** 由设备场景管理生命周期的共享生产服务。 */
     private val storageDevices: StorageDeviceService? = null,
+    /** 生产路径服务，设备场景使用桌面虚拟位置装饰器。 */
     pathService: VfsPathService = JvmVfsPathService(),
+    /** 控制通知先后次序的观察边界；文件查询和命令仍使用生产 Provider。 */
+    observationService: DirectoryObservationService? = null,
 ) {
     /** 本场景唯一拥有的可回收样本根。 */
     val workspace: Path = Files.createTempDirectory("onyx-browsing-")
@@ -109,7 +110,7 @@ internal class DirectoryBrowsingFixture(
     val paths = pathService
     /** 两面板共享的内容与观察存储。 */
     val store = DirectoryContentStore(repository, scope,
-        if (observe) JvmDirectoryObservationService(paths) else null)
+        observationService ?: if (observe) JvmDirectoryObservationService(paths) else null)
     /** 生产后台任务状态。 */
     val tasks = TaskOrchestrator(scope)
     /** 不触发系统剪贴板写入的内部业务剪贴板。 */
