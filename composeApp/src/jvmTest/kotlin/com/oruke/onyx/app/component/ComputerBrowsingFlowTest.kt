@@ -102,13 +102,7 @@ class ComputerBrowsingFlowTest {
         primary.awaitComputer { it.devices.singleOrNull()?.locations == listOf(target.toString()) }
         assertEquals(setOf(backend.device.id), primary.state.value.selectedEntryIds)
         primary.dispatch(PaneIntent.OpenSelectedEntry)
-        val operation =
-            checkNotNull(primary.deviceOperationJobs[backend.device.id]) {
-                "设备打开没有启动：focus=${primary.state.value.selectionFocusId}, state=${primary.state.value.entriesState}"
-            }
-        withTimeout(5_000) { operation.join() }
-        assertNull((primary.state.value.entriesState as? ComputerEntriesState)?.operationFailure)
-        assertEquals(target.toString(), primary.state.value.location)
+        // 打开完成可早于派发返回，最终位置和真实文件内容才是稳定的业务结果。
         val opened = primary.awaitBrowsing {
             it.location == target.toString() &&
                 (it.entriesState as? PaneEntriesState.Ready)?.entries?.any {

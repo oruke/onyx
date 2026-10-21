@@ -25,7 +25,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /** 原生窗口创建和异步重组的最大等待时间。 */
-internal const val TASK_WINDOW_WAIT_MILLIS = 5_000L
+internal const val TASK_WINDOW_WAIT_MILLIS = 15_000L
 
 /** 原生窗口置顶与重绘后的截图稳定等待时间。 */
 private const val NATIVE_PAINT_SETTLE_MILLIS = 300

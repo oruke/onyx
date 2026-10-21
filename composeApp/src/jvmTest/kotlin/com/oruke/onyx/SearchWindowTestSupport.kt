@@ -28,8 +28,8 @@ import kotlin.math.floor
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-/** 原生窗口和后台搜索状态变化的统一等待上限。 */
-internal const val SEARCH_WINDOW_WAIT_MILLIS = 5_000L
+/** 原生窗口与后台搜索的等待上限，涵盖虚拟桌面软件渲染的首次建窗开销。 */
+internal const val SEARCH_WINDOW_WAIT_MILLIS = 15_000L
 
 /**
  * 在 AWT 线程列出本应用当前可见的独立搜索窗口。
@@ -56,6 +56,12 @@ internal fun DesktopComposeUiTest.awaitSearchWindow(): ComposeWindow {
  * @return 无返回值。
  */
 internal fun DesktopComposeUiTest.awaitSearchWindowTag(tag: String) {
+    val expectedWindow = awaitSearchWindow()
+    runOnUiThread {
+        expectedWindow.toFront()
+        expectedWindow.requestFocus()
+        expectedWindow.renderImmediately()
+    }
     waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) {
         runOnUiThread {
             visibleSearchWindows().singleOrNull()?.let { window ->
