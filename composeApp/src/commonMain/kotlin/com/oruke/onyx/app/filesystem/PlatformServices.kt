@@ -6,15 +6,27 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.VFile
 
+/** 导航层级及其展示元数据；真实位置始终独立于可本地化的名称。 */
 internal data class VfsBreadcrumb(
+    /** 普通路径段名称或应用位置标识。 */
     val label: String,
+    /** 点击和地址编辑使用的真实 VFS 位置。 */
     val location: String,
+    /** 已发现设备的卷名信息，缺少快照时仍可按普通路径导航。 */
+    val storageLabel: com.oruke.onyx.core.model.StorageVolumeLabel? = null,
 )
 
 internal interface VfsPathService {
     fun normalizeLocation(location: String): String
 
     fun parentLocation(location: String): String?
+
+    /**
+     * 获取界面导航上级，允许设备根目录返回设备概览，不改变文件系统父子关系。
+     * @param location 当前访问位置。
+     * @return 可导航的父位置；顶层概览为空。
+     */
+    fun navigationParent(location: String): String? = parentLocation(location)
 
     fun title(location: String): String
 

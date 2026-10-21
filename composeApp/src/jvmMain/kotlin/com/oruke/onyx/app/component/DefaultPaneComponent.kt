@@ -72,7 +72,16 @@ internal class DefaultPaneComponent(
     internal val onFileRenamed: (source: VFile, renamed: VFile) -> Unit = { _, _ -> },
     /** 应用级共享目录数据，直接构造面板的测试可使用隔离实例。 */
     directoryStore: com.oruke.onyx.shared.filesystem.DirectoryContentStore? = null,
+    /** 应用级设备服务；未注入时建立由当前组件关闭的隔离实例。 */
+    storageDevices: com.oruke.onyx.vfs.api.StorageDeviceService? = null,
+    /** 系统真实目录入口服务。 */
+    internal val systemQuickAccessService: com.oruke.onyx.app.platform.SystemQuickAccessService =
+        com.oruke.onyx.app.platform.JvmSystemQuickAccessService(),
 ) : PaneComponent, ComponentContext by componentContext {
+    /** 当前面板通过统一接口访问设备，只有本地创建的实例由面板负责关闭。 */
+    internal val storageDevices = storageDevices ?: com.oruke.onyx.app.platform.storage.JvmStorageDeviceService().also {
+        lifecycle.doOnDestroy(it::close)
+    }
     /** 与组件生命周期绑定的主线程协程作用域。 */
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { value ->
         lifecycle.doOnDestroy { value.cancel() }
@@ -143,6 +152,9 @@ internal class DefaultPaneComponent(
 
     /** 每个标签当前执行的目录加载任务。 */
     internal val tabLoadJobs = mutableMapOf<String, Job>()
+
+    /** 本面板仍在执行的设备操作，切换标签不能丢失忙碌状态或启动重复操作。 */
+    internal val deviceOperationJobs = mutableMapOf<String, Job>()
 
     /** 目录加载成功后需要自动聚焦的条目名称。 */
     internal val pendingFocusEntryName = mutableMapOf<String, String>()

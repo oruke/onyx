@@ -238,6 +238,12 @@ internal data class PaneEntriesActions(
     val onBlankAreaContextMenu: (IntOffset) -> Unit = {},
     /** 上报视口锚点及是否正在用户滚动。 */
     val onViewportChanged: (com.oruke.onyx.app.component.PaneViewportAnchor, Boolean) -> Unit = { _, _ -> },
+    /** 打开设备概览中的真实目录入口。 */
+    val onOpenLocation: (String) -> Unit = {},
+    /** 通过面板组件执行设备打开、挂载或系统动作。 */
+    val onDeviceIntent: (com.oruke.onyx.app.component.PaneDeviceIntent) -> Unit = {},
+    /** 重新查询设备清单，错误时由组件保留已有内容。 */
+    val onRefreshComputer: () -> Unit = {},
 )
 
 /** 子条目组件使用的文件拖拽与框选回调。 */
@@ -330,6 +336,7 @@ internal fun PaneEntriesContent(
     thumbnails: GalleryThumbnailServices,
 ) {
     when (val entriesState = model.entriesState) {
+        is com.oruke.onyx.app.component.ComputerEntriesState -> ComputerEntriesView(model, actions, entriesState)
         PaneEntriesState.Idle, PaneEntriesState.Loading -> PaneEntriesLoading()
         is PaneEntriesState.Failure -> PaneEntriesFailure(entriesState)
 

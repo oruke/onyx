@@ -104,7 +104,16 @@ internal fun parseXdgUserDirectoryLine(
         val candidate = Path.of(expandedValue)
         (if (candidate.isAbsolute) candidate else homeDirectory.resolve(candidate)).normalize().toAbsolutePath()
     }.getOrNull() ?: return null
-    return SystemQuickAccessLocation(displayName = null, location = path.toString())
+    val kind = when (line.substringBefore('=').trim()) {
+        "XDG_DESKTOP_DIR" -> com.oruke.onyx.core.model.StandardUserDirectory.DESKTOP
+        "XDG_DOCUMENTS_DIR" -> com.oruke.onyx.core.model.StandardUserDirectory.DOCUMENTS
+        "XDG_DOWNLOAD_DIR" -> com.oruke.onyx.core.model.StandardUserDirectory.DOWNLOADS
+        "XDG_PICTURES_DIR" -> com.oruke.onyx.core.model.StandardUserDirectory.PICTURES
+        "XDG_MUSIC_DIR" -> com.oruke.onyx.core.model.StandardUserDirectory.MUSIC
+        "XDG_VIDEOS_DIR" -> com.oruke.onyx.core.model.StandardUserDirectory.VIDEOS
+        else -> null
+    }
+    return SystemQuickAccessLocation(displayName = null, location = path.toString(), standardDirectory = kind)
 }
 
 /**

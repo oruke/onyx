@@ -6,12 +6,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.IntOffset
 import com.oruke.onyx.app.component.PaneEntriesState
+import com.oruke.onyx.app.component.paneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.COMPUTER_LOCATION
 import com.oruke.onyx.ui.PaneDragBindings
 import com.oruke.onyx.ui.theme.FileDragState
 import com.oruke.onyx.ui.theme.FileDropTarget
@@ -21,7 +23,6 @@ import com.oruke.onyx.ui.theme.TabDropZone
 import com.oruke.onyx.ui.theme.area
 import com.oruke.onyx.ui.theme.containsPoint
 import com.oruke.onyx.ui.theme.dropIndex
-import com.oruke.onyx.ui.theme.paneState
 
 /**
  * 管理应用窗口内的标签拖放、文件拖放及系统拖放衔接。
@@ -104,7 +105,7 @@ internal class AppDragController(
      * @param operation 用户请求的文件操作。
      */
     private fun startFileDrag(sourcePaneId: PaneId, operation: FileTransferOperation) {
-        val sourcePaneState = rootComponent.state.value.paneState(sourcePaneId)
+        val sourcePaneState = rootComponent.paneState(sourcePaneId)
         val entries = (sourcePaneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
         val selectedEntries = entries.filter { it.id in sourcePaneState.selectedEntryIds }
         val isArchiveSource = rootComponent.prepareExternalDrag(selectedEntries)
@@ -134,7 +135,7 @@ internal class AppDragController(
             val canResolveAutomatically = !dragState.userForced &&
                 dragState.operation != FileTransferOperation.EXTRACT
             if (canResolveAutomatically) {
-                val source = rootComponent.state.value.paneState(dragState.sourcePaneId).location
+                val source = rootComponent.paneState(dragState.sourcePaneId).location
                 val operation = rootComponent.resolveTransferOperation(source, target.targetDirectoryLocation)
                 if (operation != dragState.operation) {
                     fileDragState = dragState.copy(operation = operation)
@@ -188,7 +189,6 @@ internal class AppDragController(
      */
     private fun resolveFileDropTarget(windowPosition: IntOffset): FileDropTarget? {
         val dragState = fileDragState ?: return null
-        val currentState = rootComponent.state.value
         val zone = fileDropZones.values
             .filter(::isCurrentFileDropZone)
             .filter { it.bounds.containsPoint(windowPosition) }
@@ -197,9 +197,8 @@ internal class AppDragController(
                     .thenBy { it.bounds.area },
             )
             .firstOrNull() ?: return null
-        val sourceLocation = currentState.paneState(dragState.sourcePaneId).location
-        val targetLocation = zone.directoryEntryId?.let { zone.targetDirectoryLocation }
-            ?: currentState.paneState(zone.paneId).location
+        val sourceLocation = rootComponent.paneState(dragState.sourcePaneId).location
+        val targetLocation = zone.targetDirectoryLocation
         return FileDropTarget(zone.paneId, targetLocation, zone.directoryEntryId).takeUnless {
             zone.paneId == dragState.sourcePaneId &&
                 zone.directoryEntryId == null &&
@@ -214,13 +213,19 @@ internal class AppDragController(
      * @return 区域仍然有效时返回 true。
      */
     private fun isCurrentFileDropZone(zone: FileDropZone): Boolean {
-        val directoryEntryId = zone.directoryEntryId ?: return true
-        val paneState = rootComponent.state.value.paneState(zone.paneId)
-        val entries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
-        return entries.any { entry ->
-            entry.id == directoryEntryId &&
-                entry.location == zone.targetDirectoryLocation &&
-                entry.kind == VFileKind.DIRECTORY
+        val paneState = rootComponent.paneState(zone.paneId)
+        val ready = paneState.entriesState as? PaneEntriesState.Ready
+        val directoryEntryId = zone.directoryEntryId
+        // 同一次导航中聚合流与旧布局可能尚未更新，必须同时校验当前位置和区域归属。
+        return when {
+            paneState.location == COMPUTER_LOCATION || zone.targetDirectoryLocation == COMPUTER_LOCATION -> false
+            ready == null -> false
+            directoryEntryId == null -> zone.targetDirectoryLocation == paneState.location
+            else -> ready.entries.any { entry ->
+                entry.id == directoryEntryId &&
+                    entry.location == zone.targetDirectoryLocation &&
+                    entry.kind == VFileKind.DIRECTORY
+            }
         }
     }
 }

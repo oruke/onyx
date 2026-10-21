@@ -39,6 +39,8 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.di.fileModule
+import com.oruke.onyx.vfs.api.StorageDeviceService
+import org.koin.dsl.module
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.imageio.ImageIO
@@ -234,11 +236,18 @@ class DirectoryBrowsingUiTest {
 /**
  * 从生产 DI 装配真实根组件，以与原生窗口相同的内容入口运行；配置由测试进程隔离。
  * @param location 本测试创建的唯一样本目录。
+ * @param onDragReady 暴露生产拖放服务，供集成场景核对系统桥接状态。
+ * @param storageDevices 可控平台设备边界，其他服务和 App 入口保持生产装配。
  * @param onRoot 暴露生产命令入口和结果观察点。
  */
 @Composable
-private fun DirectoryBrowsingApplication(location: String, onRoot: (RootComponent) -> Unit) {
-    KoinApplication(application = { modules(fileModule) }) {
+internal fun DirectoryBrowsingApplication(location: String,
+    onDragReady: (ExternalFileDragService) -> Unit = {}, storageDevices: StorageDeviceService? = null,
+    onRoot: (RootComponent) -> Unit) {
+    KoinApplication(application = {
+        modules(fileModule)
+        if (storageDevices != null) modules(module { single<StorageDeviceService> { storageDevices } })
+    }) {
         IntUiTheme(theme = JewelTheme.lightThemeDefinition(), styling = ComponentStyling.default().decoratedWindow(
             titleBarStyle = TitleBarStyle.lightWithLightHeader())) {
             val koin = getKoin()
@@ -246,7 +255,7 @@ private fun DirectoryBrowsingApplication(location: String, onRoot: (RootComponen
             val drag = remember { koin.get<ExternalFileDragService>() }
             val launch = remember { RootLaunchConfiguration(initialLocation = location, persistsMainSession = false) }
             val root = rememberRootComponent(runtime, drag, launch)
-            SideEffect { onRoot(root) }
+            SideEffect { onRoot(root); onDragReady(drag) }
             DisposableEffect(drag) { onDispose(drag::dispose) }
             App(root, drag)
         }

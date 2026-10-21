@@ -157,7 +157,8 @@ internal fun BreadcrumbAddressBar(
     buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
 ) {
     val scrollState = rememberScrollState()
-    val breadcrumbs = remember(location) { buildBreadcrumbs(location) }
+    // 名称来自纯内存快照；设备首次发现后应允许更新名称，不更改当前地址与滚动身份。
+    val breadcrumbs = buildBreadcrumbs(location)
     val maxScroll = scrollState.maxValue
 
     LaunchedEffect(location, maxScroll) {
@@ -183,7 +184,7 @@ internal fun BreadcrumbAddressBar(
                 )
             }
             Text(
-                text = crumb.label,
+                text = crumb.storageLabel?.let { storageVolumeTitle(it) } ?: desktopLocationLabel(crumb.label),
                 color = if (index == breadcrumbs.lastIndex) {
                     LocalOnyxPalette.current.foreground
                 } else {

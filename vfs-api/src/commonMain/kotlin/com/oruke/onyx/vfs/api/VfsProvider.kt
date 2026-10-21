@@ -6,6 +6,8 @@ import com.oruke.onyx.core.model.VFile
  * VFS 支持的协议类型。
  */
 enum class VfsProtocol {
+    /** 应用内系统位置，默认没有普通文件写入能力。 */
+    SYSTEM,
     LOCAL,
     ARCHIVE,
     COLLECTION,

@@ -149,6 +149,19 @@ enum class MessageKey {
 
     /** 外部程序以非零状态退出，需要显示命令名称和返回码。 */
     MSG_USER_COMMAND_EXIT_FAILED,
+
+    /** 请求的设备当前已经不可用。 */
+    MSG_DEVICE_UNAVAILABLE,
+    /** 设备仍有在途原生操作，不能排队执行已经过时的命令。 */
+    MSG_DEVICE_BUSY,
+    /** 系统未提供该设备操作。 */
+    MSG_DEVICE_ACTION_UNAVAILABLE,
+    /** 原生设备操作返回的失败原因。 */
+    MSG_DEVICE_OPERATION_FAILED,
+    /** 设备操作未在规定时间内完成。 */
+    MSG_DEVICE_OPERATION_TIMEOUT,
+    /** 单设备容量查询超出界面等待预算，其他条目继续可用。 */
+    MSG_DEVICE_METADATA_TIMEOUT,
 }
 
 /**

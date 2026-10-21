@@ -52,6 +52,16 @@ data class OnyxAppearance(
     val feedbackFontSize: TextUnit = 11.sp,
     /** 面板反馈背景叠加主题错误色的透明度。 */
     val feedbackBackgroundAlpha: Float = 0.2f,
+    /** 文件与设备入口使用的标准小图标边长。 */
+    val entryIconSize: Dp = 16.dp,
+    /** 密集列表条目内容的水平内边距。 */
+    val entryHorizontalPadding: Dp = 8.dp,
+    /** 密集列表图标、文字和附加信息之间的间距。 */
+    val entryContentSpacing: Dp = 6.dp,
+    /** 设备概览在窄面板中将容量移到名称下方的统一宽度阈值。 */
+    val storageCompactWidth: Dp = 420.dp,
+    /** 此电脑的统一尺寸与容量提示参数。 */
+    val computer: ComputerAppearance = ComputerAppearance(),
 )
 
 val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {

@@ -13,6 +13,10 @@ import kotlinx.coroutines.launch
 /** 校验活动标签目录，并重试已降级的目录观察；已加载列表与浏览状态保持可用。 */
 internal fun DefaultPaneComponent.refresh() {
     val tab = activeTab() ?: return
+    if (com.oruke.onyx.app.filesystem.isComputerLocation(tab.location)) {
+        loadTab(tab.id, tab.location)
+        return
+    }
     if (tabLoadJobs[tab.id]?.isActive == true) directories.refresh(tab.location)
     else loadTab(tab.id, tab.location)
 }
@@ -44,12 +48,15 @@ internal fun DefaultPaneComponent.goForward() {
 /** 导航到活动目录的父位置，并准备回焦当前目录。 */
 internal fun DefaultPaneComponent.goUp() {
     val tab = activeTab() ?: return
-    val parentLocation = pathService.parentLocation(tab.location) ?: return
+    val parentLocation = pathService.navigationParent(tab.location) ?: return
     if (tab.backStack.lastOrNull() == parentLocation) {
         goBack()
         return
     }
-    locationBaseName(tab.location)?.let { name -> pendingFocusEntryName[tab.id] = name }
+    val focus = if (com.oruke.onyx.app.filesystem.isComputerLocation(parentLocation)) {
+        pathService.normalizeLocation(tab.location)
+    } else locationBaseName(tab.location)
+    focus?.let { pendingFocusEntryName[tab.id] = it }
     navigateActiveTab(parentLocation, recordHistory = true)
 }
 

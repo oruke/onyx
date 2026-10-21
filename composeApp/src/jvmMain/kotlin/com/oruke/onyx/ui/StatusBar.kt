@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.ViewMode
+import com.oruke.onyx.core.model.COMPUTER_LOCATION
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.formatFileSize
 import onyx.composeapp.generated.resources.Res
@@ -32,6 +33,8 @@ import onyx.composeapp.generated.resources.label_filtered_item_count
 import onyx.composeapp.generated.resources.label_item_count
 import onyx.composeapp.generated.resources.label_mode_details
 import onyx.composeapp.generated.resources.label_mode_gallery
+import onyx.composeapp.generated.resources.label_mode_computer_overview
+import onyx.composeapp.generated.resources.label_mode_computer_details
 import onyx.composeapp.generated.resources.label_selected_size
 import onyx.composeapp.generated.resources.label_directory_refreshing
 
@@ -61,6 +64,13 @@ internal fun StatusBar(
     onGalleryItemSizeChange: (Int) -> Unit = {},
 ) {
     val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
+    val computer = activeState.location == COMPUTER_LOCATION
+    val detailsLabel = stringResource(
+        if (computer) Res.string.label_mode_computer_details else Res.string.label_mode_details
+    )
+    val galleryLabel = stringResource(
+        if (computer) Res.string.label_mode_computer_overview else Res.string.label_mode_gallery
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -75,54 +85,15 @@ internal fun StatusBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            val status = activeState.statusInfo
-            if (activeState.activeTabState.refreshing) {
-                Text(stringResource(Res.string.label_directory_refreshing), fontSize = 11.sp,
-                    color = LocalOnyxPalette.current.mutedForeground)
-            }
-            Text(
-                text = stringResource(
-                    Res.string.label_directory_file_count,
-                    status.directoryCount,
-                    status.fileCount,
-                ),
-                fontSize = 11.sp,
-                color = LocalOnyxPalette.current.mutedForeground,
-            )
-            Text(
-                text = stringResource(Res.string.label_item_count, status.totalItemCount),
-                fontSize = 11.sp,
-                color = LocalOnyxPalette.current.mutedForeground,
-            )
-            if (activeState.filterQuery.isNotBlank()) {
-                Text(
-                    text = stringResource(
-                        Res.string.label_filtered_item_count,
-                        status.visibleItemCount,
-                        status.totalItemCount,
-                    ),
-                    fontSize = 11.sp,
-                    color = LocalOnyxPalette.current.mutedForeground,
-                )
-            }
-            val selectedSizeText = stringResource(
-                Res.string.label_selected_size,
-                status.selectedCount,
-                formatFileSize(status.selectedSizeBytes),
-            )
-            Text(
-                text = selectedSizeText,
-                fontSize = 11.sp,
-                color = LocalOnyxPalette.current.mutedForeground,
-            )
+            PaneStatusSummary(activeState)
         }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // 画廊视图缩放滑块
-            if (activeState.viewMode == ViewMode.GALLERY) {
+            // 概览采用独立的自适应磁盘尺寸，不显示仅作用于普通文件缩略图的滑块。
+            if (activeState.viewMode == ViewMode.GALLERY && !computer) {
                 ZoomSlider(
                     value = galleryItemSizeDp,
                     onValueChange = onGalleryItemSizeChange,
@@ -131,21 +102,21 @@ internal fun StatusBar(
             LayoutIconButton(
                 selected = activeState.viewMode == ViewMode.DETAILS,
                 onClick = { onSetActiveViewMode(ViewMode.DETAILS) },
-                tooltip = stringResource(Res.string.label_mode_details),
+                tooltip = detailsLabel,
             ) {
                 Icon(
                     key = AllIconsKeys.Actions.ListFiles,
-                    contentDescription = stringResource(Res.string.label_mode_details),
+                    contentDescription = detailsLabel,
                 )
             }
             LayoutIconButton(
                 selected = activeState.viewMode == ViewMode.GALLERY,
                 onClick = { onSetActiveViewMode(ViewMode.GALLERY) },
-                tooltip = stringResource(Res.string.label_mode_gallery),
+                tooltip = galleryLabel,
             ) {
-                Icon(
+                if (computer) StorageDeviceIcon(contentDescription = galleryLabel) else Icon(
                     key = AllIconsKeys.General.LayoutPreviewOnly,
-                    contentDescription = stringResource(Res.string.label_mode_gallery),
+                    contentDescription = galleryLabel,
                 )
             }
         }

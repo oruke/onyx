@@ -84,22 +84,6 @@ internal fun DefaultRootComponent.recordTrashDeleteOperation(records: List<Trash
     fileOperationHistoryFacade.recordTrashDeleteOperation(records)
 }
 
-/** @param paneId 面板 ID。 @return 对应面板状态。 */
-internal fun DefaultRootComponent.paneState(paneId: PaneId): PaneState {
-    return when (paneId) {
-        PaneId.PRIMARY -> primaryPane.state.value
-        PaneId.SECONDARY -> secondaryPane.state.value
-    }
-}
-
-/** @param paneId 面板 ID。 @return 对应面板组件。 */
-internal fun DefaultRootComponent.paneComponent(paneId: PaneId): PaneComponent {
-    return when (paneId) {
-        PaneId.PRIMARY -> primaryPane
-        PaneId.SECONDARY -> secondaryPane
-    }
-}
-
 /**
  * 读取面板选中条目，并排除已由选中祖先目录覆盖的子项。
  *

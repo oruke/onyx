@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,6 +120,16 @@ internal fun PaneSidebar(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        SidebarLocationItem(
+            label = desktopComputerLabel(),
+            selected = com.oruke.onyx.app.filesystem.isComputerLocation(state.location),
+            favorite = com.oruke.onyx.core.model.COMPUTER_LOCATION in state.favoriteLocations,
+            iconKey = AllIconsKeys.General.OpenDisk,
+            modifier = Modifier.testTag("sidebar-computer"),
+            leadingIcon = { StorageDeviceIcon(modifier = it) },
+            onOpen = { actions.activateAndOpen(com.oruke.onyx.core.model.COMPUTER_LOCATION) },
+            onToggleFavorite = { actions.onToggleFavoriteLocation(com.oruke.onyx.core.model.COMPUTER_LOCATION) },
+        )
         SidebarQuickAccess(state, actions)
         SidebarFavorites(state, actions)
         SidebarConnections(state, actions)
@@ -141,7 +152,7 @@ private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarAction
         } else {
             state.favoriteLocations.forEach { favoriteLocation ->
                 SidebarLocationItem(
-                    label = actions.locationLabel(favoriteLocation),
+                    label = desktopLocationLabel(actions.locationLabel(favoriteLocation)),
                     selected = state.location == favoriteLocation,
                     favorite = true,
                     onOpen = { actions.activateAndOpen(favoriteLocation) },
@@ -203,7 +214,7 @@ private fun SidebarRecentLocations(state: PaneSidebarState, actions: PaneSidebar
         } else {
             visibleLocations.forEach { recentLocation ->
                 SidebarLocationItem(
-                    label = actions.locationLabel(recentLocation),
+                    label = desktopLocationLabel(actions.locationLabel(recentLocation)),
                     selected = false,
                     favorite = state.favoriteLocations.contains(recentLocation),
                     onOpen = { actions.activateAndOpen(recentLocation) },
@@ -313,6 +324,8 @@ internal fun SidebarEmptyState(
  * @param onOpen 打开位置回调。
  * @param onToggleFavorite 切换收藏状态回调。
  * @param onEdit 可选编辑回调。
+ * @param modifier 统一控件的外部布局与语义修饰符。
+ * @param leadingIcon 可选图标渲染入口，尺寸仍由公共侧栏控件统一提供。
  */
 @Composable
 internal fun SidebarLocationItem(
@@ -323,11 +336,13 @@ internal fun SidebarLocationItem(
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
     onEdit: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    leadingIcon: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .hoverable(interactionSource)
             .background(
@@ -343,11 +358,8 @@ internal fun SidebarLocationItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Icon(
-            key = iconKey ?: AllIconsKeys.Nodes.Folder,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-        )
+        if (leadingIcon != null) leadingIcon(Modifier.size(14.dp)) else Icon(
+            key = iconKey ?: AllIconsKeys.Nodes.Folder, contentDescription = null, modifier = Modifier.size(14.dp))
         Text(
             text = label,
             modifier = Modifier.weight(1f),

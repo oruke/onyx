@@ -169,8 +169,13 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
         onConfirmInlineEdit = { dispatch(PaneIntent.ConfirmInlineEdit) },
         onCancelInlineEdit = { dispatch(PaneIntent.CancelInlineEdit) },
         onShowContextMenu = { entryId, selected, position ->
-            showEntryContextMenu(entryId, selected, position, readyEntries)
+            if (state.entriesState is com.oruke.onyx.app.component.ComputerEntriesState) {
+                showComputerContextMenu(entryId, position)
+            } else showEntryContextMenu(entryId, selected, position, readyEntries)
         },
+        onOpenLocation = { dispatch(PaneIntent.OpenDirectory(it)) },
+        onDeviceIntent = { dispatch(it) },
+        onRefreshComputer = { dispatch(PaneIntent.Refresh) },
         onDismissContextMenu = { ui.contextMenuVisible = false },
         onBeginRename = { dispatch(PaneIntent.BeginRename) },
         onSelectEntries = { entryIds -> dispatch(PaneIntent.SelectEntries(entryIds)) },
@@ -233,6 +238,10 @@ private fun BoxScope.PaneFilterOverlay(runtime: PaneSurfaceRuntime) {
 @Composable
 private fun BoxScope.PaneContextMenuOverlay(runtime: PaneSurfaceRuntime, readyEntries: List<VFile>) {
     if (!runtime.ui.contextMenuVisible) return
+    if (runtime.state.entriesState is com.oruke.onyx.app.component.ComputerEntriesState) {
+        PaneComputerContextMenu(runtime)
+        return
+    }
     val entries = readyEntries.filter { entry -> entry.id in runtime.ui.contextMenuEntryIds }
     val menuModel = PaneContextMenuModelBuilder.build(
         PaneContextMenuBuildInput(

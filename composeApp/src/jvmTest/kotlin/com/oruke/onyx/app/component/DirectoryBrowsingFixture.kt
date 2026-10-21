@@ -80,8 +80,15 @@ internal class BrowsingRepository(private val root: String, private val provider
 /**
  * 真实双面板、统一文件命令、后台任务和共享目录存储的业务集成环境。
  * @param observe 是否注册真实系统目录观察。
+ * @param storageDevices 可控平台边界之上的生产设备服务，为空时使用真实宿主服务。
+ * @param pathService 生产路径服务，设备场景使用桌面虚拟位置装饰器。
  */
-internal class DirectoryBrowsingFixture(observe: Boolean = false) {
+internal class DirectoryBrowsingFixture(
+    observe: Boolean = false,
+    /** 由设备场景管理生命周期的共享生产服务。 */
+    private val storageDevices: StorageDeviceService? = null,
+    pathService: VfsPathService = JvmVfsPathService(),
+) {
     /** 本场景唯一拥有的可回收样本根。 */
     val workspace: Path = Files.createTempDirectory("onyx-browsing-")
     /** 源目录。 */
@@ -99,7 +106,7 @@ internal class DirectoryBrowsingFixture(observe: Boolean = false) {
     /** 次面板生命周期。 */
     private val secondaryLifecycle = LifecycleRegistry()
     /** 生产统一路径服务。 */
-    val paths = JvmVfsPathService()
+    val paths = pathService
     /** 两面板共享的内容与观察存储。 */
     val store = DirectoryContentStore(repository, scope,
         if (observe) JvmDirectoryObservationService(paths) else null)
@@ -128,7 +135,8 @@ internal class DirectoryBrowsingFixture(observe: Boolean = false) {
             SystemFileOpenLauncher { error("Unexpected external open") })
         return DefaultPaneComponent(DefaultComponentContext(lifecycle), id, location.toString(), repository, provider,
             JvmTextClipboardService(), external, paths, ResourceEntryNameSuggestionService(), JvmFileTypeService(),
-            JvmArchiveEntryOpenService(ArchiveService(), external), directoryStore = store)
+            JvmArchiveEntryOpenService(ArchiveService(), external), directoryStore = store,
+            storageDevices = storageDevices)
     }
 
     /**

@@ -18,6 +18,16 @@ internal fun DefaultPaneComponent.setViewMode(mode: ViewMode) {
     }
 }
 
+/**
+ * 初始化文件夹默认视图，不覆盖此电脑独立的概览默认值。
+ * @param mode 从持久化设置读取的文件夹默认视图。
+ * @return 无返回值。
+ */
+internal fun DefaultPaneComponent.applyDefaultDirectoryViewMode(mode: ViewMode) {
+    val tab = activeTab() ?: return
+    updateTab(tab.id) { it.withTabState { state -> state.copy(viewMode = mode) } }
+}
+
 internal fun DefaultPaneComponent.setFilterQuery(query: String) {
     val tab = activeTab() ?: return
     updateTab(tab.id) { currentTab ->

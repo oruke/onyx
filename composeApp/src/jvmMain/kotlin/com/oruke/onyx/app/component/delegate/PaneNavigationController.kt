@@ -154,7 +154,11 @@ internal class PaneNavigationController(
         return withCachedContent(base.copy(tabState = state.copy(canGoBack = base.canGoBack,
             canGoForward = base.canGoForward, detailsColumns = base.detailsColumns,
             detailsColumnWeights = base.detailsColumnWeights, hiddenColumns = base.hiddenColumns,
-            galleryItemSizeDp = base.galleryItemSizeDp)))
+            galleryItemSizeDp = base.galleryItemSizeDp,
+            // 返回概览时保留最新文件夹偏好；普通目录历史仍恢复自身的视图状态。
+            viewMode = if (state.location == com.oruke.onyx.core.model.COMPUTER_LOCATION)
+                base.tabState.viewMode else state.viewMode,
+            computerViewMode = base.tabState.computerViewMode)))
     }
 
     /**

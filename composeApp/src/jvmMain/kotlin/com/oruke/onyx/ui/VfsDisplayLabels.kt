@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.label_vfs_protocol_system
 import onyx.composeapp.generated.resources.label_remote_protocol_s3
 import onyx.composeapp.generated.resources.label_remote_protocol_smb
 import onyx.composeapp.generated.resources.label_remote_protocol_webdav
@@ -36,6 +37,7 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 internal fun vfsProtocolLabel(protocol: VfsProtocol): String {
     val resource = when (protocol) {
+        VfsProtocol.SYSTEM -> Res.string.label_vfs_protocol_system
         VfsProtocol.LOCAL -> Res.string.label_vfs_protocol_local
         VfsProtocol.ARCHIVE -> Res.string.label_vfs_protocol_archive
         VfsProtocol.COLLECTION -> Res.string.label_vfs_protocol_collection

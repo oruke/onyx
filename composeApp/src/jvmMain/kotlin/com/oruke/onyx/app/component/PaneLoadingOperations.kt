@@ -38,6 +38,10 @@ internal fun DefaultPaneComponent.loadTab(tabId: String, location: String, force
     val active = tab(tabId) ?: return
     val visitId = active.tabState.browserState.visitId
     navigationController.activate(active)
+    if (com.oruke.onyx.app.filesystem.isComputerLocation(location)) {
+        loadComputerLocation(tabId, visitId)
+        return
+    }
     tabLoadJobs[tabId] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
         val subscription = directories.subscribe(location)
         if (force) directories.load(location, force = true)

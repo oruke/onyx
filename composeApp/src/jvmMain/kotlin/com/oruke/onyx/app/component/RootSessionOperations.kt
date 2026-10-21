@@ -87,8 +87,8 @@ private fun DefaultRootComponent.applySession(snapshot: AppSessionSnapshot) {
 private fun DefaultRootComponent.applySettingsDefaults() {
     layoutMode.value = settings.value.defaultLayoutMode
     val defaultViewMode = settings.value.defaultViewMode
-    primaryPane.setViewMode(defaultViewMode)
-    secondaryPane.setViewMode(defaultViewMode)
+    primaryPane.applyDefaultDirectoryViewMode(defaultViewMode)
+    secondaryPane.applyDefaultDirectoryViewMode(defaultViewMode)
 }
 
 /**

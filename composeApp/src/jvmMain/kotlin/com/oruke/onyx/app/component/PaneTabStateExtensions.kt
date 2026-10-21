@@ -81,7 +81,8 @@ internal fun PaneTabState.toTabSnapshot(): TabSnapshot {
         detailsColumnWeights = detailsColumnWeights,
         detailsSort = detailsSort,
         showHiddenItems = showHiddenItems,
-        viewMode = viewMode,
+        viewMode = tabState.viewMode,
+        computerViewMode = tabState.computerViewMode,
         filterQuery = filterQuery,
         backStack = backStack,
         forwardStack = forwardStack,
@@ -113,6 +114,7 @@ internal fun TabSnapshot.toPaneTabState(pathService: VfsPathService): PaneTabSta
             },
             detailsSort = detailsSort,
             viewMode = viewMode,
+            computerViewMode = computerViewMode,
             filterQuery = filterQuery,
             selectedEntryIds = emptySet(),
             selectionAnchorId = null,
@@ -146,6 +148,7 @@ internal fun PaneTabState.withDerivedState(
     sortedEntries: List<VFile>? = null,
     preserveOrder: Boolean = false,
 ): PaneTabState {
+    if (entriesState is ComputerEntriesState) return withDerivedComputerState()
     // 历史缓存被淘汰时先保留其选择，真实目录返回后再校正，不能在 Loading 阶段清空。
     if (entriesState !is PaneEntriesState.Ready && allEntries.isEmpty()) return this
     val sorted = sortedEntries ?: EntrySorter.visibleSortedEntries(
@@ -175,6 +178,7 @@ internal fun PaneTabState.withDerivedState(
         focusId = selectionFocusId,
     )
     val nextEntriesState = when (val currentEntriesState = entriesState) {
+        is ComputerEntriesState -> currentEntriesState
         is PaneEntriesState.Ready -> PaneEntriesState.Ready(visibleEntries)
         is PaneEntriesState.Failure -> currentEntriesState
         PaneEntriesState.Loading -> PaneEntriesState.Loading

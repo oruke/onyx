@@ -88,6 +88,8 @@ internal data class RootPlatformDependencies(
     val terminalLauncherService: TerminalLauncherService,
     /** 操作系统快速访问位置读取服务。 */
     val systemQuickAccessService: SystemQuickAccessService,
+    /** 应用级设备服务；隔离测试未注入时由面板管理自身实例。 */
+    val storageDevices: com.oruke.onyx.vfs.api.StorageDeviceService? = null,
 )
 
 /** 根组件的预览、元数据与远程认证依赖。 */

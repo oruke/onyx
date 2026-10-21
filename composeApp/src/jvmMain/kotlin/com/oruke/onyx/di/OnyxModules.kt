@@ -108,6 +108,10 @@ import com.oruke.onyx.app.filesystem.JvmUserCommandLauncherService
  * - 其余为平台服务的单例绑定
  */
 val fileModule = module {
+    single<com.oruke.onyx.vfs.api.StorageDeviceService> {
+        com.oruke.onyx.app.platform.storage.JvmStorageDeviceService()
+    } onClose { service -> (service as? java.io.Closeable)?.close() }
+    single { com.oruke.onyx.app.filesystem.SystemLocationVfsProvider(get()) }
     single { JvmLocalFileProvider() }
     single {
         ArchiveService(
@@ -171,6 +175,7 @@ val fileModule = module {
             listOf(
                 get<ArchiveVfsProvider>(),
                 get<FileCollectionVfsProvider>(),
+                get<com.oruke.onyx.app.filesystem.SystemLocationVfsProvider>(),
                 get<SmbVfsProvider>(),
                 get<WebDavVfsProvider>(),
                 get<S3VfsProvider>(),
@@ -233,7 +238,9 @@ val fileModule = module {
     single { SettingsDatabaseRepository() }
     single<SystemMenuService> { JvmSystemMenuService(get(), get()) }
     single<FileContextMenuService> { JvmFileContextMenuService(get(), get()) }
-    single<VfsPathService> { JvmVfsPathService() }
+    single<VfsPathService> {
+        com.oruke.onyx.app.filesystem.DesktopLocationPathService(storageDevices = get())
+    }
     single<EntryNameSuggestionService> { ResourceEntryNameSuggestionService() }
     single<FileTypeService> { JvmFileTypeService() }
     single<ArchiveEntryOpenService> { JvmArchiveEntryOpenService(get(), get()) }

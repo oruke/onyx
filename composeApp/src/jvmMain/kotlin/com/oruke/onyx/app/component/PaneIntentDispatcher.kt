@@ -6,6 +6,7 @@ package com.oruke.onyx.app.component
  * @param intent 待处理 intent。
  */
 internal fun DefaultPaneComponent.dispatchPaneIntent(intent: PaneIntent) {
+    if (dispatchComputerIntent(intent)) return
     if (intent is PaneIntent.ListPointerInteraction) {
         recordListPointerInteraction(intent)
         return
@@ -69,6 +70,7 @@ private fun DefaultPaneComponent.dispatchNavigationIntent(intent: PaneIntent): B
 private fun DefaultPaneComponent.dispatchPresentationIntent(intent: PaneIntent): Boolean {
     return when (intent) {
         is PaneIntent.SetViewMode -> { setViewMode(intent.mode); true }
+        is PaneDirectoryDefaultViewIntent -> { applyDefaultDirectoryViewMode(intent.mode); true }
         is PaneIntent.SetFilterQuery -> { setFilterQuery(intent.query); true }
         PaneIntent.ShowFilterInput -> { showFilterInput(); true }
         is PaneIntent.HideFilterInput -> { hideFilterInput(intent.clearQuery); true }

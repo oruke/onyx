@@ -151,7 +151,7 @@ internal fun PaneTabBar(
             PaneTabChip(
                 state = PaneTabChipState(
                     id = tab.id,
-                    title = tab.title,
+                    title = desktopLocationLabel(tab.title),
                     selected = tab.id == state.activeTabId,
                     closeEnabled = state.tabs.size > 1,
                     activePane = active,

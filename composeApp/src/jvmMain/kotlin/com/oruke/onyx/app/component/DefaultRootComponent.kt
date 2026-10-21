@@ -135,6 +135,9 @@ internal class DefaultRootComponent(
     /** 操作系统快速访问位置读取服务。 */
     internal val systemQuickAccessService = dependencies.platform.systemQuickAccessService
 
+    /** 所有面板共享的平台设备发现与操作服务。 */
+    internal val storageDevices = dependencies.platform.storageDevices
+
     /** 文本预览服务。 */
     internal val previewService = dependencies.inspection.previewService
 
@@ -536,6 +539,8 @@ private fun DefaultRootComponent.createPaneComponent(paneId: PaneId, childKey: S
         fileCommandService = fileCommandService,
         textClipboardService = textClipboardService,
         directoryStore = rootDirectoryStore,
+        storageDevices = storageDevices,
+        systemQuickAccessService = systemQuickAccessService,
         externalOpenService = externalOpenService,
         pathService = pathService,
         entryNameSuggestionService = entryNameSuggestionService,

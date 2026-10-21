@@ -109,6 +109,7 @@ internal class PaneCommandController(
      * @return 可执行时返回 `true`。
      */
     fun isEnabled(command: PaneCommand): Boolean {
+        if (state.entriesState is ComputerEntriesState) return computerCommandEnabled(state, command)
         val selectedCount = state.selectedEntryIds.size
         return when (command) {
             PaneCommand.OPEN_SELECTION,

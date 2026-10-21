@@ -41,7 +41,7 @@ data class TabSnapshot(
     val detailsSort: DetailsSort,
     /** 是否显示隐藏条目。 */
     val showHiddenItems: Boolean,
-    /** 当前文件视图模式。 */
+    /** 普通目录视图模式，与此电脑的偏好分别保存。 */
     val viewMode: ViewMode,
     /** 当前列表过滤文本。 */
     val filterQuery: String,
@@ -49,6 +49,8 @@ data class TabSnapshot(
     val backStack: List<String>,
     /** 前进历史位置。 */
     val forwardStack: List<String>,
+    /** 此电脑的独立显示偏好，未设置时使用磁盘概览。 */
+    val computerViewMode: ViewMode = ViewMode.GALLERY,
 )
 
 /** 向后兼容的标签会话类型别名。 */

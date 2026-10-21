@@ -12,6 +12,16 @@ import com.oruke.onyx.core.model.UserCommandDefinition
  * 右键菜单内置文案语义，由 UI 层映射到 i18n 资源。
  */
 internal enum class PaneContextMenuText {
+    /** 请求挂载设备的菜单文案。 */
+    DEVICE_MOUNT,
+    /** 请求卸载设备的菜单文案。 */
+    DEVICE_UNMOUNT,
+    /** 请求弹出介质的菜单文案。 */
+    DEVICE_EJECT,
+    /** 打开系统属性或信息窗口的菜单文案。 */
+    DEVICE_PROPERTIES,
+    /** 在系统文件管理器中打开的菜单文案。 */
+    DEVICE_OPEN_SYSTEM,
     OPEN,
     OPEN_IN_NEW_TAB,
     OPEN_IN_NEW_WINDOW,
@@ -220,6 +230,9 @@ internal class PaneContextMenuCommandController(
         location: String,
     ): Boolean {
         return when (command) {
+            is ComputerContextMenuCommand -> {
+                paneCommandController.dispatch(command.intent); true
+            }
             is PaneContextMenuCommand.UserCommand -> {
                 externalActions.onUserCommand(command.id, entries); true
             }

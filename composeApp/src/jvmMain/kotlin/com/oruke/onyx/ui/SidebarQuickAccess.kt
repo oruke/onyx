@@ -50,11 +50,7 @@ private fun QuickAccessLocationItem(
     actions: PaneSidebarActions,
 ) {
     val location = quickAccessLocation.location
-    val label = if (quickAccessLocation.isHome) {
-        stringResource(Res.string.label_home)
-    } else {
-        quickAccessLocation.displayName?.takeIf(String::isNotBlank) ?: actions.locationLabel(location)
-    }
+    val label = systemPlaceLabel(quickAccessLocation, actions.locationLabel(location))
     SidebarLocationItem(
         label = label,
         selected = state.location == location,

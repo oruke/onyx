@@ -18,37 +18,6 @@ import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ViewMode
 import kotlinx.coroutines.flow.StateFlow
 
-internal data class TabState(
-    val location: String,
-    val canGoBack: Boolean,
-    val canGoForward: Boolean,
-    val detailsColumns: List<DetailsColumn>,
-    val detailsColumnWeights: Map<DetailsColumn, Float>,
-    val detailsSort: DetailsSort,
-    val viewMode: ViewMode,
-    val filterQuery: String,
-    val selectedEntryIds: Set<String>,
-    val selectionAnchorId: String?,
-    val selectionFocusId: String?,
-    val statusInfo: PaneStatusInfo,
-    val inlineEditState: PaneInlineEditState?,
-    val inspectorState: PaneInspectorState,
-    val operationFeedback: PaneOperationFeedback?,
-    val showHiddenItems: Boolean,
-    val hiddenColumns: Set<DetailsColumn>,
-    val galleryItemSizeDp: Int,
-    val entriesState: PaneEntriesState,
-    val pendingScrollToEntryId: String? = null,
-    /** 当前访问的浏览状态，目录刷新不会重置。 */
-    val browserState: PaneBrowserState = PaneBrowserState(),
-    /** 已有快照正在后台校验，列表继续显示。 */
-    val refreshing: Boolean = false,
-    /** 后台更新失败详情，旧列表保持可见。 */
-    val directoryError: I18nMessage? = null,
-    /** 观察能力降级原因，后台轮询仍然可用。 */
-    val directoryObservationError: I18nMessage? = null,
-)
-
 /**
  * 面板 chrome 层状态，描述不属于单个文件条目的交互外壳。
  *
@@ -85,7 +54,8 @@ internal data class PaneState(
     val detailsColumns: List<DetailsColumn> get() = activeTabState.detailsColumns
     val detailsColumnWeights: Map<DetailsColumn, Float> get() = activeTabState.detailsColumnWeights
     val detailsSort: DetailsSort get() = activeTabState.detailsSort
-    val viewMode: ViewMode get() = activeTabState.viewMode
+    /** 当前实际呈现的模式，按位置选择普通目录或设备概览偏好。 */
+    val viewMode: ViewMode get() = activeTabState.effectiveViewMode
     val filterQuery: String get() = activeTabState.filterQuery
     val selectedEntryIds: Set<String> get() = activeTabState.selectedEntryIds
     val selectionAnchorId: String? get() = activeTabState.selectionAnchorId
@@ -119,7 +89,8 @@ internal data class PaneTabState(
     val detailsColumns: List<DetailsColumn> get() = tabState.detailsColumns
     val detailsColumnWeights: Map<DetailsColumn, Float> get() = tabState.detailsColumnWeights
     val detailsSort: DetailsSort get() = tabState.detailsSort
-    val viewMode: ViewMode get() = tabState.viewMode
+    /** 当前实际呈现的模式，持久化时仍分别保存两种位置偏好。 */
+    val viewMode: ViewMode get() = tabState.effectiveViewMode
     val filterQuery: String get() = tabState.filterQuery
     val selectedEntryIds: Set<String> get() = tabState.selectedEntryIds
     val selectionAnchorId: String? get() = tabState.selectionAnchorId

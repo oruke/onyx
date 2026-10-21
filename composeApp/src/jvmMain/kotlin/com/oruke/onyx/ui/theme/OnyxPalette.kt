@@ -54,6 +54,9 @@ data class OnyxPalette(
     /** 错误语义色。 */
     val error: Color,
 
+    /** 错误正文与状态文字色，在基础表面和默认选择背景上保持可读对比度。 */
+    val errorForeground: Color,
+
     /** 操作成功语义色。 */
     val success: Color,
 
@@ -125,6 +128,7 @@ fun rememberOnyxPalette(): OnyxPalette {
                 mutedForeground = Color(0xFF8C8C94),
                 disabledForeground = Color(0xFF6E6E6E),
                 error = onyxErrorColor,
+                errorForeground = Color(0xFFFFB4B4),
                 success = Color(0xFF4DAA57),
                 favorite = Color(0xFFFFC94D),
                 accent = Color(0xFF4D8DFF),
@@ -154,6 +158,7 @@ fun rememberOnyxPalette(): OnyxPalette {
                 mutedForeground = Color(0xFF5D6B7C),
                 disabledForeground = Color(0xFF94A0AE),
                 error = onyxErrorColor,
+                errorForeground = Color(0xFFA83232),
                 success = Color(0xFF318343),
                 favorite = Color(0xFFC78600),
                 accent = Color(0xFF2F6FEB),

@@ -51,6 +51,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_device_mount
+import onyx.composeapp.generated.resources.action_device_unmount
+import onyx.composeapp.generated.resources.action_device_eject
+import onyx.composeapp.generated.resources.action_device_properties
+import onyx.composeapp.generated.resources.action_device_open_system
 import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_archive
 import onyx.composeapp.generated.resources.action_close_menu
@@ -396,6 +401,11 @@ private fun PaneContextMenuNode.Item.contextMenuText(): String {
 @Suppress("CyclomaticComplexMethod") // 穷举菜单文案到资源键的声明式映射。
 private fun PaneContextMenuText.stringResourceKey(): StringResource {
     return when (this) {
+        PaneContextMenuText.DEVICE_MOUNT -> Res.string.action_device_mount
+        PaneContextMenuText.DEVICE_UNMOUNT -> Res.string.action_device_unmount
+        PaneContextMenuText.DEVICE_EJECT -> Res.string.action_device_eject
+        PaneContextMenuText.DEVICE_PROPERTIES -> Res.string.action_device_properties
+        PaneContextMenuText.DEVICE_OPEN_SYSTEM -> Res.string.action_device_open_system
         PaneContextMenuText.OPEN -> Res.string.action_open
         PaneContextMenuText.OPEN_IN_NEW_TAB -> Res.string.action_open_in_new_tab
         PaneContextMenuText.OPEN_IN_NEW_WINDOW -> Res.string.action_open_in_new_window
@@ -472,6 +482,7 @@ private fun PaneContextMenuIcon.toIconKey(iconPath: String?): IconKey {
  */
 private fun PaneContextMenuCommand.shortcutCommandOrNull(): OnyxCommand? {
     return when (this) {
+        is com.oruke.onyx.app.component.ComputerContextMenuCommand -> null
         is PaneContextMenuCommand.Pane -> command.toOnyxCommand()
         PaneContextMenuCommand.BatchRename,
         PaneContextMenuCommand.ExtractSelection,

@@ -12,6 +12,12 @@ import com.oruke.onyx.ui.vfsProviderCapabilityLabel
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.msg_device_unavailable
+import onyx.composeapp.generated.resources.msg_device_busy
+import onyx.composeapp.generated.resources.msg_device_action_unavailable
+import onyx.composeapp.generated.resources.msg_device_operation_failed
+import onyx.composeapp.generated.resources.msg_device_operation_timeout
+import onyx.composeapp.generated.resources.msg_device_metadata_timeout
 import onyx.composeapp.generated.resources.msg_batch_rename_invalid_counter
 import onyx.composeapp.generated.resources.msg_batch_rename_invalid_pattern
 import onyx.composeapp.generated.resources.msg_rename_preset_name_required
@@ -113,6 +119,12 @@ internal fun I18nMessage.resolve(): String {
 @Suppress("CyclomaticComplexMethod") // 穷举枚举到资源键的声明式映射，不包含业务分支。
 private fun MessageKey.toStringResource(): StringResource {
     return when (this) {
+        MessageKey.MSG_DEVICE_UNAVAILABLE -> Res.string.msg_device_unavailable
+        MessageKey.MSG_DEVICE_BUSY -> Res.string.msg_device_busy
+        MessageKey.MSG_DEVICE_ACTION_UNAVAILABLE -> Res.string.msg_device_action_unavailable
+        MessageKey.MSG_DEVICE_OPERATION_FAILED -> Res.string.msg_device_operation_failed
+        MessageKey.MSG_DEVICE_OPERATION_TIMEOUT -> Res.string.msg_device_operation_timeout
+        MessageKey.MSG_DEVICE_METADATA_TIMEOUT -> Res.string.msg_device_metadata_timeout
         MessageKey.MSG_COPY_HISTORY_CHANGED -> Res.string.msg_copy_history_changed
         MessageKey.MSG_BATCH_RENAME_INVALID_COUNTER -> Res.string.msg_batch_rename_invalid_counter
         MessageKey.MSG_BATCH_RENAME_INVALID_PATTERN -> Res.string.msg_batch_rename_invalid_pattern

@@ -11,8 +11,17 @@ private const val MIN_GALLERY_ITEM_SIZE_DP = 80
 /** 画廊项目允许的最大边长。 */
 private const val MAX_GALLERY_ITEM_SIZE_DP = 320
 
+/**
+ * 更新当前位置所属的视图偏好，设备概览不能覆盖普通文件夹的视图。
+ * @param mode 用户请求的视图模式。
+ * @return 保留其他位置偏好的标签状态。
+ */
 internal fun PaneTabState.withViewModeState(mode: ViewMode): PaneTabState {
-    return withTabState { current -> current.copy(viewMode = mode) }
+    return withTabState { current ->
+        if (current.location == com.oruke.onyx.core.model.COMPUTER_LOCATION) {
+            current.copy(computerViewMode = mode)
+        } else current.copy(viewMode = mode)
+    }
 }
 
 internal fun PaneTabState.withFilterQueryState(query: String): PaneTabState {

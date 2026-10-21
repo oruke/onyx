@@ -51,6 +51,28 @@ internal class JvmSystemQuickAccessService(
     }
 
     /**
+     * 电脑概览使用系统目录注册信息，避免把所有用户固定书签重复为系统文件夹。
+     * @return 主目录和标准目录，重定向路径由操作系统或 XDG 配置决定。
+     */
+    override suspend fun loadComputerPlaces(): Result<List<SystemQuickAccessLocation>> = withContext(Dispatchers.IO) {
+        val directories = when (operatingSystem) {
+            DesktopOperatingSystem.WINDOWS -> WindowsKnownDirectoriesSource()
+            DesktopOperatingSystem.MAC_OS -> MacKnownDirectoriesSource()
+            DesktopOperatingSystem.LINUX -> SystemQuickAccessSource {
+                runCatching {
+                    val configHome = System.getenv("XDG_CONFIG_HOME")?.takeIf(String::isNotBlank)?.let(Path::of)
+                        ?: homeDirectory.resolve(".config")
+                    readXdgUserDirectories(configHome.resolve("user-dirs.dirs"), homeDirectory)
+                }
+            }
+            DesktopOperatingSystem.OTHER -> StandardUserDirectoryQuickAccessSource(homeDirectory)
+        }
+        directories.loadLocations().map { locations ->
+            (initialLocations() + locations).distinctBy { entry -> locationIdentity(entry.location) }
+        }
+    }
+
+    /**
      * 生成符合宿主文件系统大小写规则的位置去重键。
      *
      * @param location 本地路径或远程位置。
@@ -92,8 +114,8 @@ internal fun currentDesktopOperatingSystem(
 ): DesktopOperatingSystem {
     val normalizedName = osName.lowercase(Locale.ROOT)
     return when {
-        "win" in normalizedName -> DesktopOperatingSystem.WINDOWS
         "mac" in normalizedName || "darwin" in normalizedName -> DesktopOperatingSystem.MAC_OS
+        "win" in normalizedName -> DesktopOperatingSystem.WINDOWS
         "linux" in normalizedName -> DesktopOperatingSystem.LINUX
         else -> DesktopOperatingSystem.OTHER
     }
