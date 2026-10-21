@@ -73,6 +73,28 @@ tasks.withType<Test>().configureEach {
     environment("XDG_CONFIG_HOME", testStateRoot.resolve("config").absolutePath)
     environment("XDG_STATE_HOME", testStateRoot.resolve("state").absolutePath)
     environment("XDG_CACHE_HOME", testStateRoot.resolve("cache").absolutePath)
+    // Linux 发布环境通常没有用户桌面配置，布局测试需通过真实 XDG 文件提供有界的标准目录。
+    doFirst {
+        if (System.getProperty("os.name").lowercase().contains("linux")) {
+            val directoryNames = mapOf(
+                "DESKTOP" to "Desktop",
+                "DOCUMENTS" to "Documents",
+                "DOWNLOAD" to "Downloads",
+                "PICTURES" to "Pictures",
+                "MUSIC" to "Music",
+                "VIDEOS" to "Videos",
+            )
+            val userDirectoryConfig = testStateRoot.resolve("config/user-dirs.dirs")
+            userDirectoryConfig.parentFile.mkdirs()
+            userDirectoryConfig.writeText(
+                directoryNames.entries.joinToString("\n", postfix = "\n") { (key, name) ->
+                    val directory = testStateRoot.resolve("standard-directories/$name")
+                    directory.mkdirs()
+                    "XDG_${key}_DIR=\"${directory.absolutePath}\""
+                }
+            )
+        }
+    }
 }
 
 
