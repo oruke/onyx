@@ -43,13 +43,37 @@ class DirectoryContentLifecycleFlowTest {
         second.close()
         awaitDirectoryCondition { signals.stops == 1 }
         withContext(Dispatchers.IO) { Files.writeString(source.resolve("while-inactive.txt"), "new") }
+        val reread = BrowsingReadGate()
+        repository.gates[source.toString()] = reread
         val returned = directories.subscribe(source.toString())
         assertEquals(5, assertNotNull(returned.state.value.entries).size)
+        withTimeout(5_000) { reread.started.await() }
+        assertEquals(5, assertNotNull(returned.state.value.entries).size)
+        reread.release.complete(Unit)
         withTimeout(5_000) { returned.state.first { it.entries?.size == 6 && !it.refreshing } }
         assertEquals(2, signals.starts)
         assertTrue(returned.state.value.entries.orEmpty().any { it.name == "while-inactive.txt" })
         returned.close()
         awaitDirectoryCondition { signals.stops == 2 }
+    }
+
+    /** 同一主线程事件内快速离开并返回目录，旧订阅必须先释放，再读取真实新增文件。 */
+    @Test
+    fun immediateReturnRevalidatesPreviouslyEmptyDirectory() = browsingScenario {
+        primary.awaitBrowsing {
+            (it.entriesState as? PaneEntriesState.Ready)?.entries?.isEmpty() == true && !it.activeTabState.refreshing
+        }
+        withContext(Dispatchers.IO) { Files.writeString(source.resolve("created-between-visits.txt"), "fresh-content") }
+        primary.dispatch(PaneIntent.OpenDirectory(target.toString()))
+        primary.dispatch(PaneIntent.OpenDirectory(source.toString()))
+        val returned = primary.awaitBrowsing {
+            it.location == source.toString() &&
+                (it.entriesState as? PaneEntriesState.Ready)?.entries?.any { entry ->
+                    entry.name == "created-between-visits.txt"
+                } == true
+        }
+        assertEquals(1, (returned.entriesState as PaneEntriesState.Ready).entries.size)
+        assertEquals("fresh-content", withContext(Dispatchers.IO) { Files.readString(source.resolve("created-between-visits.txt")) })
     }
 
     /** 连接重置后迟到的旧查询不能覆盖新快照，也不能释放新批次的任务引用。 */

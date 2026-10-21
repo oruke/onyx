@@ -27,6 +27,9 @@ internal fun DefaultPaneComponent.toggleInlineExpand(directoryLocation: String) 
  * @param force 是否强制底层校验。
  */
 internal fun DefaultPaneComponent.loadTab(tabId: String, location: String, force: Boolean = false) {
+    // collectLatest 的取消收尾可能晚于下一次导航，先同步释放订阅，避免快速返回时误用仍被引用的过期缓存。
+    directorySubscriptions.values.forEach { it.close() }
+    directorySubscriptions.clear()
     tabLoadJobs.values.forEach { it.cancel() }
     tabLoadJobs.clear()
     // 后台标签只保存轻量浏览状态，目录元数据由有界共享存储统一持有。
@@ -44,6 +47,7 @@ internal fun DefaultPaneComponent.loadTab(tabId: String, location: String, force
     }
     tabLoadJobs[tabId] = scope.launch(start = CoroutineStart.UNDISPATCHED) {
         val subscription = directories.subscribe(location)
+        directorySubscriptions[tabId] = subscription
         if (force) directories.load(location, force = true)
         try {
             subscription.state.collectLatest { content ->
@@ -52,6 +56,7 @@ internal fun DefaultPaneComponent.loadTab(tabId: String, location: String, force
             }
         } finally {
             subscription.close()
+            if (directorySubscriptions[tabId] === subscription) directorySubscriptions.remove(tabId)
             if (tabLoadJobs[tabId] === currentCoroutineContext()[Job]) tabLoadJobs.remove(tabId)
         }
     }

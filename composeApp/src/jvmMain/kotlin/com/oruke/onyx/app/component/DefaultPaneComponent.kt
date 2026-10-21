@@ -153,6 +153,9 @@ internal class DefaultPaneComponent(
     /** 每个标签当前执行的目录加载任务。 */
     internal val tabLoadJobs = mutableMapOf<String, Job>()
 
+    /** 当前目录订阅独立于取消中的加载任务，导航时同步释放引用。 */
+    internal val directorySubscriptions = mutableMapOf<String, com.oruke.onyx.shared.filesystem.DirectorySubscription>()
+
     /** 本面板仍在执行的设备操作，切换标签不能丢失忙碌状态或启动重复操作。 */
     internal val deviceOperationJobs = mutableMapOf<String, Job>()
 
