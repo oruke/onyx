@@ -155,13 +155,27 @@ jobs:
 
       - name: Verify code and behavior on Linux
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: >-
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24"
-          sh -c 'openbox >/dev/null 2>&1 & ./gradlew jvmTest detekt'
+          sh -c 'openbox >/dev/null 2>&1 & ./gradlew jvmTest detekt --info --stacktrace'
 
       - name: Verify code and behavior
         if: runner.os != 'Linux'
-        run: ./gradlew jvmTest detekt
+        timeout-minutes: 15
+        run: ./gradlew jvmTest detekt --info --stacktrace
+
+      # 保留异常堆栈与真实测试结果，跨平台失败不能仅依赖控制台的一行摘要。
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ matrix.portable-id }}
+          path: |
+            **/build/test-results/jvmTest/*.xml
+            **/build/reports/tests/jvmTest/**
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Build packages
         run: ./gradlew ${{ matrix.task }}
