@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.rememberWindowState
 import com.oruke.onyx.app.component.TaskCenterComponent
 import com.oruke.onyx.app.component.TaskCenterIntent
+import com.oruke.onyx.app.platform.activateFromUserRequest
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.ui.OnyxTooltipHost
@@ -93,9 +94,7 @@ internal fun TaskCenterWindow(
             }
             LaunchedEffect(state.activationRequest) {
                 // 只有显式打开才激活窗口；后台进度刷新不得抢走文件面板焦点。
-                windowState.isMinimized = false
-                window.toFront()
-                window.requestFocus()
+                window.activateFromUserRequest(windowState)
             }
             TitleBar { _ ->
                 Text(

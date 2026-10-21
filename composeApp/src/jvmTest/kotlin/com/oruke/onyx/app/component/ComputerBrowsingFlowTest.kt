@@ -47,7 +47,14 @@ class ComputerBrowsingFlowTest {
         assertEquals(ViewMode.GALLERY, primary.state.value.viewMode)
         primary.dispatch(PaneIntent.SetViewMode(ViewMode.DETAILS))
         primary.dispatch(PaneIntent.SelectEntry(backend.device.id))
+        assertEquals(backend.device.id, primary.state.value.selectionFocusId)
         primary.dispatch(PaneIntent.OpenSelectedEntry)
+        val opening = checkNotNull(primary.deviceOperationJobs[backend.device.id]) {
+            "设备打开未开始：${primary.state.value.entriesState}"
+        }
+        withTimeout(15_000) { opening.join() }
+        assertNull((primary.state.value.entriesState as? ComputerEntriesState)?.operationFailure)
+        assertEquals(source.toString(), primary.state.value.location)
         primary.awaitBrowsing {
             it.location == source.toString() &&
                 (it.entriesState as? PaneEntriesState.Ready)?.entries?.any { entry ->

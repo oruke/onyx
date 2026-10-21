@@ -80,10 +80,24 @@ jobs:
 
       - name: Verify code and behavior on Linux
         if: runner.os == 'Linux'
+        timeout-minutes: 15
         run: >-
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24"
-          sh -c 'openbox >/dev/null 2>&1 & ./gradlew jvmTest detekt :composeApp:compileKotlinJvm'
+          sh -c 'openbox >/dev/null 2>&1 & ./gradlew jvmTest detekt :composeApp:compileKotlinJvm --info --stacktrace'
 
       - name: Verify code and behavior
         if: runner.os != 'Linux'
-        run: ./gradlew jvmTest detekt :composeApp:compileKotlinJvm
+        timeout-minutes: 15
+        run: ./gradlew jvmTest detekt :composeApp:compileKotlinJvm --info --stacktrace
+
+      # 与发布验收保留相同的可核查结果，主分支先通过三平台检查再创建版本标签。
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-${{ matrix.os }}
+          path: |
+            **/build/test-results/jvmTest/*.xml
+            **/build/reports/tests/jvmTest/**
+          retention-days: 7
+          if-no-files-found: ignore

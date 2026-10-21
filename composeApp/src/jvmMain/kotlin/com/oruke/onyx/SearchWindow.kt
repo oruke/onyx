@@ -14,6 +14,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.rememberWindowState
 import com.oruke.onyx.app.component.SearchPanelState
+import com.oruke.onyx.app.platform.activateFromUserRequest
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.AppLocale
 import kotlinx.coroutines.flow.StateFlow
@@ -91,9 +92,7 @@ internal fun SearchWindow(
             }
             LaunchedEffect(state.activationRequest, state.visible) {
                 if (!state.visible) return@LaunchedEffect
-                windowState.isMinimized = false
-                window.toFront()
-                window.requestFocus()
+                window.activateFromUserRequest(windowState)
             }
             TitleBar { _ ->
                 Text(
