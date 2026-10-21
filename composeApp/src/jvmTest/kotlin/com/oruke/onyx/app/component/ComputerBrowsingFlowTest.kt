@@ -25,6 +25,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
@@ -49,17 +50,16 @@ class ComputerBrowsingFlowTest {
         primary.dispatch(PaneIntent.SelectEntry(backend.device.id))
         assertEquals(backend.device.id, primary.state.value.selectionFocusId)
         primary.dispatch(PaneIntent.OpenSelectedEntry)
-        val opening = checkNotNull(primary.deviceOperationJobs[backend.device.id]) {
-            "设备打开未开始：${primary.state.value.entriesState}"
-        }
-        withTimeout(15_000) { opening.join() }
-        assertNull((primary.state.value.entriesState as? ComputerEntriesState)?.operationFailure)
-        assertEquals(source.toString(), primary.state.value.location)
-        primary.awaitBrowsing {
-            it.location == source.toString() &&
-                (it.entriesState as? PaneEntriesState.Ready)?.entries?.any { entry ->
-                    entry.name == "presentation.txt"
-                } == true
+        try {
+            // 原生打开可能在 dispatch 返回前完成，只检查最终可观察状态，不依赖短暂的在途任务登记。
+            primary.awaitBrowsing {
+                it.location == source.toString() &&
+                    (it.entriesState as? PaneEntriesState.Ready)?.entries?.any { entry ->
+                        entry.name == "presentation.txt"
+                    } == true
+            }
+        } catch (failure: TimeoutCancellationException) {
+            throw AssertionError("设备打开未完成：${primary.state.value}", failure)
         }
         assertEquals(ViewMode.DETAILS, primary.state.value.viewMode)
         assertEquals("visible-after-open", Files.readString(source.resolve("presentation.txt")))
