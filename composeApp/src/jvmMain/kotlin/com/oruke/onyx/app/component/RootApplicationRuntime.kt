@@ -18,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
 
 /**
@@ -66,6 +67,30 @@ internal class RootApplicationRuntime(
 
     /** 所有窗口共享的任务中心，不随任何单个文件管理器窗口关闭。 */
     val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(taskOrchestrator)
+
+    /**
+     * 更新应用级独立窗口（如任务中心）尺寸与最大化状态并持久化到设置存储。
+     *
+     * @param windowKind 目标窗口类型。
+     * @param width 窗口逻辑宽度。
+     * @param height 窗口逻辑高度。
+     * @param maximized 窗口是否处于最大化状态。
+     */
+    fun updateWindowSize(
+        windowKind: RootWindowKind,
+        width: Int,
+        height: Int,
+        maximized: Boolean? = null,
+    ) {
+        val next = settings.value.withWindowSize(
+            RootIntent.UpdateWindowSize(windowKind, width, height, maximized),
+        )
+        if (next == settings.value) return
+        settings.value = next
+        scope.launch {
+            sessionManager.saveSettings(next)
+        }
+    }
 
     /**
      * 结束应用级后台工作。

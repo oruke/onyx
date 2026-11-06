@@ -14,16 +14,20 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.rememberWindowState
+import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.TaskCenterComponent
 import com.oruke.onyx.app.component.TaskCenterIntent
+import com.oruke.onyx.app.platform.ObservePersistableWindowState
+import com.oruke.onyx.app.platform.SyncHiddenWindowState
 import com.oruke.onyx.app.platform.activateFromUserRequest
-import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.AppLocale
+import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.TaskCenterContent
-import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
+import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import java.awt.Dimension
 import kotlinx.coroutines.flow.StateFlow
@@ -51,6 +55,7 @@ private const val UI_SCALE_BASE = 100.0
  * @param taskCenter 所有文件窗口共享的任务中心组件。
  * @param settings 应用外观设置流，窗口显示时实时响应外观变化。
  * @param resourceLocale 已切换完成的应用级资源语言信号。
+ * @param onWindowSizeChanged 窗口尺寸或最大化状态变化回调。
  * @return 无返回值。
  */
 @Composable
@@ -58,16 +63,45 @@ internal fun TaskCenterWindow(
     taskCenter: TaskCenterComponent,
     settings: StateFlow<OnyxSettings>,
     resourceLocale: StateFlow<AppLocale>,
+    onWindowSizeChanged: ((width: Int, height: Int, maximized: Boolean?) -> Unit)? = null,
 ) {
     val state by taskCenter.state.collectAsState()
-    val windowState = rememberWindowState(width = 760.dp, height = 540.dp)
+    val preferences by settings.collectAsState()
+    val windowState = rememberWindowState(
+        placement = if (preferences.taskCenterWindowMaximized) {
+            WindowPlacement.Maximized
+        } else {
+            WindowPlacement.Floating
+        },
+        width = preferences.taskCenterWindowWidth.dp,
+        height = preferences.taskCenterWindowHeight.dp,
+    )
+    SyncHiddenWindowState(
+        windowState = windowState,
+        visible = state.visible,
+        width = preferences.taskCenterWindowWidth,
+        height = preferences.taskCenterWindowHeight,
+        maximized = preferences.taskCenterWindowMaximized,
+    )
+    if (onWindowSizeChanged != null) {
+        ObservePersistableWindowState(
+            windowState = windowState,
+            windowKind = RootWindowKind.TASK_CENTER,
+            currentWidth = preferences.taskCenterWindowWidth,
+            currentHeight = preferences.taskCenterWindowHeight,
+            currentMaximized = preferences.taskCenterWindowMaximized,
+            enabled = state.visible,
+            onWindowSizeChanged = { _, width, height, maximized ->
+                onWindowSizeChanged(width, height, maximized)
+            },
+        )
+    }
     val listState = rememberLazyListState()
     // 状态保留在可见条件之外，关闭再打开不会丢失尺寸、位置、筛选与滚动位置。
     LaunchedEffect(state.filter) { listState.scrollToItem(0) }
     if (!state.visible) return
 
     val tasks by taskCenter.tasks.collectAsState()
-    val preferences by settings.collectAsState()
     OnyxLocaleEnvironment(resourceLocale) {
         DecoratedWindow(
             onCloseRequest = { taskCenter.dispatch(TaskCenterIntent.Close) },

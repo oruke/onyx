@@ -10,10 +10,12 @@ import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.FileRepository
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.nio.file.FileSystems
 
 /**
@@ -28,9 +30,9 @@ internal class SidebarDelegate(
     private val fileRepository: FileRepository,
     private val systemQuickAccessService: SystemQuickAccessService,
 ) {
-    /** 侧栏目录树的可变状态。 */
+    /** 侧栏目录树的可变状态，初始为空并在后台加载盘符，避免网络盘或休眠盘阻塞启动主线程。 */
     private val _sidebarTreeState = MutableStateFlow(
-        SidebarTreeState(roots = buildSidebarRootNodes())
+        SidebarTreeState(roots = emptyList())
     )
 
     /** 侧栏目录树的只读状态。 */
@@ -44,6 +46,12 @@ internal class SidebarDelegate(
         _systemQuickAccessLocations.asStateFlow()
 
     init {
+        scope.launch {
+            val roots = withContext(Dispatchers.IO) { buildSidebarRootNodes() }
+            if (_sidebarTreeState.value.roots.isEmpty()) {
+                _sidebarTreeState.value = SidebarTreeState(roots = roots)
+            }
+        }
         scope.launch {
             refreshSystemQuickAccessLocations()
         }

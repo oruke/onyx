@@ -13,4 +13,10 @@ internal enum class RootWindowKind {
 
     /** 批量重命名窗口。 */
     BATCH_RENAME,
+
+    /** 完整搜索窗口。 */
+    SEARCH,
+
+    /** 任务中心窗口。 */
+    TASK_CENTER,
 }

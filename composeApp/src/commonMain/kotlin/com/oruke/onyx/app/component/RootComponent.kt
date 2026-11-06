@@ -386,7 +386,7 @@ internal sealed interface RootIntent {
         val settings: OnyxSettings,
     ) : RootIntent
 
-    /** 只更新指定窗口尺寸，不携带可能已经过时的整份设置。 */
+    /** 只更新指定窗口尺寸与最大化状态，不携带可能已经过时的整份设置。 */
     data class UpdateWindowSize(
         /** 本次调整的窗口。 */
         val windowKind: RootWindowKind,
@@ -394,6 +394,8 @@ internal sealed interface RootIntent {
         val width: Int,
         /** 窗口逻辑高度。 */
         val height: Int,
+        /** 窗口是否处于最大化状态；不适用或未变化时为空。 */
+        val maximized: Boolean? = null,
     ) : RootIntent
 
     data class OpenLocationInActivePane(

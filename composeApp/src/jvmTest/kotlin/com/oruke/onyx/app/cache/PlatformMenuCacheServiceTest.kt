@@ -1,5 +1,8 @@
 package com.oruke.onyx.app.cache
 
+import com.oruke.onyx.app.filesystem.toMenuCacheScope
+import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.SystemMenuAction
 import kotlinx.coroutines.test.runTest
 import kotlin.io.path.createTempDirectory
@@ -74,6 +77,34 @@ class PlatformMenuCacheServiceTest {
         assertTrue(changed)
         assertTrue(actions.isEmpty())
         assertEquals(1, loadCount)
+    }
+
+    /**
+     * 验证名称包含点号的目录与普通目录共享相同的菜单缓存作用域，不会因误解析扩展名而缓存失效。
+     */
+    @Test
+    fun directoryNamesWithDotsShareSameMenuCacheScope() {
+        val normalDir = VFile(
+            id = "dir-1",
+            name = "Documents",
+            location = "C:/Users/oruke/Documents",
+            parentLocation = "C:/Users/oruke",
+            kind = VFileKind.DIRECTORY,
+            sizeBytes = null,
+            modifiedAtEpochMillis = 0L,
+            hidden = false,
+            capabilities = emptySet(),
+        )
+        val dottedDir = normalDir.copy(
+            id = "dir-2",
+            name = "Machi2022.06-2026.04",
+            location = "C:/Users/oruke/Machi2022.06-2026.04",
+        )
+
+        val normalScope = listOf(normalDir).toMenuCacheScope("windows-registry-icon-v2")
+        val dottedScope = listOf(dottedDir).toMenuCacheScope("windows-registry-icon-v2")
+
+        assertEquals(normalScope, dottedScope)
     }
 
     /**

@@ -140,12 +140,16 @@ internal class JvmSystemMenuService(
  * @param sourceKey 菜单来源标识。
  * @return 由平台、来源、选择数量与文件类型组成的作用域。
  */
-private fun List<VFile>.toMenuCacheScope(sourceKey: String): PlatformMenuCacheScope {
+internal fun List<VFile>.toMenuCacheScope(sourceKey: String): PlatformMenuCacheScope {
     val entrySignature = joinToString(separator = "|") { entry ->
-        val extension = entry.name.substringAfterLast('.', "")
-            .takeIf { value -> value.isNotBlank() }
-            ?.lowercase(Locale.ROOT)
-            .orEmpty()
+        val extension = if (entry.kind == VFileKind.DIRECTORY) {
+            ""
+        } else {
+            entry.name.substringAfterLast('.', "")
+                .takeIf { value -> value.isNotBlank() }
+                ?.lowercase(Locale.ROOT)
+                .orEmpty()
+        }
         val mimeType = if (entry.kind == VFileKind.DIRECTORY) {
             "inode/directory"
         } else {

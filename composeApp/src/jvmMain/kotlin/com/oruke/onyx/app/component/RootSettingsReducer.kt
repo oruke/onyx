@@ -39,6 +39,39 @@ internal fun OnyxSettings.sanitizeRootSettings(): OnyxSettings {
             .filter { query -> query.isNotEmpty() }
             .distinct()
             .take(MAX_SEARCH_HISTORY),
+    ).sanitizeWindowSizes()
+}
+
+/**
+ * 修复因最小化或损坏落盘的异常窗口尺寸，有效尺寸原样保留。
+ *
+ * @return 窗口尺寸均满足最小可显示阈值的设置。
+ */
+private fun OnyxSettings.sanitizeWindowSizes(): OnyxSettings {
+    val defaults = OnyxSettings()
+    return copy(
+        mainWindowWidth = mainWindowWidth.takeIf { it >= MIN_PERSISTED_WINDOW_WIDTH } ?: defaults.mainWindowWidth,
+        mainWindowHeight = mainWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT } ?: defaults.mainWindowHeight,
+        imageViewerWindowWidth = imageViewerWindowWidth.takeIf { it >= MIN_PERSISTED_WINDOW_WIDTH }
+            ?: defaults.imageViewerWindowWidth,
+        imageViewerWindowHeight = imageViewerWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT }
+            ?: defaults.imageViewerWindowHeight,
+        settingsWindowWidth = settingsWindowWidth.takeIf { it >= MIN_PERSISTED_WINDOW_WIDTH }
+            ?: defaults.settingsWindowWidth,
+        settingsWindowHeight = settingsWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT }
+            ?: defaults.settingsWindowHeight,
+        batchRenameWindowWidth = batchRenameWindowWidth.takeIf { it >= MIN_PERSISTED_WINDOW_WIDTH }
+            ?: defaults.batchRenameWindowWidth,
+        batchRenameWindowHeight = batchRenameWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT }
+            ?: defaults.batchRenameWindowHeight,
+        searchWindowWidth = searchWindowWidth.takeIf { it >= MIN_PERSISTED_WINDOW_WIDTH }
+            ?: defaults.searchWindowWidth,
+        searchWindowHeight = searchWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT }
+            ?: defaults.searchWindowHeight,
+        taskCenterWindowWidth = taskCenterWindowWidth.takeIf { it >= MIN_PERSISTED_WINDOW_WIDTH }
+            ?: defaults.taskCenterWindowWidth,
+        taskCenterWindowHeight = taskCenterWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT }
+            ?: defaults.taskCenterWindowHeight,
     )
 }
 

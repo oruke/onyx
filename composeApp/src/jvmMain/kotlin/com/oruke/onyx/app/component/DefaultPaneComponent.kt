@@ -77,6 +77,8 @@ internal class DefaultPaneComponent(
     /** 系统真实目录入口服务。 */
     internal val systemQuickAccessService: com.oruke.onyx.app.platform.SystemQuickAccessService =
         com.oruke.onyx.app.platform.JvmSystemQuickAccessService(),
+    /** 是否在构造完成时立即读取初始位置；由根组件统一恢复会话时可延后以避免重复加载。 */
+    loadInitialLocationOnInit: Boolean = true,
 ) : PaneComponent, ComponentContext by componentContext {
     /** 当前面板通过统一接口访问设备，只有本地创建的实例由面板负责关闭。 */
     internal val storageDevices = storageDevices ?: com.oruke.onyx.app.platform.storage.JvmStorageDeviceService().also {
@@ -163,7 +165,9 @@ internal class DefaultPaneComponent(
     internal val pendingFocusEntryName = mutableMapOf<String, String>()
 
     init {
-        refresh()
+        if (loadInitialLocationOnInit) {
+            refresh()
+        }
     }
 
     /**

@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.window.application
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
+import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.rememberRootApplicationRuntime
 import com.oruke.onyx.app.platform.DesktopWindowManager
 import com.oruke.onyx.di.fileModule
@@ -79,9 +80,17 @@ private fun launchOnyxApplication() = application {
             }
 
             TaskCenterWindow(
-                applicationRuntime.taskCenter,
-                applicationRuntime.settings,
-                applicationRuntime.resourceLocale
+                taskCenter = applicationRuntime.taskCenter,
+                settings = applicationRuntime.settings,
+                resourceLocale = applicationRuntime.resourceLocale,
+                onWindowSizeChanged = { width, height, maximized ->
+                    applicationRuntime.updateWindowSize(
+                        RootWindowKind.TASK_CENTER,
+                        width,
+                        height,
+                        maximized,
+                    )
+                },
             )
 
             windowManager.windows.forEach { request ->

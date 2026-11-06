@@ -9,6 +9,7 @@ import androidx.compose.ui.window.Window
 import com.oruke.onyx.app.component.RootApplicationRuntime
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootLaunchConfiguration
+import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.SessionRestoreState
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.app.platform.DesktopFileManagerWindowRequest
@@ -17,8 +18,8 @@ import com.oruke.onyx.app.platform.rememberDesktopWindowStates
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.searchWindowActions
-import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
+import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import java.awt.Dimension
 import onyx.composeapp.generated.resources.Res
@@ -34,6 +35,12 @@ private const val FILE_MANAGER_WINDOW_MIN_WIDTH = 800
 
 /** 文件管理器窗口允许缩放到的最小高度，单位为物理像素。 */
 private const val FILE_MANAGER_WINDOW_MIN_HEIGHT = 600
+
+/** 图片查看器窗口允许缩放到的最小宽度，单位为物理像素。 */
+private const val IMAGE_VIEWER_WINDOW_MIN_WIDTH = 480
+
+/** 图片查看器窗口允许缩放到的最小高度，单位为物理像素。 */
+private const val IMAGE_VIEWER_WINDOW_MIN_HEIGHT = 360
 
 /**
  * 创建一个具有独立根组件和图片查看器的文件管理器窗口。
@@ -69,14 +76,16 @@ internal fun DesktopFileManagerWindow(
         onDispose(externalFileDragService::dispose)
     }
     val state by rootComponent.state.collectAsState()
+    val imageViewerState by rootComponent.imageViewerState.collectAsState()
     // 必须先恢复持久化尺寸再创建原生窗口，否则 Windows 会先绘制默认尺寸并产生可见缩放。
     if (state.sessionRestoreState is SessionRestoreState.Loading) return
 
     val windowStates = rememberDesktopWindowStates(
         settings = state.settings,
         persistMainWindowSize = request.persistsMainSession,
-        onWindowSizeChanged = { kind, width, height ->
-            rootComponent.dispatch(RootIntent.UpdateWindowSize(kind, width, height))
+        imageViewerVisible = imageViewerState.visible,
+        onWindowSizeChanged = { kind, width, height, maximized ->
+            rootComponent.dispatch(RootIntent.UpdateWindowSize(kind, width, height, maximized))
         },
     )
 
@@ -102,9 +111,11 @@ internal fun DesktopFileManagerWindow(
         actions = rootComponent.searchWindowActions(),
         settings = state.settings,
         resourceLocale = applicationRuntime.resourceLocale,
+        onWindowSizeChanged = { width, height, maximized ->
+            rootComponent.dispatch(RootIntent.UpdateWindowSize(RootWindowKind.SEARCH, width, height, maximized))
+        },
     )
 
-    val imageViewerState by rootComponent.imageViewerState.collectAsState()
     if (imageViewerState.visible) {
         Window(
             onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
@@ -112,6 +123,7 @@ internal fun DesktopFileManagerWindow(
             icon = painterResource(Res.drawable.onyx_logo),
             state = windowStates.imageViewer,
         ) {
+            window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
             val appearance = rememberOnyxAppearance(
                 listRowHeightDp = state.settings.listRowHeightDp,
                 listFontSizeSp = state.settings.listFontSizeSp,

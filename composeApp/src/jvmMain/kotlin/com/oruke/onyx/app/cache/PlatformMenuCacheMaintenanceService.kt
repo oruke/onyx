@@ -2,6 +2,7 @@ package com.oruke.onyx.app.cache
 
 import com.oruke.onyx.app.OnyxLogger
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 /** 平台菜单缓存后台维护服务，负责启动初始化和菜单源变化检测。 */
@@ -11,13 +12,19 @@ internal class PlatformMenuCacheMaintenanceService(
     private val warmupService: PlatformMenuCacheWarmupService,
     private val sourceWatchService: PlatformMenuSourceWatchService,
     private val pollIntervalMillis: Long = DEFAULT_POLL_INTERVAL_MILLIS,
+    private val initialDelayMillis: Long = DEFAULT_INITIAL_DELAY_MILLIS,
 ) {
     /**
      * 在当前协程中运行缓存维护循环。
      *
+     * 启动时短暂延后注册表指纹扫描与预热，避开主窗口设置恢复和首屏目录读取的数据库及进程 I/O 峰值。
+     *
      * @return 只有协程被取消时才会正常返回。
      */
     suspend fun runUntilCancelled() {
+        if (initialDelayMillis > 0L) {
+            delay(initialDelayMillis)
+        }
         cacheService.initialize().onFailure { error ->
             OnyxLogger.warn(TAG, "初始化平台菜单缓存数据库失败", error)
         }
@@ -62,6 +69,9 @@ internal class PlatformMenuCacheMaintenanceService(
     private companion object {
         /** 日志标签。 */
         const val TAG = "PlatformMenuCache"
+
+        /** 启动后首次执行注册表与菜单源扫描前的退让延迟。 */
+        const val DEFAULT_INITIAL_DELAY_MILLIS = 1_500L
 
         /** 平台菜单源轮询间隔，避免频繁扫描注册表或应用目录。 */
         const val DEFAULT_POLL_INTERVAL_MILLIS = 60_000L

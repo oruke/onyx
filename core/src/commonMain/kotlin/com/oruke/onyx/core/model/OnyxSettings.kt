@@ -51,14 +51,30 @@ data class OnyxSettings(
     val mainWindowWidth: Int = 1200,
     /** 主窗口高度。 */
     val mainWindowHeight: Int = 800,
+    /** 主窗口是否最大化。 */
+    val mainWindowMaximized: Boolean = false,
     /** 图片查看器窗口宽度。 */
     val imageViewerWindowWidth: Int = 1200,
     /** 图片查看器窗口高度。 */
     val imageViewerWindowHeight: Int = 800,
+    /** 图片查看器窗口是否最大化。 */
+    val imageViewerWindowMaximized: Boolean = false,
     /** 设置窗口宽度。 */
     val settingsWindowWidth: Int = 720,
     /** 设置窗口高度。 */
     val settingsWindowHeight: Int = 520,
+    /** 完整搜索窗口宽度。 */
+    val searchWindowWidth: Int = 900,
+    /** 完整搜索窗口高度。 */
+    val searchWindowHeight: Int = 650,
+    /** 完整搜索窗口是否最大化。 */
+    val searchWindowMaximized: Boolean = false,
+    /** 任务中心窗口宽度。 */
+    val taskCenterWindowWidth: Int = 760,
+    /** 任务中心窗口高度。 */
+    val taskCenterWindowHeight: Int = 540,
+    /** 任务中心窗口是否最大化。 */
+    val taskCenterWindowMaximized: Boolean = false,
     /** 批量重命名窗口宽度。 */
     val batchRenameWindowWidth: Int = 800,
     /** 批量重命名窗口高度。 */

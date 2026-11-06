@@ -7,6 +7,9 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.archive.ArchiveService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
 
 /**
  * 恢复设置与会话；恢复成功或用户明确修改设置后才启用自动持久化。
@@ -15,30 +18,34 @@ import com.oruke.onyx.vfs.archive.ArchiveService
  */
 internal suspend fun DefaultRootComponent.restorePersistedState() {
     var restoreError: I18nMessage? = null
+    val initialLocation = launchConfiguration.initialLocation?.takeIf(String::isNotBlank)
     if (launchConfiguration.persistsMainSession) {
-        restoreError = restoreSettings()
-        sessionRepository.loadSession().fold(
+        val (settingsError, sessionResult) = coroutineScope {
+            val settingsDeferred = async { restoreSettings() }
+            val sessionDeferred = async { sessionRepository.loadSession() }
+            settingsDeferred.await() to sessionDeferred.await()
+        }
+        restoreError = settingsError
+        sessionResult.fold(
             onSuccess = { session ->
                 if (session != null) {
                     applySession(session)
                 } else {
-                    applySettingsDefaults()
+                    applySettingsDefaults(refreshPrimaryPane = initialLocation == null)
                 }
             },
             onFailure = { failure ->
                 restoreError = restoreError ?: failure.toI18nMessage(MessageKey.MSG_RESTORE_SESSION_FAILED)
-                applySettingsDefaults()
+                applySettingsDefaults(refreshPrimaryPane = initialLocation == null)
             },
         )
     } else {
-        applySettingsDefaults()
+        applySettingsDefaults(refreshPrimaryPane = initialLocation == null)
     }
-    launchConfiguration.initialLocation
-        ?.takeIf(String::isNotBlank)
-        ?.let { location ->
-            activePane.value = PaneId.PRIMARY
-            primaryPane.openDirectory(location)
-        }
+    if (initialLocation != null) {
+        activePane.value = PaneId.PRIMARY
+        primaryPane.openDirectory(initialLocation)
+    }
     sessionRestoreState.value = restoreError?.let(SessionRestoreState::Failed) ?: SessionRestoreState.Ready
     if (restoreError == null) {
         // 只有完整恢复成功才写入启动后的快照，避免默认状态覆盖暂时不可读的旧数据。
@@ -49,7 +56,17 @@ internal suspend fun DefaultRootComponent.restorePersistedState() {
 }
 
 /**
- * 恢复设置并规范化 UI 缩放。
+ * 组件销毁前同步刷新尚未落盘的设置与会话，避免 500ms 防抖在关闭窗口时被取消而丢失尺寸或标签变更。
+ */
+internal fun DefaultRootComponent.flushPersistedStateOnDestroy() {
+    if (!persistenceReady) return
+    runBlocking {
+        persistCurrentState()
+    }
+}
+
+/**
+ * 恢复设置并规范化 UI 缩放与窗口尺寸。
  *
  * @return 设置加载失败详情。
  */
@@ -58,9 +75,7 @@ private suspend fun DefaultRootComponent.restoreSettings(): I18nMessage? {
     settingsRepository.loadSettings().fold(
         onSuccess = { loadedSettings ->
             if (loadedSettings != null) {
-                settings.value = loadedSettings.copy(
-                    uiScale = loadedSettings.uiScale.coerceIn(MIN_UI_SCALE_PERCENT, MAX_UI_SCALE_PERCENT),
-                )
+                settings.value = loadedSettings.sanitizeRootSettings()
                 synchronizeS3ConnectionConfigurations()
             }
         },
@@ -83,12 +98,20 @@ private fun DefaultRootComponent.applySession(snapshot: AppSessionSnapshot) {
     activePane.value = snapshot.activePane
 }
 
-/** 应用设置中的默认布局与视图模式。 */
-private fun DefaultRootComponent.applySettingsDefaults() {
+/**
+ * 应用设置中的默认布局与视图模式，并按需触发初始目录读取。
+ *
+ * @param refreshPrimaryPane 主面板无外部初始位置覆盖时是否立即读取默认目录。
+ */
+private fun DefaultRootComponent.applySettingsDefaults(refreshPrimaryPane: Boolean = true) {
     layoutMode.value = settings.value.defaultLayoutMode
     val defaultViewMode = settings.value.defaultViewMode
     primaryPane.applyDefaultDirectoryViewMode(defaultViewMode)
     secondaryPane.applyDefaultDirectoryViewMode(defaultViewMode)
+    if (refreshPrimaryPane) {
+        primaryPane.refresh()
+    }
+    secondaryPane.refresh()
 }
 
 /**

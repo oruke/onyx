@@ -12,20 +12,24 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.rememberWindowState
+import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.SearchPanelState
+import com.oruke.onyx.app.platform.ObservePersistableWindowState
+import com.oruke.onyx.app.platform.SyncHiddenWindowState
 import com.oruke.onyx.app.platform.activateFromUserRequest
-import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.AppLocale
-import kotlinx.coroutines.flow.StateFlow
+import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.SearchPanel
 import com.oruke.onyx.ui.SearchPanelActions
 import com.oruke.onyx.ui.SearchPanelPresentation
-import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
+import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import java.awt.Dimension
+import kotlinx.coroutines.flow.StateFlow
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_search_title
 import onyx.composeapp.generated.resources.onyx_logo
@@ -52,6 +56,7 @@ private const val SEARCH_WINDOW_SCALE_BASE = 100.0
  * @param actions 发送到所属根组件的搜索动作。
  * @param settings 当前应用外观设置。
  * @param resourceLocale 已切换完成的应用级资源语言信号。
+ * @param onWindowSizeChanged 窗口尺寸或最大化状态变化回调。
  * @return 无返回值。
  */
 @Composable
@@ -61,9 +66,34 @@ internal fun SearchWindow(
     actions: SearchPanelActions,
     settings: OnyxSettings,
     resourceLocale: StateFlow<AppLocale>,
+    onWindowSizeChanged: ((width: Int, height: Int, maximized: Boolean?) -> Unit)? = null,
 ) {
     // 首次打开后保留窗口组合；隐藏再显示不会重新执行列表初始化并覆盖用户滚动位置。
-    val windowState = rememberWindowState(width = 900.dp, height = 650.dp)
+    val windowState = rememberWindowState(
+        placement = if (settings.searchWindowMaximized) WindowPlacement.Maximized else WindowPlacement.Floating,
+        width = settings.searchWindowWidth.dp,
+        height = settings.searchWindowHeight.dp,
+    )
+    SyncHiddenWindowState(
+        windowState = windowState,
+        visible = state.visible,
+        width = settings.searchWindowWidth,
+        height = settings.searchWindowHeight,
+        maximized = settings.searchWindowMaximized,
+    )
+    if (onWindowSizeChanged != null) {
+        ObservePersistableWindowState(
+            windowState = windowState,
+            windowKind = RootWindowKind.SEARCH,
+            currentWidth = settings.searchWindowWidth,
+            currentHeight = settings.searchWindowHeight,
+            currentMaximized = settings.searchWindowMaximized,
+            enabled = state.visible,
+            onWindowSizeChanged = { _, width, height, maximized ->
+                onWindowSizeChanged(width, height, maximized)
+            },
+        )
+    }
     val listState = rememberLazyListState()
     if (state.activationRequest == 0L && !state.visible) return
     OnyxLocaleEnvironment(resourceLocale) {

@@ -188,7 +188,10 @@ internal class DefaultRootComponent(
 
     /** 与组件生命周期绑定的主线程协程作用域。 */
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { value ->
-        lifecycle.doOnDestroy { value.cancel() }
+        lifecycle.doOnDestroy {
+            flushPersistedStateOnDestroy()
+            value.cancel()
+        }
     }
 
     /** 独立根组件的隔离目录存储，生产窗口复用应用级注入实例。 */
@@ -553,6 +556,7 @@ private fun DefaultRootComponent.createPaneComponent(paneId: PaneId, childKey: S
         onOpenDirectoryInNewWindow = launchConfiguration.onOpenDirectoryInNewWindow,
         onRemoteAuthenticationRequired = ::requestRemoteCredentials,
         onFileRenamed = ::recordRenameOperation,
+        loadInitialLocationOnInit = false,
     )
 }
 
