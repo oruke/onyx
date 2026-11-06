@@ -1,5 +1,8 @@
 package com.oruke.onyx
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -22,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
@@ -147,16 +151,40 @@ internal fun DecoratedWindowScope.WindowApp(
         }
 
         // AppContent 在 OnyxTheme 内部渲染，uiScale 通过 LocalDensity 生效
+        var workspaceEntered by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            workspaceEntered = true
+        }
+        val entranceAlpha by animateFloatAsState(
+            targetValue = if (workspaceEntered) 1f else 0f,
+            animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+            label = "workspaceEntranceAlpha",
+        )
+        val entranceScale by animateFloatAsState(
+            targetValue = if (workspaceEntered) 1f else 0.988f,
+            animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+            label = "workspaceEntranceScale",
+        )
         OnyxTheme(
             uiScale = state.settings.uiScale,
             appearance = appearance,
         ) {
-            AppContent(
-                rootComponent = rootComponent,
-                state = state,
-                externalFileDragService = externalFileDragService,
-                externalTooltipRequest = titleBarTooltipRequest,
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        alpha = entranceAlpha
+                        scaleX = entranceScale
+                        scaleY = entranceScale
+                    },
+            ) {
+                AppContent(
+                    rootComponent = rootComponent,
+                    state = state,
+                    externalFileDragService = externalFileDragService,
+                    externalTooltipRequest = titleBarTooltipRequest,
+                )
+            }
         }
     }
 }

@@ -44,6 +44,7 @@ private data class WindowGeometrySnapshot(
  *
  * @param settings 已完成恢复的应用设置。
  * @param persistMainWindowSize 是否允许当前窗口更新主窗口持久化尺寸。
+ * @param mainWindowVisible 主窗口当前是否可见。
  * @param imageViewerVisible 图片查看器当前是否可见。
  * @param onWindowSizeChanged 只更新指定窗口尺寸与最大化状态的组件事件入口。
  * @return 主窗口与图片查看器窗口状态。
@@ -52,6 +53,7 @@ private data class WindowGeometrySnapshot(
 internal fun rememberDesktopWindowStates(
     settings: OnyxSettings,
     persistMainWindowSize: Boolean,
+    mainWindowVisible: Boolean = true,
     imageViewerVisible: Boolean = false,
     onWindowSizeChanged: (RootWindowKind, Int, Int, Boolean?) -> Unit,
 ): DesktopWindowStates {
@@ -75,6 +77,14 @@ internal fun rememberDesktopWindowStates(
     }
 
     SyncHiddenWindowState(
+        windowState = mainWindowState,
+        visible = mainWindowVisible,
+        width = settings.mainWindowWidth,
+        height = settings.mainWindowHeight,
+        maximized = settings.mainWindowMaximized,
+    )
+
+    SyncHiddenWindowState(
         windowState = imageViewerWindowState,
         visible = imageViewerVisible,
         width = settings.imageViewerWindowWidth,
@@ -88,7 +98,7 @@ internal fun rememberDesktopWindowStates(
         currentWidth = settings.mainWindowWidth,
         currentHeight = settings.mainWindowHeight,
         currentMaximized = settings.mainWindowMaximized,
-        enabled = persistMainWindowSize,
+        enabled = persistMainWindowSize && mainWindowVisible,
         onWindowSizeChanged = onWindowSizeChanged,
     )
 

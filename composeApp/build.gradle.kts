@@ -103,6 +103,7 @@ val appVersion: String = project.property("app.version") as String
 compose.desktop {
     application {
         mainClass = "com.oruke.onyx.MainKt"
+        jvmArgs("-XX:TieredStopAtLevel=1")
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)

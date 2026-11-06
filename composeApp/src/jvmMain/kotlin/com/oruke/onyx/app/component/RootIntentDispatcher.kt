@@ -70,6 +70,10 @@ private fun DefaultRootComponent.dispatchRootSettingsIntent(intent: RootIntent):
             togglePreviewPane(); true
         }
 
+        RootIntent.FlushPersistedState -> {
+            flushPersistedStateNow(); true
+        }
+
         else -> false
     }
 }

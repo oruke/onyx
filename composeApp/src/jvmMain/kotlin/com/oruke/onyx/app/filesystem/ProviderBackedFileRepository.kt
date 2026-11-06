@@ -1,23 +1,30 @@
 package com.oruke.onyx.app.filesystem
 
+import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.FileEntryLookup
 import com.oruke.onyx.vfs.api.QueryableVfsProvider
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
-import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
-import com.oruke.onyx.vfs.api.VfsProviderError
-import com.oruke.onyx.vfs.api.VfsProtocol
 
 /**
  * 基于 Provider 注册表路由目录读取的统一文件仓库。
  *
+ * @param providerRegistry 负责按协议定位具体文件系统实现的 Provider 注册表。
+ * @param useStartupPreload 是否在启动首屏首次读取时消费 [OnyxStartupPreloader] 预加载的目录条目。
  */
 class ProviderBackedFileRepository(
     /** 负责按协议定位具体文件系统实现的 Provider 注册表。 */
     private val providerRegistry: VfsProviderRegistry,
+    /** 是否启用启动期首屏目录预加载结果消费。 */
+    private val useStartupPreload: Boolean = false,
 ) : FileRepository {
     override suspend fun list(location: String): Result<List<VFile>> {
+        if (useStartupPreload) {
+            OnyxStartupPreloader.consumePreloadedDirectory(location)?.let { preloaded ->
+                return preloaded.await()
+            }
+        }
         return providerRegistry.list(location)
     }
 

@@ -28,11 +28,13 @@ internal class SqliteSettingsRepository(
             }
         }
         return runCatching {
-            val cachedSettings = databaseService.transaction {
-                val settingsJson = settingsDatabaseRepository.loadSettingsJson()
-                    ?: return@transaction null
+            val cachedSettings = databaseService.withJdbcConnection { connection ->
+                val settingsJson = settingsDatabaseRepository.loadSettingsJsonFast(connection)
+                    ?: return@withJdbcConnection null
                 val decodedSettings = SettingsJson.decodeFromString<OnyxSettings>(settingsJson)
-                decodedSettings.copy(remoteConnections = settingsDatabaseRepository.loadRemoteConnections())
+                decodedSettings.copy(
+                    remoteConnections = settingsDatabaseRepository.loadRemoteConnectionsFast(connection),
+                )
             }
             if (cachedSettings != null) {
                 return@runCatching cachedSettings

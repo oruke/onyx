@@ -110,7 +110,7 @@ import com.oruke.onyx.app.filesystem.JvmUserCommandLauncherService
  */
 val fileModule = module {
     single<com.oruke.onyx.vfs.api.StorageDeviceService> {
-        com.oruke.onyx.app.platform.storage.JvmStorageDeviceService()
+        OnyxStartupPreloader.obtainDefaultStorageDeviceService()
     } onClose { service -> (service as? java.io.Closeable)?.close() }
     single { com.oruke.onyx.app.filesystem.SystemLocationVfsProvider(get()) }
     single { JvmLocalFileProvider() }
@@ -184,7 +184,7 @@ val fileModule = module {
             )
         )
     }
-    single<FileRepository> { ProviderBackedFileRepository(get()) }
+    single<FileRepository> { ProviderBackedFileRepository(get(), useStartupPreload = true) }
     single<VfsConnectionTestService> {
         ProviderBackedVfsConnectionTestService(
             listOf(

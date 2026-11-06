@@ -2,12 +2,21 @@ package com.oruke.onyx
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.awt.ComposeWindow
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowState
 import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.app.component.RootApplicationRuntime
+import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootLaunchConfiguration
 import com.oruke.onyx.app.component.RootWindowKind
@@ -15,6 +24,9 @@ import com.oruke.onyx.app.component.SessionRestoreState
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.app.platform.DesktopFileManagerWindowRequest
 import com.oruke.onyx.app.platform.ExternalFileDragService
+import com.oruke.onyx.app.platform.OnyxStartupSplash
+import com.oruke.onyx.app.platform.StartupSplashStage
+import com.oruke.onyx.app.platform.activateFromUserRequest
 import com.oruke.onyx.app.platform.rememberDesktopWindowStates
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.SearchPanelPresentation
@@ -50,6 +62,7 @@ private const val IMAGE_VIEWER_WINDOW_MIN_HEIGHT = 360
  * @param applicationRuntime 所有窗口共享的应用运行时。
  * @param onOpenDirectoryInNewWindow 创建目录窗口的应用级动作。
  * @param onCloseRequest 关闭当前窗口的应用级动作。
+ * @param onConsumePendingOpenLocation 消费外部唤醒传入的待打开目录动作。
  * @return 无返回值。
  */
 @Composable
@@ -58,7 +71,9 @@ internal fun DesktopFileManagerWindow(
     applicationRuntime: RootApplicationRuntime,
     onOpenDirectoryInNewWindow: (String) -> Unit,
     onCloseRequest: (Long) -> Unit,
+    onConsumePendingOpenLocation: (Long) -> Unit = {},
 ) {
+    OnyxStartupSplash.updateStage(StartupSplashStage.RESTORING_WORKSPACE)
     val koin = getKoin()
     val externalFileDragService = remember(request.id) { koin.get<ExternalFileDragService>() }
     val launchConfiguration = remember(request.id, onOpenDirectoryInNewWindow) {
@@ -84,27 +99,38 @@ internal fun DesktopFileManagerWindow(
     val windowStates = rememberDesktopWindowStates(
         settings = state.settings,
         persistMainWindowSize = request.persistsMainSession,
+        mainWindowVisible = request.visible,
         imageViewerVisible = imageViewerState.visible,
         onWindowSizeChanged = { kind, width, height, maximized ->
             rootComponent.dispatch(RootIntent.UpdateWindowSize(kind, width, height, maximized))
         },
     )
+    val windowIcon = rememberOnyxWindowIconPainter()
 
     DecoratedWindow(
         onCloseRequest = { onCloseRequest(request.id) },
+        visible = request.visible,
         title = "Onyx ${BuildConfig.VERSION}",
-        icon = painterResource(Res.drawable.onyx_logo),
+        icon = windowIcon,
         state = windowStates.main,
     ) {
         window.minimumSize = Dimension(FILE_MANAGER_WINDOW_MIN_WIDTH, FILE_MANAGER_WINDOW_MIN_HEIGHT)
         DisposableEffect(window, request.id) {
             OnyxLogger.info(
                 "Startup",
-                "主窗口已创建 (id=${request.id}, size=${window.width}x${window.height}, " +
+                "主窗口已创建 (id=${request.id}, visible=${request.visible}, " +
+                    "size=${window.width}x${window.height}, " +
                     "extendedState=${window.extendedState}, elapsed=${startupElapsedMillis()}ms)",
             )
             onDispose {}
         }
+        ObserveResidentWindowLifecycle(
+            window = window,
+            windowState = windowStates.main,
+            request = request,
+            rootComponent = rootComponent,
+            onConsumePendingOpenLocation = onConsumePendingOpenLocation,
+        )
         DisposableEffect(window, externalFileDragService) {
             externalFileDragService.install(window)
             onDispose(externalFileDragService::uninstall)
@@ -129,7 +155,7 @@ internal fun DesktopFileManagerWindow(
         Window(
             onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
             title = imageViewerState.currentFile?.name ?: stringResource(Res.string.window_image_viewer_title),
-            icon = painterResource(Res.drawable.onyx_logo),
+            icon = windowIcon,
             state = windowStates.imageViewer,
         ) {
             window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
@@ -155,6 +181,63 @@ internal fun DesktopFileManagerWindow(
                     readImageSize = rootComponent::readImageSize,
                 )
             }
+        }
+    }
+}
+
+/**
+ * 优先复用启动预加载缓存的窗口图标 [Painter]，避免首帧异步资源加载导致的二次重组。
+ */
+@Composable
+private fun rememberOnyxWindowIconPainter(): Painter {
+    val preloadedPainter = remember {
+        runCatching {
+            OnyxStartupPreloader.peekLogoImage()?.toComposeImageBitmap()?.let(::BitmapPainter)
+        }.getOrNull()
+    }
+    return preloadedPainter ?: painterResource(Res.drawable.onyx_logo)
+}
+
+/**
+ * 监听常驻主窗口的显隐与单实例唤醒请求，在首帧就绪后关闭启动动画，在唤醒时置前聚焦并刷新目录，在隐藏时立即落盘设置与会话。
+ */
+@Composable
+private fun ObserveResidentWindowLifecycle(
+    window: ComposeWindow,
+    windowState: WindowState,
+    request: DesktopFileManagerWindowRequest,
+    rootComponent: RootComponent,
+    onConsumePendingOpenLocation: (Long) -> Unit,
+) {
+    LaunchedEffect(window, request.id) {
+        withFrameNanos { }
+        OnyxStartupSplash.dismiss()
+    }
+    LaunchedEffect(request.activationRequest, request.visible) {
+        if (request.visible) {
+            if (request.activationRequest > 0L) {
+                window.activateFromUserRequest(windowState)
+                val targetLocation = request.pendingOpenLocation
+                if (!targetLocation.isNullOrBlank()) {
+                    rootComponent.dispatch(RootIntent.OpenLocationInActivePane(targetLocation))
+                    onConsumePendingOpenLocation(request.id)
+                } else {
+                    rootComponent.dispatch(RootIntent.RefreshActivePane)
+                }
+                OnyxLogger.info(
+                    "Startup",
+                    "热驻留主窗口已秒起唤醒 (activation=${request.activationRequest})",
+                )
+            }
+        } else {
+            if (rootComponent.state.value.searchState.visible) {
+                rootComponent.dispatch(RootIntent.CloseSearchPanel)
+            }
+            if (rootComponent.imageViewerState.value.visible) {
+                rootComponent.dispatch(RootIntent.CloseImageViewer)
+            }
+            rootComponent.dispatch(RootIntent.FlushPersistedState)
+            OnyxLogger.info("Startup", "主窗口已隐藏并转入后台热驻留")
         }
     }
 }

@@ -13,9 +13,73 @@ import org.jetbrains.exposed.v1.jdbc.batchInsert
 import org.jetbrains.exposed.v1.jdbc.deleteAll
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
+import java.sql.Connection
 
 /** 设置数据库 Repository，负责 OnyxSettings 文档与结构化索引表的 Exposed DSL 读写。 */
 internal class SettingsDatabaseRepository {
+    /**
+     * 使用原生 JDBC 读取完整设置 JSON 文档，用于启动期免 Exposed 类加载快速恢复。
+     *
+     * @param connection 已打开的 SQLite JDBC 连接。
+     * @return 已保存的设置 JSON；不存在时返回 `null`。
+     */
+    fun loadSettingsJsonFast(connection: Connection): String? {
+        return connection.prepareStatement(
+            "SELECT json FROM settings_document WHERE key = ? LIMIT 1",
+        ).use { statement ->
+            statement.setString(1, DEFAULT_SETTINGS_KEY)
+            statement.executeQuery().use { resultSet ->
+                if (resultSet.next()) resultSet.getString(1) else null
+            }
+        }
+    }
+
+    /**
+     * 使用原生 JDBC 读取结构化远程连接配置，用于启动期免 Exposed 类加载快速恢复。
+     *
+     * @param connection 已打开的 SQLite JDBC 连接。
+     * @return 按用户排序恢复的远程连接配置列表。
+     */
+    @Suppress("MagicNumber")
+    fun loadRemoteConnectionsFast(connection: Connection): List<RemoteConnectionProfile> {
+        return connection.prepareStatement(
+            """
+            SELECT id, name, protocol, location, username, domain,
+                   s3_provider, s3_endpoint, s3_region, s3_addressing_style, save_policy
+            FROM remote_connection
+            ORDER BY sort_order ASC
+            """.trimIndent(),
+        ).use { statement ->
+            statement.executeQuery().use { resultSet ->
+                buildList {
+                    while (resultSet.next()) {
+                        add(
+                            RemoteConnectionProfile(
+                                id = resultSet.getString(1),
+                                name = resultSet.getString(2),
+                                protocol = resultSet.getString(3)
+                                    .toEnumOrDefault(RemoteConnectionProtocol.SMB),
+                                location = resultSet.getString(4),
+                                username = resultSet.getString(5),
+                                domain = resultSet.getString(6),
+                                s3Config = S3ConnectionConfig(
+                                    provider = resultSet.getString(7)
+                                        .toEnumOrDefault(S3ProviderPreset.AMAZON_S3),
+                                    endpoint = resultSet.getString(8),
+                                    region = resultSet.getString(9),
+                                    addressingStyle = resultSet.getString(10)
+                                        .toEnumOrDefault(S3AddressingStyle.VIRTUAL_HOSTED),
+                                ),
+                                savePolicy = resultSet.getString(11)
+                                    .toEnumOrDefault(RemoteConnectionSavePolicy.SESSION),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * 读取完整设置 JSON 文档。
      *

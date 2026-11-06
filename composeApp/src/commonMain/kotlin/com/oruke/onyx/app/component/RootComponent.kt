@@ -683,6 +683,9 @@ internal sealed interface RootIntent {
     data class OpenTerminalAt(
         val location: String,
     ) : RootIntent
+
+    /** 立即刷盘保存当前设置与会话快照（用于主窗口隐藏转入后台常驻时持久化）。 */
+    data object FlushPersistedState : RootIntent
 }
 
 /** 平台菜单、打开方式、拖放和连接测试能力。 */

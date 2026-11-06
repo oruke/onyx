@@ -11,6 +11,7 @@ import com.oruke.onyx.vfs.archive.ArchiveService
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /** 纳秒转毫秒换算常量。 */
@@ -79,6 +80,16 @@ internal suspend fun DefaultRootComponent.restorePersistedState() {
 internal fun DefaultRootComponent.flushPersistedStateOnDestroy() {
     if (!persistenceReady) return
     runBlocking {
+        persistCurrentState()
+    }
+}
+
+/**
+ * 立即异步刷盘保存当前设置与会话快照，确保主窗口隐藏驻留后台时立刻落盘。
+ */
+internal fun DefaultRootComponent.flushPersistedStateNow() {
+    if (!persistenceReady) return
+    scope.launch {
         persistCurrentState()
     }
 }

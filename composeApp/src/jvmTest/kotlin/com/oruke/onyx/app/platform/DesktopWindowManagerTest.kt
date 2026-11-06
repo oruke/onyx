@@ -58,4 +58,30 @@ class DesktopWindowManagerTest {
         assertTrue(manager.closeWindow(secondary.id))
         assertFalse(manager.closeWindow(secondary.id))
     }
+
+    /**
+     * 校验启用主窗口热驻留模式时，关闭主窗口仅隐藏而不销毁，再次唤醒可恢复可见性并传递待打开路径。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun residentPrimaryWindowHidesOnCloseAndReactivatesOnRequest() {
+        val manager = DesktopWindowManager(keepPrimaryWindowResident = true)
+        val primary = manager.windows.single()
+
+        assertTrue(primary.visible)
+        assertEquals(0L, primary.activationRequest)
+        assertFalse(manager.closeWindow(primary.id))
+
+        val hiddenPrimary = manager.windows.single()
+        assertFalse(hiddenPrimary.visible)
+
+        val reactivated = manager.activatePrimaryWindow("local:/workspace/projects")
+        assertTrue(reactivated.visible)
+        assertEquals(1L, reactivated.activationRequest)
+        assertEquals("local:/workspace/projects", reactivated.pendingOpenLocation)
+
+        manager.consumePendingOpenLocation(primary.id)
+        assertNull(manager.windows.single().pendingOpenLocation)
+    }
 }
