@@ -6,10 +6,15 @@ import kotlinx.serialization.json.Json
 
 /**
  * SQLite 设置仓库，负责把设置文档和可查询列表写入本地缓存系统。
+ *
+ * @param databaseService 本地 SQLite 数据库服务。
+ * @param settingsDatabaseRepository 设置与网络位置表访问仓库。
+ * @param useStartupPreload 是否在首次读取时消费启动期后台预加载结果。
  */
 internal class SqliteSettingsRepository(
     private val databaseService: OnyxLocalDatabaseService,
     private val settingsDatabaseRepository: SettingsDatabaseRepository,
+    private val useStartupPreload: Boolean = false,
 ) : SettingsRepository {
     /**
      * 加载应用设置，从 SQLite 设置文档恢复通用设置，并从结构化缓存表恢复网络位置。
@@ -17,6 +22,11 @@ internal class SqliteSettingsRepository(
      * @return 当前设置；尚未保存过时返回 `null`。
      */
     override suspend fun loadSettings(): Result<OnyxSettings?> {
+        if (useStartupPreload) {
+            OnyxStartupPreloader.consumePreloadedSettings()?.let { preloaded ->
+                return preloaded.await()
+            }
+        }
         return runCatching {
             val cachedSettings = databaseService.transaction {
                 val settingsJson = settingsDatabaseRepository.loadSettingsJson()
@@ -38,6 +48,9 @@ internal class SqliteSettingsRepository(
      * @return 操作结果。
      */
     override suspend fun saveSettings(settings: OnyxSettings): Result<Unit> {
+        if (useStartupPreload) {
+            OnyxStartupPreloader.consumePreloadedSettings()?.cancel()
+        }
         return runCatching {
             val encoded = SettingsJson.encodeToString(settings.withoutRemoteConnections())
             databaseService.transaction {

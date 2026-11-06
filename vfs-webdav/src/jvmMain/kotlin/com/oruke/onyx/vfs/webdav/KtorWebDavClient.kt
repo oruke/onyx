@@ -41,13 +41,15 @@ import javax.net.ssl.SSLException
 /**
  * 基于 Ktor CIO 的 WebDAV 客户端实现。
  *
- * @property httpClient 负责发起 WebDAV HTTP 请求的客户端。
+ * @param httpClient 外部注入的 HTTP 客户端；为空时按需惰性创建 CIO 客户端。
  * @property parser `PROPFIND` 多状态响应解析器。
  */
 class KtorWebDavClient(
-    private val httpClient: HttpClient = HttpClient(CIO),
+    httpClient: HttpClient? = null,
     private val parser: WebDavMultiStatusParser = WebDavMultiStatusParser(),
 ) : WebDavClient {
+    /** 负责发起 WebDAV HTTP 请求的客户端，首次访问远程资源时才初始化。 */
+    private val httpClient: HttpClient by lazy { httpClient ?: HttpClient(CIO) }
     override suspend fun testConnection(
         location: String,
         authContext: VfsAuthContext,

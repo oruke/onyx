@@ -7,6 +7,7 @@ import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.TaskError
+import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.app.storage.OnyxDataDirectories
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,29 +36,43 @@ private val PersistenceLineJson = Json {
  * 使用 JSON 文件持久化应用会话快照。
  *
  * @param filePath 会话文件路径。
+ * @param useStartupPreload 是否在首次读取时消费启动期后台预加载结果。
  */
 class JsonSessionRepository(
     private val filePath: Path = OnyxDataDirectories.stateDirectory().resolve("session.json"),
+    private val useStartupPreload: Boolean = false,
 ) : SessionRepository {
-    override suspend fun loadSession(): Result<AppSessionSnapshot?> = withContext(Dispatchers.IO) {
-        runCatching {
-            if (!filePath.exists()) {
-                null
-            } else {
-                val content = filePath.readText().trim()
-                if (content.isBlank()) {
+    override suspend fun loadSession(): Result<AppSessionSnapshot?> {
+        if (useStartupPreload) {
+            OnyxStartupPreloader.consumePreloadedSession()?.let { preloaded ->
+                return preloaded.await()
+            }
+        }
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                if (!filePath.exists()) {
                     null
                 } else {
-                    PersistenceJson.decodeFromString<AppSessionSnapshot>(content)
+                    val content = filePath.readText().trim()
+                    if (content.isBlank()) {
+                        null
+                    } else {
+                        PersistenceJson.decodeFromString<AppSessionSnapshot>(content)
+                    }
                 }
             }
         }
     }
 
-    override suspend fun saveSession(snapshot: AppSessionSnapshot): Result<Unit> = withContext(Dispatchers.IO) {
-        runCatching {
-            ensureParentDirectory(filePath)
-            filePath.writeText(PersistenceJson.encodeToString(snapshot))
+    override suspend fun saveSession(snapshot: AppSessionSnapshot): Result<Unit> {
+        if (useStartupPreload) {
+            OnyxStartupPreloader.consumePreloadedSession()?.cancel()
+        }
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                ensureParentDirectory(filePath)
+                filePath.writeText(PersistenceJson.encodeToString(snapshot))
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.application
 import com.oruke.onyx.app.OnyxLogger
+import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
 import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.rememberRootApplicationRuntime
@@ -24,14 +25,29 @@ import org.jetbrains.jewel.ui.ComponentStyling
 import org.jetbrains.jewel.window.styling.TitleBarStyle
 import org.koin.compose.getKoin
 
+/** 进程主入口启动时间戳（纳秒），用于度量启动各阶段耗时。 */
+internal val processStartNanos: Long = System.nanoTime()
+
+/** 纳秒转毫秒换算常量。 */
+private const val NANOS_PER_MILLI = 1_000_000L
+
 /**
- * 启动 Onyx 桌面应用，并在创建窗口前初始化持久化日志。
+ * 计算自 `main()` 启动以来经过的毫秒数。
+ *
+ * @return 启动经过毫秒数。
+ */
+internal fun startupElapsedMillis(): Long = (System.nanoTime() - processStartNanos) / NANOS_PER_MILLI
+
+/**
+ * 启动 Onyx 桌面应用，并在创建窗口前初始化持久化日志与后台设置预加载。
  *
  * @return 无返回值。
  */
 @Suppress("TooGenericExceptionCaught")
 fun main() {
     OnyxLogger.initialize()
+    OnyxStartupPreloader.start()
+    OnyxLogger.info("Startup", "进入 main()，已启动后台设置与会话预加载")
     try {
         launchOnyxApplication()
     } catch (failure: Throwable) {

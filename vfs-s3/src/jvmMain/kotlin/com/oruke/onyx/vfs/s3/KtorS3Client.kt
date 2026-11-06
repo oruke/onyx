@@ -53,15 +53,17 @@ import javax.xml.parsers.DocumentBuilderFactory
 /**
  * 基于 Ktor CIO 的 S3 客户端实现。
  *
- * @property httpClient 负责发起 S3 HTTP 请求的客户端。
+ * @param httpClient 外部注入的 HTTP 客户端；为空时按需惰性创建 CIO 客户端。
  * @property signer AWS Signature V4 请求签名器。
  * @property parser S3 列表响应解析器。
  */
 class KtorS3Client(
-    private val httpClient: HttpClient = HttpClient(CIO),
+    httpClient: HttpClient? = null,
     private val signer: S3RequestSigner = S3RequestSigner(),
     private val parser: S3ListBucketResultParser = S3ListBucketResultParser(),
 ) : S3Client {
+    /** 负责发起 S3 HTTP 请求的客户端，首次访问远程资源时才初始化。 */
+    private val httpClient: HttpClient by lazy { httpClient ?: HttpClient(CIO) }
     override suspend fun testConnection(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,

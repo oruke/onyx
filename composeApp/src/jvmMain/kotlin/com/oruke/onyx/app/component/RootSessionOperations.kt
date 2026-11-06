@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.core.model.AppSessionSnapshot
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
@@ -7,9 +8,13 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.archive.ArchiveService
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
+
+/** 纳秒转毫秒换算常量。 */
+private const val NANOS_PER_MILLI = 1_000_000L
 
 /**
  * 恢复设置与会话；恢复成功或用户明确修改设置后才启用自动持久化。
@@ -17,12 +22,14 @@ import kotlinx.coroutines.runBlocking
  * @return 无返回值。
  */
 internal suspend fun DefaultRootComponent.restorePersistedState() {
+    val startNanos = System.nanoTime()
     var restoreError: I18nMessage? = null
+    var needsInitialPersist = false
     val initialLocation = launchConfiguration.initialLocation?.takeIf(String::isNotBlank)
     if (launchConfiguration.persistsMainSession) {
         val (settingsError, sessionResult) = coroutineScope {
-            val settingsDeferred = async { restoreSettings() }
-            val sessionDeferred = async { sessionRepository.loadSession() }
+            val settingsDeferred = async(start = CoroutineStart.UNDISPATCHED) { restoreSettings() }
+            val sessionDeferred = async(start = CoroutineStart.UNDISPATCHED) { sessionRepository.loadSession() }
             settingsDeferred.await() to sessionDeferred.await()
         }
         restoreError = settingsError
@@ -31,6 +38,7 @@ internal suspend fun DefaultRootComponent.restorePersistedState() {
                 if (session != null) {
                     applySession(session)
                 } else {
+                    needsInitialPersist = true
                     applySettingsDefaults(refreshPrimaryPane = initialLocation == null)
                 }
             },
@@ -45,12 +53,22 @@ internal suspend fun DefaultRootComponent.restorePersistedState() {
     if (initialLocation != null) {
         activePane.value = PaneId.PRIMARY
         primaryPane.openDirectory(initialLocation)
+        needsInitialPersist = true
     }
-    sessionRestoreState.value = restoreError?.let(SessionRestoreState::Failed) ?: SessionRestoreState.Ready
     if (restoreError == null) {
         // 只有完整恢复成功才写入启动后的快照，避免默认状态覆盖暂时不可读的旧数据。
         persistenceReady = true
+        val previousSettings = settings.value
         recordRecentLocations(listOf(primaryPane.state.value.location, secondaryPane.state.value.location))
+        if (settings.value != previousSettings) {
+            needsInitialPersist = true
+        }
+    }
+    sessionRestoreState.value = restoreError?.let(SessionRestoreState::Failed) ?: SessionRestoreState.Ready
+    mutableState.value = initialRootState()
+    val elapsedMs = (System.nanoTime() - startNanos) / NANOS_PER_MILLI
+    OnyxLogger.info("Startup", "恢复设置与会话完成，耗时 ${elapsedMs}ms")
+    if (restoreError == null && needsInitialPersist) {
         persistCurrentState()
     }
 }

@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.Window
+import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.RootApplicationRuntime
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootLaunchConfiguration
@@ -96,6 +97,14 @@ internal fun DesktopFileManagerWindow(
         state = windowStates.main,
     ) {
         window.minimumSize = Dimension(FILE_MANAGER_WINDOW_MIN_WIDTH, FILE_MANAGER_WINDOW_MIN_HEIGHT)
+        DisposableEffect(window, request.id) {
+            OnyxLogger.info(
+                "Startup",
+                "主窗口已创建 (id=${request.id}, size=${window.width}x${window.height}, " +
+                    "extendedState=${window.extendedState}, elapsed=${startupElapsedMillis()}ms)",
+            )
+            onDispose {}
+        }
         DisposableEffect(window, externalFileDragService) {
             externalFileDragService.install(window)
             onDispose(externalFileDragService::uninstall)

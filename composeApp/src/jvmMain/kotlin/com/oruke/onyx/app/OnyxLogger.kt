@@ -33,6 +33,9 @@ object OnyxLogger {
     /** 日志保留天数，超期文件会在下次启动时清理。 */
     private const val LOG_RETENTION_DAYS = 14L
 
+    /** 启动阶段诊断标签，始终输出到日志文件以便度量启动耗时。 */
+    private const val STARTUP_TAG = "Startup"
+
     /** 当前进程使用的时钟，初始化后保持一致以便测试和日志命名。 */
     private var clock: Clock = Clock.systemDefaultZone()
 
@@ -115,7 +118,7 @@ object OnyxLogger {
      * @param message 日志内容。
      */
     fun info(tag: String, message: String) {
-        if (verboseEnabled) writeLog(System.out, "INFO", tag, message)
+        if (verboseEnabled || tag == STARTUP_TAG) writeLog(System.out, "INFO", tag, message)
     }
 
     /**

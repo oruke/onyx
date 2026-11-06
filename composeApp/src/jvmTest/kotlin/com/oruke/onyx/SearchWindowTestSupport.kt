@@ -14,6 +14,8 @@ import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
+import java.awt.Component
+import java.awt.Container
 import java.awt.KeyboardFocusManager
 import java.awt.Rectangle
 import java.awt.Robot
@@ -60,6 +62,7 @@ internal fun DesktopComposeUiTest.awaitSearchWindowTag(tag: String) {
     runOnUiThread {
         expectedWindow.toFront()
         expectedWindow.requestFocus()
+        expectedWindow.findComposeKeyTarget().requestFocusInWindow()
         expectedWindow.renderImmediately()
     }
     waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) {
@@ -156,11 +159,13 @@ internal fun DesktopComposeUiTest.pressSearchWindowEnter(
     runOnUiThread {
         window.toFront()
         if (!window.isFocused) window.requestFocus()
+        window.findComposeKeyTarget().requestFocusInWindow()
         window.renderImmediately()
     }
     try {
         waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) {
             runOnUiThread {
+                window.renderImmediately()
                 // 焦点可能属于 LazyColumn 的内部节点；沿祖先确认路由仍位于指定控件内部。
                 window.isFocused && window.focusOwner != null && window.searchWindowFocusIsInside(focusedTag)
             }
@@ -177,12 +182,16 @@ internal fun DesktopComposeUiTest.pressSearchWindowEnter(
         throw AssertionError("Expected focus inside $focusedTag; $focusDescription", failure)
     }
     runOnUiThread {
-        val owner = assertNotNull(window.focusOwner)
+        val owner = window.findComposeKeyTarget()
         val modifiers = if (locate) KeyEvent.CTRL_DOWN_MASK else 0
         val focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
         listOf(KeyEvent.KEY_PRESSED, KeyEvent.KEY_RELEASED).forEach { id ->
-            focusManager.redispatchEvent(owner, KeyEvent(owner, id, System.currentTimeMillis(), modifiers, KeyEvent.VK_ENTER, '\n'))
+            focusManager.redispatchEvent(
+                owner,
+                KeyEvent(owner, id, System.currentTimeMillis(), modifiers, KeyEvent.VK_ENTER, '\n'),
+            )
         }
+        window.renderImmediately()
     }
     waitForIdle()
 }
@@ -318,6 +327,31 @@ private fun ComposeWindow.searchWindowFocusIsInside(tag: String): Boolean = sear
         generateSequence(node) { current -> current.parent }.any { ancestor ->
             ancestor.config.getOrNull(SemanticsProperties.TestTag) == tag
         }
+}
+
+/**
+ * 定位 ComposeWindow 内部实际注册了 Compose 键盘监听器的 AWT 组件。
+ *
+ * 在 Linux X11/Xvfb 下，`window.requestFocus()` 可能将 AWT 焦点停留在外层 `ComposeWindow` 或 `JRootPane`，
+ * 而 Compose 的 `KeyListener` 注册在内部图层组件上；定向查找该组件可确保键盘事件进入 Compose 场景。
+ *
+ * @return 持有键盘监听器的内部组件；未找到时回退到 `focusOwner` 或窗口自身。
+ */
+private fun ComposeWindow.findComposeKeyTarget(): Component {
+    focusOwner?.takeIf { owner -> owner.keyListeners.isNotEmpty() }?.let { return it }
+    val queue = ArrayDeque<Component>()
+    queue.add(this)
+    var candidate: Component? = null
+    while (queue.isNotEmpty()) {
+        val current = queue.removeFirst()
+        if (current.keyListeners.isNotEmpty()) {
+            candidate = current
+        }
+        if (current is Container) {
+            current.components.forEach(queue::addLast)
+        }
+    }
+    return candidate ?: focusOwner ?: this
 }
 
 /**

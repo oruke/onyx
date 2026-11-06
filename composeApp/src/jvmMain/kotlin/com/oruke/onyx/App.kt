@@ -203,16 +203,18 @@ internal fun App(
         fileListColors = state.settings.fileListColors,
     )
 
-    OnyxLocaleEnvironment(rootComponent.resourceLocale) {
-        OnyxTheme(
-            uiScale = state.settings.uiScale,
-            appearance = appearance,
-        ) {
-            AppContent(
-                rootComponent = rootComponent,
-                state = state,
-                externalFileDragService = externalFileDragService,
-            )
+    IntUiTheme(isDark = isSystemInDarkTheme()) {
+        OnyxLocaleEnvironment(rootComponent.resourceLocale) {
+            OnyxTheme(
+                uiScale = state.settings.uiScale,
+                appearance = appearance,
+            ) {
+                AppContent(
+                    rootComponent = rootComponent,
+                    state = state,
+                    externalFileDragService = externalFileDragService,
+                )
+            }
         }
     }
 }
@@ -240,45 +242,41 @@ private fun AppContent(
     val dragBindings = dragController.bindings
     AppDialogHost(state, rootComponent::dispatch)
 
-    IntUiTheme(isDark = isSystemInDarkTheme()) {
-        CompositionLocalProvider(
-            LocalTooltipController provides TooltipController(
-                show = { request -> tooltipRequest = request },
-                hide = { owner ->
-                    if (tooltipRequest?.owner === owner) {
-                        tooltipRequest = null
-                    }
+    CompositionLocalProvider(
+        LocalTooltipController provides TooltipController(
+            show = { request -> tooltipRequest = request },
+            hide = { owner ->
+                if (tooltipRequest?.owner === owner) {
+                    tooltipRequest = null
+                }
+            },
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    appContentSize = coordinates.size
+                    appWindowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
                 },
-            )
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .onGloballyPositioned { coordinates ->
-                        appContentSize = coordinates.size
-                        appWindowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
-                    },
-            ) {
-                AppWorkspace(state, rootComponent, dragBindings, toggleFavoriteLocation)
+            AppWorkspace(state, rootComponent, dragBindings, toggleFavoriteLocation)
 
-                (tooltipRequest ?: externalTooltipRequest)?.let { request ->
-                    OnyxTooltipOverlay(
-                        request = request,
-                        appSize = appContentSize,
-                        appWindowOrigin = appWindowOrigin,
-                    )
-                }
-                val currentFileDragState = dragController.fileDragState
-                if (currentFileDragState != null && dragController.fileDragPosition != null) {
-                    FileDragOverlay(
-                        operation = currentFileDragState.operation,
-                        pointerWindowPosition = dragController.fileDragPosition,
-                        targetDirectoryLocation = dragController.fileDropTarget?.targetDirectoryLocation,
-                        appWindowOrigin = appWindowOrigin,
-                    )
-                }
-
-
+            (tooltipRequest ?: externalTooltipRequest)?.let { request ->
+                OnyxTooltipOverlay(
+                    request = request,
+                    appSize = appContentSize,
+                    appWindowOrigin = appWindowOrigin,
+                )
+            }
+            val currentFileDragState = dragController.fileDragState
+            if (currentFileDragState != null && dragController.fileDragPosition != null) {
+                FileDragOverlay(
+                    operation = currentFileDragState.operation,
+                    pointerWindowPosition = dragController.fileDragPosition,
+                    targetDirectoryLocation = dragController.fileDropTarget?.targetDirectoryLocation,
+                    appWindowOrigin = appWindowOrigin,
+                )
             }
         }
     }

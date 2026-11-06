@@ -1,6 +1,7 @@
 package com.oruke.onyx.di
 
 import com.oruke.onyx.app.cache.OnyxLocalDatabaseService
+import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
 import com.oruke.onyx.app.cache.PlatformMenuCacheRepository
 import com.oruke.onyx.app.cache.PlatformMenuCacheService
@@ -228,7 +229,7 @@ val fileModule = module {
     }
     factory<ExternalFileDragService> { JvmExternalFileDragService(get()) }
     single<OpenWithService> { JvmPlatformOpenWithService(get()) }
-    single { OnyxLocalDatabaseService() }
+    single { OnyxStartupPreloader.obtainDefaultDatabaseService() }
     single { PlatformMenuCacheRepository() }
     single { PlatformMenuCacheService(get(), get()) }
     single { PlatformMenuSourceFingerprintService() }
@@ -292,7 +293,7 @@ val fileModule = module {
         )
     }
     single<ImageMetadataService> { JvmImageMetadataService(get()) }
-    single<SettingsRepository> { SqliteSettingsRepository(get(), get()) }
-    single<SessionRepository> { JsonSessionRepository() }
+    single<SettingsRepository> { SqliteSettingsRepository(get(), get(), useStartupPreload = true) }
+    single<SessionRepository> { JsonSessionRepository(useStartupPreload = true) }
     single<TaskPersistenceRepository> { JsonTaskPersistenceRepository() }
 }

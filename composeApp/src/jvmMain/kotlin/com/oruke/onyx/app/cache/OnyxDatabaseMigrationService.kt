@@ -25,6 +25,7 @@ internal class OnyxDatabaseMigrationService(
             check(currentVersion <= CURRENT_SCHEMA_VERSION) {
                 "Database schema version $currentVersion is newer than supported version $CURRENT_SCHEMA_VERSION"
             }
+            if (currentVersion == CURRENT_SCHEMA_VERSION) return
 
             connection.autoCommit = false
             try {

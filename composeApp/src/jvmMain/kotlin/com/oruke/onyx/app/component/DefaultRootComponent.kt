@@ -39,6 +39,7 @@ import com.oruke.onyx.vfs.api.SystemMenuAction
 import com.oruke.onyx.vfs.api.VfsConnectionTestRequest
 import com.oruke.onyx.vfs.api.VfsConnectionTestResult
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
@@ -521,7 +522,7 @@ internal class DefaultRootComponent(
                 if (persistenceReady) persistCurrentState()
             }
         }
-        scope.launch { restorePersistedState() }
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { restorePersistedState() }
     }
 
 }
@@ -561,7 +562,7 @@ private fun DefaultRootComponent.createPaneComponent(paneId: PaneId, childKey: S
 }
 
 /** @return 当前各状态源组成的初始根状态。 */
-private fun DefaultRootComponent.initialRootState(): RootState {
+internal fun DefaultRootComponent.initialRootState(): RootState {
     return RootState(
         layoutMode = layoutMode.value,
         paneSplitFraction = paneSplitFraction.value,

@@ -13,12 +13,25 @@ import java.util.Properties
 /**
  * jcifs SMB 上下文提供器，在应用生命周期内共享传输池并按请求附加认证信息。
  *
- * @param baseContext 持有 DNS、DFS、缓冲区和 SMB 传输池的基础上下文。
+ * @param baseContextFactory 持有 DNS、DFS、缓冲区和 SMB 传输池的基础上下文工厂。
  */
 internal class JcifsSmbContextProvider(
-    /** 所有 SMB 操作共享的 jcifs 基础上下文。 */
-    private val baseContext: CIFSContext = BaseContext(PropertyConfiguration(Properties())),
+    /** 按需创建共享 jcifs 基础上下文的工厂，避免应用启动时在主线程初始化加密提供者。 */
+    private val baseContextFactory: () -> CIFSContext = { BaseContext(PropertyConfiguration(Properties())) },
 ) : AutoCloseable {
+    /**
+     * 使用已创建的 jcifs 基础上下文构造提供器。
+     *
+     * @param baseContext 所有 SMB 操作共享的 jcifs 基础上下文。
+     */
+    constructor(baseContext: CIFSContext) : this({ baseContext })
+
+    /** 延迟初始化的共享 jcifs 基础上下文。 */
+    private val lazyBaseContext = lazy(LazyThreadSafetyMode.SYNCHRONIZED, baseContextFactory)
+
+    /** 所有 SMB 操作共享的 jcifs 基础上下文。 */
+    private val baseContext: CIFSContext
+        get() = lazyBaseContext.value
     /**
      * 返回复用基础传输池的认证上下文。
      *
@@ -51,6 +64,8 @@ internal class JcifsSmbContextProvider(
      * @return 无返回值。
      */
     override fun close() {
-        baseContext.close()
+        if (lazyBaseContext.isInitialized()) {
+            baseContext.close()
+        }
     }
 }

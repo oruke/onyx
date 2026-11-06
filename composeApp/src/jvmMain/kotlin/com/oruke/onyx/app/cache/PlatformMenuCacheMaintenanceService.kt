@@ -31,8 +31,7 @@ internal class PlatformMenuCacheMaintenanceService(
         refreshInvalidationState()
         warmUpCommonScopes()
         while (currentCoroutineContext().isActive) {
-            sourceWatchService.awaitChange(pollIntervalMillis)
-            if (refreshInvalidationState()) {
+            if (sourceWatchService.awaitChange(pollIntervalMillis) && refreshInvalidationState()) {
                 warmUpCommonScopes()
             }
         }
@@ -70,8 +69,8 @@ internal class PlatformMenuCacheMaintenanceService(
         /** 日志标签。 */
         const val TAG = "PlatformMenuCache"
 
-        /** 启动后首次执行注册表与菜单源扫描前的退让延迟。 */
-        const val DEFAULT_INITIAL_DELAY_MILLIS = 1_500L
+        /** 启动后首次执行注册表与菜单源扫描前的退让延迟，完全避开应用启动与首屏交互期。 */
+        const val DEFAULT_INITIAL_DELAY_MILLIS = 15_000L
 
         /** 平台菜单源轮询间隔，避免频繁扫描注册表或应用目录。 */
         const val DEFAULT_POLL_INTERVAL_MILLIS = 60_000L
