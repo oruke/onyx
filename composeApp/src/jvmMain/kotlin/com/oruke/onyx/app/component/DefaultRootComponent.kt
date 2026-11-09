@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 /** 根状态写入持久层前的防抖时长。 */
@@ -235,7 +236,7 @@ internal class DefaultRootComponent(
     internal var persistenceReady = false
 
     /** 侧栏目录树委托。 */
-    internal val sidebarDelegate = SidebarDelegate(scope, fileRepository, systemQuickAccessService)
+    internal val sidebarDelegate = SidebarDelegate(scope, fileRepository, systemQuickAccessService, storageDevices)
 
     /** 文件传输委托。 */
     internal val fileTransferDelegate = FileTransferDelegate(
@@ -479,6 +480,19 @@ internal class DefaultRootComponent(
             combine(layoutFlow, paneFlow, contextFlow) { layout, panes, context ->
                 context.toRootState(layout, panes)
             }.collect { combinedState -> mutableState.value = combinedState }
+        }
+        scope.launch {
+            combine(primaryPane.state, secondaryPane.state) { primary, secondary ->
+                val primaryLocations =
+                    (primary.entriesState as? ComputerEntriesState)?.devices?.flatMap { it.locations }.orEmpty()
+                val secondaryLocations =
+                    (secondary.entriesState as? ComputerEntriesState)?.devices?.flatMap { it.locations }.orEmpty()
+                (primaryLocations + secondaryLocations).toSet()
+            }.distinctUntilChanged().collect { locations ->
+                if (locations.isNotEmpty()) {
+                    sidebarDelegate.refreshRootNodes(locations)
+                }
+            }
         }
     }
 

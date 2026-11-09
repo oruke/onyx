@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.component.delegate.SidebarDelegate
 import com.oruke.onyx.app.filesystem.DesktopLocationPathService
 import com.oruke.onyx.app.platform.storage.JvmStorageDeviceService
 import com.oruke.onyx.app.platform.storage.StorageDeviceBackend
@@ -192,6 +193,70 @@ class ComputerBrowsingFlowTest {
         }
         assertEquals(backend.device.id, primary.state.value.selectionFocusId)
         assertNull(primary.pendingFocusEntryName[primary.state.value.activeTabId])
+    }
+
+    /** 新盘符挂载或卸载时，侧栏目录树必须自动同步根节点，且不能丢失既有盘符已展开的子目录。 */
+    @Test
+    fun sidebarTreeRefreshesMountedRootsAndPreservesExpandedNodes() = computerScenario { backend, service ->
+        val childDir = Files.createDirectories(source.resolve("nested-folder"))
+        backend.devices = listOf(
+            backend.device.copy(locations = listOf(source.toString()), state = StorageDeviceState.MOUNTED)
+        )
+        val sidebar = SidebarDelegate(
+            scope = scope,
+            fileRepository = repository,
+            systemQuickAccessService = primary.systemQuickAccessService,
+            storageDevices = service,
+            rootNodesProvider = { locations ->
+                (setOf(source.toString()) + locations).sorted().map { loc ->
+                    SidebarTreeNode(
+                        location = loc,
+                        label = loc,
+                        expanded = false,
+                        loadState = SidebarTreeNodeLoadState.IDLE,
+                    )
+                }
+            },
+        )
+        withTimeout(5_000) {
+            while (sidebar.sidebarTreeState.value.roots.map { it.location } != listOf(source.toString())) {
+                kotlinx.coroutines.delay(20)
+            }
+        }
+        sidebar.toggleNode(source.toString())
+        withTimeout(5_000) {
+            while (true) {
+                val rootNode = sidebar.sidebarTreeState.value.roots.firstOrNull { it.location == source.toString() }
+                if (rootNode?.expanded == true && rootNode.loadState == SidebarTreeNodeLoadState.READY) break
+                kotlinx.coroutines.delay(20)
+            }
+        }
+        assertEquals(
+            listOf(childDir.toString()),
+            sidebar.sidebarTreeState.value.roots.single().children.map { it.location },
+        )
+
+        val mountedDrive = backend.device.copy(
+            id = "google-drive-g",
+            name = "Google Drive (G:)",
+            locations = listOf(target.toString()),
+            state = StorageDeviceState.MOUNTED,
+        )
+        backend.devices = listOf(
+            backend.device.copy(locations = listOf(source.toString()), state = StorageDeviceState.MOUNTED),
+            mountedDrive,
+        )
+        backend.publish()
+
+        val expectedRoots = listOf(source.toString(), target.toString()).sorted()
+        withTimeout(5_000) {
+            while (sidebar.sidebarTreeState.value.roots.map { it.location } != expectedRoots) {
+                kotlinx.coroutines.delay(20)
+            }
+        }
+        val preservedSource = sidebar.sidebarTreeState.value.roots.single { it.location == source.toString() }
+        assertTrue(preservedSource.expanded)
+        assertEquals(listOf(childDir.toString()), preservedSource.children.map { it.location })
     }
 }
 
