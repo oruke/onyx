@@ -30,9 +30,13 @@ internal object SystemMenuIconBitmapLoader {
      * @return 可渲染位图；路径不可解析时返回 `null`。
      */
     suspend fun load(iconPath: String): ImageBitmap? = withContext(Dispatchers.IO) {
-        val candidate = iconPath.toIconFileCandidate() ?: return@withContext null
-        bitmapCache[candidate] ?: loadSystemIcon(candidate)?.also { bitmap ->
-            bitmapCache[candidate] = bitmap
+        val spec = parseIconLocationSpec(iconPath) ?: return@withContext null
+        val cacheKey = "${spec.filePath}:${spec.iconIndex ?: "default"}"
+        bitmapCache[cacheKey] ?: (
+            SystemFileIconLoader.extractIndexedOrFileIcon(spec.filePath, spec.iconIndex, large = true)
+                ?: loadSystemIcon(spec.filePath)
+            )?.also { bitmap ->
+            bitmapCache[cacheKey] = bitmap
         }
     }
 
@@ -78,23 +82,43 @@ internal object SystemMenuIconBitmapLoader {
     }
 
     /**
-     * 解析平台图标位置中的真实文件路径。
+     * 解析平台图标位置中的真实文件路径与可选资源索引。
      *
-     * @return 可交给本地文件系统读取的路径；无法解析时返回 `null`。
+     * @param rawSpec 原始图标位置描述符。
+     * @return 可交给本地文件系统或 Shell 提取的图标定位信息；无法解析时返回 `null`。
      */
-    private fun String.toIconFileCandidate(): String? {
-        val raw = trim()
+    internal fun parseIconLocationSpec(rawSpec: String): IconLocationSpec? {
+        val raw = rawSpec.trim()
             .removePrefix("@")
             .takeIf { value -> value.isNotBlank() }
-            ?: return null
-        val withoutIndex = if (raw.startsWith("\"")) {
-            raw.substringAfter("\"").substringBefore("\"")
+        val parsed = if (raw == null) {
+            null
         } else {
-            raw.substringBefore(",")
+            val filePart: String
+            val indexPart: String?
+            if (raw.startsWith("\"")) {
+                filePart = raw.substringAfter("\"").substringBefore("\"")
+                val remainder = raw.substringAfter("\"").substringAfter("\"", "")
+                indexPart = remainder.substringAfter(",", "").takeIf { it.isNotBlank() }
+            } else {
+                filePart = raw.substringBefore(",")
+                indexPart = if (',' in raw) raw.substringAfterLast(",") else null
+            }
+            val expanded = filePart.expandWindowsEnvironmentVariables().trim()
+            expanded.takeIf { value -> value.isNotBlank() }?.let { validPath ->
+                IconLocationSpec(
+                    filePath = validPath,
+                    iconIndex = indexPart?.trim()?.toIntOrNull(),
+                )
+            }
         }
-        val expanded = withoutIndex.expandWindowsEnvironmentVariables().trim()
-        return expanded.takeIf { value -> value.isNotBlank() }
+        return parsed
     }
+
+    internal data class IconLocationSpec(
+        val filePath: String,
+        val iconIndex: Int?,
+    )
 
     /**
      * 展开 Windows `%NAME%` 环境变量。

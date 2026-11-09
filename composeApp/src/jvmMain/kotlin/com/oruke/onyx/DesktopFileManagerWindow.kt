@@ -164,6 +164,7 @@ internal fun DesktopFileManagerWindow(
                 listFontSizeSp = state.settings.listFontSizeSp,
                 zebraStripeEnabled = state.settings.zebraStripeEnabled,
                 fileListColors = state.settings.fileListColors,
+                useSystemFileIcons = state.settings.useSystemFileIcons,
             )
             OnyxTheme(
                 uiScale = state.settings.uiScale,

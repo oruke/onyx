@@ -646,4 +646,7 @@
     <string name="label_system_music">Music</string>
     <string name="label_system_videos">Videos</string>
     <string name="label_storage_status">%1$d devices, %2$d folders · %3$d selected</string>
+    <string name="label_file_icon_style">File Icons</string>
+    <string name="label_file_icon_system">System App Icons</string>
+    <string name="label_file_icon_vector">Built-in Vector Icons</string>
 </resources>

@@ -12,7 +12,11 @@ import com.oruke.onyx.core.model.OnyxSettings
 @Composable
 internal fun OnyxWindowTheme(settings: OnyxSettings, content: @Composable () -> Unit) {
     val appearance = rememberOnyxAppearance(
-        settings.listRowHeightDp, settings.listFontSizeSp, settings.zebraStripeEnabled, settings.fileListColors,
+        settings.listRowHeightDp,
+        settings.listFontSizeSp,
+        settings.zebraStripeEnabled,
+        settings.fileListColors,
+        settings.useSystemFileIcons,
     )
     OnyxTheme(uiScale = settings.uiScale, appearance = appearance, content = content)
 }

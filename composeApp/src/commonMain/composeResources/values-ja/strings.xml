@@ -646,4 +646,7 @@
     <string name="label_system_music">ミュージック</string>
     <string name="label_system_videos">ムービー</string>
     <string name="label_storage_status">デバイス %1$d 件、フォルダ %2$d 件 · %3$d 件を選択</string>
+    <string name="label_file_icon_style">ファイルアイコン</string>
+    <string name="label_file_icon_system">システム関連アイコン</string>
+    <string name="label_file_icon_vector">内蔵ベクターアイコン</string>
 </resources>

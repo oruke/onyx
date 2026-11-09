@@ -141,6 +141,7 @@ internal fun TaskCenterWindow(
                 listFontSizeSp = preferences.listFontSizeSp,
                 zebraStripeEnabled = preferences.zebraStripeEnabled,
                 fileListColors = preferences.fileListColors,
+                useSystemFileIcons = preferences.useSystemFileIcons,
             )
             OnyxTheme(uiScale = preferences.uiScale, appearance = appearance) {
                 OnyxTooltipHost {

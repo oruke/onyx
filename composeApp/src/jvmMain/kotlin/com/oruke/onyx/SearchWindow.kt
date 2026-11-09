@@ -135,6 +135,7 @@ internal fun SearchWindow(
                 listFontSizeSp = settings.listFontSizeSp,
                 zebraStripeEnabled = settings.zebraStripeEnabled,
                 fileListColors = settings.fileListColors,
+                useSystemFileIcons = settings.useSystemFileIcons,
             )
             OnyxTheme(uiScale = settings.uiScale, appearance = appearance) {
                 OnyxTooltipHost { SearchPanel(state, presentation, actions, listState) }

@@ -33,6 +33,9 @@ import onyx.composeapp.generated.resources.label_default_view_mode
 import onyx.composeapp.generated.resources.label_delete_mode
 import onyx.composeapp.generated.resources.label_delete_mode_move_to_trash
 import onyx.composeapp.generated.resources.label_delete_mode_permanent
+import onyx.composeapp.generated.resources.label_file_icon_style
+import onyx.composeapp.generated.resources.label_file_icon_system
+import onyx.composeapp.generated.resources.label_file_icon_vector
 import onyx.composeapp.generated.resources.label_language
 import onyx.composeapp.generated.resources.label_list_font_size
 import onyx.composeapp.generated.resources.label_list_row_height
@@ -368,6 +371,22 @@ private fun AppearanceSettingsContent(
         labelFontSize = labelFontSize,
         onValueChange = { value -> onDraftChange(draft.copy(zebraStripeEnabled = value)) },
     )
+    SettingsSection(stringResource(Res.string.label_file_icon_style), labelFontSize) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            SettingsOption(
+                selected = draft.useSystemFileIcons,
+                text = stringResource(Res.string.label_file_icon_system),
+                fontSize = labelFontSize,
+                onClick = { onDraftChange(draft.copy(useSystemFileIcons = true)) },
+            )
+            SettingsOption(
+                selected = !draft.useSystemFileIcons,
+                text = stringResource(Res.string.label_file_icon_vector),
+                fontSize = labelFontSize,
+                onClick = { onDraftChange(draft.copy(useSystemFileIcons = false)) },
+            )
+        }
+    }
 }
 
 /**

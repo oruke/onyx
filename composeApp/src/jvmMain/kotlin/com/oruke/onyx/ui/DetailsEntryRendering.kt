@@ -196,13 +196,9 @@ private fun EntryNameContent(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Icon(
-            key = if (state.entry.kind == VFileKind.DIRECTORY) {
-                AllIconsKeys.Nodes.Folder
-            } else {
-                fileIconKey(state.entry.name)
-            },
-            contentDescription = null,
+        OnyxFileIcon(
+            entry = state.entry,
+            size = LocalOnyxAppearance.current.entryIconSize,
         )
         Text(
             text = state.entry.name,

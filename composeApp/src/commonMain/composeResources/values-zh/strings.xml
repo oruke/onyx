@@ -644,4 +644,7 @@
     <string name="label_system_music">音乐</string>
     <string name="label_system_videos">视频</string>
     <string name="label_storage_status">%1$d 个设备，%2$d 个文件夹 · 已选 %3$d 项</string>
+    <string name="label_file_icon_style">文件图标</string>
+    <string name="label_file_icon_system">系统关联图标</string>
+    <string name="label_file_icon_vector">内置矢量图标</string>
 </resources>

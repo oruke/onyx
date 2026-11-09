@@ -138,12 +138,10 @@ private fun PreviewVisual(
                 )
             }
         } else {
-            val iconKey = if (entry.kind == VFileKind.DIRECTORY) {
-                AllIconsKeys.Nodes.Folder
-            } else {
-                fileIconKey(entry.name)
-            }
-            Icon(key = iconKey, contentDescription = null, modifier = Modifier.size(96.dp))
+            OnyxFileIcon(
+                entry = entry,
+                size = 96.dp,
+            )
         }
     }
 }

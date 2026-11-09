@@ -469,15 +469,9 @@ private fun SearchResultRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        val iconKey = if (entry.kind == VFileKind.DIRECTORY) {
-            AllIconsKeys.Nodes.Folder
-        } else {
-            fileIconKey(entry.name)
-        }
-        Icon(
-            key = iconKey,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
+        OnyxFileIcon(
+            entry = entry,
+            size = 14.dp,
         )
         Text(
             text = highlightMatchText(

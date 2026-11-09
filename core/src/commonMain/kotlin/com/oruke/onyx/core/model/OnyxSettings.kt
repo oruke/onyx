@@ -81,6 +81,8 @@ data class OnyxSettings(
     val batchRenameWindowHeight: Int = 620,
     /** 全局搜索历史，最新在前，上限 20 条。 */
     val searchHistory: List<String> = emptyList(),
+    /** 是否优先使用操作系统关联应用图标（未关联类型或远程协议回退至内置彩色矢量图标）。 */
+    val useSystemFileIcons: Boolean = true,
 )
 
 @Serializable

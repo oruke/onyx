@@ -62,6 +62,8 @@ data class OnyxAppearance(
     val storageCompactWidth: Dp = 420.dp,
     /** 此电脑的统一尺寸与容量提示参数。 */
     val computer: ComputerAppearance = ComputerAppearance(),
+    /** 是否优先使用操作系统关联应用图标。 */
+    val useSystemFileIcons: Boolean = true,
 )
 
 val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {
@@ -75,6 +77,7 @@ val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {
  * @param listFontSizeSp 字号（sp 整数值）
  * @param zebraStripeEnabled 斑马纹开关
  * @param fileListColors 文件列表持久化颜色覆盖。
+ * @param useSystemFileIcons 是否优先使用系统关联应用图标。
  * @return 随设置变化重建的统一外观。
  */
 @Composable
@@ -83,8 +86,9 @@ fun rememberOnyxAppearance(
     listFontSizeSp: Int = 12,
     zebraStripeEnabled: Boolean = true,
     fileListColors: FileListColors = FileListColors(),
+    useSystemFileIcons: Boolean = true,
 ): OnyxAppearance {
-    return remember(listRowHeightDp, listFontSizeSp, zebraStripeEnabled, fileListColors) {
+    return remember(listRowHeightDp, listFontSizeSp, zebraStripeEnabled, fileListColors, useSystemFileIcons) {
         OnyxAppearance(
             listRowHeight = listRowHeightDp.dp,
             listFontSize = listFontSizeSp.sp,
@@ -94,6 +98,7 @@ fun rememberOnyxAppearance(
             fileNameColor = fileListColors.nameArgb?.let(::Color),
             selectionBackground = fileListColors.selectionArgb?.let(::Color),
             inactiveSelectionBackground = fileListColors.inactiveSelectionArgb?.let(::Color),
+            useSystemFileIcons = useSystemFileIcons,
         )
     }
 }

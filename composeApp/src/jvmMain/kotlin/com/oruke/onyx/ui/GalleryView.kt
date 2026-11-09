@@ -613,8 +613,10 @@ private fun GalleryBitmap(bitmap: ImageBitmap, contentDescription: String) {
  */
 @Composable
 private fun GalleryFallbackIcon(entry: VFile?, sizeDp: Int) {
-    val iconKey = if (entry?.kind == VFileKind.DIRECTORY) AllIconsKeys.Nodes.Folder else fileIconKey(entry?.name)
-    Icon(key = iconKey, contentDescription = null, modifier = Modifier.size((sizeDp * GALLERY_FILE_ICON_SCALE).dp))
+    OnyxFileIcon(
+        entry = entry,
+        size = (sizeDp * GALLERY_FILE_ICON_SCALE).dp,
+    )
 }
 
 /**

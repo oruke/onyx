@@ -160,15 +160,16 @@ private fun InspectorPreview(
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                Icon(AllIconsKeys.FileTypes.Image, null, Modifier.size(64.dp))
+                OnyxFileIcon(
+                    entry = entry,
+                    size = 64.dp,
+                )
             }
         } else {
-            val icon = if (entry.kind == VFileKind.DIRECTORY) {
-                AllIconsKeys.Nodes.Folder
-            } else {
-                AllIconsKeys.FileTypes.Any_type
-            }
-            Icon(icon, null, Modifier.size(64.dp))
+            OnyxFileIcon(
+                entry = entry,
+                size = 64.dp,
+            )
         }
     }
 }

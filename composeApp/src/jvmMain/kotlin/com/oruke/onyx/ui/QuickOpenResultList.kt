@@ -283,14 +283,9 @@ private fun QuickOpenResultRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                key = if (entry.kind == VFileKind.DIRECTORY) {
-                    AllIconsKeys.Nodes.Folder
-                } else {
-                    fileIconKey(entry.name)
-                },
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
+            OnyxFileIcon(
+                entry = entry,
+                size = 16.dp,
             )
             Text(
                 text = highlightMatchText(

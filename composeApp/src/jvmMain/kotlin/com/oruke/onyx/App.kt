@@ -108,6 +108,7 @@ internal fun DecoratedWindowScope.WindowApp(
         listFontSizeSp = state.settings.listFontSizeSp,
         zebraStripeEnabled = state.settings.zebraStripeEnabled,
         fileListColors = state.settings.fileListColors,
+        useSystemFileIcons = state.settings.useSystemFileIcons,
     )
     var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     val onUiScaleChange: (Int) -> Unit = { value ->
@@ -229,6 +230,7 @@ internal fun App(
         listFontSizeSp = state.settings.listFontSizeSp,
         zebraStripeEnabled = state.settings.zebraStripeEnabled,
         fileListColors = state.settings.fileListColors,
+        useSystemFileIcons = state.settings.useSystemFileIcons,
     )
 
     IntUiTheme(isDark = isSystemInDarkTheme()) {
