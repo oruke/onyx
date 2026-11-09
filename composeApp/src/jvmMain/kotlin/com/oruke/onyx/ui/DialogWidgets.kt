@@ -1,13 +1,7 @@
 package com.oruke.onyx.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,21 +10,25 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.rememberOnyxButtonStyle
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.foundation.theme.LocalTextStyle
+import org.jetbrains.jewel.ui.component.CheckboxRow
+import org.jetbrains.jewel.ui.component.DefaultButton
+import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.theme.defaultButtonStyle
+import org.jetbrains.jewel.ui.theme.outlinedButtonStyle
 
 @Composable
 internal fun DialogFrame(
@@ -64,6 +62,9 @@ internal fun DialogFrame(
     }
 }
 
+/**
+ * 统一使用 Jewel 默认按钮组件（[DefaultButton] / [OutlinedButton]）渲染对话框与设置操作按钮。
+ */
 @Composable
 internal fun DialogTextButton(
     text: String,
@@ -75,39 +76,51 @@ internal fun DialogTextButton(
     onClick: () -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
-    val src = remember { MutableInteractionSource() }
-    val hovered by src.collectIsHoveredAsState()
-    val baseBg = when {
-        destructive && emphasized -> palette.error
-        emphasized -> palette.accent
-        else -> palette.surfaceVariant
-    }
-    val bg by animateColorAsState(
-        if (hovered || focused) baseBg.copy(alpha = baseBg.alpha * 0.85f) else baseBg, tween(120),
-    )
-    val contentColor = when {
-        !enabled -> palette.disabledForeground
-        emphasized -> Color.White
-        destructive -> palette.error
-        else -> palette.foreground
-    }
-    val focusBorder = if (focused) Modifier.border(1.5.dp, palette.accent, RoundedCornerShape(6.dp)) else Modifier
-    Box(
-        modifier = Modifier
-            .padding(start = 8.dp)
-            .hoverable(src, enabled = enabled)
-            .then(if (enabled) Modifier else Modifier.alpha(DISABLED_CONTROL_ALPHA))
-            .background(bg, RoundedCornerShape(6.dp))
-            .then(focusBorder)
-            .clickable(src, null, enabled = enabled, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = text, fontSize = fontSize, color = contentColor)
+    val modifier = Modifier
+        .padding(start = 6.dp)
+        .then(
+            if (focused) {
+                Modifier.border(1.5.dp, palette.accent, ButtonFocusShape)
+            } else {
+                Modifier
+            },
+        )
+    val compact = fontSize.value <= 11f
+    if (emphasized) {
+        DefaultButton(
+            onClick = onClick,
+            enabled = enabled,
+            style = rememberOnyxButtonStyle(JewelTheme.defaultButtonStyle, compact = compact),
+            modifier = modifier,
+        ) {
+            Text(
+                text = text,
+                fontSize = fontSize,
+                style = LocalTextStyle.current,
+            )
+        }
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            enabled = enabled,
+            style = rememberOnyxButtonStyle(JewelTheme.outlinedButtonStyle, compact = compact),
+            modifier = modifier,
+        ) {
+            Text(
+                text = text,
+                fontSize = fontSize,
+                color = when {
+                    !enabled -> palette.disabledForeground
+                    destructive -> palette.error
+                    else -> Color.Unspecified
+                },
+                style = LocalTextStyle.current,
+            )
+        }
     }
 }
 
-private const val DISABLED_CONTROL_ALPHA = 0.62f
+private val ButtonFocusShape = RoundedCornerShape(4.dp)
 
 @Composable
 internal fun ApplyToAllToggle(
@@ -115,31 +128,9 @@ internal fun ApplyToAllToggle(
     text: String,
     onToggle: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .clickable(onClick = onToggle)
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(16.dp)
-                .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
-                .background(
-                    if (checked) LocalOnyxPalette.current.accent else Color.Transparent,
-                    RoundedCornerShape(4.dp)
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (checked) {
-                Text(text = "✓", fontSize = 10.sp, color = Color.White)
-            }
-        }
-        Text(
-            text = text,
-            fontSize = 12.sp,
-            color = LocalOnyxPalette.current.foreground,
-        )
-    }
+    CheckboxRow(
+        text = text,
+        checked = checked,
+        onCheckedChange = { onToggle() },
+    )
 }

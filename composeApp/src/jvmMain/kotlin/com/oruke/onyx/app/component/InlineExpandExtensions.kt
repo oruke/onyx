@@ -100,8 +100,11 @@ internal fun PaneState.clearInlineExpandState(): PaneState {
 }
 
 private fun List<VFile>.sortedForInlineExpand(): List<VFile> {
-    return sortedWith(
-        compareBy<VFile> { it.kind != VFileKind.DIRECTORY }
-            .thenBy { it.name.lowercase() },
+    return com.oruke.onyx.app.component.delegate.EntrySorter.sortEntries(
+        entries = this,
+        sort = com.oruke.onyx.core.model.DetailsSort(
+            column = com.oruke.onyx.core.model.DetailsColumn.NAME,
+            direction = com.oruke.onyx.core.model.SortDirection.ASCENDING,
+        ),
     )
 }

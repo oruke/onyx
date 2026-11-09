@@ -87,12 +87,14 @@ internal fun DefaultPaneComponent.currentTabEntries(tab: PaneTabState): List<VFi
 internal fun DefaultPaneComponent.updateTab(
     tabId: String,
     derive: Boolean = true,
+    forceResort: Boolean = false,
     transform: (PaneTabState) -> PaneTabState,
 ) {
     val paneState = mutableState.value
     val currentTab = tabs().firstOrNull { tab -> tab.id == tabId } ?: return
     val transformed = transform(currentTab)
-    val unchangedOrdering = transformed.detailsSort == currentTab.detailsSort &&
+    val unchangedOrdering = !forceResort &&
+        transformed.detailsSort == currentTab.detailsSort &&
         transformed.filterQuery == currentTab.filterQuery &&
         transformed.showHiddenItems == currentTab.showHiddenItems
     val preserveOrder = unchangedOrdering && transformed.deferDirectoryOrdering

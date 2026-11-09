@@ -45,11 +45,26 @@ internal fun DefaultRootComponent.activatePane(paneId: PaneId) {
     activePane.value = paneId
 }
 
+/** @param currentSettings 待同步到排序器与新建标签默认值的设置。 */
+internal fun syncGlobalSortAndTabDefaults(currentSettings: OnyxSettings) {
+    com.oruke.onyx.app.component.delegate.EntrySorter.defaultNaturalSortEnabled = currentSettings.naturalSortEnabled
+    com.oruke.onyx.app.component.delegate.EntrySorter.defaultDirectoriesFirst = currentSettings.directoriesFirst
+    defaultShowHiddenItemsForNewTabs = currentSettings.defaultShowHiddenItems
+}
+
 /** @param nextSettings 待应用设置。 */
 internal fun DefaultRootComponent.updateSettings(nextSettings: OnyxSettings) {
+    val previousSettings = settings.value
     val sanitizedSettings = nextSettings.sanitizeRootSettings()
-    val settingsChanged = sanitizedSettings != settings.value
+    val settingsChanged = sanitizedSettings != previousSettings
     settings.value = sanitizedSettings
+    syncGlobalSortAndTabDefaults(sanitizedSettings)
+    if (sanitizedSettings.naturalSortEnabled != previousSettings.naturalSortEnabled ||
+        sanitizedSettings.directoriesFirst != previousSettings.directoriesFirst
+    ) {
+        primaryPane.recomputeAllTabsSorting()
+        secondaryPane.recomputeAllTabsSorting()
+    }
     synchronizeS3ConnectionConfigurations()
     if (settingsChanged && sessionRestoreState.value is SessionRestoreState.Failed) {
         // 恢复失败时禁止默认状态自动落盘；用户明确修改设置后才恢复持久化。

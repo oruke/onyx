@@ -9,6 +9,7 @@ import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.paneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
+import com.oruke.onyx.app.component.visibleEntries
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
@@ -106,7 +107,7 @@ internal class AppDragController(
      */
     private fun startFileDrag(sourcePaneId: PaneId, operation: FileTransferOperation) {
         val sourcePaneState = rootComponent.paneState(sourcePaneId)
-        val entries = (sourcePaneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
+        val entries = sourcePaneState.visibleEntries()
         val selectedEntries = entries.filter { it.id in sourcePaneState.selectedEntryIds }
         val isArchiveSource = rootComponent.prepareExternalDrag(selectedEntries)
         val effectiveOperation = when {
@@ -221,7 +222,7 @@ internal class AppDragController(
             paneState.location == COMPUTER_LOCATION || zone.targetDirectoryLocation == COMPUTER_LOCATION -> false
             ready == null -> false
             directoryEntryId == null -> zone.targetDirectoryLocation == paneState.location
-            else -> ready.entries.any { entry ->
+            else -> paneState.visibleEntries().any { entry ->
                 entry.id == directoryEntryId &&
                     entry.location == zone.targetDirectoryLocation &&
                     entry.kind == VFileKind.DIRECTORY

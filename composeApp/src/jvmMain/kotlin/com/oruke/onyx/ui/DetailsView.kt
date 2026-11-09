@@ -234,8 +234,10 @@ internal data class PaneEntriesActions(
     val onToggleInlineExpand: (String) -> Unit = {},
     /** 消费一次滚动请求。 */
     val onConsumeScroll: () -> Unit = {},
-    /** 显示空白区域菜单。 */
+        /** 显示空白区域菜单。 */
     val onBlankAreaContextMenu: (IntOffset) -> Unit = {},
+    /** 双击空白处返回上一级目录。 */
+    val onNavigateUp: () -> Unit = {},
     /** 上报视口锚点及是否正在用户滚动。 */
     val onViewportChanged: (com.oruke.onyx.app.component.PaneViewportAnchor, Boolean) -> Unit = { _, _ -> },
     /** 打开设备概览中的真实目录入口。 */
@@ -255,6 +257,12 @@ internal data class PaneEntriesChildDragActions(
     /** 从未选中条目开始框选。 */
     val onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit,
 )
+
+/** 空白处双击最大时间间隔（毫秒）。 */
+private const val BLANK_AREA_DOUBLE_CLICK_TIMEOUT_MS = 380L
+
+/** 空白处双击允许的最大位移平方（像素²）。 */
+private const val BLANK_AREA_DOUBLE_CLICK_DISTANCE_SQUARED = 64f
 
 /** 保存文件内容区域框选、条目坐标与文件拖拽互斥状态。 */
 internal class PaneRubberBandState {
@@ -284,6 +292,12 @@ internal class PaneRubberBandState {
 
     /** 内容容器布局坐标。 */
     var containerCoordinates by mutableStateOf<LayoutCoordinates?>(null)
+
+    /** 上一次空白区域单击的时间戳（毫秒）。 */
+    var lastBlankClickMillis: Long = 0L
+
+    /** 上一次空白区域单击的坐标。 */
+    var lastBlankClickPosition: androidx.compose.ui.geometry.Offset? = null
 
     /** 结束框选并清理起止点。 */
     fun finishRubberBand() {
@@ -889,17 +903,18 @@ private fun ReadyPaneEntries(
     thumbnails: GalleryThumbnailServices,
     ready: PaneEntriesState.Ready,
 ) {
+    val doubleClickBlankNavigateUp = LocalOnyxAppearance.current.doubleClickEmptySpaceToNavigateUp
     val createInlineEntry = model.inlineEditState?.mode == PaneInlineEditMode.CREATE_FILE ||
             model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     if (ready.entries.isEmpty() && !createInlineEntry) {
-        EmptyPaneEntries(actions)
+        EmptyPaneEntries(actions, doubleClickBlankNavigateUp)
         return
     }
     val selection = remember { PaneRubberBandState() }
     val childDragActions = paneChildDragActions(model, actions, selection)
     Box(
         modifier = Modifier.fillMaxSize().clipToBounds()
-            .paneSelectionInteractions(model, actions, selection),
+            .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp),
     ) {
         Box(modifier = Modifier.fillMaxSize().paneRubberBandTracker(actions, selection))
         PaneEntriesViews(model, actions, thumbnails, ready, selection, childDragActions)
@@ -908,25 +923,42 @@ private fun ReadyPaneEntries(
 }
 
 /**
- * 显示空目录状态并允许在空白区域打开菜单。
+ * 显示空目录状态并允许在空白区域打开菜单或双击返回上级。
  *
  * @param actions 文件内容交互回调。
+ * @param doubleClickEmptySpaceToNavigateUp 是否启用双击空白返回上级目录。
  */
 @Composable
-private fun EmptyPaneEntries(actions: PaneEntriesActions) {
+private fun EmptyPaneEntries(
+    actions: PaneEntriesActions,
+    doubleClickEmptySpaceToNavigateUp: Boolean = true,
+) {
+    val doubleClickEnabledState = rememberUpdatedState(doubleClickEmptySpaceToNavigateUp)
     Box(
-        modifier = Modifier.fillMaxSize().padding(24.dp).pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val event = awaitPointerEvent()
-                    val position = event.changes.firstOrNull()?.position
-                    if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed && position != null) {
-                        actions.onActivate()
-                        actions.onBlankAreaContextMenu(IntOffset(position.x.toInt(), position.y.toInt()))
+        modifier = Modifier.fillMaxSize().padding(24.dp)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (doubleClickEnabledState.value) {
+                            actions.onActivate()
+                            actions.onNavigateUp()
+                        }
+                    },
+                )
+            }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val position = event.changes.firstOrNull()?.position
+                        val isSecondaryPress = event.type == PointerEventType.Press && event.buttons.isSecondaryPressed
+                        if (isSecondaryPress && position != null) {
+                            actions.onActivate()
+                            actions.onBlankAreaContextMenu(IntOffset(position.x.toInt(), position.y.toInt()))
+                        }
                     }
                 }
-            }
-        },
+            },
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -1282,6 +1314,7 @@ private fun Modifier.paneSelectionInteractions(
     model: PaneEntriesViewModel,
     actions: PaneEntriesActions,
     selection: PaneRubberBandState,
+    doubleClickEmptySpaceToNavigateUp: Boolean = true,
 ): Modifier = onGloballyPositioned { selection.containerCoordinates = it }
     .onPointerEvent(PointerEventType.Press) { event ->
         handlePaneSelectionPress(event, actions, selection)
@@ -1290,7 +1323,7 @@ private fun Modifier.paneSelectionInteractions(
         handlePaneSelectionMove(event, model, actions, selection)
     }
     .onPointerEvent(PointerEventType.Release) { event ->
-        handlePaneSelectionRelease(event, actions, selection)
+        handlePaneSelectionRelease(event, actions, selection, doubleClickEmptySpaceToNavigateUp)
     }
 
 /**
@@ -1316,6 +1349,8 @@ private fun handlePaneSelectionPress(
     } else if (event.buttons.isPrimaryPressed) {
         if (hitsItem) {
             selection.pendingOrigin = null
+            selection.lastBlankClickMillis = 0L
+            selection.lastBlankClickPosition = null
         } else {
             selection.pendingOrigin = position
             selection.active = false
@@ -1362,21 +1397,40 @@ private fun handlePaneSelectionMove(
 }
 
 /**
- * 处理空白区点击清空选择并结束框选。
+ * 处理空白区点击清空选择、识别空白处双击返回上级目录并结束框选。
  *
  * @param event 当前指针事件。
  * @param actions 文件内容交互回调。
  * @param selection 框选状态。
+ * @param doubleClickEmptySpaceToNavigateUp 是否启用双击空白返回上级目录。
  */
 private fun handlePaneSelectionRelease(
     event: PointerEvent,
     actions: PaneEntriesActions,
     selection: PaneRubberBandState,
+    doubleClickEmptySpaceToNavigateUp: Boolean = true,
 ) {
     val position = event.changes.firstOrNull()?.position
     val blankClick = !selection.active && selection.pendingOrigin != null
     if (blankClick && position != null && !selection.hitsItem(position)) {
         actions.onSelectEntries(emptySet())
+        if (doubleClickEmptySpaceToNavigateUp) {
+            val now = System.currentTimeMillis()
+            val prevPos = selection.lastBlankClickPosition
+            val dx = if (prevPos != null) position.x - prevPos.x else Float.MAX_VALUE
+            val dy = if (prevPos != null) position.y - prevPos.y else Float.MAX_VALUE
+            val isDoubleClick = prevPos != null &&
+                now - selection.lastBlankClickMillis <= BLANK_AREA_DOUBLE_CLICK_TIMEOUT_MS &&
+                dx * dx + dy * dy <= BLANK_AREA_DOUBLE_CLICK_DISTANCE_SQUARED
+            if (isDoubleClick) {
+                selection.lastBlankClickMillis = 0L
+                selection.lastBlankClickPosition = null
+                actions.onNavigateUp()
+            } else {
+                selection.lastBlankClickMillis = now
+                selection.lastBlankClickPosition = position
+            }
+        }
     }
     selection.pendingOrigin = null
     selection.fileDragging = false
@@ -1454,6 +1508,7 @@ internal fun EntryRow(
     val interaction = remember(state.entry.id) { EntryRowInteractionState() }
     val selectedState = rememberUpdatedState(state.selected)
     val entryCountState = rememberUpdatedState(state.selectedEntryCount)
+    val singleClickToOpenState = rememberUpdatedState(LocalOnyxAppearance.current.singleClickToOpen)
     val coroutineScope = rememberCoroutineScope()
     val rowBackground = entryRowBackground(state)
 
@@ -1474,8 +1529,17 @@ internal fun EntryRow(
                 }
             }
             .combinedClickable(
-                onClick = {
+                onClick = click@{
                     actions.onActivate()
+                    if (singleClickToOpenState.value &&
+                        !interaction.additiveSelection &&
+                        !interaction.rangeSelection
+                    ) {
+                        interaction.cancelRename()
+                        actions.onDismissContextMenu()
+                        actions.onOpenEntry(state.entry)
+                        return@click
+                    }
                     val canRename = interaction.pressCanRename &&
                             selectedState.value && entryCountState.value == 1
                     if (canRename) {
@@ -1590,7 +1654,7 @@ private fun handleEntryRowPrimaryPress(
             interaction.rangeSelection,
         )
 
-        state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
+        state.selected && state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(state.entry.id, false, false)
     }
 }

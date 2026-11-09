@@ -1,9 +1,7 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -36,31 +34,24 @@ import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.OnyxWindowTheme
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.label_settings_colors
-import onyx.composeapp.generated.resources.label_settings_file_labels
-import onyx.composeapp.generated.resources.label_settings_user_commands
 import onyx.composeapp.generated.resources.action_apply
 import onyx.composeapp.generated.resources.action_close_window
-import onyx.composeapp.generated.resources.label_settings_appearance
-import onyx.composeapp.generated.resources.label_settings_columns
-import onyx.composeapp.generated.resources.label_settings_general
-import onyx.composeapp.generated.resources.label_settings_layout
-import onyx.composeapp.generated.resources.label_settings_shortcuts
+import onyx.composeapp.generated.resources.action_reset_current_page
+import onyx.composeapp.generated.resources.label_settings_cat_automation
+import onyx.composeapp.generated.resources.label_settings_cat_general
+import onyx.composeapp.generated.resources.label_settings_cat_operations
+import onyx.composeapp.generated.resources.label_settings_cat_shortcuts
+import onyx.composeapp.generated.resources.label_settings_cat_theme
+import onyx.composeapp.generated.resources.label_settings_cat_views
+import onyx.composeapp.generated.resources.label_settings_search_placeholder
 import onyx.composeapp.generated.resources.label_settings_title
 import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.jewel.ui.Orientation
+import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
 
 /**
- * 绘制可调整大小的设置窗口。
- *
- * @param state 当前设置草稿状态。
- * @param onDraftChange 设置草稿变化回调。
- * @param onCleanupInvalidLocations 清理无效位置回调。
- * @param onConfirm 应用设置回调。
- * @param onDismiss 关闭窗口回调。
- * @param initialWidth 初始窗口宽度。
- * @param initialHeight 初始窗口高度。
- * @param onWindowSizeChanged 窗口尺寸变化回调。
+ * 绘制可调整大小的设置窗口，支持实时主题预览、6 大高内聚分类、搜索过滤与当前页恢复默认。
  */
 @Composable
 internal fun SettingsDialog(
@@ -75,6 +66,7 @@ internal fun SettingsDialog(
 ) {
     val title = stringResource(Res.string.label_settings_title)
     var category by remember { mutableStateOf(SettingsCategory.GENERAL) }
+    var searchQuery by remember { mutableStateOf("") }
     val dialogState = rememberDialogState(width = initialWidth.dp, height = initialHeight.dp)
 
     LaunchedEffect(dialogState) {
@@ -106,34 +98,31 @@ internal fun SettingsDialog(
                 title = title,
                 draft = state.draft,
                 category = category,
-                onCategoryChange = { nextCategory -> category = nextCategory },
+                onCategoryChange = { nextCategory ->
+                    category = nextCategory
+                    if (searchQuery.isNotBlank()) {
+                        searchQuery = ""
+                    }
+                },
                 onDraftChange = onDraftChange,
                 onCleanupInvalidLocations = onCleanupInvalidLocations,
                 onConfirm = onConfirm,
                 onDismiss = onDismiss,
                 bodyFontSize = appearance.listFontSize,
                 labelFontSize = appearance.headerFontSize,
+                searchQuery = searchQuery,
+                onSearchQueryChange = { nextQuery -> searchQuery = nextQuery },
             )
         }
     }
 }
 
 /**
- * 组织设置窗口标题、分类导航、内容和底部动作。
- *
- * @param title 窗口标题。
- * @param draft 当前设置草稿。
- * @param category 当前分类。
- * @param onCategoryChange 分类变化回调。
- * @param onDraftChange 设置草稿变化回调。
- * @param onCleanupInvalidLocations 清理无效位置回调。
- * @param onConfirm 应用回调。
- * @param onDismiss 关闭回调。
- * @param bodyFontSize 正文字号。
- * @param labelFontSize 标签字号。
+ * 采用与主窗口、任务中心、搜索窗口完全一致的扁平紧凑分栏风格：
+ * 顶栏、左导航栏、右内容区、底动作栏均通过 1px [Divider] 扁平分割，无外圈悬浮套框。
  */
 @Composable
-private fun SettingsDialogLayout(
+internal fun SettingsDialogLayout(
     title: String,
     draft: OnyxSettings,
     category: SettingsCategory,
@@ -144,6 +133,8 @@ private fun SettingsDialogLayout(
     onDismiss: () -> Unit,
     bodyFontSize: TextUnit,
     labelFontSize: TextUnit,
+    searchQuery: String = "",
+    onSearchQueryChange: (String) -> Unit = {},
 ) {
     val palette = LocalOnyxPalette.current
     val navScrollState = rememberScrollState()
@@ -151,75 +142,108 @@ private fun SettingsDialogLayout(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(palette.appBackground)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .background(palette.appBackground),
     ) {
-        Text(
-            text = title,
-            fontSize = (bodyFontSize.value + 1).sp,
-            fontWeight = FontWeight.SemiBold,
-            color = palette.foreground,
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(palette.surfaceVariant)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = title,
+                    fontSize = (bodyFontSize.value + 1).sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.foreground,
+                )
+                Text(
+                    text = "/  " + settingsCategoryLabel(category),
+                    fontSize = bodyFontSize,
+                    color = palette.mutedForeground,
+                )
+            }
+            OnyxTextInput(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                placeholder = stringResource(Res.string.label_settings_search_placeholder),
+                fontSize = labelFontSize,
+                height = 26.dp,
+                modifier = Modifier.width(220.dp),
+            )
+        }
+        Divider(Orientation.Horizontal, color = palette.outlineVariant)
         Row(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             SettingsNavigation(
                 category = category,
                 onCategoryChange = onCategoryChange,
                 fontSize = bodyFontSize,
                 modifier = Modifier
-                    .width(138.dp)
+                    .width(SETTINGS_SIDEBAR_WIDTH_DP.dp)
                     .fillMaxHeight()
                     .verticalScroll(navScrollState),
             )
-            Box(
+            Divider(Orientation.Vertical, color = palette.outlineVariant, modifier = Modifier.fillMaxHeight())
+            Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .background(palette.surface, SettingsPanelShape)
-                    .border(1.dp, palette.outlineVariant, SettingsPanelShape)
-                    .padding(12.dp),
+                    .background(palette.appBackground)
+                    .verticalScroll(contentScrollState)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize().verticalScroll(contentScrollState),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    SettingsCategoryContent(
-                        category = category,
-                        draft = draft,
-                        onDraftChange = onDraftChange,
-                        onCleanupInvalidLocations = onCleanupInvalidLocations,
-                        bodyFontSize = bodyFontSize,
-                        labelFontSize = labelFontSize,
-                    )
-                }
+                SettingsCategoryContent(
+                    category = category,
+                    draft = draft,
+                    onDraftChange = onDraftChange,
+                    onCleanupInvalidLocations = onCleanupInvalidLocations,
+                    bodyFontSize = bodyFontSize,
+                    labelFontSize = labelFontSize,
+                    searchQuery = searchQuery,
+                )
             }
         }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+        Divider(Orientation.Horizontal, color = palette.outlineVariant)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(palette.surfaceVariant)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             DialogTextButton(
-                text = stringResource(Res.string.action_close_window),
+                text = stringResource(Res.string.action_reset_current_page),
                 fontSize = bodyFontSize,
-                onClick = onDismiss,
+                onClick = { onDraftChange(draft.resetCategoryToDefaults(category)) },
             )
-            DialogTextButton(
-                text = stringResource(Res.string.action_apply),
-                emphasized = true,
-                fontSize = bodyFontSize,
-                onClick = onConfirm,
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_close_window),
+                    fontSize = bodyFontSize,
+                    onClick = onDismiss,
+                )
+                DialogTextButton(
+                    text = stringResource(Res.string.action_apply),
+                    emphasized = true,
+                    fontSize = bodyFontSize,
+                    onClick = onConfirm,
+                )
+            }
         }
     }
 }
 
 /**
- * 绘制设置分类导航。
- *
- * @param category 当前分类。
- * @param onCategoryChange 分类变化回调。
- * @param fontSize 导航字号。
- * @param modifier 布局修饰符。
+ * 绘制设置分类左侧扁平导航栏，与主窗口 [PaneSidebar] 的背景和内边距风格完全一致。
  */
 @Composable
 private fun SettingsNavigation(
@@ -231,9 +255,8 @@ private fun SettingsNavigation(
     val palette = LocalOnyxPalette.current
     Column(
         modifier = modifier
-            .background(palette.surfaceVariant.copy(alpha = 0.55f), SettingsPanelShape)
-            .border(1.dp, palette.outlineVariant, SettingsPanelShape)
-            .padding(6.dp),
+            .background(palette.surfaceVariant)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         SettingsCategory.entries.forEach { candidate ->
@@ -251,24 +274,19 @@ private fun SettingsNavigation(
 
 /**
  * 解析设置分类标签。
- *
- * @param category 设置分类。
- * @return 已本地化分类名称。
  */
 @Composable
 private fun settingsCategoryLabel(category: SettingsCategory): String = when (category) {
-    SettingsCategory.COLORS -> stringResource(Res.string.label_settings_colors)
-    SettingsCategory.FILE_LABELS -> stringResource(Res.string.label_settings_file_labels)
-    SettingsCategory.USER_COMMANDS -> stringResource(Res.string.label_settings_user_commands)
-    SettingsCategory.GENERAL -> stringResource(Res.string.label_settings_general)
-    SettingsCategory.LAYOUT -> stringResource(Res.string.label_settings_layout)
-    SettingsCategory.APPEARANCE -> stringResource(Res.string.label_settings_appearance)
-    SettingsCategory.COLUMNS -> stringResource(Res.string.label_settings_columns)
-    SettingsCategory.SHORTCUTS -> stringResource(Res.string.label_settings_shortcuts)
+    SettingsCategory.GENERAL -> stringResource(Res.string.label_settings_cat_general)
+    SettingsCategory.THEME_APPEARANCE -> stringResource(Res.string.label_settings_cat_theme)
+    SettingsCategory.VIEWS_BROWSING -> stringResource(Res.string.label_settings_cat_views)
+    SettingsCategory.OPERATIONS_SAFETY -> stringResource(Res.string.label_settings_cat_operations)
+    SettingsCategory.AUTOMATION -> stringResource(Res.string.label_settings_cat_automation)
+    SettingsCategory.SHORTCUTS_ADVANCED -> stringResource(Res.string.label_settings_cat_shortcuts)
 }
 
-private const val DEFAULT_SETTINGS_WIDTH = 720
-private const val DEFAULT_SETTINGS_HEIGHT = 520
-private const val SETTINGS_MIN_WIDTH_PX = 600
-private const val SETTINGS_MIN_HEIGHT_PX = 420
-private val SettingsPanelShape = RoundedCornerShape(6.dp)
+private const val DEFAULT_SETTINGS_WIDTH = 860
+private const val DEFAULT_SETTINGS_HEIGHT = 640
+private const val SETTINGS_MIN_WIDTH_PX = 680
+private const val SETTINGS_MIN_HEIGHT_PX = 480
+private const val SETTINGS_SIDEBAR_WIDTH_DP = 168

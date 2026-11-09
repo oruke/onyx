@@ -102,14 +102,12 @@ internal fun DecoratedWindowScope.WindowApp(
 ) {
     // rootComponent 由 main.kt 在 application 级别创建并传入
     val state by rootComponent.state.collectAsState()
-    val palette = rememberOnyxPalette()
-    val appearance = rememberOnyxAppearance(
-        listRowHeightDp = state.settings.listRowHeightDp,
-        listFontSizeSp = state.settings.listFontSizeSp,
-        zebraStripeEnabled = state.settings.zebraStripeEnabled,
-        fileListColors = state.settings.fileListColors,
-        useSystemFileIcons = state.settings.useSystemFileIcons,
+    val palette = rememberOnyxPalette(
+        themeMode = state.settings.themeMode,
+        themePreset = state.settings.themePreset,
+        themeColors = state.settings.themeColors,
     )
+    val appearance = rememberOnyxAppearance(state.settings)
     var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     val onUiScaleChange: (Int) -> Unit = { value ->
         rootComponent.dispatch(
@@ -169,6 +167,9 @@ internal fun DecoratedWindowScope.WindowApp(
         OnyxTheme(
             uiScale = state.settings.uiScale,
             appearance = appearance,
+            themeMode = state.settings.themeMode,
+            themePreset = state.settings.themePreset,
+            themeColors = state.settings.themeColors,
         ) {
             Box(
                 modifier = Modifier
@@ -225,19 +226,16 @@ internal fun App(
     externalFileDragService: ExternalFileDragService,
 ) {
     val state by rootComponent.state.collectAsState()
-    val appearance = rememberOnyxAppearance(
-        listRowHeightDp = state.settings.listRowHeightDp,
-        listFontSizeSp = state.settings.listFontSizeSp,
-        zebraStripeEnabled = state.settings.zebraStripeEnabled,
-        fileListColors = state.settings.fileListColors,
-        useSystemFileIcons = state.settings.useSystemFileIcons,
-    )
+    val appearance = rememberOnyxAppearance(state.settings)
 
     IntUiTheme(isDark = isSystemInDarkTheme()) {
         OnyxLocaleEnvironment(rootComponent.resourceLocale) {
             OnyxTheme(
                 uiScale = state.settings.uiScale,
                 appearance = appearance,
+                themeMode = state.settings.themeMode,
+                themePreset = state.settings.themePreset,
+                themeColors = state.settings.themeColors,
             ) {
                 AppContent(
                     rootComponent = rootComponent,

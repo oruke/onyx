@@ -3,6 +3,9 @@ package com.oruke.onyx
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.window.application
@@ -17,6 +20,7 @@ import com.oruke.onyx.app.platform.OnyxSingleInstanceRelay
 import com.oruke.onyx.app.platform.OnyxStartupSplash
 import com.oruke.onyx.app.platform.OnyxSystemTrayController
 import com.oruke.onyx.app.platform.StartupSplashStage
+import com.oruke.onyx.ui.theme.resolveEffectiveDarkTheme
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
@@ -102,7 +106,10 @@ private object OnyxDesktopRuntime {
             }
         }
         KoinIsolatedContext(context = koinApplication) {
-            val isDark = isSystemInDarkTheme()
+            val koin = getKoin()
+            val applicationRuntime = rememberRootApplicationRuntime()
+            val appSettings by applicationRuntime.settings.collectAsState()
+            val isDark = resolveEffectiveDarkTheme(appSettings.themeMode, isSystemInDarkTheme())
             val theme = if (isDark) JewelTheme.darkThemeDefinition() else JewelTheme.lightThemeDefinition()
             val styling = ComponentStyling.default().decoratedWindow(
                 titleBarStyle = if (isDark) TitleBarStyle.dark() else TitleBarStyle.lightWithLightHeader(),
@@ -112,14 +119,15 @@ private object OnyxDesktopRuntime {
                 theme = theme,
                 styling = styling,
             ) {
-                val koin = getKoin()
-                val applicationRuntime = rememberRootApplicationRuntime()
                 val windowManager = remember {
                     DesktopWindowManager(
-                        keepPrimaryWindowResident = true,
+                        keepPrimaryWindowResident = appSettings.closeToTray,
                         primaryWindowInitiallyVisible = !OnyxSingleInstanceManager.isBackgroundLaunch(args),
                         initialPrimaryLocation = OnyxSingleInstanceManager.extractInitialLocation(args),
                     )
+                }
+                SideEffect {
+                    windowManager.keepPrimaryWindowResident = appSettings.closeToTray
                 }
                 DisposableEffect(windowManager) {
                     singleInstanceRelay.bindWindowCallbacks(

@@ -25,7 +25,25 @@ internal fun DefaultPaneComponent.setViewMode(mode: ViewMode) {
  */
 internal fun DefaultPaneComponent.applyDefaultDirectoryViewMode(mode: ViewMode) {
     val tab = activeTab() ?: return
-    updateTab(tab.id) { it.withTabState { state -> state.copy(viewMode = mode) } }
+    updateTab(tab.id) {
+        it.withTabState { state ->
+            state.copy(
+                viewMode = mode,
+                showHiddenItems = defaultShowHiddenItemsForNewTabs,
+            )
+        }
+    }
+}
+
+/**
+ * 在全局排序设置（自然排序、文件夹优先）变更时重新计算面板所有标签的排序结果。
+ */
+internal fun PaneComponent.recomputeAllTabsSorting() {
+    if (this is DefaultPaneComponent) {
+        tabs().forEach { tab ->
+            updateTab(tab.id, forceResort = true) { it }
+        }
+    }
 }
 
 internal fun DefaultPaneComponent.setFilterQuery(query: String) {

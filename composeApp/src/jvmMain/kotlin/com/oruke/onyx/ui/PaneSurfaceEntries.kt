@@ -185,6 +185,7 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
         },
         onConsumeScroll = { dispatch(PaneIntent.ConsumePendingScroll) },
         onBlankAreaContextMenu = ::showBlankContextMenu,
+        onNavigateUp = { dispatch(PaneIntent.GoUp) },
         onViewportChanged = { anchor, scrolling ->
             dispatch(PaneIntent.ViewportChanged(tabId, visitId, mode, anchor, scrolling))
         },

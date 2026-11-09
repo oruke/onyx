@@ -1,14 +1,15 @@
 package com.oruke.onyx.ui.theme
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.core.model.FileListColors
+import com.oruke.onyx.core.model.OnyxSettings
 
 /**
  * 动态外观参数系统
@@ -64,6 +65,12 @@ data class OnyxAppearance(
     val computer: ComputerAppearance = ComputerAppearance(),
     /** 是否优先使用操作系统关联应用图标。 */
     val useSystemFileIcons: Boolean = true,
+    /** 是否在文件列表中显示文件扩展名。 */
+    val showFileExtensions: Boolean = true,
+    /** 是否单击直接打开文件或进入目录。 */
+    val singleClickToOpen: Boolean = false,
+    /** 是否支持双击文件列表空白区域返回上一级目录。 */
+    val doubleClickEmptySpaceToNavigateUp: Boolean = true,
 )
 
 val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {
@@ -78,8 +85,12 @@ val LocalOnyxAppearance = compositionLocalOf<OnyxAppearance> {
  * @param zebraStripeEnabled 斑马纹开关
  * @param fileListColors 文件列表持久化颜色覆盖。
  * @param useSystemFileIcons 是否优先使用系统关联应用图标。
+ * @param showFileExtensions 是否显示文件扩展名。
+ * @param singleClickToOpen 是否单击直接打开文件或目录。
+ * @param doubleClickEmptySpaceToNavigateUp 是否支持双击空白处返回上级目录。
  * @return 随设置变化重建的统一外观。
  */
+@Suppress("LongParameterList")
 @Composable
 fun rememberOnyxAppearance(
     listRowHeightDp: Int = 22,
@@ -87,8 +98,20 @@ fun rememberOnyxAppearance(
     zebraStripeEnabled: Boolean = true,
     fileListColors: FileListColors = FileListColors(),
     useSystemFileIcons: Boolean = true,
+    showFileExtensions: Boolean = true,
+    singleClickToOpen: Boolean = false,
+    doubleClickEmptySpaceToNavigateUp: Boolean = true,
 ): OnyxAppearance {
-    return remember(listRowHeightDp, listFontSizeSp, zebraStripeEnabled, fileListColors, useSystemFileIcons) {
+    return remember(
+        listRowHeightDp,
+        listFontSizeSp,
+        zebraStripeEnabled,
+        fileListColors,
+        useSystemFileIcons,
+        showFileExtensions,
+        singleClickToOpen,
+        doubleClickEmptySpaceToNavigateUp,
+    ) {
         OnyxAppearance(
             listRowHeight = listRowHeightDp.dp,
             listFontSize = listFontSizeSp.sp,
@@ -99,6 +122,28 @@ fun rememberOnyxAppearance(
             selectionBackground = fileListColors.selectionArgb?.let(::Color),
             inactiveSelectionBackground = fileListColors.inactiveSelectionArgb?.let(::Color),
             useSystemFileIcons = useSystemFileIcons,
+            showFileExtensions = showFileExtensions,
+            singleClickToOpen = singleClickToOpen,
+            doubleClickEmptySpaceToNavigateUp = doubleClickEmptySpaceToNavigateUp,
         )
     }
 }
+
+/**
+ * 从完整的 [OnyxSettings] 构建 [OnyxAppearance] 实例。
+ *
+ * @param settings 当前应用设置。
+ * @return 随设置变化重建的统一外观。
+ */
+@Composable
+fun rememberOnyxAppearance(settings: OnyxSettings): OnyxAppearance =
+    rememberOnyxAppearance(
+        listRowHeightDp = settings.listRowHeightDp,
+        listFontSizeSp = settings.listFontSizeSp,
+        zebraStripeEnabled = settings.zebraStripeEnabled,
+        fileListColors = settings.fileListColors,
+        useSystemFileIcons = settings.useSystemFileIcons,
+        showFileExtensions = settings.showFileExtensions,
+        singleClickToOpen = settings.singleClickToOpen,
+        doubleClickEmptySpaceToNavigateUp = settings.doubleClickEmptySpaceToNavigateUp,
+    )

@@ -9,10 +9,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import java.awt.datatransfer.DataFlavor
+import java.net.URI
 import java.nio.file.Files
+import java.nio.file.Path
 import javax.swing.JPanel
 import javax.swing.TransferHandler
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotSame
 import kotlin.test.assertSame
@@ -58,6 +62,35 @@ class JvmExternalFileDragServiceTest {
         assertNotSame(originalHandler, component.transferHandler)
         service.uninstall()
         assertSame(originalHandler, component.transferHandler)
+    }
+
+    /**
+     * 校验含中文、空格及特殊符号的文件在拖放载荷中保持原始文件对象，
+     * 不暴露 stringFlavor，且标准 file URI 可无损往返还原为原路径。
+     */
+    @Test
+    fun preservesSpecialCharacterFileNamesInTransferableAndStandardUri() {
+        val tempDir = Files.createTempDirectory("onyx-我的云端硬盘-")
+        val specialName = "Compose Desktop 开发工具集 #1 %2 & + [需求] (v1)!.gdoc"
+        val specialFile = Files.writeString(tempDir.resolve(specialName), "doc").toFile()
+        try {
+            val transferable = FileTransferable(listOf(specialFile))
+            assertTrue(transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor))
+            assertFalse(transferable.isDataFlavorSupported(DataFlavor.stringFlavor))
+            if (System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)) {
+                assertFalse(transferable.isDataFlavorSupported(FileClipboardFormats.uriList))
+                assertFalse(transferable.isDataFlavorSupported(FileClipboardFormats.gnomeFiles))
+            }
+            assertEquals(listOf(specialFile), transferable.getTransferData(DataFlavor.javaFileListFlavor))
+
+            val standardUri = specialFile.toStandardFileUriString()
+            assertTrue(standardUri.startsWith("file:///"), "URI 必须使用三斜杠格式: $standardUri")
+            assertTrue(standardUri.all { it.code < 128 }, "URI 必须为纯 ASCII 编码: $standardUri")
+            assertEquals(specialFile.toPath().normalize(), Path.of(URI.create(standardUri)).normalize())
+        } finally {
+            Files.deleteIfExists(specialFile.toPath())
+            Files.deleteIfExists(tempDir)
+        }
     }
 
     /** 可控完成时机的远程文件物化器。 */

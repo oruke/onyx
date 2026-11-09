@@ -28,7 +28,7 @@ internal data class DesktopFileManagerWindowRequest(
  * @param initialPrimaryLocation 主窗口首次启动时的可选初始目录位置。
  */
 internal class DesktopWindowManager(
-    private val keepPrimaryWindowResident: Boolean = false,
+    var keepPrimaryWindowResident: Boolean = false,
     primaryWindowInitiallyVisible: Boolean = true,
     initialPrimaryLocation: String? = null,
 ) {

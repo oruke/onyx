@@ -122,6 +122,10 @@ class JvmExternalFileDragService(
     @Volatile
     private var lastMousePressedEvent: MouseEvent? = null
 
+    /** 最近一次鼠标拖动事件，用于准备就绪时已靠近窗口边缘的即时升级。 */
+    @Volatile
+    private var lastMouseDraggedEvent: MouseEvent? = null
+
     /** exportAsDrag 是否已为本次拖放触发，避免重复发起系统拖放。 */
     @Volatile
     private var exportTriggered: Boolean = false
@@ -270,6 +274,7 @@ class JvmExternalFileDragService(
                 }
             }
         }
+        lastMouseDraggedEvent?.let(::maybeStartSystemDrag)
         return containsArchiveEntry
     }
 
@@ -297,7 +302,7 @@ class JvmExternalFileDragService(
                     targetDir = sessionDir.toString(),
                 )
                 if (result.isSuccess) {
-                    val extractedName = innerPath.substringAfterLast('/')
+                    val extractedName = innerPath.trimEnd('/').substringAfterLast('/')
                     val extractedFile = sessionDir.resolve(extractedName).toFile()
                     if (extractedFile.exists()) extractedFile else null
                 } else {
@@ -352,13 +357,18 @@ class JvmExternalFileDragService(
             when (event.id) {
                 MouseEvent.MOUSE_PRESSED -> {
                     lastMousePressedEvent = event
+                    lastMouseDraggedEvent = null
                     exportTriggered = false
                 }
 
-                MouseEvent.MOUSE_DRAGGED -> maybeStartSystemDrag(event)
+                MouseEvent.MOUSE_DRAGGED -> {
+                    lastMouseDraggedEvent = event
+                    maybeStartSystemDrag(event)
+                }
 
                 MouseEvent.MOUSE_RELEASED -> {
                     lastMousePressedEvent = null
+                    lastMouseDraggedEvent = null
                     edgeDragRequested = false
                     exportTriggered = false
                 }

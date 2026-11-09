@@ -235,6 +235,7 @@ private class GalleryInteractionState {
  * @param actions 画廊项交互回调。
  * @param thumbnails 缩略图与类型识别服务。
  */
+@Suppress("CyclomaticComplexMethod")
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun GalleryItem(
@@ -246,6 +247,7 @@ internal fun GalleryItem(
     val selectedState = rememberUpdatedState(state.selected)
     val entryCountState = rememberUpdatedState(state.selectedEntryCount)
     val draftNameState = rememberUpdatedState(state.draftName)
+    val singleClickToOpenState = rememberUpdatedState(LocalOnyxAppearance.current.singleClickToOpen)
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
     val canInlineEdit = state.draftName != null &&
@@ -291,6 +293,15 @@ internal fun GalleryItem(
                     // 双击识别会延迟单击回调；F2 已开启编辑时不能再把焦点抢回文件面板。
                     if (draftNameState.value != null) return@click
                     actions.onActivate()
+                    if (singleClickToOpenState.value &&
+                        !interaction.additiveSelection &&
+                        !interaction.rangeSelection
+                    ) {
+                        interaction.cancelRename()
+                        actions.onDismissContextMenu()
+                        state.entry?.let(actions.onOpenEntry)
+                        return@click
+                    }
                     val canRename = state.entry != null && !canInlineEdit &&
                             interaction.pressCanRename &&
                             selectedState.value && entryCountState.value == 1
@@ -428,7 +439,7 @@ private fun handleGalleryPrimaryPress(
             interaction.rangeSelection,
         )
 
-        state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
+        state.selected && state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(entry.id, false, false)
     }
 }
@@ -640,7 +651,7 @@ private fun GalleryItemName(
         GalleryInlineEditor(state, actions, interaction, focusRequester)
     } else {
         Text(
-            text = state.entry?.name.orEmpty(),
+            text = state.entry?.displayFileName(LocalOnyxAppearance.current.showFileExtensions).orEmpty(),
             fontWeight = if (state.entry?.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
             fontSize = 12.sp,
             color = state.labelStyle?.textColorArgb?.let(::Color)

@@ -17,7 +17,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.jewel.foundation.ExperimentalJewelApi
+import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.component.TextField
 
 @OptIn(ExperimentalJewelApi::class)
@@ -30,6 +32,7 @@ internal fun OnyxTextInput(
     height: Dp = 28.dp,
     password: Boolean = false,
     enabled: Boolean = true,
+    placeholder: String? = null,
 ) {
     var fieldValue by remember {
         mutableStateOf(TextFieldValue(value, TextRange(value.length)))
@@ -41,6 +44,7 @@ internal fun OnyxTextInput(
         }
     }
 
+    val palette = LocalOnyxPalette.current
     TextField(
         value = fieldValue,
         enabled = enabled,
@@ -49,6 +53,9 @@ internal fun OnyxTextInput(
             if (nextValue.text != value) {
                 onValueChange(nextValue.text)
             }
+        },
+        placeholder = placeholder?.let { text ->
+            { Text(text = text, fontSize = fontSize, color = palette.mutedForeground) }
         },
         modifier = modifier.height(height),
         textStyle = TextStyle(fontSize = fontSize),

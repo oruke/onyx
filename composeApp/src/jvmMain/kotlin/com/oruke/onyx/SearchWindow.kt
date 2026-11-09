@@ -130,14 +130,14 @@ internal fun SearchWindow(
                     modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
                 )
             }
-            val appearance = rememberOnyxAppearance(
-                listRowHeightDp = settings.listRowHeightDp,
-                listFontSizeSp = settings.listFontSizeSp,
-                zebraStripeEnabled = settings.zebraStripeEnabled,
-                fileListColors = settings.fileListColors,
-                useSystemFileIcons = settings.useSystemFileIcons,
-            )
-            OnyxTheme(uiScale = settings.uiScale, appearance = appearance) {
+            val appearance = rememberOnyxAppearance(settings)
+            OnyxTheme(
+                uiScale = settings.uiScale,
+                appearance = appearance,
+                themeMode = settings.themeMode,
+                themePreset = settings.themePreset,
+                themeColors = settings.themeColors,
+            ) {
                 OnyxTooltipHost { SearchPanel(state, presentation, actions, listState) }
             }
         }

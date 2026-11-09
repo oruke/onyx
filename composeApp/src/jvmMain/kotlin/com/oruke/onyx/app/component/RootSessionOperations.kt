@@ -36,7 +36,7 @@ internal suspend fun DefaultRootComponent.restorePersistedState() {
         restoreError = settingsError
         sessionResult.fold(
             onSuccess = { session ->
-                if (session != null) {
+                if (session != null && settings.value.restoreSessionOnStartup) {
                     applySession(session)
                 } else {
                     needsInitialPersist = true
@@ -104,7 +104,9 @@ private suspend fun DefaultRootComponent.restoreSettings(): I18nMessage? {
     settingsRepository.loadSettings().fold(
         onSuccess = { loadedSettings ->
             if (loadedSettings != null) {
-                settings.value = loadedSettings.sanitizeRootSettings()
+                val sanitized = loadedSettings.sanitizeRootSettings()
+                settings.value = sanitized
+                syncGlobalSortAndTabDefaults(sanitized)
                 synchronizeS3ConnectionConfigurations()
             }
         },

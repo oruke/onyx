@@ -25,23 +25,33 @@ class FileTransferable(
         FileClipboardFormats.registerPlatformFormats()
     }
 
-    /** 供标准桌面协议读取的 file URI 列表。 */
-    private val uriListString: String by lazy { files.joinToString("\r\n") { it.toURI().toString() } }
+    /** 当前运行环境是否为 Windows。 */
+    private val isWindows: Boolean =
+        System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
+
+    /** 供标准桌面协议读取的 RFC 8089 / RFC 2483 file URI 列表。 */
+    private val uriListString: String by lazy {
+        files.joinToString("\r\n") { it.toStandardFileUriString() }
+    }
 
     /** GNOME 文件传输数据，首行明确 copy 或 cut。 */
     private val gnomeCopiedBytes: ByteBuffer by lazy {
         val action = if (isCut) "cut" else "copy"
-        val content = action + "\n" + files.joinToString("\n") { it.toURI().toString() }
+        val content = action + "\n" + files.joinToString("\n") { it.toStandardFileUriString() }
         ByteBuffer.wrap(content.toByteArray(Charsets.UTF_8))
     }
 
-    /** 本载荷实际支持的格式；纯 VFS 载荷只向当前应用提供标识。 */
+    /**
+     * 本载荷实际支持的格式；Windows 仅暴露原生 Shell 文件列表与操作标记，
+     * 避免浏览器或编辑器将带空格、中文或特殊符号的文件误判为 URL 文本跳转。
+     */
     private val supportedFlavors: Array<DataFlavor> = buildList {
         if (files.isNotEmpty()) {
             add(DataFlavor.javaFileListFlavor)
-            add(FileClipboardFormats.uriList)
-            add(FileClipboardFormats.gnomeFiles)
-            add(DataFlavor.stringFlavor)
+            if (!isWindows) {
+                add(FileClipboardFormats.uriList)
+                add(FileClipboardFormats.gnomeFiles)
+            }
             add(FileClipboardFormats.preferredDropEffect)
         }
         if (clipboardOwnerId != null) add(FileClipboardFormats.ownerId)
@@ -66,7 +76,7 @@ class FileTransferable(
         if (!isDataFlavorSupported(flavor)) throw UnsupportedFlavorException(flavor)
         return when (flavor) {
             DataFlavor.javaFileListFlavor -> files.toList()
-            FileClipboardFormats.uriList, DataFlavor.stringFlavor -> uriListString
+            FileClipboardFormats.uriList -> uriListString
             FileClipboardFormats.gnomeFiles -> gnomeCopiedBytes.duplicate()
             FileClipboardFormats.preferredDropEffect -> ByteBuffer.allocate(Int.SIZE_BYTES)
                 .order(ByteOrder.LITTLE_ENDIAN)
@@ -76,3 +86,9 @@ class FileTransferable(
         }
     }
 }
+
+/**
+ * 将本地文件转换为符合 RFC 8089 / XDG 规范的三斜杠 ASCII `file:///` URI，
+ * 确保空格、非 ASCII 字符及 `#`、`%`、`?`、`[`、`]` 等特殊符号均被正确百分号编码。
+ */
+internal fun File.toStandardFileUriString(): String = toPath().toUri().toASCIIString()

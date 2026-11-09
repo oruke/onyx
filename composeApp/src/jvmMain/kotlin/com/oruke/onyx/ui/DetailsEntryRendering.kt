@@ -201,7 +201,7 @@ private fun EntryNameContent(
             size = LocalOnyxAppearance.current.entryIconSize,
         )
         Text(
-            text = state.entry.name,
+            text = state.entry.displayFileName(LocalOnyxAppearance.current.showFileExtensions),
             fontWeight = if (state.entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
             fontSize = LocalOnyxAppearance.current.listFontSize,
             color = state.labelStyle?.textColorArgb?.let(::Color)
@@ -210,6 +210,20 @@ private fun EntryNameContent(
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+/**
+ * 根据是否显示扩展名配置生成用于界面展示的条目名称。
+ *
+ * 目录与以 `.` 开头的隐藏点文件始终完整保留原名。
+ *
+ * @param showExtensions 是否显示文件扩展名。
+ * @return 展示用的文件或目录名称。
+ */
+internal fun VFile.displayFileName(showExtensions: Boolean): String {
+    if (showExtensions || kind == VFileKind.DIRECTORY) return name
+    val dotIndex = name.lastIndexOf('.')
+    return if (dotIndex > 0) name.substring(0, dotIndex) else name
 }
 
 /**

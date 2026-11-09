@@ -84,6 +84,31 @@ class JvmSystemFileMaterializerTest {
         assertFalse(supported)
     }
 
+    /**
+     * 校验含平台保留字符或特殊符号的远程文件名能安全物化为本地临时文件。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun sanitizesReservedCharactersWhenMaterializingRemoteFile() = runBlocking {
+        val contentService = FakeContentService("s3://")
+        val entry = file(
+            location = "s3://bucket/docs/report:2026?*",
+            name = "report:2026?*<>|\" #1 %2 .txt. ",
+        )
+        contentService.seed(entry.location, "special-content")
+        val materializer = JvmSystemFileMaterializer(
+            archiveService = ArchiveService(),
+            contentServices = listOf(contentService),
+        )
+
+        val materialized = materializer.materialize(entry).getOrThrow()
+        val path = Path.of(materialized.location)
+
+        assertTrue(Files.isRegularFile(path))
+        assertEquals("special-content", Files.readString(path))
+    }
+
     private companion object {
         /**
          * 构造测试文件条目。

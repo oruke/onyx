@@ -310,11 +310,16 @@ private fun PaneTabState.navigateToLoadingLocation(
     }
 }
 
+/** 新建标签默认是否显示隐藏文件（随应用设置同步）。 */
+@Volatile
+internal var defaultShowHiddenItemsForNewTabs: Boolean = false
+
 internal fun createDefaultPaneTabState(
     id: String,
     title: String,
     location: String,
     defaultViewMode: ViewMode,
+    showHiddenItems: Boolean = defaultShowHiddenItemsForNewTabs,
 ): PaneTabState {
     return PaneTabState(
         id = id,
@@ -338,7 +343,7 @@ internal fun createDefaultPaneTabState(
             inlineEditState = null,
             inspectorState = PaneInspectorState(),
             operationFeedback = null,
-            showHiddenItems = false,
+            showHiddenItems = showHiddenItems,
             hiddenColumns = emptySet(),
             galleryItemSizeDp = 160,
             entriesState = PaneEntriesState.Idle,

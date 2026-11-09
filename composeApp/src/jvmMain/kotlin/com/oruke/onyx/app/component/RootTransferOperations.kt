@@ -44,13 +44,17 @@ internal fun DefaultRootComponent.requestDeleteSelectedInPane(paneId: PaneId) {
     if (selectedEntries.isEmpty()) return
     val moveToTrashPreferred = settings.value.deleteMode == DeleteMode.MOVE_TO_TRASH_PREFERRED
     val willMoveToTrash = moveToTrashPreferred && trashService.isSupported
-    fileActionDelegate.setPendingDeleteRequest(
-        FileActionDelegate.PendingDeleteRequest(paneId, selectedEntries, willMoveToTrash)
-    )
+    val trashUnavailable = moveToTrashPreferred && !trashService.isSupported
+    val request = FileActionDelegate.PendingDeleteRequest(paneId, selectedEntries, willMoveToTrash)
+    if (!settings.value.confirmBeforeDelete && !trashUnavailable) {
+        fileActionDelegate.executeDeleteRequest(request)
+        return
+    }
+    fileActionDelegate.setPendingDeleteRequest(request)
     dialogState.value = RootDialogState.DeleteSelectionConfirmation(
         moveToTrash = willMoveToTrash,
         itemCount = selectedEntries.size,
-        trashUnavailable = moveToTrashPreferred && !trashService.isSupported,
+        trashUnavailable = trashUnavailable,
     )
 }
 
@@ -92,12 +96,7 @@ internal fun DefaultRootComponent.recordTrashDeleteOperation(records: List<Trash
  */
 internal fun DefaultRootComponent.selectedEntriesInPane(paneId: PaneId): List<VFile> {
     val state = paneState(paneId)
-    val topEntries = (state.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
-    val allEntries = if (state.inlineExpandedLocations.isEmpty()) {
-        topEntries
-    } else {
-        collectAllVisibleEntries(topEntries, state)
-    }
+    val allEntries = state.visibleEntries()
     val selected = allEntries.filter { entry -> entry.id in state.selectedEntryIds }
     if (selected.size <= 1) return selected
     val selectedDirectories = selected.filter { entry -> entry.kind == VFileKind.DIRECTORY }
@@ -105,6 +104,20 @@ internal fun DefaultRootComponent.selectedEntriesInPane(paneId: PaneId): List<VF
     return selected.filter { entry ->
         val parent = entry.parentLocation ?: return@filter true
         !isAncestorSelected(parent, selectedDirectories)
+    }
+}
+
+/**
+ * 读取面板当前可见的全部条目（含顶层与内联展开子目录）。
+ *
+ * @return 当前可见条目列表。
+ */
+internal fun PaneState.visibleEntries(): List<VFile> {
+    val topEntries = (entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
+    return if (inlineExpandedLocations.isEmpty()) {
+        topEntries
+    } else {
+        collectAllVisibleEntries(topEntries, this)
     }
 }
 
@@ -119,7 +132,7 @@ private fun isAncestorSelected(location: String, selectedDirectoryLocations: Set
     var current: String? = location
     while (current != null) {
         if (current in selectedDirectoryLocations) return true
-        val lastSeparator = current.lastIndexOf('/')
+        val lastSeparator = maxOf(current.lastIndexOf('/'), current.lastIndexOf('\\'))
         current = if (lastSeparator > 0) current.substring(0, lastSeparator) else null
     }
     return false

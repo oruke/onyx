@@ -39,6 +39,7 @@ class JvmSystemFileMaterializer(
     override fun supports(entry: VFile): Boolean {
         if (entry.systemLocalPathOrNull() != null) return true
         if (entry.kind == VFileKind.DIRECTORY) return false
+        if (ArchiveService.parseArchiveLocation(entry.location)?.second?.isNotBlank() == true) return true
         return contentServices.any { service -> service.supports(entry.location) }
     }
 
@@ -101,22 +102,32 @@ class JvmSystemFileMaterializer(
             entryPaths = listOf(innerPath),
             targetDir = tempDir.toString(),
         ).getOrThrow()
-        val tempFile = tempDir.resolve(entry.safeSystemFileName())
+        val extractedName = innerPath.trimEnd('/').substringAfterLast('/')
+        val extractedCandidate = runCatching { tempDir.resolve(extractedName) }.getOrNull()
+        val tempFile = if (extractedCandidate != null && Files.exists(extractedCandidate)) {
+            extractedCandidate
+        } else {
+            tempDir.resolve(entry.safeSystemFileName())
+        }
         tempDir.toFile().deleteOnExit()
         tempFile.toFile().deleteOnExit()
         return entry.copy(location = tempFile.toString())
     }
 
     /**
-     * 生成可用于临时文件的安全文件名。
+     * 生成可用于临时文件的安全文件名，替换平台非法路径字符并去除尾随点与空格。
      *
-     * @return 去除路径分隔符后的文件名。
+     * @return 去除非法字符后的文件名。
      */
     private fun VFile.safeSystemFileName(): String {
         return name
-            .replace('/', '_')
-            .replace('\\', '_')
+            .replace(UNSAFE_FILE_NAME_CHARS, "_")
+            .trimEnd('.', ' ')
             .takeIf { value -> value.isNotBlank() }
             ?: "item"
+    }
+
+    private companion object {
+        private val UNSAFE_FILE_NAME_CHARS = Regex("[<>:\"/\\\\|?*\\u0000-\\u001F]")
     }
 }

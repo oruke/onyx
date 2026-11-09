@@ -159,16 +159,13 @@ internal fun DesktopFileManagerWindow(
             state = windowStates.imageViewer,
         ) {
             window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
-            val appearance = rememberOnyxAppearance(
-                listRowHeightDp = state.settings.listRowHeightDp,
-                listFontSizeSp = state.settings.listFontSizeSp,
-                zebraStripeEnabled = state.settings.zebraStripeEnabled,
-                fileListColors = state.settings.fileListColors,
-                useSystemFileIcons = state.settings.useSystemFileIcons,
-            )
+            val appearance = rememberOnyxAppearance(state.settings)
             OnyxTheme(
                 uiScale = state.settings.uiScale,
                 appearance = appearance,
+                themeMode = state.settings.themeMode,
+                themePreset = state.settings.themePreset,
+                themeColors = state.settings.themeColors,
             ) {
                 ImageViewerContent(
                     state = imageViewerState,

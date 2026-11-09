@@ -136,14 +136,14 @@ internal fun TaskCenterWindow(
                     modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
                 )
             }
-            val appearance = rememberOnyxAppearance(
-                listRowHeightDp = preferences.listRowHeightDp,
-                listFontSizeSp = preferences.listFontSizeSp,
-                zebraStripeEnabled = preferences.zebraStripeEnabled,
-                fileListColors = preferences.fileListColors,
-                useSystemFileIcons = preferences.useSystemFileIcons,
-            )
-            OnyxTheme(uiScale = preferences.uiScale, appearance = appearance) {
+            val appearance = rememberOnyxAppearance(preferences)
+            OnyxTheme(
+                uiScale = preferences.uiScale,
+                appearance = appearance,
+                themeMode = preferences.themeMode,
+                themePreset = preferences.themePreset,
+                themeColors = preferences.themeColors,
+            ) {
                 OnyxTooltipHost {
                     TaskCenterContent(state, tasks, listState, taskCenter::dispatch)
                 }

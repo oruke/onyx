@@ -1,11 +1,15 @@
 package com.oruke.onyx.app.filesystem
 
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.vfs.archive.ArchiveService
 import java.net.URLConnection
 import java.nio.file.Files
 import java.nio.file.Path
 
 internal fun VFile.systemLocalPathOrNull(): Path? {
+    if (ArchiveService.isArchiveLocation(location) || RemoteVfsLocationParser.parse(location) != null) {
+        return null
+    }
     val path = runCatching { Path.of(location) }.getOrNull() ?: return null
     return path.takeIf { candidate -> candidate.isAbsolute }
 }
