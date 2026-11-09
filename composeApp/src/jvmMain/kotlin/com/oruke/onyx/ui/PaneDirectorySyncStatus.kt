@@ -8,7 +8,6 @@ import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_retry_task
 import onyx.composeapp.generated.resources.label_directory_update_failed
-import onyx.composeapp.generated.resources.label_directory_observation_degraded
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Link
 
@@ -19,11 +18,8 @@ import org.jetbrains.jewel.ui.component.Link
 @Composable
 internal fun PaneDirectorySyncStatus(runtime: PaneSurfaceRuntime) {
     val state = runtime.state.activeTabState
-    val failure = state.directoryError
-    val observation = state.directoryObservationError
-    if (failure == null && observation == null) return
-    val text = if (failure != null) stringResource(Res.string.label_directory_update_failed, failure.resolve())
-        else stringResource(Res.string.label_directory_observation_degraded, observation?.resolve().orEmpty())
+    val failure = state.directoryError ?: return
+    val text = stringResource(Res.string.label_directory_update_failed, failure.resolve())
     PaneFeedbackBar(text, Modifier.testTag("pane-directory-feedback-${runtime.state.paneId}")) {
         Link(stringResource(Res.string.action_retry_task), onClick = { runtime.dispatch(PaneIntent.Refresh) },
             modifier = Modifier.testTag("pane-directory-retry-${runtime.state.paneId}"))
