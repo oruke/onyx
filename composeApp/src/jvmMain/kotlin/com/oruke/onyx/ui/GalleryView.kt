@@ -1,7 +1,5 @@
 package com.oruke.onyx.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -11,6 +9,9 @@ import androidx.compose.foundation.gestures.awaitDragOrCancellation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -244,6 +245,9 @@ internal fun GalleryItem(
     thumbnails: GalleryThumbnailServices,
 ) {
     val interaction = remember(state.entry?.id) { GalleryInteractionState() }
+    val hoverInteractionSource = remember(state.entry?.id) { MutableInteractionSource() }
+    val clickInteractionSource = remember(state.entry?.id) { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selectedState = rememberUpdatedState(state.selected)
     val entryCountState = rememberUpdatedState(state.selectedEntryCount)
     val draftNameState = rememberUpdatedState(state.draftName)
@@ -255,10 +259,7 @@ internal fun GalleryItem(
             actions.onConfirmInlineEdit != null &&
             actions.onCancelInlineEdit != null
     val isDropTarget = state.fileDropTarget?.directoryEntryId == state.entry?.id
-    val background by animateColorAsState(
-        targetValue = galleryItemBackground(state, isDropTarget),
-        animationSpec = tween(durationMillis = 120),
-    )
+    val background = galleryItemBackground(state, isDropTarget, isHovered)
     LaunchedEffect(canInlineEdit, state.draftName) {
         if (canInlineEdit) focusRequester.requestFocus()
     }
@@ -267,10 +268,15 @@ internal fun GalleryItem(
             .padding(4.dp)
             .width(state.sizeDp.dp)
             .height((state.sizeDp * GALLERY_ITEM_HEIGHT_FACTOR).dp)
+            .hoverable(hoverInteractionSource)
             .background(background, RoundedCornerShape(6.dp))
             .border(
                 1.dp,
-                if (state.selected) LocalOnyxPalette.current.outline else Color.Transparent,
+                when {
+                    state.selected -> LocalOnyxPalette.current.outline
+                    isHovered -> LocalOnyxPalette.current.outlineVariant
+                    else -> Color.Transparent
+                },
                 RoundedCornerShape(6.dp),
             )
             .galleryPressInteractions(state, actions, interaction, canInlineEdit)
@@ -289,6 +295,8 @@ internal fun GalleryItem(
                 }
             }
             .combinedClickable(
+                interactionSource = clickInteractionSource,
+                indication = null,
                 onClick = click@{
                     // 双击识别会延迟单击回调；F2 已开启编辑时不能再把焦点抢回文件面板。
                     if (draftNameState.value != null) return@click
@@ -330,21 +338,28 @@ internal fun GalleryItem(
 }
 
 /**
- * 计算条目的选中或放置目标背景。
+ * 计算条目的选中、悬停或放置目标背景。
  *
  * @param state 画廊项显示状态。
  * @param isDropTarget 是否为当前目录放置目标。
+ * @param hovered 当前鼠标是否悬停在该项上。
  * @return 当前应展示的背景色。
  */
 @Composable
-private fun galleryItemBackground(state: GalleryItemState, isDropTarget: Boolean): Color {
+private fun galleryItemBackground(
+    state: GalleryItemState,
+    isDropTarget: Boolean,
+    hovered: Boolean = false,
+): Color {
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
     val labelBackground = state.labelStyle?.backgroundColorArgb
     return when {
         isDropTarget -> palette.rowHoverBackground
         state.selected && state.paneActive -> appearance.selectionBackground ?: palette.selectionBackground
+        state.selected && hovered -> palette.rowHoverBackground
         state.selected -> appearance.inactiveSelectionBackground ?: palette.inactiveSelectionBackground
+        hovered -> palette.rowHoverBackground
         labelBackground != null -> Color(labelBackground)
         else -> Color.Transparent
     }

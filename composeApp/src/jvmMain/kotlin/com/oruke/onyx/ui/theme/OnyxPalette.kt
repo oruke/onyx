@@ -235,12 +235,12 @@ private fun applyAccentAndBorderOverrides(
         base.accentVariant
     }
     val selectionBg = if (accentOverridden || surfaceOverridden) {
-        blendColors(base.surface, accent, if (dark) 0.32f else 0.20f)
+        blendColors(base.surface, accent, if (dark) 0.36f else 0.24f)
     } else {
         base.selectionBackground
     }
     val rowHoverBg = if (accentOverridden || surfaceOverridden) {
-        blendColors(base.surface, accent, if (dark) 0.20f else 0.10f)
+        blendColors(base.surface, accent, if (dark) 0.22f else 0.14f)
     } else {
         base.rowHoverBackground
     }
@@ -285,10 +285,10 @@ private fun defaultDarkPalette() = OnyxPalette(
     favorite = Color(0xFFFFC94D),
     accent = Color(0xFF4D8DFF),
     accentVariant = Color(0xFF2A5FAD),
-    selectionBackground = Color(0xFF2D4F80),
+    selectionBackground = Color(0xFF2B579A),
     selectionForeground = Color(0xFFD4D4D8),
     headerBackground = Color(0xFF353739),
-    rowHoverBackground = Color(0xFF2D4F80),
+    rowHoverBackground = Color(0xFF38475E),
     statusBarBackground = Color(0xFF26282C),
     titleBarBorder = Color(0xFF43454A),
     titleBarActiveBackground = Color(0xFF3A3D41),
@@ -302,7 +302,7 @@ private fun defaultLightPalette() = OnyxPalette(
     appBackground = Color(0xFFF3F5F8),
     titleBarBackground = Color(0xFFF7F8FA),
     surface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFFF7F8FA),
+    surfaceVariant = Color(0xFFF4F6F9),
     floatingSurface = Color(0xFFF8FAFD),
     inputBackground = Color(0xFFFFFFFF),
     outline = Color(0xFFD0D7E2),
@@ -316,11 +316,11 @@ private fun defaultLightPalette() = OnyxPalette(
     favorite = Color(0xFFC78600),
     accent = Color(0xFF2F6FEB),
     accentVariant = Color(0xFF5B9BF0),
-    selectionBackground = Color(0xFFD0E0FF),
+    selectionBackground = Color(0xFFBDD4FF),
     selectionForeground = Color(0xFF1D2733),
-    headerBackground = Color(0xFFF7F8FA),
-    rowHoverBackground = Color(0xFFE8F0FE),
-    statusBarBackground = Color(0xFFF7F8FA),
+    headerBackground = Color(0xFFF4F6F9),
+    rowHoverBackground = Color(0xFFDCE8FC),
+    statusBarBackground = Color(0xFFF4F6F9),
     titleBarBorder = Color(0xFFEBECF0),
     titleBarActiveBackground = Color(0xFFEBECF0),
     titleBarHoverBackground = Color(0xFFF0F2F5),
@@ -342,10 +342,10 @@ private fun midnightOledDarkPalette() = defaultDarkPalette().copy(
     mutedForeground = Color(0xFF94A3B8),
     accent = Color(0xFF38BDF8),
     accentVariant = Color(0xFF0284C7),
-    selectionBackground = Color(0xFF163B56),
+    selectionBackground = Color(0xFF194B70),
     selectionForeground = Color(0xFFEFF2F8),
     headerBackground = Color(0xFF161922),
-    rowHoverBackground = Color(0xFF132D42),
+    rowHoverBackground = Color(0xFF1F364D),
     statusBarBackground = Color(0xFF0D0F15),
     titleBarBorder = Color(0xFF222736),
     inactiveSelectionBackground = Color(0xFF222736),
@@ -363,8 +363,8 @@ private fun midnightOledLightPalette() = defaultLightPalette().copy(
     mutedForeground = Color(0xFF475569),
     accent = Color(0xFF0284C7),
     accentVariant = Color(0xFF38BDF8),
-    selectionBackground = Color(0xFFE0F2FE),
-    rowHoverBackground = Color(0xFFF0F9FF),
+    selectionBackground = Color(0xFFBAE6FD),
+    rowHoverBackground = Color(0xFFD8EEFE),
 )
 
 @Suppress("MagicNumber")
@@ -381,10 +381,10 @@ private fun nordicFrostDarkPalette() = defaultDarkPalette().copy(
     mutedForeground = Color(0xFFD8DEE9),
     accent = Color(0xFF88C0D0),
     accentVariant = Color(0xFF5E81AC),
-    selectionBackground = Color(0xFF3E526A),
+    selectionBackground = Color(0xFF4C6A8A),
     selectionForeground = Color(0xFFECEFF4),
     headerBackground = Color(0xFF353C4A),
-    rowHoverBackground = Color(0xFF39495E),
+    rowHoverBackground = Color(0xFF43536B),
     statusBarBackground = Color(0xFF292E39),
     titleBarBorder = Color(0xFF3B4252),
     inactiveSelectionBackground = Color(0xFF434C5E),
@@ -404,10 +404,10 @@ private fun nordicFrostLightPalette() = defaultLightPalette().copy(
     mutedForeground = Color(0xFF4C566A),
     accent = Color(0xFF5E81AC),
     accentVariant = Color(0xFF81A1C1),
-    selectionBackground = Color(0xFFD8E4F2),
+    selectionBackground = Color(0xFFBDD2EC),
     selectionForeground = Color(0xFF2E3440),
     headerBackground = Color(0xFFE5E9F0),
-    rowHoverBackground = Color(0xFFE8EFF7),
+    rowHoverBackground = Color(0xFFD4E2F4),
     statusBarBackground = Color(0xFFE5E9F0),
 )
 
@@ -425,10 +425,10 @@ private fun draculaPurpleDarkPalette() = defaultDarkPalette().copy(
     mutedForeground = Color(0xFF9EA4C4),
     accent = Color(0xFFBD93F9),
     accentVariant = Color(0xFF9567E0),
-    selectionBackground = Color(0xFF44475A),
+    selectionBackground = Color(0xFF515575),
     selectionForeground = Color(0xFFF8F8F2),
     headerBackground = Color(0xFF2F3140),
-    rowHoverBackground = Color(0xFF3B3E52),
+    rowHoverBackground = Color(0xFF3E4259),
     statusBarBackground = Color(0xFF21222C),
     titleBarBorder = Color(0xFF44475A),
     inactiveSelectionBackground = Color(0xFF3B3E52),
@@ -447,10 +447,10 @@ private fun draculaPurpleLightPalette() = defaultLightPalette().copy(
     mutedForeground = Color(0xFF6B5B95),
     accent = Color(0xFF7C3AED),
     accentVariant = Color(0xFFA78BFA),
-    selectionBackground = Color(0xFFEDE9FE),
+    selectionBackground = Color(0xFFD0BFFF),
     selectionForeground = Color(0xFF2E1065),
     headerBackground = Color(0xFFF5F3FF),
-    rowHoverBackground = Color(0xFFF3E8FF),
+    rowHoverBackground = Color(0xFFE4D9FF),
     statusBarBackground = Color(0xFFEDE9FE),
 )
 
@@ -468,10 +468,10 @@ private fun solarizedWarmDarkPalette() = defaultDarkPalette().copy(
     mutedForeground = Color(0xFF93A1A1),
     accent = Color(0xFF2AA198),
     accentVariant = Color(0xFF268BD2),
-    selectionBackground = Color(0xFF0D4E59),
+    selectionBackground = Color(0xFF166473),
     selectionForeground = Color(0xFFFDF6E3),
     headerBackground = Color(0xFF073642),
-    rowHoverBackground = Color(0xFF0A434E),
+    rowHoverBackground = Color(0xFF0F4C59),
     statusBarBackground = Color(0xFF00252E),
     titleBarBorder = Color(0xFF164652),
     inactiveSelectionBackground = Color(0xFF073642),
@@ -491,10 +491,10 @@ private fun solarizedWarmLightPalette() = defaultLightPalette().copy(
     mutedForeground = Color(0xFF586E75),
     accent = Color(0xFFB58900),
     accentVariant = Color(0xFF268BD2),
-    selectionBackground = Color(0xFFE6DFC8),
+    selectionBackground = Color(0xFFD3C7A4),
     selectionForeground = Color(0xFF073642),
     headerBackground = Color(0xFFEEE8D5),
-    rowHoverBackground = Color(0xFFF2ECDA),
+    rowHoverBackground = Color(0xFFE2D9BE),
     statusBarBackground = Color(0xFFEEE8D5),
     titleBarBorder = Color(0xFFE4DEC8),
     inactiveSelectionBackground = Color(0xFFE4DEC8),
@@ -514,10 +514,10 @@ private fun forestEmeraldDarkPalette() = defaultDarkPalette().copy(
     mutedForeground = Color(0xFF8FB0A1),
     accent = Color(0xFF10B981),
     accentVariant = Color(0xFF059669),
-    selectionBackground = Color(0xFF1B4B39),
+    selectionBackground = Color(0xFF1F6349),
     selectionForeground = Color(0xFFE2F1EA),
     headerBackground = Color(0xFF1C2923),
-    rowHoverBackground = Color(0xFF183D2F),
+    rowHoverBackground = Color(0xFF26493B),
     statusBarBackground = Color(0xFF141E19),
     titleBarBorder = Color(0xFF263830),
     inactiveSelectionBackground = Color(0xFF263830),
@@ -536,10 +536,10 @@ private fun forestEmeraldLightPalette() = defaultLightPalette().copy(
     mutedForeground = Color(0xFF496B5D),
     accent = Color(0xFF059669),
     accentVariant = Color(0xFF10B981),
-    selectionBackground = Color(0xFFD1FAE5),
+    selectionBackground = Color(0xFFA7E9C9),
     selectionForeground = Color(0xFF064E3B),
     headerBackground = Color(0xFFF0F7F4),
-    rowHoverBackground = Color(0xFFECFDF5),
+    rowHoverBackground = Color(0xFFD1F2E1),
     statusBarBackground = Color(0xFFE8F3EE),
 )
 

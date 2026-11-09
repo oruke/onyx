@@ -12,6 +12,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -627,10 +630,23 @@ private fun DetailsColumnVisibilityRow(
         DetailsColumn.MODIFIED -> stringResource(Res.string.label_column_modified)
     }
     val palette = LocalOnyxPalette.current
+    val hoverSrc = remember { MutableInteractionSource() }
+    val clickSrc = remember { MutableInteractionSource() }
+    val isHovered by hoverSrc.collectIsHoveredAsState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = !isName, onClick = onToggle)
+            .hoverable(hoverSrc, enabled = !isName)
+            .background(
+                if (isHovered && !isName) palette.rowHoverBackground else Color.Transparent,
+                RoundedCornerShape(4.dp),
+            )
+            .clickable(
+                interactionSource = clickSrc,
+                indication = null,
+                enabled = !isName,
+                onClick = onToggle,
+            )
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -656,11 +672,25 @@ internal fun SortHeaderCell(
     onClick: () -> Unit,
     textAlign: TextAlign = TextAlign.Start,
 ) {
+    val palette = LocalOnyxPalette.current
+    val hoverSrc = remember { MutableInteractionSource() }
+    val clickSrc = remember { MutableInteractionSource() }
+    val isHovered by hoverSrc.collectIsHoveredAsState()
     Box(modifier = modifier.fillMaxHeight()) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .clickable(onClick = onClick),
+                .hoverable(hoverSrc)
+                .background(
+                    if (isHovered) palette.rowHoverBackground else Color.Transparent,
+                    RoundedCornerShape(3.dp),
+                )
+                .clickable(
+                    interactionSource = clickSrc,
+                    indication = null,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = if (textAlign == TextAlign.End) Arrangement.End else Arrangement.Start,
         ) {
@@ -669,7 +699,7 @@ internal fun SortHeaderCell(
                 modifier = Modifier.weight(1f),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = LocalOnyxAppearance.current.headerFontSize,
-                color = LocalOnyxPalette.current.mutedForeground,
+                color = if (isHovered) palette.foreground else palette.mutedForeground,
                 textAlign = textAlign,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1506,15 +1536,19 @@ internal fun EntryRow(
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
     val interaction = remember(state.entry.id) { EntryRowInteractionState() }
+    val hoverInteractionSource = remember(state.entry.id) { MutableInteractionSource() }
+    val clickInteractionSource = remember(state.entry.id) { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selectedState = rememberUpdatedState(state.selected)
     val entryCountState = rememberUpdatedState(state.selectedEntryCount)
     val singleClickToOpenState = rememberUpdatedState(LocalOnyxAppearance.current.singleClickToOpen)
     val coroutineScope = rememberCoroutineScope()
-    val rowBackground = entryRowBackground(state)
+    val rowBackground = entryRowBackground(state, isHovered)
 
     Row(
         modifier = Modifier
             .horizontalScroll(scrollState)
+            .hoverable(hoverInteractionSource)
             .entryRowPressInteractions(state, actions, interaction)
             .entryRowDragInteractions(state, actions, interaction, selectedState)
             .background(rowBackground)
@@ -1529,6 +1563,8 @@ internal fun EntryRow(
                 }
             }
             .combinedClickable(
+                interactionSource = clickInteractionSource,
+                indication = null,
                 onClick = click@{
                     actions.onActivate()
                     if (singleClickToOpenState.value &&

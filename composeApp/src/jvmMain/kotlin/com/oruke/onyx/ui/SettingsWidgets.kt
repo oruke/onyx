@@ -74,7 +74,7 @@ internal fun SettingsNavItem(
     val hovered by hoverSrc.collectIsHoveredAsState()
     val background = when {
         selected -> palette.selectionBackground
-        hovered -> palette.rowHoverBackground.copy(alpha = 0.28f)
+        hovered -> palette.rowHoverBackground
         else -> Color.Transparent
     }
     Row(
@@ -172,7 +172,7 @@ internal fun SettingsToggleRow(
             .fillMaxWidth()
             .hoverable(hoverSrc, enabled = enabled)
             .background(
-                if (hovered && enabled) palette.rowHoverBackground.copy(alpha = 0.24f) else Color.Transparent,
+                if (hovered && enabled) palette.rowHoverBackground.copy(alpha = 0.65f) else Color.Transparent,
                 SettingsRowShape,
             )
             .padding(horizontal = 6.dp, vertical = 3.dp),
@@ -306,7 +306,7 @@ internal fun SliderRow(
             .fillMaxWidth()
             .hoverable(hoverSrc)
             .background(
-                if (hovered) palette.rowHoverBackground.copy(alpha = 0.24f) else Color.Transparent,
+                if (hovered) palette.rowHoverBackground.copy(alpha = 0.65f) else Color.Transparent,
                 SettingsRowShape,
             )
             .padding(horizontal = 4.dp, vertical = 3.dp),

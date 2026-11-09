@@ -268,11 +268,24 @@ internal fun SidebarSection(
     onAction: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val headerHoverSrc = remember { MutableInteractionSource() }
+    val headerClickSrc = remember { MutableInteractionSource() }
+    val headerHovered by headerHoverSrc.collectIsHoveredAsState()
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggle(section) },
+                .hoverable(headerHoverSrc)
+                .background(
+                    if (headerHovered) LocalOnyxPalette.current.rowHoverBackground else Color.Transparent,
+                    RoundedCornerShape(4.dp),
+                )
+                .clickable(
+                    interactionSource = headerClickSrc,
+                    indication = null,
+                    onClick = { onToggle(section) },
+                )
+                .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -285,7 +298,11 @@ internal fun SidebarSection(
                 text = title,
                 modifier = Modifier.weight(1f),
                 fontSize = 11.sp,
-                color = LocalOnyxPalette.current.mutedForeground,
+                color = if (headerHovered) {
+                    LocalOnyxPalette.current.foreground
+                } else {
+                    LocalOnyxPalette.current.mutedForeground
+                },
                 fontWeight = FontWeight.Medium,
             )
             if (actionIcon != null && onAction != null) {
@@ -348,12 +365,12 @@ internal fun SidebarLocationItem(
             .background(
                 when {
                     selected -> LocalOnyxPalette.current.selectionBackground
-                    isHovered -> LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.28f)
+                    isHovered -> LocalOnyxPalette.current.rowHoverBackground
                     else -> Color.Transparent
                 },
                 RoundedCornerShape(4.dp),
             )
-            .clickable(onClick = onOpen)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onOpen)
             .padding(horizontal = 6.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -440,12 +457,16 @@ internal fun SidebarTreeItem(
             .background(
                 when {
                     selected -> LocalOnyxPalette.current.selectionBackground
-                    isHovered -> LocalOnyxPalette.current.rowHoverBackground.copy(alpha = 0.24f)
+                    isHovered -> LocalOnyxPalette.current.rowHoverBackground
                     else -> Color.Transparent
                 },
                 RoundedCornerShape(4.dp),
             )
-            .clickable(onClick = { onOpenLocation(node.location) })
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { onOpenLocation(node.location) },
+            )
             .padding(start = (item.depth * 12).dp + 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),

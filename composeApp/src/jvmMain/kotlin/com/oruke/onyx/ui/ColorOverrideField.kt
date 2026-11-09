@@ -104,8 +104,8 @@ internal fun ColorOverrideField(
     val clickSrc = remember { MutableInteractionSource() }
     val rowHovered by hoverSrc.collectIsHoveredAsState()
     val rowBg = when {
-        pickerExpanded -> palette.selectionBackground.copy(alpha = 0.35f)
-        rowHovered -> palette.rowHoverBackground.copy(alpha = 0.28f)
+        pickerExpanded -> palette.selectionBackground.copy(alpha = 0.55f)
+        rowHovered -> palette.rowHoverBackground
         else -> palette.surfaceVariant
     }
     val rowBorder = when {

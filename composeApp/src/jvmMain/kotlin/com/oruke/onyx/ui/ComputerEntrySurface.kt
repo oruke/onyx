@@ -88,6 +88,8 @@ internal fun ComputerEntrySurface(
                 }
             }
             .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
                 onClick = {
                     actions.onActivate()
                     actions.onSelectEntry(id, additive, range)

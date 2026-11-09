@@ -276,8 +276,8 @@ private fun ThemePreviewCardItem(
     val clickSrc = remember { MutableInteractionSource() }
     val hovered by hoverSrc.collectIsHoveredAsState()
     val cardBg = when {
-        selected -> currentPalette.selectionBackground.copy(alpha = 0.45f)
-        hovered -> currentPalette.rowHoverBackground.copy(alpha = 0.28f)
+        selected -> currentPalette.selectionBackground.copy(alpha = 0.55f)
+        hovered -> currentPalette.rowHoverBackground
         else -> currentPalette.surfaceVariant
     }
     val borderColor = when {

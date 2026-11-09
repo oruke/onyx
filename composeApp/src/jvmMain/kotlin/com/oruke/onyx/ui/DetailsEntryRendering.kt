@@ -77,20 +77,26 @@ internal data class FlattenedEntry(
 )
 
 /**
- * 计算详情行的放置目标、选中或斑马纹背景。
+ * 计算详情行的放置目标、选中、悬停或斑马纹背景。
  *
  * @param state 详情行显示状态。
+ * @param hovered 当前鼠标是否悬停在该行上。
  * @return 当前应展示的背景色。
  */
 @Composable
-internal fun entryRowBackground(state: EntryRowState): Color {
+internal fun entryRowBackground(
+    state: EntryRowState,
+    hovered: Boolean = false,
+): Color {
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
     val labelBackground = state.labelStyle?.backgroundColorArgb
     return when {
         state.fileDropTarget?.directoryEntryId == state.entry.id -> palette.rowHoverBackground
         state.selected && state.paneActive -> appearance.selectionBackground ?: palette.selectionBackground
+        state.selected && hovered -> palette.rowHoverBackground
         state.selected -> appearance.inactiveSelectionBackground ?: palette.inactiveSelectionBackground
+        hovered -> palette.rowHoverBackground
         labelBackground != null -> Color(labelBackground)
         state.zebra && appearance.zebraStripeEnabled -> appearance.zebraStripeColor ?: palette.surfaceVariant
         else -> Color.Transparent
