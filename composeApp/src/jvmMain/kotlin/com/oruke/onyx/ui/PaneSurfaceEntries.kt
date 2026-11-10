@@ -26,6 +26,7 @@ import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.windowBounds
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import com.oruke.onyx.core.model.UserCommandPlacement
@@ -70,6 +71,13 @@ private fun PaneEntriesArea(
     modifier: Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
+    val entriesBackground = when {
+        paneDropBackground != Color.Transparent -> paneDropBackground
+        appearance.fileListBackground != null -> appearance.fileListBackground
+        else -> palette.surface
+    }
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -84,7 +92,7 @@ private fun PaneEntriesArea(
                     )
                 )
             }
-            .background(LocalOnyxAppearance.current.fileListBackground ?: paneDropBackground)
+            .background(entriesBackground)
             .clickable(
                 indication = null,
                 interactionSource = interactionSource,
@@ -99,6 +107,9 @@ private fun PaneEntriesArea(
             actions = runtime.toPaneEntriesActions(readyEntries),
             thumbnails = runtime.toGalleryThumbnailServices(),
         )
+        if (runtime.state.activeTabState.refreshing && runtime.state.entriesState is PaneEntriesState.Ready) {
+            OnyxIndeterminateProgressBar(modifier = Modifier.align(Alignment.TopStart))
+        }
         PaneFilterOverlay(runtime)
         PaneContextMenuOverlay(runtime, readyEntries)
     }

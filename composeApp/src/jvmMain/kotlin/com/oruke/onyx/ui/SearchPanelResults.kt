@@ -176,7 +176,9 @@ private fun SearchResultsEmptyState(state: SearchPanelState) {
         modifier = Modifier.fillMaxSize().background(palette.appBackground).testTag("search-results"),
         contentAlignment = Alignment.Center,
     ) {
-        if (message.isNotEmpty()) {
+        if (state.status == SearchStatus.RUNNING) {
+            OnyxCenteredLoadingArea(text = message)
+        } else if (message.isNotEmpty()) {
             Text(
                 text = message,
                 color = if (state.status == SearchStatus.FAILED) {

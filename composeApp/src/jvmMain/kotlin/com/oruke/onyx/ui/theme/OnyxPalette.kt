@@ -6,8 +6,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -115,7 +115,7 @@ data class OnyxPalette(
     val inactiveSelectionBackground: Color,
 )
 
-val LocalOnyxPalette = staticCompositionLocalOf<OnyxPalette> {
+val LocalOnyxPalette = compositionLocalOf<OnyxPalette> {
     error("No OnyxPalette provided. Wrap your content in OnyxTheme.")
 }
 

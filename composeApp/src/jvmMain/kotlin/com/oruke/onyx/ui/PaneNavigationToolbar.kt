@@ -18,10 +18,13 @@ import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.oruke.onyx.app.component.ComputerEntriesState
 import com.oruke.onyx.app.component.PaneCommand
+import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
@@ -193,12 +196,24 @@ private fun PaneViewButtons(runtime: PaneSurfaceRuntime) {
         Icon(AllIconsKeys.Actions.Find, stringResource(Res.string.action_filter))
     }
     Spacer(modifier = Modifier.width(4.dp))
+    val isRefreshingOrLoading = runtime.state.activeTabState.refreshing ||
+        runtime.state.entriesState is PaneEntriesState.Loading ||
+        (runtime.state.entriesState as? ComputerEntriesState)?.loading == true
+    val refreshRotation = rememberLoadingIconRotation(isRefreshingOrLoading)
     ToolbarIconButton(
         enabled = true,
         onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.REFRESH) },
         tooltip = stringResource(Res.string.action_refresh_active),
     ) {
-        Icon(AllIconsKeys.Actions.Refresh, stringResource(Res.string.action_refresh_active))
+        Icon(
+            key = AllIconsKeys.Actions.Refresh,
+            contentDescription = stringResource(Res.string.action_refresh_active),
+            modifier = if (refreshRotation != 0f) {
+                Modifier.graphicsLayer { rotationZ = refreshRotation }
+            } else {
+                Modifier
+            },
+        )
     }
     ToolbarIconButton(
         enabled = true,

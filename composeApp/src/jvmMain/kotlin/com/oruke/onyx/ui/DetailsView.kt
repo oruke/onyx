@@ -116,7 +116,6 @@ import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.horizontalResizePointerIcon
 import com.oruke.onyx.ui.theme.orEmpty
-import com.oruke.onyx.ui.theme.resolve
 import com.oruke.onyx.ui.theme.sortHint
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.visibleDetailsColumns
@@ -129,9 +128,7 @@ import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_directory_badge
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_empty_directory_hint
-import onyx.composeapp.generated.resources.label_error_prefix
 import onyx.composeapp.generated.resources.label_column_visibility
-import onyx.composeapp.generated.resources.label_loading_entries
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -354,8 +351,8 @@ internal fun PaneEntriesContent(
 ) {
     when (val entriesState = model.entriesState) {
         is com.oruke.onyx.app.component.ComputerEntriesState -> ComputerEntriesView(model, actions, entriesState)
-        PaneEntriesState.Idle, PaneEntriesState.Loading -> PaneEntriesLoading()
-        is PaneEntriesState.Failure -> PaneEntriesFailure(entriesState)
+        PaneEntriesState.Idle, PaneEntriesState.Loading -> PaneEntriesLoading(model, actions)
+        is PaneEntriesState.Failure -> PaneEntriesFailure(model, actions, entriesState)
 
         is PaneEntriesState.Ready -> {
             androidx.compose.runtime.key(model.tabId, model.browserState.visitId, model.viewMode) {
@@ -880,41 +877,6 @@ private class EntryRowInteractionState {
             kotlinx.coroutines.delay(FILE_ENTRY_RENAME_DELAY_MILLIS)
             onBeginRename()
         }
-    }
-}
-
-/** 显示文件列表加载状态。 */
-@Composable
-private fun PaneEntriesLoading() {
-    Box(
-        modifier = Modifier.fillMaxSize().padding(12.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text(
-            text = stringResource(Res.string.label_loading_entries),
-            color = LocalOnyxPalette.current.mutedForeground,
-            fontSize = 12.sp,
-        )
-    }
-}
-
-/**
- * 显示文件列表加载失败状态。
- *
- * @param state 加载失败状态。
- */
-@Composable
-private fun PaneEntriesFailure(state: PaneEntriesState.Failure) {
-    val message = buildString {
-        append(stringResource(Res.string.label_error_prefix))
-        append(' ')
-        append(state.error.detail?.resolve().orEmpty())
-    }.trim()
-    Box(
-        modifier = Modifier.fillMaxSize().padding(12.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Text(message, color = LocalOnyxPalette.current.foreground, fontSize = 12.sp)
     }
 }
 

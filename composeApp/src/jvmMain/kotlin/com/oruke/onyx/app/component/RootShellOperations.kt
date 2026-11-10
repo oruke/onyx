@@ -7,6 +7,18 @@ import com.oruke.onyx.core.model.SidebarSectionKey
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 
 /**
+ * 当前生效的视觉与展示设置：当设置窗口处于打开状态时实时返回未提交的草稿，使主窗口与各附属视图同步预览；
+ * 关闭或取消设置窗口时自动回退至已持久化的 [RootState.settings]。
+ */
+internal val RootState.effectiveSettings: OnyxSettings
+    get() = (dialogState as? RootDialogState.Settings)?.draft ?: settings
+
+/** 立即将当前各状态流快照同步到公开根状态，避免多层 combine 异步通道延迟导致首帧主题或对话框状态不同步。 */
+internal fun DefaultRootComponent.syncImmediateRootState() {
+    mutableState.value = initialRootState()
+}
+
+/**
  * 切换布局，单栏模式同时激活唯一可见的主面板。
  * @param mode 新布局模式。
  */
@@ -14,22 +26,26 @@ internal fun DefaultRootComponent.setLayoutMode(mode: PaneLayoutMode) {
     layoutMode.value = mode
     // 单栏只渲染主面板，不能让视图切换和快捷键继续作用于已隐藏的次面板。
     if (mode == PaneLayoutMode.SINGLE) activePane.value = PaneId.PRIMARY
+    syncImmediateRootState()
 }
 
 /** @param fraction 新面板分割比例。 */
 internal fun DefaultRootComponent.setPaneSplitFraction(fraction: Float) {
     paneSplitFraction.value = fraction.coerceIn(MIN_PANE_SPLIT_FRACTION, MAX_PANE_SPLIT_FRACTION)
+    syncImmediateRootState()
 }
 
 /** 打开设置对话框。 */
 internal fun DefaultRootComponent.openSettings() {
     dialogState.value = RootDialogState.Settings(settings.value)
+    syncImmediateRootState()
 }
 
 /** @param draft 最新设置草稿。 */
 internal fun DefaultRootComponent.updateSettingsDraft(draft: OnyxSettings) {
     val currentDialog = dialogState.value as? RootDialogState.Settings ?: return
     dialogState.value = currentDialog.copy(draft = draft)
+    syncImmediateRootState()
 }
 
 /** 清理设置草稿中已经失效的位置。 */
@@ -38,11 +54,13 @@ internal fun DefaultRootComponent.cleanupInvalidLocations() {
     dialogState.value = currentDialog.copy(
         draft = currentDialog.draft.cleanupInvalidLocations(pathService::isLocationAvailable),
     )
+    syncImmediateRootState()
 }
 
 /** @param paneId 待激活面板。 */
 internal fun DefaultRootComponent.activatePane(paneId: PaneId) {
     activePane.value = paneId
+    syncImmediateRootState()
 }
 
 /** @param currentSettings 待同步到排序器与新建标签默认值的设置。 */
@@ -70,6 +88,7 @@ internal fun DefaultRootComponent.updateSettings(nextSettings: OnyxSettings) {
         // 恢复失败时禁止默认状态自动落盘；用户明确修改设置后才恢复持久化。
         persistenceReady = true
     }
+    syncImmediateRootState()
 }
 
 /** @param location 待打开 VFS 位置。 */
@@ -148,6 +167,7 @@ internal fun DefaultRootComponent.refreshActivePane() {
 /** 切换右侧预览面板可见性。 */
 internal fun DefaultRootComponent.togglePreviewPane() {
     showPreviewPane.value = !showPreviewPane.value
+    syncImmediateRootState()
 }
 
 /** @param paneId 新建目录目标面板。 */
@@ -186,6 +206,7 @@ internal fun DefaultRootComponent.dismissDialog() {
     fileTransferDelegate.clearPending()
     archiveActionDelegate.clearPending()
     dialogState.value = null
+    syncImmediateRootState()
 }
 
 /**

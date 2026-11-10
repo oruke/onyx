@@ -39,6 +39,7 @@ import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.app.component.RootLaunchConfiguration
+import com.oruke.onyx.app.component.effectiveSettings
 import com.oruke.onyx.app.component.findVisibleEntry
 import com.oruke.onyx.app.component.rememberRootApplicationRuntime
 import com.oruke.onyx.app.component.rememberRootComponent
@@ -85,6 +86,7 @@ import com.oruke.onyx.ui.theme.dropIndex
 import com.oruke.onyx.ui.theme.paneState
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
 import com.oruke.onyx.ui.theme.rememberOnyxPalette
+import com.oruke.onyx.ui.theme.resolveEffectiveDarkTheme
 import com.oruke.onyx.ui.theme.toIntOffset
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.Orientation
@@ -102,12 +104,13 @@ internal fun DecoratedWindowScope.WindowApp(
 ) {
     // rootComponent 由 main.kt 在 application 级别创建并传入
     val state by rootComponent.state.collectAsState()
+    val visualSettings = state.effectiveSettings
     val palette = rememberOnyxPalette(
-        themeMode = state.settings.themeMode,
-        themePreset = state.settings.themePreset,
-        themeColors = state.settings.themeColors,
+        themeMode = visualSettings.themeMode,
+        themePreset = visualSettings.themePreset,
+        themeColors = visualSettings.themeColors,
     )
-    val appearance = rememberOnyxAppearance(state.settings)
+    val appearance = rememberOnyxAppearance(visualSettings)
     var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
     val onUiScaleChange: (Int) -> Unit = { value ->
         rootComponent.dispatch(
@@ -131,7 +134,7 @@ internal fun DecoratedWindowScope.WindowApp(
             TitleBarContent(
                 rootComponent = rootComponent,
                 layoutMode = state.layoutMode,
-                uiScale = state.settings.uiScale,
+                uiScale = visualSettings.uiScale,
                 onUiScaleChange = onUiScaleChange,
                 onToggleSidebar = {
                     rootComponent.dispatch(
@@ -165,11 +168,11 @@ internal fun DecoratedWindowScope.WindowApp(
             label = "workspaceEntranceScale",
         )
         OnyxTheme(
-            uiScale = state.settings.uiScale,
+            uiScale = visualSettings.uiScale,
             appearance = appearance,
-            themeMode = state.settings.themeMode,
-            themePreset = state.settings.themePreset,
-            themeColors = state.settings.themeColors,
+            themeMode = visualSettings.themeMode,
+            themePreset = visualSettings.themePreset,
+            themeColors = visualSettings.themeColors,
         ) {
             Box(
                 modifier = Modifier
@@ -226,16 +229,18 @@ internal fun App(
     externalFileDragService: ExternalFileDragService,
 ) {
     val state by rootComponent.state.collectAsState()
-    val appearance = rememberOnyxAppearance(state.settings)
+    val visualSettings = state.effectiveSettings
+    val appearance = rememberOnyxAppearance(visualSettings)
+    val isDark = resolveEffectiveDarkTheme(visualSettings.themeMode, isSystemInDarkTheme())
 
-    IntUiTheme(isDark = isSystemInDarkTheme()) {
+    IntUiTheme(isDark = isDark) {
         OnyxLocaleEnvironment(rootComponent.resourceLocale) {
             OnyxTheme(
-                uiScale = state.settings.uiScale,
+                uiScale = visualSettings.uiScale,
                 appearance = appearance,
-                themeMode = state.settings.themeMode,
-                themePreset = state.settings.themePreset,
-                themeColors = state.settings.themeColors,
+                themeMode = visualSettings.themeMode,
+                themePreset = visualSettings.themePreset,
+                themeColors = visualSettings.themeColors,
             ) {
                 AppContent(
                     rootComponent = rootComponent,
@@ -385,18 +390,19 @@ private fun AppSidebar(
     rootComponent: RootComponent,
     onToggleFavoriteLocation: (String) -> Unit,
 ) {
-    if (!state.settings.sidebarVisible) return
+    val visualSettings = state.effectiveSettings
+    if (!visualSettings.sidebarVisible) return
     val dispatch = rootComponent::dispatch
     PaneSidebar(
         state = PaneSidebarState(
             location = state.paneState(state.activePane).location,
             systemQuickAccessLocations = state.systemQuickAccessLocations,
-            favoriteLocations = state.settings.favoriteLocations,
-            recentLocations = state.settings.recentLocations,
-            remoteConnections = state.settings.remoteConnections,
+            favoriteLocations = visualSettings.favoriteLocations,
+            recentLocations = visualSettings.recentLocations,
+            remoteConnections = visualSettings.remoteConnections,
             treeState = state.sidebarTreeState,
-            showTree = state.settings.sidebarTreeVisible,
-            collapsedSections = state.settings.collapsedSidebarSections,
+            showTree = visualSettings.sidebarTreeVisible,
+            collapsedSections = visualSettings.collapsedSidebarSections,
         ),
         actions = PaneSidebarActions(
             locationLabel = rootComponent::locationLabel,
@@ -574,7 +580,7 @@ private fun AppQuickOpenOverlay(state: RootState, rootComponent: RootComponent) 
  */
 @Composable
 private fun AppStatusBar(state: RootState, rootComponent: RootComponent) {
-    if (!state.settings.statusBarVisible) return
+    if (!state.effectiveSettings.statusBarVisible) return
     val paneComponent = when (state.activePane) {
         PaneId.PRIMARY -> rootComponent.primaryPane
         PaneId.SECONDARY -> rootComponent.secondaryPane

@@ -479,7 +479,7 @@ internal fun SidebarTreeItem(
         ) {
             when {
                 node.loadState == SidebarTreeNodeLoadState.LOADING -> {
-                    Text(text = "…", fontSize = 10.sp, color = LocalOnyxPalette.current.disabledForeground)
+                    OnyxLoadingSpinner(size = 10.dp, strokeWidth = 1.4.dp)
                 }
 
                 showExpander -> {

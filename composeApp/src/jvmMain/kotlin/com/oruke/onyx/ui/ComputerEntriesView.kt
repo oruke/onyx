@@ -51,7 +51,7 @@ internal fun ComputerEntriesView(
         }
         when {
             state.loading && state.devices.isEmpty() && state.visiblePlaces.isEmpty() ->
-                ComputerSectionLabel(stringResource(Res.string.label_storage_loading))
+                OnyxCenteredLoadingArea(stringResource(Res.string.label_storage_loading))
 
             state.visibleDevices.isEmpty() && state.visiblePlaces.isEmpty() ->
                 ComputerSectionLabel(stringResource(Res.string.label_storage_empty))

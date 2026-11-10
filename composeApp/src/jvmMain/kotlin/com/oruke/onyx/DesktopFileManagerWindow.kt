@@ -1,5 +1,6 @@
 package com.oruke.onyx
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -21,6 +22,7 @@ import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootLaunchConfiguration
 import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.SessionRestoreState
+import com.oruke.onyx.app.component.effectiveSettings
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.app.platform.DesktopFileManagerWindowRequest
 import com.oruke.onyx.app.platform.ExternalFileDragService
@@ -34,13 +36,24 @@ import com.oruke.onyx.ui.searchWindowActions
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.rememberOnyxAppearance
+import com.oruke.onyx.ui.theme.resolveEffectiveDarkTheme
 import java.awt.Dimension
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.onyx_logo
 import onyx.composeapp.generated.resources.window_image_viewer_title
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import org.jetbrains.jewel.foundation.theme.JewelTheme
+import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
+import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
+import org.jetbrains.jewel.intui.standalone.theme.default
+import org.jetbrains.jewel.intui.standalone.theme.lightThemeDefinition
+import org.jetbrains.jewel.intui.window.decoratedWindow
+import org.jetbrains.jewel.intui.window.styling.dark
+import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
+import org.jetbrains.jewel.ui.ComponentStyling
 import org.jetbrains.jewel.window.DecoratedWindow
+import org.jetbrains.jewel.window.styling.TitleBarStyle
 import org.koin.compose.getKoin
 
 /** 文件管理器窗口允许缩放到的最小宽度，单位为物理像素。 */
@@ -96,6 +109,7 @@ internal fun DesktopFileManagerWindow(
     // 必须先恢复持久化尺寸再创建原生窗口，否则 Windows 会先绘制默认尺寸并产生可见缩放。
     if (state.sessionRestoreState is SessionRestoreState.Loading) return
 
+    val visualSettings = state.effectiveSettings
     val windowStates = rememberDesktopWindowStates(
         settings = state.settings,
         persistMainWindowSize = request.persistsMainSession,
@@ -107,80 +121,98 @@ internal fun DesktopFileManagerWindow(
     )
     val windowIcon = rememberOnyxWindowIconPainter()
 
-    DecoratedWindow(
-        onCloseRequest = { onCloseRequest(request.id) },
-        visible = request.visible,
-        title = "Onyx ${BuildConfig.VERSION}",
-        icon = windowIcon,
-        state = windowStates.main,
-    ) {
-        window.minimumSize = Dimension(FILE_MANAGER_WINDOW_MIN_WIDTH, FILE_MANAGER_WINDOW_MIN_HEIGHT)
-        DisposableEffect(window, request.id) {
-            OnyxLogger.info(
-                "Startup",
-                "主窗口已创建 (id=${request.id}, visible=${request.visible}, " +
-                    "size=${window.width}x${window.height}, " +
-                    "extendedState=${window.extendedState}, elapsed=${startupElapsedMillis()}ms)",
-            )
-            onDispose {}
-        }
-        ObserveResidentWindowLifecycle(
-            window = window,
-            windowState = windowStates.main,
-            request = request,
-            rootComponent = rootComponent,
-            onConsumePendingOpenLocation = onConsumePendingOpenLocation,
-        )
-        DisposableEffect(window, externalFileDragService) {
-            externalFileDragService.install(window)
-            onDispose(externalFileDragService::uninstall)
-        }
-        OnyxLocaleEnvironment(applicationRuntime.resourceLocale) {
-            WindowApp(rootComponent, externalFileDragService)
-        }
-    }
-
-    SearchWindow(
-        state = state.searchState,
-        presentation = SearchPanelPresentation(state.settings.searchHistory, rootComponent::locationLabel),
-        actions = rootComponent.searchWindowActions(),
-        settings = state.settings,
-        resourceLocale = applicationRuntime.resourceLocale,
-        onWindowSizeChanged = { width, height, maximized ->
-            rootComponent.dispatch(RootIntent.UpdateWindowSize(RootWindowKind.SEARCH, width, height, maximized))
-        },
-    )
-
-    if (imageViewerState.visible) {
-        Window(
-            onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
-            title = imageViewerState.currentFile?.name ?: stringResource(Res.string.window_image_viewer_title),
+    DesktopWindowThemeScope(visualSettings.themeMode) {
+        DecoratedWindow(
+            onCloseRequest = { onCloseRequest(request.id) },
+            visible = request.visible,
+            title = "Onyx ${BuildConfig.VERSION}",
             icon = windowIcon,
-            state = windowStates.imageViewer,
+            state = windowStates.main,
         ) {
-            window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
-            val appearance = rememberOnyxAppearance(state.settings)
-            OnyxTheme(
-                uiScale = state.settings.uiScale,
-                appearance = appearance,
-                themeMode = state.settings.themeMode,
-                themePreset = state.settings.themePreset,
-                themeColors = state.settings.themeColors,
-            ) {
-                ImageViewerContent(
-                    state = imageViewerState,
-                    onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
-                    onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
-                    onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
-                    onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
-                    onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
-                    onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
-                    loadThumbnail = rootComponent::loadThumbnail,
-                    readImageSize = rootComponent::readImageSize,
+            window.minimumSize = Dimension(FILE_MANAGER_WINDOW_MIN_WIDTH, FILE_MANAGER_WINDOW_MIN_HEIGHT)
+            DisposableEffect(window, request.id) {
+                OnyxLogger.info(
+                    "Startup",
+                    "主窗口已创建 (id=${request.id}, visible=${request.visible}, " +
+                        "size=${window.width}x${window.height}, " +
+                        "extendedState=${window.extendedState}, elapsed=${startupElapsedMillis()}ms)",
                 )
+                onDispose {}
+            }
+            ObserveResidentWindowLifecycle(
+                window = window,
+                windowState = windowStates.main,
+                request = request,
+                rootComponent = rootComponent,
+                onConsumePendingOpenLocation = onConsumePendingOpenLocation,
+            )
+            DisposableEffect(window, externalFileDragService) {
+                externalFileDragService.install(window)
+                onDispose(externalFileDragService::uninstall)
+            }
+            OnyxLocaleEnvironment(applicationRuntime.resourceLocale) {
+                WindowApp(rootComponent, externalFileDragService)
+            }
+        }
+
+        SearchWindow(
+            state = state.searchState,
+            presentation = SearchPanelPresentation(visualSettings.searchHistory, rootComponent::locationLabel),
+            actions = rootComponent.searchWindowActions(),
+            settings = visualSettings,
+            resourceLocale = applicationRuntime.resourceLocale,
+            onWindowSizeChanged = { width, height, maximized ->
+                rootComponent.dispatch(RootIntent.UpdateWindowSize(RootWindowKind.SEARCH, width, height, maximized))
+            },
+        )
+
+        if (imageViewerState.visible) {
+            Window(
+                onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
+                title = imageViewerState.currentFile?.name ?: stringResource(Res.string.window_image_viewer_title),
+                icon = windowIcon,
+                state = windowStates.imageViewer,
+            ) {
+                window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
+                val appearance = rememberOnyxAppearance(visualSettings)
+                OnyxTheme(
+                    uiScale = visualSettings.uiScale,
+                    appearance = appearance,
+                    themeMode = visualSettings.themeMode,
+                    themePreset = visualSettings.themePreset,
+                    themeColors = visualSettings.themeColors,
+                ) {
+                    ImageViewerContent(
+                        state = imageViewerState,
+                        onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
+                        onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
+                        onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
+                        onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
+                        onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
+                        onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
+                        loadThumbnail = rootComponent::loadThumbnail,
+                        readImageSize = rootComponent::readImageSize,
+                    )
+                }
             }
         }
     }
+}
+
+/**
+ * 按当前窗口生效主题模式装配 Jewel 窗口主题与原生标题栏样式。
+ */
+@Composable
+private fun DesktopWindowThemeScope(
+    themeMode: com.oruke.onyx.core.model.OnyxThemeMode,
+    content: @Composable () -> Unit,
+) {
+    val isDark = resolveEffectiveDarkTheme(themeMode, isSystemInDarkTheme())
+    val windowTheme = if (isDark) JewelTheme.darkThemeDefinition() else JewelTheme.lightThemeDefinition()
+    val windowStyling = ComponentStyling.default().decoratedWindow(
+        titleBarStyle = if (isDark) TitleBarStyle.dark() else TitleBarStyle.lightWithLightHeader(),
+    )
+    IntUiTheme(theme = windowTheme, styling = windowStyling, content = content)
 }
 
 /**

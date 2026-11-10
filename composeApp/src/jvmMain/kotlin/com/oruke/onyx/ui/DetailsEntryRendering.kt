@@ -152,11 +152,7 @@ internal fun EntryNameCell(
             contentAlignment = Alignment.Center,
         ) {
             when {
-                state.isExpandLoading -> Text(
-                    "…",
-                    fontSize = 10.sp,
-                    color = LocalOnyxPalette.current.disabledForeground,
-                )
+                state.isExpandLoading -> OnyxLoadingSpinner(size = 10.dp, strokeWidth = 1.4.dp)
 
                 state.isExpandable -> Icon(
                     key = if (state.isExpanded) AllIconsKeys.General.ArrowDown else AllIconsKeys.General.ArrowRight,

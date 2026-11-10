@@ -2,12 +2,17 @@
 
 package com.oruke.onyx
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performMouseInput
@@ -210,6 +215,63 @@ class HoverVisibilityUiTest {
                     countMatchingPixels(galleryLightImg, lightPalette.rowHoverBackground) > 400,
                     "Expected hovered gallery tile in Light mode to render rowHoverBackground pixels",
                 )
+
+                // 6. 验证设置窗口草稿实时预览与首次应用深色模式文件列表即时生效（无需二次应用）
+                runOnUiThread {
+                    root.primaryPane.dispatch(PaneIntent.SetViewMode(ViewMode.DETAILS))
+                    root.dispatch(RootIntent.OpenSettings)
+                    root.dispatch(
+                        RootIntent.UpdateSettingsDraft(
+                            root.state.value.settings.copy(
+                                themeMode = OnyxThemeMode.DARK,
+                                themePreset = OnyxThemePreset.DEFAULT,
+                            ),
+                        ),
+                    )
+                }
+                waitForIdle()
+                val livePreviewDarkImg = onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage()
+                ImageIO.write(livePreviewDarkImg, "png", File(reportDir, "visual-live-preview-main-dark.png"))
+                assertTrue(
+                    countMatchingPixels(livePreviewDarkImg, darkPalette.surface) > 20_000,
+                    "Main window file list must live-preview Dark surface while Settings draft is edited",
+                )
+                assertTrue(
+                    countMatchingPixels(livePreviewDarkImg, darkPalette.surfaceVariant) > 2_000,
+                    "Main window file list zebra stripes must live-preview Dark surfaceVariant",
+                )
+
+                // 关闭设置且未点击应用时自动回退到浅色模式
+                runOnUiThread {
+                    root.dispatch(RootIntent.DismissDialog)
+                }
+                waitForIdle()
+                val revertedLightImg = onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage()
+                assertTrue(
+                    countMatchingPixels(revertedLightImg, lightPalette.surface) > 20_000,
+                    "Main window file list must revert to Light surface when Settings is dismissed without applying",
+                )
+
+                // 首次点击应用深色模式，文件列表在第一次应用时即刻完整切换为深色
+                runOnUiThread {
+                    root.dispatch(RootIntent.OpenSettings)
+                    root.dispatch(
+                        RootIntent.UpdateSettingsDraft(
+                            root.state.value.settings.copy(
+                                themeMode = OnyxThemeMode.DARK,
+                                themePreset = OnyxThemePreset.DEFAULT,
+                            ),
+                        ),
+                    )
+                    root.dispatch(RootIntent.ConfirmDialog)
+                }
+                waitForIdle()
+                val firstApplyDarkImg = onAllNodes(isRoot()).onFirst().captureToImage().toAwtImage()
+                ImageIO.write(firstApplyDarkImg, "png", File(reportDir, "visual-first-apply-main-dark.png"))
+                assertTrue(
+                    countMatchingPixels(firstApplyDarkImg, darkPalette.surface) > 20_000,
+                    "File list must switch to Dark surface on the FIRST apply",
+                )
             } finally {
                 mainClock.autoAdvance = false
                 setContent { }
@@ -217,6 +279,86 @@ class HoverVisibilityUiTest {
                 Files.walk(sample).use { paths ->
                     paths.sorted(Comparator.reverseOrder()).forEach(Files::delete)
                 }
+            }
+        }
+
+    @Test
+    fun loadingLayoutAndAnimationRenderCleanlyInDetailsAndGallery() =
+        runDesktopComposeUiTest(width = 1100, height = 680) {
+            val reportDir = File("build/reports").apply { mkdirs() }
+            var viewMode = androidx.compose.runtime.mutableStateOf(ViewMode.DETAILS)
+            val darkSettings = com.oruke.onyx.core.model.OnyxSettings(
+                themeMode = OnyxThemeMode.DARK,
+                themePreset = OnyxThemePreset.DEFAULT,
+            )
+            val dummyActions = com.oruke.onyx.ui.PaneEntriesActions(
+                onActivate = {},
+                onOpenEntry = {},
+                onToggleSort = {},
+                onResizeColumn = { _, _ -> },
+                onToggleColumnVisibility = {},
+                onSelectEntry = { _, _, _ -> },
+                onStartFileDrag = { _, _ -> },
+                onFileDragPositionChange = {},
+                onFileDragEnd = {},
+                onFileDropZoneChange = {},
+                onShowContextMenu = { _, _, _ -> },
+                onDismissContextMenu = {},
+                onUpdateInlineEditDraft = {},
+                onConfirmInlineEdit = {},
+                onCancelInlineEdit = {},
+            )
+            try {
+                setContent {
+                    com.oruke.onyx.ui.theme.OnyxWindowTheme(settings = darkSettings) {
+                        val palette = com.oruke.onyx.ui.theme.LocalOnyxPalette.current
+                        androidx.compose.foundation.layout.Box(
+                            modifier = androidx.compose.ui.Modifier
+                                .fillMaxSize()
+                                .background(palette.surface),
+                        ) {
+                            com.oruke.onyx.ui.PaneEntriesLoading(
+                                model = com.oruke.onyx.ui.PaneEntriesViewModel(
+                                    viewMode = viewMode.value,
+                                    columns = com.oruke.onyx.core.model.DetailsColumn.entries,
+                                    columnWeights = com.oruke.onyx.app.component.defaultDetailsColumnWeights(),
+                                    hiddenColumns = emptySet(),
+                                    sort = com.oruke.onyx.core.model.DetailsSort(
+                                        column = com.oruke.onyx.core.model.DetailsColumn.NAME,
+                                        direction = com.oruke.onyx.core.model.SortDirection.ASCENDING,
+                                    ),
+                                    selectedEntryIds = emptySet(),
+                                    entriesState = PaneEntriesState.Loading,
+                                    paneActive = true,
+                                    contextMenuVisible = false,
+                                    paneId = com.oruke.onyx.core.model.PaneId.PRIMARY,
+                                    fileDropTarget = null,
+                                    inlineEditState = null,
+                                    galleryItemSizeDp = 140,
+                                ),
+                                actions = dummyActions,
+                            )
+                        }
+                    }
+                }
+                waitForIdle()
+                onNodeWithTag("pane-entries-loading-PRIMARY", useUnmergedTree = true).assertIsDisplayed()
+                // 验证加载状态下详情表头保持固定可见，且加载胶囊水平居中（不再贴在最左侧）
+                val containerBounds = onNodeWithTag("pane-entries-loading-PRIMARY", useUnmergedTree = true)
+                    .fetchSemanticsNode().boundsInRoot
+                assertTrue(containerBounds.width > 800f)
+
+                val loadingDetailsImg = onRoot().captureToImage().toAwtImage()
+                ImageIO.write(loadingDetailsImg, "png", File(reportDir, "visual-loading-details-dark.png"))
+
+                runOnUiThread { viewMode.value = ViewMode.GALLERY }
+                waitForIdle()
+                val loadingGalleryImg = onRoot().captureToImage().toAwtImage()
+                ImageIO.write(loadingGalleryImg, "png", File(reportDir, "visual-loading-gallery-dark.png"))
+            } finally {
+                mainClock.autoAdvance = false
+                setContent { }
+                waitForIdle()
             }
         }
 
