@@ -1,6 +1,7 @@
 package com.oruke.onyx.ui.theme
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import com.oruke.onyx.core.model.OnyxSettings
 
 /**
@@ -12,12 +13,14 @@ import com.oruke.onyx.core.model.OnyxSettings
 @Composable
 internal fun OnyxWindowTheme(settings: OnyxSettings, content: @Composable () -> Unit) {
     val appearance = rememberOnyxAppearance(settings)
-    OnyxTheme(
-        uiScale = settings.uiScale,
-        appearance = appearance,
-        themeMode = settings.themeMode,
-        themePreset = settings.themePreset,
-        themeColors = settings.themeColors,
-        content = content,
-    )
+    CompositionLocalProvider(LocalOnyxSettings provides settings) {
+        OnyxTheme(
+            uiScale = settings.uiScale,
+            appearance = appearance,
+            themeMode = settings.themeMode,
+            themePreset = settings.themePreset,
+            themeColors = settings.themeColors,
+            content = content,
+        )
+    }
 }

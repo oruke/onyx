@@ -2,7 +2,6 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,13 +36,11 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.CreateDirectoriesDialogError
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
@@ -71,19 +68,6 @@ internal fun CreateDirectoriesDialog(
             )
         )
     }
-    val inputTextStyle = TextStyle(
-        fontSize = 12.sp,
-        lineHeight = 17.sp,
-        color = LocalOnyxPalette.current.foreground,
-        textAlign = androidx.compose.ui.text.style.TextAlign.Start,
-        textDirection = androidx.compose.ui.text.style.TextDirection.Ltr,
-        fontFamily = FontFamily.Monospace,
-    )
-
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
     LaunchedEffect(state.draft) {
         if (state.draft != draftFieldValue.text) {
             draftFieldValue = draftFieldValue.copy(
@@ -93,72 +77,83 @@ internal fun CreateDirectoriesDialog(
         }
     }
 
-    DialogWindow(
+    val title = stringResource(Res.string.label_create_directories_title)
+    OnyxDialogWindow(
         onCloseRequest = onDismiss,
-        title = stringResource(Res.string.label_create_directories_title),
-        state = rememberDialogState(width = 520.dp, height = 360.dp),
+        title = title,
+        state = rememberDialogState(width = 520.dp, height = 350.dp),
+        windowName = "onyx-create-directories",
     ) {
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
-            DialogFrame(
-                title = stringResource(Res.string.label_create_directories_title),
-                body = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = state.location,
-                            fontSize = 11.sp,
-                            color = LocalOnyxPalette.current.mutedForeground,
-                        )
-                        Text(
-                            text = stringResource(Res.string.label_create_directories_description),
-                            fontSize = 12.sp,
-                            color = LocalOnyxPalette.current.foreground,
-                        )
-                        CreateDirectoriesInput(
-                            value = draftFieldValue,
-                            onValueChange = { nextValue ->
-                                draftFieldValue = nextValue
-                                onDraftChange(nextValue.text)
-                            },
-                            focusRequester = focusRequester,
-                            inputScrollState = inputScrollState,
-                            textStyle = inputTextStyle,
-                            onConfirm = onConfirm,
-                            onDismiss = onDismiss,
-                        )
-                        Text(
-                            text = stringResource(
-                                Res.string.label_create_directories_shortcuts,
-                                onyxCommandShortcutHint(OnyxCommand.CreateDirectories).orEmpty(),
-                                onyxCommandShortcutHint(OnyxCommand.CloseMenu).orEmpty(),
-                            ),
-                            fontSize = 11.sp,
-                            color = LocalOnyxPalette.current.mutedForeground,
-                        )
-                        state.error?.let { error ->
-                            Text(
-                                text = when (error) {
-                                    CreateDirectoriesDialogError.EMPTY_INPUT ->
-                                        stringResource(Res.string.label_create_directories_error_empty)
-                                },
-                                fontSize = 11.sp,
-                                color = LocalOnyxPalette.current.error,
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_close_window),
-                        onClick = onDismiss,
-                    )
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_new_directory),
-                        emphasized = true,
-                        onClick = onConfirm,
-                    )
-                },
-            )
+        val inputTextStyle = TextStyle(
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            color = LocalOnyxPalette.current.foreground,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+            textDirection = androidx.compose.ui.text.style.TextDirection.Ltr,
+            fontFamily = FontFamily.Monospace,
+        )
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
         }
+        DialogFrame(
+            title = title,
+            body = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = state.location,
+                        fontSize = 11.sp,
+                        color = LocalOnyxPalette.current.mutedForeground,
+                    )
+                    Text(
+                        text = stringResource(Res.string.label_create_directories_description),
+                        fontSize = 12.sp,
+                        color = LocalOnyxPalette.current.foreground,
+                    )
+                    CreateDirectoriesInput(
+                        value = draftFieldValue,
+                        onValueChange = { nextValue ->
+                            draftFieldValue = nextValue
+                            onDraftChange(nextValue.text)
+                        },
+                        focusRequester = focusRequester,
+                        inputScrollState = inputScrollState,
+                        textStyle = inputTextStyle,
+                        onConfirm = onConfirm,
+                        onDismiss = onDismiss,
+                    )
+                    Text(
+                        text = stringResource(
+                            Res.string.label_create_directories_shortcuts,
+                            onyxCommandShortcutHint(OnyxCommand.CreateDirectories).orEmpty(),
+                            onyxCommandShortcutHint(OnyxCommand.CloseMenu).orEmpty(),
+                        ),
+                        fontSize = 11.sp,
+                        color = LocalOnyxPalette.current.mutedForeground,
+                    )
+                    state.error?.let { error ->
+                        Text(
+                            text = when (error) {
+                                CreateDirectoriesDialogError.EMPTY_INPUT ->
+                                    stringResource(Res.string.label_create_directories_error_empty)
+                            },
+                            fontSize = 11.sp,
+                            color = LocalOnyxPalette.current.error,
+                        )
+                    }
+                }
+            },
+            actions = {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_close_window),
+                    onClick = onDismiss,
+                )
+                DialogTextButton(
+                    text = stringResource(Res.string.action_new_directory),
+                    emphasized = true,
+                    onClick = onConfirm,
+                )
+            },
+        )
     }
 }
 

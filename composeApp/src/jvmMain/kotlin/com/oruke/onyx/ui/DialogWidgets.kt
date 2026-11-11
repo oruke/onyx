@@ -35,6 +35,7 @@ internal fun DialogFrame(
     title: String,
     body: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit,
+    showHeaderTitle: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -43,12 +44,14 @@ internal fun DialogFrame(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = title,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = LocalOnyxPalette.current.foreground,
-        )
+        if (showHeaderTitle) {
+            Text(
+                text = title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalOnyxPalette.current.foreground,
+            )
+        }
         Box(modifier = Modifier.weight(1f, fill = true)) {
             body()
         }

@@ -3,7 +3,6 @@ package com.oruke.onyx.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,7 +33,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.RemoteCredentialsDialogError
 import com.oruke.onyx.app.component.RemoteCredentialsDraft
@@ -42,7 +40,6 @@ import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
@@ -79,43 +76,41 @@ internal fun RemoteCredentialsDialog(
         focusRequester.requestFocus()
     }
 
-    DialogWindow(
+    OnyxDialogWindow(
         onCloseRequest = onDismiss,
         title = title,
         state = rememberDialogState(width = 540.dp, height = 460.dp),
         resizable = true,
+        minimumWidthPx = REMOTE_CREDENTIAL_MIN_WIDTH_PX,
+        minimumHeightPx = REMOTE_CREDENTIAL_MIN_HEIGHT_PX,
+        scaleMinimumSizeWithUi = true,
+        windowName = "onyx-remote-credentials",
     ) {
-        window.minimumSize = java.awt.Dimension(
-            REMOTE_CREDENTIAL_MIN_WIDTH_PX,
-            REMOTE_CREDENTIAL_MIN_HEIGHT_PX,
+        DialogFrame(
+            title = title,
+            body = {
+                RemoteCredentialsBody(
+                    state = state,
+                    scrollState = scrollState,
+                    focusRequester = focusRequester,
+                    onDraftChange = onDraftChange,
+                    onConfirm = onConfirm,
+                    onDismiss = onDismiss,
+                )
+            },
+            actions = {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_close_window),
+                    onClick = onDismiss,
+                )
+                DialogTextButton(
+                    text = stringResource(Res.string.action_confirm),
+                    emphasized = true,
+                    enabled = !state.submitting,
+                    onClick = onConfirm,
+                )
+            },
         )
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
-            DialogFrame(
-                title = title,
-                body = {
-                    RemoteCredentialsBody(
-                        state = state,
-                        scrollState = scrollState,
-                        focusRequester = focusRequester,
-                        onDraftChange = onDraftChange,
-                        onConfirm = onConfirm,
-                        onDismiss = onDismiss,
-                    )
-                },
-                actions = {
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_close_window),
-                        onClick = onDismiss,
-                    )
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_confirm),
-                        emphasized = true,
-                        enabled = !state.submitting,
-                        onClick = onConfirm,
-                    )
-                },
-            )
-        }
     }
 }
 

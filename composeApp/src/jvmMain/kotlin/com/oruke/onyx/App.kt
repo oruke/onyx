@@ -75,6 +75,7 @@ import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.LocalOnyxSettings
 import com.oruke.onyx.ui.theme.LocalTooltipController
 import com.oruke.onyx.ui.theme.OnyxTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
@@ -131,6 +132,7 @@ internal fun DecoratedWindowScope.WindowApp(
         ),
         LocalOnyxPalette provides palette,
         LocalOnyxAppearance provides appearance,
+        LocalOnyxSettings provides visualSettings,
     ) {
         TitleBar(modifier = Modifier.newFullscreenControls()) { _ ->
             TitleBarContent(
@@ -237,18 +239,20 @@ internal fun App(
 
     IntUiTheme(isDark = isDark) {
         OnyxLocaleEnvironment(rootComponent.resourceLocale) {
-            OnyxTheme(
-                uiScale = visualSettings.uiScale,
-                appearance = appearance,
-                themeMode = visualSettings.themeMode,
-                themePreset = visualSettings.themePreset,
-                themeColors = visualSettings.themeColors,
-            ) {
-                AppContent(
-                    rootComponent = rootComponent,
-                    state = state,
-                    externalFileDragService = externalFileDragService,
-                )
+            CompositionLocalProvider(LocalOnyxSettings provides visualSettings) {
+                OnyxTheme(
+                    uiScale = visualSettings.uiScale,
+                    appearance = appearance,
+                    themeMode = visualSettings.themeMode,
+                    themePreset = visualSettings.themePreset,
+                    themeColors = visualSettings.themeColors,
+                ) {
+                    AppContent(
+                        rootComponent = rootComponent,
+                        state = state,
+                        externalFileDragService = externalFileDragService,
+                    )
+                }
             }
         }
     }
@@ -681,7 +685,7 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
         is RootDialogState.BatchRename -> BatchRenameDialog(
             state = dialogState,
             onIntent = dispatch,
-            settings = state.settings,
+            settings = state.effectiveSettings,
             onConfirm = { renames ->
                 dispatch(RootIntent.ExecuteBatchRename(dialogState.paneId, renames))
             },

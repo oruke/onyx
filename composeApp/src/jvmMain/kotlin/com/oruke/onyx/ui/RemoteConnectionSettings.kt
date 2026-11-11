@@ -2,7 +2,6 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -12,7 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import androidx.compose.runtime.Composable
 import com.oruke.onyx.app.component.RemoteConnectionDialogError
@@ -26,7 +24,6 @@ import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.label_remote_connections_title
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 
 /** 网络位置窗口默认宽度。 */
 private const val REMOTE_CONNECTION_DIALOG_WIDTH = 900
@@ -92,50 +89,48 @@ internal fun RemoteConnectionsDialog(
         width = REMOTE_CONNECTION_DIALOG_WIDTH.dp,
         height = REMOTE_CONNECTION_DIALOG_HEIGHT.dp,
     )
-    DialogWindow(
+    OnyxDialogWindow(
         onCloseRequest = onDismiss,
         title = title,
         state = dialogState,
         resizable = true,
+        minimumWidthPx = REMOTE_CONNECTION_DIALOG_MIN_WIDTH,
+        minimumHeightPx = REMOTE_CONNECTION_DIALOG_MIN_HEIGHT,
+        scaleMinimumSizeWithUi = true,
+        windowName = "onyx-remote-connections",
     ) {
-        window.minimumSize = java.awt.Dimension(
-            REMOTE_CONNECTION_DIALOG_MIN_WIDTH,
-            REMOTE_CONNECTION_DIALOG_MIN_HEIGHT,
+        DialogFrame(
+            title = title,
+            body = {
+                val appearance = LocalOnyxAppearance.current
+                val actions = RemoteConnectionUiActions(
+                    onDraftChange = onDraftChange,
+                    onNew = onNew,
+                    onEdit = onEdit,
+                    onSave = onSave,
+                    onTest = onTest,
+                    onDelete = onDelete,
+                    onOpen = onOpen,
+                )
+                RemoteConnectionsSettings(
+                    connections = connections,
+                    connectionDraft = state.remoteConnectionDraft,
+                    editingConnectionId = state.editingRemoteConnectionId,
+                    testState = state.remoteConnectionTestState,
+                    error = state.remoteConnectionError,
+                    saving = state.saving,
+                    actions = actions,
+                    fontSize = appearance.listFontSize,
+                    labelFontSize = appearance.headerFontSize,
+                )
+            },
+            actions = {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_close_window),
+                    onClick = onDismiss,
+                )
+            },
         )
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
-            DialogFrame(
-                title = title,
-                body = {
-                    val appearance = LocalOnyxAppearance.current
-                    val actions = RemoteConnectionUiActions(
-                        onDraftChange = onDraftChange,
-                        onNew = onNew,
-                        onEdit = onEdit,
-                        onSave = onSave,
-                        onTest = onTest,
-                        onDelete = onDelete,
-                        onOpen = onOpen,
-                    )
-                    RemoteConnectionsSettings(
-                        connections = connections,
-                        connectionDraft = state.remoteConnectionDraft,
-                        editingConnectionId = state.editingRemoteConnectionId,
-                        testState = state.remoteConnectionTestState,
-                        error = state.remoteConnectionError,
-                        saving = state.saving,
-                        actions = actions,
-                        fontSize = appearance.listFontSize,
-                        labelFontSize = appearance.headerFontSize,
-                    )
-                },
-                actions = {
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_close_window),
-                        onClick = onDismiss,
-                    )
-                },
-            )
-        }
     }
 }
 

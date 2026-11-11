@@ -1,6 +1,5 @@
 package com.oruke.onyx
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -20,17 +19,7 @@ import com.oruke.onyx.app.platform.OnyxSingleInstanceRelay
 import com.oruke.onyx.app.platform.OnyxStartupSplash
 import com.oruke.onyx.app.platform.OnyxSystemTrayController
 import com.oruke.onyx.app.platform.StartupSplashStage
-import com.oruke.onyx.ui.theme.resolveEffectiveDarkTheme
-import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
-import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
-import org.jetbrains.jewel.intui.standalone.theme.default
-import org.jetbrains.jewel.intui.standalone.theme.lightThemeDefinition
-import org.jetbrains.jewel.intui.window.decoratedWindow
-import org.jetbrains.jewel.intui.window.styling.dark
-import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
-import org.jetbrains.jewel.ui.ComponentStyling
-import org.jetbrains.jewel.window.styling.TitleBarStyle
+import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import org.koin.compose.KoinIsolatedContext
 import org.koin.compose.getKoin
 import kotlin.system.exitProcess
@@ -109,16 +98,8 @@ private object OnyxDesktopRuntime {
             val koin = getKoin()
             val applicationRuntime = rememberRootApplicationRuntime()
             val appSettings by applicationRuntime.settings.collectAsState()
-            val isDark = resolveEffectiveDarkTheme(appSettings.themeMode, isSystemInDarkTheme())
-            val theme = if (isDark) JewelTheme.darkThemeDefinition() else JewelTheme.lightThemeDefinition()
-            val styling = ComponentStyling.default().decoratedWindow(
-                titleBarStyle = if (isDark) TitleBarStyle.dark() else TitleBarStyle.lightWithLightHeader(),
-            )
 
-            IntUiTheme(
-                theme = theme,
-                styling = styling,
-            ) {
+            OnyxDecoratedWindowTheme(appSettings) {
                 val windowManager = remember {
                     DesktopWindowManager(
                         keepPrimaryWindowResident = appSettings.closeToTray,

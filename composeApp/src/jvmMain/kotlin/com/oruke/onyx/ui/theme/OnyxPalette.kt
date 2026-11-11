@@ -15,7 +15,12 @@ import androidx.compose.ui.unit.dp
 import com.oruke.onyx.core.model.OnyxThemeColors
 import com.oruke.onyx.core.model.OnyxThemeMode
 import com.oruke.onyx.core.model.OnyxThemePreset
+import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
+import org.jetbrains.jewel.ui.component.styling.LocalDefaultButtonStyle
+import org.jetbrains.jewel.ui.component.styling.LocalOutlinedButtonStyle
+import org.jetbrains.jewel.ui.theme.defaultButtonStyle
+import org.jetbrains.jewel.ui.theme.outlinedButtonStyle
 
 /** 内置精选强调色预设列表（ARGB）。 */
 internal val ONYX_ACCENT_SWATCHES: List<Long> = listOf(
@@ -590,11 +595,23 @@ fun OnyxTheme(
         )
     }
     IntUiTheme(isDark = dark) {
+        val defaultButtonStyle = rememberOnyxDefaultButtonStyle(
+            palette = palette,
+            isDark = dark,
+            baseStyle = JewelTheme.defaultButtonStyle,
+        )
+        val outlinedButtonStyle = rememberOnyxOutlinedButtonStyle(
+            palette = palette,
+            isDark = dark,
+            baseStyle = JewelTheme.outlinedButtonStyle,
+        )
         CompositionLocalProvider(
             LocalOnyxPalette provides palette,
             LocalOnyxAppearance provides appearance,
             LocalDensity provides scaledDensity,
             LocalScrollbarStyle provides scrollbarStyle,
+            LocalDefaultButtonStyle provides defaultButtonStyle,
+            LocalOutlinedButtonStyle provides outlinedButtonStyle,
         ) {
             content()
         }

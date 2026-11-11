@@ -2,7 +2,6 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,13 +28,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.CreateZipArchiveDialogError
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
@@ -65,81 +62,80 @@ internal fun CreateZipArchiveDialog(
     val focusRequester = remember { FocusRequester() }
     var draft by remember { mutableStateOf(state.draft) }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
     LaunchedEffect(state.draft) {
         if (state.draft != draft) {
             draft = state.draft
         }
     }
 
-    DialogWindow(
+    val title = stringResource(Res.string.label_create_archive_title)
+    OnyxDialogWindow(
         onCloseRequest = onDismiss,
-        title = stringResource(Res.string.label_create_archive_title),
-        state = rememberDialogState(width = 460.dp, height = 280.dp),
+        title = title,
+        state = rememberDialogState(width = 460.dp, height = 270.dp),
+        windowName = "onyx-create-zip-archive",
     ) {
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
-            DialogFrame(
-                title = stringResource(Res.string.label_create_archive_title),
-                body = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = state.location,
-                            fontSize = 11.sp,
-                            color = LocalOnyxPalette.current.mutedForeground,
-                        )
-                        Text(
-                            text = stringResource(Res.string.label_create_archive_description),
-                            fontSize = 12.sp,
-                            color = LocalOnyxPalette.current.foreground,
-                        )
-                        Text(
-                            text = stringResource(Res.string.label_create_archive_name),
-                            fontSize = 12.sp,
-                            color = LocalOnyxPalette.current.foreground,
-                        )
-                        ZipArchiveNameInput(
-                            value = draft,
-                            focusRequester = focusRequester,
-                            onValueChange = { value ->
-                                draft = value
-                                onDraftChange(value)
-                            },
-                            onConfirm = onConfirm,
-                            onDismiss = onDismiss,
-                        )
-                        state.error?.let { error ->
-                            Text(
-                                text = when (error) {
-                                    CreateZipArchiveDialogError.EMPTY_INPUT -> {
-                                        stringResource(Res.string.label_create_archive_error_empty)
-                                    }
-
-                                    CreateZipArchiveDialogError.INVALID_NAME -> {
-                                        stringResource(Res.string.label_create_archive_error_invalid)
-                                    }
-                                },
-                                fontSize = 11.sp,
-                                color = LocalOnyxPalette.current.error,
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_close_window),
-                        onClick = onDismiss,
-                    )
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_create_zip),
-                        emphasized = true,
-                        onClick = onConfirm,
-                    )
-                },
-            )
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
         }
+        DialogFrame(
+            title = title,
+            body = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = state.location,
+                        fontSize = 11.sp,
+                        color = LocalOnyxPalette.current.mutedForeground,
+                    )
+                    Text(
+                        text = stringResource(Res.string.label_create_archive_description),
+                        fontSize = 12.sp,
+                        color = LocalOnyxPalette.current.foreground,
+                    )
+                    Text(
+                        text = stringResource(Res.string.label_create_archive_name),
+                        fontSize = 12.sp,
+                        color = LocalOnyxPalette.current.foreground,
+                    )
+                    ZipArchiveNameInput(
+                        value = draft,
+                        focusRequester = focusRequester,
+                        onValueChange = { value ->
+                            draft = value
+                            onDraftChange(value)
+                        },
+                        onConfirm = onConfirm,
+                        onDismiss = onDismiss,
+                    )
+                    state.error?.let { error ->
+                        Text(
+                            text = when (error) {
+                                CreateZipArchiveDialogError.EMPTY_INPUT -> {
+                                    stringResource(Res.string.label_create_archive_error_empty)
+                                }
+
+                                CreateZipArchiveDialogError.INVALID_NAME -> {
+                                    stringResource(Res.string.label_create_archive_error_invalid)
+                                }
+                            },
+                            fontSize = 11.sp,
+                            color = LocalOnyxPalette.current.error,
+                        )
+                    }
+                }
+            },
+            actions = {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_close_window),
+                    onClick = onDismiss,
+                )
+                DialogTextButton(
+                    text = stringResource(Res.string.action_create_zip),
+                    emphasized = true,
+                    onClick = onConfirm,
+                )
+            },
+        )
     }
 }
 

@@ -37,9 +37,10 @@ import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.TaskCenterContent
+import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
-import com.oruke.onyx.ui.theme.OnyxTheme
-import com.oruke.onyx.ui.theme.rememberOnyxAppearance
+import com.oruke.onyx.ui.theme.OnyxWindowTheme
+import com.oruke.onyx.ui.theme.rememberOnyxWindowIconPainter
 import java.awt.Dimension
 import java.awt.KeyboardFocusManager
 import java.awt.Window
@@ -47,8 +48,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_task_center
-import onyx.composeapp.generated.resources.onyx_logo
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindow
@@ -112,56 +111,51 @@ internal fun TaskCenterWindow(
         taskCenter.dispatch(TaskCenterIntent.AutoCloseWhenIdle)
     }
 
-    OnyxLocaleEnvironment(resourceLocale) {
-        DecoratedWindow(
-            onCloseRequest = { taskCenter.dispatch(TaskCenterIntent.Close) },
-            visible = state.visible,
-            title = stringResource(Res.string.label_task_center),
-            icon = painterResource(Res.drawable.onyx_logo),
-            state = windowState,
-            onPreviewKeyEvent = { event ->
-                if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
-                    taskCenter.dispatch(TaskCenterIntent.Close)
-                    true
-                } else {
-                    false
-                }
-            },
-        ) {
-            BindNativeTaskWindowActivation(
-                window = window,
-                windowState = windowState,
-                state = state,
-                autoRevealRequest = autoRevealRequest,
-                uiScale = preferences.uiScale,
-                previousFocusedWindow = previousFocusedWindow,
-            )
-            TitleBar { _ ->
-                Text(
-                    stringResource(Res.string.label_task_center),
-                    modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
-                )
-            }
-            if (state.visible) {
-                val appearance = rememberOnyxAppearance(preferences)
-                OnyxTheme(
+    OnyxDecoratedWindowTheme(preferences) {
+        OnyxLocaleEnvironment(resourceLocale) {
+            DecoratedWindow(
+                onCloseRequest = { taskCenter.dispatch(TaskCenterIntent.Close) },
+                visible = state.visible,
+                title = stringResource(Res.string.label_task_center),
+                icon = rememberOnyxWindowIconPainter(),
+                state = windowState,
+                onPreviewKeyEvent = { event ->
+                    if (event.key == Key.Escape && event.type == KeyEventType.KeyDown) {
+                        taskCenter.dispatch(TaskCenterIntent.Close)
+                        true
+                    } else {
+                        false
+                    }
+                },
+            ) {
+                BindNativeTaskWindowActivation(
+                    window = window,
+                    windowState = windowState,
+                    state = state,
+                    autoRevealRequest = autoRevealRequest,
                     uiScale = preferences.uiScale,
-                    appearance = appearance,
-                    themeMode = preferences.themeMode,
-                    themePreset = preferences.themePreset,
-                    themeColors = preferences.themeColors,
-                ) {
-                    OnyxTooltipHost {
-                        TaskCenterContent(
-                            state = state,
-                            tasks = tasks,
-                            listState = listState,
-                            dispatch = taskCenter::dispatch,
-                            autoCloseWhenFinished = preferences.autoCloseTaskCenterWhenFinished,
-                            autoClosingSoon = shouldAutoClose,
-                            autoClosePausedByHover = pointerHovered,
-                            modifier = Modifier.trackTaskWindowHover { pointerHovered = it },
-                        )
+                    previousFocusedWindow = previousFocusedWindow,
+                )
+                TitleBar { _ ->
+                    Text(
+                        stringResource(Res.string.label_task_center),
+                        modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
+                    )
+                }
+                if (state.visible) {
+                    OnyxWindowTheme(preferences) {
+                        OnyxTooltipHost {
+                            TaskCenterContent(
+                                state = state,
+                                tasks = tasks,
+                                listState = listState,
+                                dispatch = taskCenter::dispatch,
+                                autoCloseWhenFinished = preferences.autoCloseTaskCenterWhenFinished,
+                                autoClosingSoon = shouldAutoClose,
+                                autoClosePausedByHover = pointerHovered,
+                                modifier = Modifier.trackTaskWindowHover { pointerHovered = it },
+                            )
+                        }
                     }
                 }
             }

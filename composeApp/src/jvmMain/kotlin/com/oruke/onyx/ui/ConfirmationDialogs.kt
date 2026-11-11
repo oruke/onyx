@@ -2,7 +2,6 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,17 +24,14 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
@@ -81,81 +77,75 @@ private fun DestructiveConfirmationDialog(
     // 0 = 取消（默认安全焦点），1 = 确认
     var focusedButton by remember { mutableStateOf(0) }
     val focusRequester = remember { FocusRequester() }
-    DialogWindow(
+    OnyxDialogWindow(
         onCloseRequest = onDismiss,
         title = title,
-        state = rememberDialogState(width = 420.dp, height = 220.dp),
+        state = rememberDialogState(width = 420.dp, height = 210.dp),
         resizable = false,
+        windowName = "onyx-confirmation",
     ) {
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(LocalOnyxPalette.current.appBackground)
-                    .padding(14.dp)
-                    .focusRequester(focusRequester)
-                    .focusable()
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.Escape -> {
-                                onDismiss(); true
-                            }
-
-                            Key.Enter -> {
-                                if (focusedButton == 1) onConfirm() else onDismiss()
-                                true
-                            }
-
-                            Key.DirectionLeft, Key.Tab -> {
-                                focusedButton = (focusedButton - 1).coerceAtLeast(0)
-                                true
-                            }
-
-                            Key.DirectionRight -> {
-                                focusedButton = (focusedButton + 1).coerceAtMost(1)
-                                true
-                            }
-
-                            else -> false
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(LocalOnyxPalette.current.appBackground)
+                .padding(14.dp)
+                .focusRequester(focusRequester)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.Escape -> {
+                            onDismiss()
+                            true
                         }
-                    },
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
+
+                        Key.Enter -> {
+                            if (focusedButton == 1) onConfirm() else onDismiss()
+                            true
+                        }
+
+                        Key.DirectionLeft, Key.Tab -> {
+                            focusedButton = (focusedButton - 1).coerceAtLeast(0)
+                            true
+                        }
+
+                        Key.DirectionRight -> {
+                            focusedButton = (focusedButton + 1).coerceAtMost(1)
+                            true
+                        }
+
+                        else -> false
+                    }
+                },
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(modifier = Modifier.weight(1f, fill = true)) {
                 Text(
-                    text = title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    text = message,
+                    fontSize = 12.sp,
                     color = LocalOnyxPalette.current.foreground,
                 )
-                Box(modifier = Modifier.weight(1f, fill = true)) {
-                    Text(
-                        text = message,
-                        fontSize = 12.sp,
-                        color = LocalOnyxPalette.current.foreground,
-                    )
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    DialogTextButton(
-                        text = stringResource(Res.string.action_close_window),
-                        onClick = onDismiss,
-                        focused = focusedButton == 0,
-                    )
-                    DialogTextButton(
-                        text = confirmLabel,
-                        emphasized = true,
-                        destructive = true,
-                        onClick = onConfirm,
-                        focused = focusedButton == 1,
-                    )
-                }
             }
-            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_close_window),
+                    onClick = onDismiss,
+                    focused = focusedButton == 0,
+                )
+                DialogTextButton(
+                    text = confirmLabel,
+                    emphasized = true,
+                    destructive = true,
+                    onClick = onConfirm,
+                    focused = focusedButton == 1,
+                )
+            }
         }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
 }
 
@@ -266,92 +256,86 @@ internal fun ConflictResolutionDialog(
         }
     )
     val dialogTitle = stringResource(Res.string.label_conflict_resolution_title, state.currentIndex, state.total)
-    DialogWindow(
+    OnyxDialogWindow(
         onCloseRequest = onDismiss,
         title = dialogTitle,
-        state = rememberDialogState(width = 460.dp, height = 260.dp),
+        state = rememberDialogState(width = 460.dp, height = 250.dp),
         resizable = false,
+        windowName = "onyx-conflict-resolution",
     ) {
-        IntUiTheme(isDark = isSystemInDarkTheme()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(LocalOnyxPalette.current.appBackground)
-                    .padding(14.dp)
-                    .focusRequester(focusRequester)
-                    .focusable()
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.Escape -> {
-                                onDismiss(); true
-                            }
-
-                            Key.Enter -> {
-                                when (focusedButton) {
-                                    0 -> onDismiss()
-                                    1 -> onResolve(TransferConflictStrategy.SKIP, applyToAll)
-                                    2 -> onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll)
-                                    LAST_CONFLICT_ACTION_INDEX -> {
-                                        onResolve(TransferConflictStrategy.OVERWRITE, applyToAll)
-                                    }
-                                }
-                                true
-                            }
-
-                            Key.DirectionLeft -> {
-                                focusedButton = (focusedButton - 1).coerceAtLeast(0)
-                                true
-                            }
-
-                            Key.DirectionRight, Key.Tab -> {
-                                focusedButton = (focusedButton + 1).coerceAtMost(LAST_CONFLICT_ACTION_INDEX)
-                                true
-                            }
-
-                            else -> false
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(LocalOnyxPalette.current.appBackground)
+                .padding(14.dp)
+                .focusRequester(focusRequester)
+                .focusable()
+                .onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.Escape -> {
+                            onDismiss()
+                            true
                         }
-                    },
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    text = dialogTitle,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = LocalOnyxPalette.current.foreground,
-                )
-                Box(modifier = Modifier.weight(1f, fill = true)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = operationLabel,
-                            fontSize = 11.sp,
-                            color = LocalOnyxPalette.current.mutedForeground,
-                        )
-                        Text(
-                            text = stringResource(
-                                Res.string.label_conflict_resolution_message,
-                                state.sourceName,
-                                state.targetLocation,
-                            ),
-                            fontSize = 12.sp,
-                            color = LocalOnyxPalette.current.foreground,
-                        )
-                        ApplyToAllToggle(
-                            checked = applyToAll,
-                            text = stringResource(Res.string.message_apply_to_remaining_conflicts),
-                            onToggle = { applyToAll = !applyToAll },
-                        )
+
+                        Key.Enter -> {
+                            when (focusedButton) {
+                                0 -> onDismiss()
+                                1 -> onResolve(TransferConflictStrategy.SKIP, applyToAll)
+                                2 -> onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll)
+                                LAST_CONFLICT_ACTION_INDEX -> {
+                                    onResolve(TransferConflictStrategy.OVERWRITE, applyToAll)
+                                }
+                            }
+                            true
+                        }
+
+                        Key.DirectionLeft -> {
+                            focusedButton = (focusedButton - 1).coerceAtLeast(0)
+                            true
+                        }
+
+                        Key.DirectionRight, Key.Tab -> {
+                            focusedButton = (focusedButton + 1).coerceAtMost(LAST_CONFLICT_ACTION_INDEX)
+                            true
+                        }
+
+                        else -> false
                     }
+                },
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(modifier = Modifier.weight(1f, fill = true)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = operationLabel,
+                        fontSize = 11.sp,
+                        color = LocalOnyxPalette.current.mutedForeground,
+                    )
+                    Text(
+                        text = stringResource(
+                            Res.string.label_conflict_resolution_message,
+                            state.sourceName,
+                            state.targetLocation,
+                        ),
+                        fontSize = 12.sp,
+                        color = LocalOnyxPalette.current.foreground,
+                    )
+                    ApplyToAllToggle(
+                        checked = applyToAll,
+                        text = stringResource(Res.string.message_apply_to_remaining_conflicts),
+                        onToggle = { applyToAll = !applyToAll },
+                    )
                 }
-                ConflictResolutionActions(
-                    focusedButton = focusedButton,
-                    applyToAll = applyToAll,
-                    onResolve = onResolve,
-                    onDismiss = onDismiss,
-                )
             }
-            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+            ConflictResolutionActions(
+                focusedButton = focusedButton,
+                applyToAll = applyToAll,
+                onResolve = onResolve,
+                onDismiss = onDismiss,
+            )
         }
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
 }
 

@@ -26,12 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,18 +35,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.DialogWindow
 import androidx.compose.ui.window.rememberDialogState
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.core.model.BatchRenameEditMode as BatchRenameMode
 import com.oruke.onyx.core.model.BatchRenameEditCaseMode as CaseMode
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.shared.usecase.BatchRenameNameTransformations
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.OnyxWindowTheme
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
@@ -139,22 +131,18 @@ internal fun BatchRenameDialog(
             }
     }
 
-    DialogWindow(
+    OnyxDialogWindow(
         onCloseRequest = { if (!state.executing) onDismiss() },
         title = title,
         state = dialogState,
         resizable = true,
+        settings = settings,
+        minimumWidthPx = BATCH_RENAME_MIN_WINDOW_WIDTH,
+        minimumHeightPx = BATCH_RENAME_MIN_WINDOW_HEIGHT,
+        scaleMinimumSizeWithUi = true,
+        windowName = "onyx-batch-rename",
     ) {
-        SideEffect {
-            val scale = settings.uiScale / 100.0
-            window.minimumSize = java.awt.Dimension(
-                (BATCH_RENAME_MIN_WINDOW_WIDTH * scale).toInt(),
-                (BATCH_RENAME_MIN_WINDOW_HEIGHT * scale).toInt(),
-            )
-        }
-        OnyxWindowTheme(settings) {
-            BatchRenameContent(state, editor, title, canConfirm, onConfirm, onDismiss, settings, onIntent)
-        }
+        BatchRenameContent(state, editor, canConfirm, onConfirm, onDismiss, settings, onIntent)
     }
 }
 
@@ -163,7 +151,6 @@ internal fun BatchRenameDialog(
  *
  * @param state 当前批量重命名执行状态。
  * @param editor 重命名规则编辑状态。
- * @param title 窗口标题。
  * @param canConfirm 当前规则是否允许提交。
  * @param onConfirm 提交有效重命名结果的回调。
  * @param onDismiss 关闭窗口的回调。
@@ -174,7 +161,6 @@ internal fun BatchRenameDialog(
 private fun BatchRenameContent(
     state: RootDialogState.BatchRename,
     editor: BatchRenameEditorState,
-    title: String,
     canConfirm: Boolean,
     onConfirm: (List<Pair<VFile, String>>) -> Unit,
     onDismiss: () -> Unit,
@@ -182,17 +168,9 @@ private fun BatchRenameContent(
     onIntent: (RootIntent) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
-    val appearance = LocalOnyxAppearance.current
     Column(
         modifier = Modifier.fillMaxSize().background(palette.appBackground).padding(14.dp),
     ) {
-        Text(
-            text = title,
-            fontSize = (appearance.listFontSize.value + 1).sp,
-            fontWeight = FontWeight.SemiBold,
-            color = palette.foreground,
-        )
-        Spacer(modifier = Modifier.height(10.dp))
         if (!state.executing && !state.completed) {
             val editorScroll = rememberScrollState()
             Box(

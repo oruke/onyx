@@ -1,6 +1,6 @@
 package com.oruke.onyx
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -8,14 +8,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.toComposeImageBitmap
-import androidx.compose.ui.window.Window
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowState
 import com.oruke.onyx.app.OnyxLogger
-import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.app.component.RootApplicationRuntime
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
@@ -30,30 +28,24 @@ import com.oruke.onyx.app.platform.OnyxStartupSplash
 import com.oruke.onyx.app.platform.StartupSplashStage
 import com.oruke.onyx.app.platform.activateFromUserRequest
 import com.oruke.onyx.app.platform.rememberDesktopWindowStates
+import com.oruke.onyx.core.model.AppLocale
+import com.oruke.onyx.core.model.ImageViewerState
+import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.searchWindowActions
+import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
-import com.oruke.onyx.ui.theme.OnyxTheme
-import com.oruke.onyx.ui.theme.rememberOnyxAppearance
-import com.oruke.onyx.ui.theme.resolveEffectiveDarkTheme
+import com.oruke.onyx.ui.theme.OnyxWindowTheme
+import com.oruke.onyx.ui.theme.rememberOnyxWindowIconPainter
 import java.awt.Dimension
+import kotlinx.coroutines.flow.StateFlow
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.onyx_logo
 import onyx.composeapp.generated.resources.window_image_viewer_title
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.foundation.theme.JewelTheme
-import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
-import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
-import org.jetbrains.jewel.intui.standalone.theme.default
-import org.jetbrains.jewel.intui.standalone.theme.lightThemeDefinition
-import org.jetbrains.jewel.intui.window.decoratedWindow
-import org.jetbrains.jewel.intui.window.styling.dark
-import org.jetbrains.jewel.intui.window.styling.lightWithLightHeader
-import org.jetbrains.jewel.ui.ComponentStyling
+import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindow
-import org.jetbrains.jewel.window.styling.TitleBarStyle
+import org.jetbrains.jewel.window.TitleBar
 import org.koin.compose.getKoin
 
 /** 文件管理器窗口允许缩放到的最小宽度，单位为物理像素。 */
@@ -121,7 +113,7 @@ internal fun DesktopFileManagerWindow(
     )
     val windowIcon = rememberOnyxWindowIconPainter()
 
-    DesktopWindowThemeScope(visualSettings.themeMode) {
+    OnyxDecoratedWindowTheme(visualSettings) {
         DecoratedWindow(
             onCloseRequest = { onCloseRequest(request.id) },
             visible = request.visible,
@@ -167,65 +159,58 @@ internal fun DesktopFileManagerWindow(
         )
 
         if (imageViewerState.visible) {
-            Window(
-                onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
-                title = imageViewerState.currentFile?.name ?: stringResource(Res.string.window_image_viewer_title),
-                icon = windowIcon,
-                state = windowStates.imageViewer,
-            ) {
-                window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
-                val appearance = rememberOnyxAppearance(visualSettings)
-                OnyxTheme(
-                    uiScale = visualSettings.uiScale,
-                    appearance = appearance,
-                    themeMode = visualSettings.themeMode,
-                    themePreset = visualSettings.themePreset,
-                    themeColors = visualSettings.themeColors,
-                ) {
-                    ImageViewerContent(
-                        state = imageViewerState,
-                        onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
-                        onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
-                        onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
-                        onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
-                        onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
-                        onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
-                        loadThumbnail = rootComponent::loadThumbnail,
-                        readImageSize = rootComponent::readImageSize,
-                    )
-                }
-            }
+            ImageViewerWindow(
+                imageViewerState = imageViewerState,
+                rootComponent = rootComponent,
+                visualSettings = visualSettings,
+                resourceLocale = applicationRuntime.resourceLocale,
+                windowState = windowStates.imageViewer,
+            )
         }
     }
 }
 
 /**
- * 按当前窗口生效主题模式装配 Jewel 窗口主题与原生标题栏样式。
+ * 渲染与主窗口共享沉浸式标题栏与主题管线的独立图片查看器窗口。
  */
 @Composable
-private fun DesktopWindowThemeScope(
-    themeMode: com.oruke.onyx.core.model.OnyxThemeMode,
-    content: @Composable () -> Unit,
+private fun ImageViewerWindow(
+    imageViewerState: ImageViewerState,
+    rootComponent: RootComponent,
+    visualSettings: OnyxSettings,
+    resourceLocale: StateFlow<AppLocale>,
+    windowState: WindowState,
 ) {
-    val isDark = resolveEffectiveDarkTheme(themeMode, isSystemInDarkTheme())
-    val windowTheme = if (isDark) JewelTheme.darkThemeDefinition() else JewelTheme.lightThemeDefinition()
-    val windowStyling = ComponentStyling.default().decoratedWindow(
-        titleBarStyle = if (isDark) TitleBarStyle.dark() else TitleBarStyle.lightWithLightHeader(),
-    )
-    IntUiTheme(theme = windowTheme, styling = windowStyling, content = content)
-}
-
-/**
- * 优先复用启动预加载缓存的窗口图标 [Painter]，避免首帧异步资源加载导致的二次重组。
- */
-@Composable
-private fun rememberOnyxWindowIconPainter(): Painter {
-    val preloadedPainter = remember {
-        runCatching {
-            OnyxStartupPreloader.peekLogoImage()?.toComposeImageBitmap()?.let(::BitmapPainter)
-        }.getOrNull()
+    val viewerTitle = imageViewerState.currentFile?.name ?: stringResource(Res.string.window_image_viewer_title)
+    DecoratedWindow(
+        onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
+        title = viewerTitle,
+        icon = rememberOnyxWindowIconPainter(),
+        state = windowState,
+    ) {
+        window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
+        TitleBar { _ ->
+            Text(
+                text = viewerTitle,
+                modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
+            )
+        }
+        OnyxLocaleEnvironment(resourceLocale) {
+            OnyxWindowTheme(visualSettings) {
+                ImageViewerContent(
+                    state = imageViewerState,
+                    onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
+                    onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
+                    onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
+                    onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
+                    onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
+                    onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
+                    loadThumbnail = rootComponent::loadThumbnail,
+                    readImageSize = rootComponent::readImageSize,
+                )
+            }
+        }
     }
-    return preloadedPainter ?: painterResource(Res.drawable.onyx_logo)
 }
 
 /**

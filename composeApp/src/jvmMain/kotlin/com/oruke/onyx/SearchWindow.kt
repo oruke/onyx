@@ -25,15 +25,14 @@ import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.SearchPanel
 import com.oruke.onyx.ui.SearchPanelActions
 import com.oruke.onyx.ui.SearchPanelPresentation
+import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
-import com.oruke.onyx.ui.theme.OnyxTheme
-import com.oruke.onyx.ui.theme.rememberOnyxAppearance
+import com.oruke.onyx.ui.theme.OnyxWindowTheme
+import com.oruke.onyx.ui.theme.rememberOnyxWindowIconPainter
 import java.awt.Dimension
 import kotlinx.coroutines.flow.StateFlow
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_search_title
-import onyx.composeapp.generated.resources.onyx_logo
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindow
@@ -96,49 +95,44 @@ internal fun SearchWindow(
     }
     val listState = rememberLazyListState()
     if (state.activationRequest == 0L && !state.visible) return
-    OnyxLocaleEnvironment(resourceLocale) {
-        DecoratedWindow(
-            onCloseRequest = actions.onClose,
-            visible = state.visible,
-            title = stringResource(Res.string.label_search_title),
-            icon = painterResource(Res.drawable.onyx_logo),
-            state = windowState,
-            onPreviewKeyEvent = { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                    actions.onClose()
-                    true
-                } else {
-                    false
-                }
-            },
-        ) {
-            SideEffect {
-                window.name = "onyx-search"
-                val scale = settings.uiScale / SEARCH_WINDOW_SCALE_BASE
-                window.minimumSize = Dimension(
-                    (SEARCH_WINDOW_MIN_WIDTH * scale).toInt(),
-                    (SEARCH_WINDOW_MIN_HEIGHT * scale).toInt(),
-                )
-            }
-            LaunchedEffect(state.activationRequest, state.visible) {
-                if (!state.visible) return@LaunchedEffect
-                window.activateFromUserRequest(windowState)
-            }
-            TitleBar { _ ->
-                Text(
-                    stringResource(Res.string.label_search_title),
-                    modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
-                )
-            }
-            val appearance = rememberOnyxAppearance(settings)
-            OnyxTheme(
-                uiScale = settings.uiScale,
-                appearance = appearance,
-                themeMode = settings.themeMode,
-                themePreset = settings.themePreset,
-                themeColors = settings.themeColors,
+    OnyxDecoratedWindowTheme(settings) {
+        OnyxLocaleEnvironment(resourceLocale) {
+            DecoratedWindow(
+                onCloseRequest = actions.onClose,
+                visible = state.visible,
+                title = stringResource(Res.string.label_search_title),
+                icon = rememberOnyxWindowIconPainter(),
+                state = windowState,
+                onPreviewKeyEvent = { event ->
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                        actions.onClose()
+                        true
+                    } else {
+                        false
+                    }
+                },
             ) {
-                OnyxTooltipHost { SearchPanel(state, presentation, actions, listState) }
+                SideEffect {
+                    window.name = "onyx-search"
+                    val scale = settings.uiScale / SEARCH_WINDOW_SCALE_BASE
+                    window.minimumSize = Dimension(
+                        (SEARCH_WINDOW_MIN_WIDTH * scale).toInt(),
+                        (SEARCH_WINDOW_MIN_HEIGHT * scale).toInt(),
+                    )
+                }
+                LaunchedEffect(state.activationRequest, state.visible) {
+                    if (!state.visible) return@LaunchedEffect
+                    window.activateFromUserRequest(windowState)
+                }
+                TitleBar { _ ->
+                    Text(
+                        stringResource(Res.string.label_search_title),
+                        modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
+                    )
+                }
+                OnyxWindowTheme(settings) {
+                    OnyxTooltipHost { SearchPanel(state, presentation, actions, listState) }
+                }
             }
         }
     }
