@@ -19,8 +19,10 @@ import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /** 暂停期间检查恢复状态的间隔，不阻塞主线程。 */
 private const val TRANSFER_PAUSE_POLL_INTERVAL_MS = 200L
@@ -123,20 +125,16 @@ internal class FileTransferTaskDelegate(
                     applyTaskProgress(taskId, progress)
                 }
 
-                // 在任务显示完成前建立撤销记录，避免用户立即撤销时误操作上一条历史。
-                historyRecorder.record(
+                // 提交落盘后安全登记历史并切换完成态，隔离历史阶段的异常与取消。
+                recordHistorySafelyAfterCommit(
+                    taskId = taskId,
+                    structure = structure,
                     operation = operation,
-                    history = CompletedTransferHistory(
-                        entries = entries,
-                        targetDirectoryLocation = targetDirectoryLocation,
-                        entryTargetDirectories = structure.entryTargetDirectories,
-                        directorySteps = structure.allDirectorySteps,
-                        createdDirectories = createdIntermediateDirs.toList(),
-                    ),
-                    strategies = conflictStrategies,
+                    conflictStrategies = conflictStrategies,
+                    clipboardToClear = clipboardToClear,
+                    skippedCount = skippedCount,
+                    createdIntermediateDirs = createdIntermediateDirs,
                 )
-                completeSuccessfulTransfer(taskId, entries, targetDirectoryLocation,
-                    operation, clipboardToClear, skippedCount)
             } catch (failure: CancellationException) {
                 recordTransferCancellation(taskId, structure, createdIntermediateDirs, invalidated)
                 throw failure
@@ -171,6 +169,68 @@ internal class FileTransferTaskDelegate(
         )
     }
 
+    /**
+     * 在传输文件已全量提交落盘后安全登记历史记录。
+     *
+     * 捕获并隔离登记阶段的异常与协程取消，确保已落盘任务正确完成并切换为成功态。
+     *
+     * @param taskId 本次任务 ID。
+     * @param structure 传输规划结构。
+     * @param operation 传输操作类型。
+     * @param conflictStrategies 各条目冲突策略。
+     * @param clipboardToClear 待清理剪贴板载荷。
+     * @param skippedCount 跳过的条目数。
+     * @param createdIntermediateDirs 本次新建的中间目录列表。
+     */
+    private suspend fun recordHistorySafelyAfterCommit(
+        taskId: String,
+        structure: PlannedTransferStructure,
+        operation: FileTransferOperation,
+        conflictStrategies: Map<String, TransferConflictStrategy>,
+        clipboardToClear: ClipboardManager.ClipboardPayload?,
+        skippedCount: Int,
+        createdIntermediateDirs: List<VFile>,
+    ) {
+        val entries = structure.entries
+        val targetDirectoryLocation = structure.targetDirectoryLocation
+        val historyFailure = runCatching {
+            historyRecorder.record(
+                operation = operation,
+                history = CompletedTransferHistory(
+                    entries = entries,
+                    targetDirectoryLocation = targetDirectoryLocation,
+                    entryTargetDirectories = structure.entryTargetDirectories,
+                    directorySteps = structure.allDirectorySteps,
+                    createdDirectories = createdIntermediateDirs.toList(),
+                ),
+                strategies = conflictStrategies,
+            )
+        }.exceptionOrNull()
+        if (historyFailure is Error) {
+            onHistoryInvalidated()
+            throw historyFailure
+        }
+        if (historyFailure != null) {
+            onHistoryInvalidated()
+            if (historyFailure !is CancellationException) {
+                OnyxLogger.warn("FileTransferDelegate", "传输完成后登记历史快照失败，跳过历史记录", historyFailure)
+            }
+        }
+        withContext(NonCancellable) {
+            completeSuccessfulTransfer(
+                taskId = taskId,
+                entries = entries,
+                targetDirectoryLocation = targetDirectoryLocation,
+                operation = operation,
+                clipboardToClear = clipboardToClear,
+                skippedCount = skippedCount,
+            )
+        }
+        if (historyFailure is CancellationException) {
+            throw historyFailure
+        }
+    }
+
     private fun recordTransferCancellation(
         taskId: String,
         structure: PlannedTransferStructure,
@@ -179,12 +239,15 @@ internal class FileTransferTaskDelegate(
     ) {
         onHistoryInvalidated()
         taskOrchestrator.unregisterJob(taskId)
-        taskOrchestrator.updateTask(
-            taskId = taskId,
-            status = BackgroundTaskStatus.CANCELLED,
-            detail = I18nMessage(MessageKey.MSG_CANCELLED),
-            progress = null,
-        )
+        val currentStatus = taskOrchestrator.tasks.value.firstOrNull { it.id == taskId }?.status
+        if (currentStatus != BackgroundTaskStatus.SUCCEEDED) {
+            taskOrchestrator.updateTask(
+                taskId = taskId,
+                status = BackgroundTaskStatus.CANCELLED,
+                detail = I18nMessage(MessageKey.MSG_CANCELLED),
+                progress = null,
+            )
+        }
         collectTouchedLocations(structure, createdDirectories, invalidated)
     }
 
@@ -199,14 +262,17 @@ internal class FileTransferTaskDelegate(
         onHistoryInvalidated()
         OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
         taskOrchestrator.unregisterJob(taskId)
-        taskOrchestrator.updateTask(
-            taskId = taskId,
-            status = BackgroundTaskStatus.FAILED,
-            detail = failure.toTransferFailureMessage(operation),
-            progress = null,
-        )
-        taskOrchestrator.updateTaskFields(taskId) { task ->
-            task.copy(errors = failure.toTaskErrors(structure.entries, structure.targetDirectoryLocation))
+        val currentStatus = taskOrchestrator.tasks.value.firstOrNull { it.id == taskId }?.status
+        if (currentStatus != BackgroundTaskStatus.SUCCEEDED) {
+            taskOrchestrator.updateTask(
+                taskId = taskId,
+                status = BackgroundTaskStatus.FAILED,
+                detail = failure.toTransferFailureMessage(operation),
+                progress = null,
+            )
+            taskOrchestrator.updateTaskFields(taskId) { task ->
+                task.copy(errors = failure.toTaskErrors(structure.entries, structure.targetDirectoryLocation))
+            }
         }
         collectTouchedLocations(structure, createdDirectories, invalidated)
     }
@@ -238,7 +304,7 @@ internal class FileTransferTaskDelegate(
         operation: FileTransferOperation,
         clipboardToClear: ClipboardManager.ClipboardPayload?,
         skippedCount: Int,
-    ) {
+    ) = withContext(NonCancellable) {
         taskOrchestrator.unregisterJob(taskId)
         val completedBytes = taskOrchestrator.tasks.value
             .firstOrNull { task -> task.id == taskId }
@@ -247,8 +313,11 @@ internal class FileTransferTaskDelegate(
         taskOrchestrator.updateTask(
             taskId = taskId,
             status = BackgroundTaskStatus.SUCCEEDED,
-            detail = if (skippedCount > 0) I18nMessage(MessageKey.MSG_TRANSFER_SKIPPED_ITEMS,
-                entries.size - skippedCount, skippedCount) else when (operation) {
+            detail = if (skippedCount > 0) I18nMessage(
+                MessageKey.MSG_TRANSFER_SKIPPED_ITEMS,
+                entries.size - skippedCount,
+                skippedCount,
+            ) else when (operation) {
                 FileTransferOperation.COPY ->
                     I18nMessage(MessageKey.MSG_COPIED_ITEMS, entries.size, targetDirectoryLocation)
 
@@ -262,7 +331,9 @@ internal class FileTransferTaskDelegate(
             processedCount = entries.size,
             processedBytes = completedBytes,
         )
-        taskOrchestrator.updateTaskFields(taskId) { task -> task.copy(errors = emptyList()) }
+        taskOrchestrator.updateTaskFields(taskId) { task ->
+            task.copy(currentFileName = null, errors = emptyList())
+        }
         if (clipboardToClear != null && skippedCount == 0) {
             clipboardManager.clearIfUnchanged(clipboardToClear).onFailure { failure ->
                 OnyxLogger.warn("FileTransferDelegate", "传输完成后清理剪贴板失败", failure)
