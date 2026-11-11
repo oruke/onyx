@@ -135,7 +135,13 @@ internal data class RootRuntimeDelegates(
     /** 所有窗口共享的即时设置状态。 */
     val settings: MutableStateFlow<OnyxSettings>,
     /** 所有窗口共享的任务中心状态与任务操作入口。 */
-    val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(taskOrchestrator),
+    val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(
+        taskOrchestrator = taskOrchestrator,
+        settings = settings,
+        onUpdateAutoCloseWhenFinished = { enabled ->
+            settings.value = settings.value.copy(autoCloseTaskCenterWhenFinished = enabled)
+        },
+    ),
     /** 应用级资源语言就绪信号；独立组件使用系统资源环境。 */
     val resourceLocale: StateFlow<AppLocale> = MutableStateFlow(AppLocale.SYSTEM),
 )

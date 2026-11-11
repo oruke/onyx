@@ -51,6 +51,8 @@ class FileTransferUseCaseTest {
             processedBytes in 1 until TEST_FILE_SIZE
         }
         assertNotNull(intermediate)
+        assertEquals("source.bin -> $TEST_TARGET", intermediate.detail.args.single())
+        assertEquals("source.bin/chunk-0.dat", intermediate.currentFileName)
         assertTrue(intermediate.progress != null && intermediate.progress in 0f..1f)
         assertTrue((intermediate.bytesPerSecond ?: 0L) > 0L)
         assertTrue((intermediate.estimatedRemainingSeconds ?: 0L) > 0L)
@@ -134,8 +136,9 @@ class FileTransferUseCaseTest {
             conflictStrategy: TransferConflictStrategy,
             progressSink: FileTransferProgressSink,
         ): Result<Unit> {
-            repeat((TEST_FILE_SIZE / CHUNK_SIZE).toInt()) {
+            repeat((TEST_FILE_SIZE / CHUNK_SIZE).toInt()) { index ->
                 onChunk()
+                progressSink.onCurrentFileChanged("source.bin/chunk-$index.dat")
                 progressSink.onBytesTransferred(CHUNK_SIZE)
             }
             return Result.success(Unit)

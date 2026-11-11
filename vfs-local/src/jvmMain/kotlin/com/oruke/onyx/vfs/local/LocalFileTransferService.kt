@@ -34,7 +34,7 @@ internal object LocalFileTransferService {
         runCatching {
             job?.ensureActive()
             val directory = LocalPathOperations.resolveTargetDirectory(targetDirectoryLocation)
-            val sink = FileTransferProgressSink { count -> job?.ensureActive(); progressSink.onBytesTransferred(count) }
+            val sink = progressSink.cancellationAware(job)
             val target = if (operation == FileTransferOperation.MOVE) {
                 LocalPathTransferOperations.movePathToDirectory(Path.of(entry.location), directory,
                     conflictStrategy, sink) { job?.ensureActive() }
@@ -45,5 +45,23 @@ internal object LocalFileTransferService {
             if (target == null) FileTransferResult.Skipped
             else FileTransferResult.Committed(target.toLocalVFile(directory))
         }.mapLocalError()
+    }
+}
+
+/**
+ * 包装进度接收器以同时转发字节增量与当前子文件名，并在每次回调时检查任务取消状态。
+ */
+internal fun FileTransferProgressSink.cancellationAware(job: Job?): FileTransferProgressSink {
+    val delegate = this
+    return object : FileTransferProgressSink {
+        override fun onBytesTransferred(byteCount: Long) {
+            job?.ensureActive()
+            delegate.onBytesTransferred(byteCount)
+        }
+
+        override fun onCurrentFileChanged(fileName: String) {
+            job?.ensureActive()
+            delegate.onCurrentFileChanged(fileName)
+        }
     }
 }

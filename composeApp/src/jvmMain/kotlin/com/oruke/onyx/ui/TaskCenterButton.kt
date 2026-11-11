@@ -37,9 +37,17 @@ internal fun TaskCenterButton(component: TaskCenterComponent) {
     val tasks by component.tasks.collectAsState()
     val activeCount = tasks.count { it.status.isActiveTask() }
     val failedCount = tasks.count { it.status == BackgroundTaskStatus.FAILED }
+    val hasRecentSuccess = activeCount == 0 && failedCount == 0 &&
+        tasks.any { it.status == BackgroundTaskStatus.SUCCEEDED }
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
     val tooltip = stringResource(Res.string.label_task_entry_summary, activeCount, failedCount)
+    val iconTint = when {
+        failedCount > 0 -> palette.error
+        activeCount > 0 -> palette.accent
+        hasRecentSuccess -> palette.success
+        else -> Color.Unspecified
+    }
     LayoutIconButton(
         selected = state.visible,
         onClick = { component.dispatch(TaskCenterIntent.Open) },
@@ -50,7 +58,7 @@ internal fun TaskCenterButton(component: TaskCenterComponent) {
             Icon(
                 key = AllIconsKeys.Toolwindows.ToolWindowTodo,
                 contentDescription = null,
-                tint = if (failedCount > 0) palette.error else Color.Unspecified,
+                tint = iconTint,
             )
             if (activeCount > 0) {
                 Text(activeCount.toString(), fontSize = appearance.headerFontSize, color = palette.accent)

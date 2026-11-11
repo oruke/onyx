@@ -3,6 +3,8 @@ package com.oruke.onyx.app.platform
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.window.WindowState
 import java.awt.Frame
+import java.awt.KeyboardFocusManager
+import java.awt.Window
 import javax.swing.SwingUtilities
 
 /** 当前宿主是否为 Windows，用于处理跨进程唤醒时的 Win32 前台焦点锁限制。 */
@@ -15,6 +17,7 @@ private val isWindowsHost: Boolean =
  * @return 无返回值；仅响应用户激活动作，后台内容更新不得调用。
  */
 internal fun ComposeWindow.activateFromUserRequest(state: WindowState) {
+    isAutoRequestFocus = true
     if (!isVisible) {
         isVisible = true
     }
@@ -35,6 +38,52 @@ internal fun ComposeWindow.activateFromUserRequest(state: WindowState) {
             }
             requestFocus()
             requestFocusInWindow()
+        }
+    }
+}
+
+/**
+ * 在后台新任务自动唤起任务窗口时将其恢复显示并置顶到非置顶窗口最上方，但不抢占原活动窗口的键盘焦点。
+ *
+ * @param state 当前窗口持续保留的 Compose 状态。
+ * @param previousFocusedWindow 自动弹窗前持有焦点的应用窗口；若创建原生窗口时短暂夺走焦点则安全归还。
+ */
+internal fun ComposeWindow.revealFromBackgroundTask(
+    state: WindowState,
+    previousFocusedWindow: Window? = null,
+) {
+    isAutoRequestFocus = false
+    if (!isVisible) {
+        isVisible = true
+    }
+    state.isMinimized = false
+    extendedState = extendedState and Frame.ICONIFIED.inv()
+    toFront()
+    SwingUtilities.invokeLater {
+        if (!isVisible) {
+            isAutoRequestFocus = true
+            return@invokeLater
+        }
+        val currentFocused = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusedWindow
+        val shouldRestoreOwnerFocus = previousFocusedWindow != null &&
+            previousFocusedWindow !== this &&
+            previousFocusedWindow.isShowing &&
+            currentFocused === this
+        if (shouldRestoreOwnerFocus) {
+            val wasTopMost = isAlwaysOnTop
+            if (!wasTopMost) {
+                isAlwaysOnTop = true
+            }
+            previousFocusedWindow.requestFocus()
+            SwingUtilities.invokeLater {
+                if (!wasTopMost && isVisible) {
+                    // 在 isAutoRequestFocus = false 下取消置顶（HWND_NOTOPMOST + SWP_NOACTIVATE），保持位于主窗口上方且不抢焦点。
+                    isAlwaysOnTop = false
+                }
+                isAutoRequestFocus = true
+            }
+        } else {
+            isAutoRequestFocus = true
         }
     }
 }

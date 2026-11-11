@@ -27,6 +27,8 @@ import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
 import onyx.composeapp.generated.resources.action_restore_factory_defaults
 import onyx.composeapp.generated.resources.action_save_custom_theme
+import onyx.composeapp.generated.resources.label_auto_close_task_center
+import onyx.composeapp.generated.resources.label_auto_show_task_center
 import onyx.composeapp.generated.resources.label_close_to_tray
 import onyx.composeapp.generated.resources.label_close_to_tray_exit
 import onyx.composeapp.generated.resources.label_close_to_tray_minimize
@@ -71,6 +73,7 @@ import onyx.composeapp.generated.resources.label_section_file_list_colors
 import onyx.composeapp.generated.resources.label_section_global_colors
 import onyx.composeapp.generated.resources.label_section_language_startup
 import onyx.composeapp.generated.resources.label_section_mouse_navigation
+import onyx.composeapp.generated.resources.label_section_task_feedback
 import onyx.composeapp.generated.resources.label_section_theme_mode_preset
 import onyx.composeapp.generated.resources.label_section_workspace_layout
 import onyx.composeapp.generated.resources.label_setting_disabled
@@ -573,6 +576,14 @@ private fun OperationsSafetySettingsContent(
             )
         }
     }
+
+    TaskFeedbackSettingsCard(
+        draft = draft,
+        onDraftChange = onDraftChange,
+        labelFontSize = labelFontSize,
+        enabledText = enabledText,
+        disabledText = disabledText,
+    )
 }
 
 /**
@@ -790,6 +801,9 @@ private fun categoryMatchesQuery(category: SettingsCategory, query: String): Boo
             stringResource(Res.string.label_delete_mode),
             stringResource(Res.string.label_confirm_before_delete),
             stringResource(Res.string.label_location_history),
+            stringResource(Res.string.label_section_task_feedback),
+            stringResource(Res.string.label_auto_show_task_center),
+            stringResource(Res.string.label_auto_close_task_center),
         )
 
         SettingsCategory.AUTOMATION -> listOf(

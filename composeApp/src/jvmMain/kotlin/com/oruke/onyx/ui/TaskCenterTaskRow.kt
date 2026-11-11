@@ -161,13 +161,7 @@ private fun TaskCenterTaskRow(
             TaskRowActions(task, onPause, onResume, onRetry, onCancel, onDismiss)
         }
 
-        Text(
-            text = task.currentDetailText(),
-            fontSize = appearance.headerFontSize,
-            color = palette.mutedForeground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        TaskDetailLines(task)
 
         TaskProgressBar(
             progress = task.progress,
@@ -270,15 +264,38 @@ private fun TaskActionIcon(
 }
 
 /**
- * 返回任务当前最有信息量的详情文本。
- *
- * @return 活动任务优先返回当前文件名，否则返回阶段详情。
+ * 渲染任务路径详情与当前活动子文件：始终保留目标路径信息，目录递归传输时额外展示当前子文件。
  */
 @Composable
-private fun BackgroundTask.currentDetailText(): String {
-    return currentFileName
-        ?.takeIf { status.isActiveTaskStatus() }
-        ?: detail.resolve()
+private fun TaskDetailLines(task: BackgroundTask) {
+    val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
+    val detailText = task.detail.resolve()
+    val activeFile = task.currentFileName?.takeIf { name ->
+        task.status.isActiveTaskStatus() && name.isNotBlank()
+    }
+    val primaryText = detailText.ifBlank { activeFile.orEmpty() }
+    if (primaryText.isNotBlank()) {
+        Text(
+            text = primaryText,
+            fontSize = appearance.headerFontSize,
+            color = palette.mutedForeground,
+            maxLines = 1,
+            overflow = TextOverflow.MiddleEllipsis,
+        )
+    }
+    val secondaryFile = activeFile?.takeIf { file ->
+        detailText.isNotBlank() && file != detailText && !detailText.startsWith("$file -> ")
+    }
+    if (secondaryFile != null) {
+        Text(
+            text = secondaryFile,
+            fontSize = appearance.headerFontSize,
+            color = palette.foreground.copy(alpha = 0.82f),
+            maxLines = 1,
+            overflow = TextOverflow.MiddleEllipsis,
+        )
+    }
 }
 
 /**

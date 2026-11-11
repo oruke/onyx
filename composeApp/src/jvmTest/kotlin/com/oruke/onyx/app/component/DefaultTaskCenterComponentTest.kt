@@ -6,8 +6,10 @@ import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
+import com.oruke.onyx.core.model.OnyxSettings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -200,6 +202,54 @@ class DefaultTaskCenterComponentTest {
         assertEquals(100L, component.tasks.value.single().processedBytes)
     }
 
+    /** 复制、移动、删除等新任务无焦点抢占自动展开窗口，完成后按成功或失败状态智能收起或保留。 */
+    @Test
+    fun newTasksAutoRevealWithoutFocusStealAndHonorAutoCloseRules() = runTest {
+        val orchestrator = TaskOrchestrator(this)
+        val settingsFlow = MutableStateFlow(OnyxSettings())
+        val component = DefaultTaskCenterComponent(
+            taskOrchestrator = orchestrator,
+            settings = settingsFlow,
+            onUpdateAutoCloseWhenFinished = { enabled ->
+                settingsFlow.value = settingsFlow.value.copy(autoCloseTaskCenterWhenFinished = enabled)
+            },
+        )
+
+        orchestrator.appendTask(testTask("rename", BackgroundTaskStatus.RUNNING, kind = BackgroundTaskKind.RENAME))
+        assertFalse(component.state.value.visible)
+        assertEquals(0L, component.autoRevealRequest.value)
+
+        component.dispatch(TaskCenterIntent.SetFilter(TaskCenterFilter.FINISHED))
+        orchestrator.appendTask(testTask("delete", BackgroundTaskStatus.RUNNING, kind = BackgroundTaskKind.DELETE))
+        assertTrue(component.state.value.visible)
+        assertTrue(component.state.value.openedAutomatically)
+        assertEquals(0L, component.state.value.activationRequest)
+        assertEquals(1L, component.autoRevealRequest.value)
+        assertEquals(TaskCenterFilter.ALL, component.state.value.filter)
+
+        orchestrator.updateTaskFields("rename") { task -> task.copy(status = BackgroundTaskStatus.SUCCEEDED) }
+        orchestrator.updateTaskFields("delete") { task -> task.copy(status = BackgroundTaskStatus.FAILED) }
+        component.dispatch(TaskCenterIntent.AutoCloseWhenIdle)
+        assertTrue(component.state.value.visible)
+
+        orchestrator.updateTaskFields("delete") { task -> task.copy(status = BackgroundTaskStatus.SUCCEEDED) }
+        component.dispatch(TaskCenterIntent.AutoCloseWhenIdle)
+        assertFalse(component.state.value.visible)
+        assertFalse(component.state.value.openedAutomatically)
+
+        orchestrator.appendTask(testTask("move", BackgroundTaskStatus.RUNNING, kind = BackgroundTaskKind.MOVE))
+        assertTrue(component.state.value.visible)
+        component.dispatch(TaskCenterIntent.SetAutoCloseWhenFinished(false))
+        orchestrator.updateTaskFields("move") { task -> task.copy(status = BackgroundTaskStatus.SUCCEEDED) }
+        component.dispatch(TaskCenterIntent.AutoCloseWhenIdle)
+        assertTrue(component.state.value.visible)
+
+        component.dispatch(TaskCenterIntent.Close)
+        settingsFlow.value = settingsFlow.value.copy(autoShowTaskCenter = false)
+        orchestrator.appendTask(testTask("copy", BackgroundTaskStatus.RUNNING, kind = BackgroundTaskKind.COPY))
+        assertFalse(component.state.value.visible)
+    }
+
     private companion object {
         /**
          * 构造不依赖真实文件路径的后台文件传输快照。
@@ -207,12 +257,18 @@ class DefaultTaskCenterComponentTest {
          * @param id 测试任务标识。
          * @param status 初始生命周期状态。
          * @param canPause 是否允许通过组件暂停任务。
+         * @param kind 后台任务类别。
          * @return 可交给真实编排器执行的测试任务。
          */
-        fun testTask(id: String, status: BackgroundTaskStatus, canPause: Boolean = false): BackgroundTask {
+        fun testTask(
+            id: String,
+            status: BackgroundTaskStatus,
+            canPause: Boolean = false,
+            kind: BackgroundTaskKind = BackgroundTaskKind.COPY,
+        ): BackgroundTask {
             return BackgroundTask(
                 id = id,
-                kind = BackgroundTaskKind.COPY,
+                kind = kind,
                 title = I18nMessage(MessageKey.MSG_STRING_LITERAL, "Transfer"),
                 status = status,
                 canPause = canPause,

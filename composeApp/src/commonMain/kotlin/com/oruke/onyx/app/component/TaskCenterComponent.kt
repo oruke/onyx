@@ -1,7 +1,9 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.BackgroundTask
+import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /** 所有文件管理器窗口共用的任务中心状态与任务操作入口。 */
@@ -12,6 +14,10 @@ internal interface TaskCenterComponent {
     /** 应用级任务编排器的实时任务列表，窗口关闭后继续更新。 */
     val tasks: StateFlow<List<BackgroundTask>>
 
+    /** 后台新任务触发的无焦点抢占窗口置前信号。 */
+    val autoRevealRequest: StateFlow<Long>
+        get() = EMPTY_AUTO_REVEAL_REQUEST
+
     /**
      * 处理窗口与任务意图，任务操作必须遵守当前生命周期状态。
      *
@@ -21,6 +27,8 @@ internal interface TaskCenterComponent {
     fun dispatch(intent: TaskCenterIntent)
 }
 
+private val EMPTY_AUTO_REVEAL_REQUEST: StateFlow<Long> = MutableStateFlow(0L)
+
 /** 独立任务窗口的共享展示状态，关闭窗口时保留筛选条件。 */
 internal data class TaskCenterState(
     /** 是否显示全应用唯一的任务窗口。 */
@@ -29,6 +37,8 @@ internal data class TaskCenterState(
     val activationRequest: Long = 0L,
     /** 当前任务筛选条件。 */
     val filter: TaskCenterFilter = TaskCenterFilter.ALL,
+    /** 当前可见会话是否由后台新任务自动唤起（用于判断全部完成后是否允许自动收起）。 */
+    val openedAutomatically: Boolean = false,
 )
 
 /** 任务中心可选的生命周期筛选条件。 */
@@ -50,6 +60,15 @@ internal sealed interface TaskCenterIntent {
 
     /** 隐藏任务窗口，不改变任何后台任务。 */
     data object Close : TaskCenterIntent
+
+    /** 当窗口由后台任务自动唤起且当前已无活动或失败任务时自动收起窗口。 */
+    data object AutoCloseWhenIdle : TaskCenterIntent
+
+    /** 切换任务全部成功完成后是否自动收起窗口的偏好。 */
+    data class SetAutoCloseWhenFinished(
+        /** 是否在任务全部完成后自动关闭自动弹出的任务窗口。 */
+        val enabled: Boolean,
+    ) : TaskCenterIntent
 
     /** 切换当前任务列表的筛选条件。 */
     data class SetFilter(
@@ -123,4 +142,36 @@ internal fun BackgroundTaskStatus.isActiveTask(): Boolean {
     return this == BackgroundTaskStatus.QUEUED ||
         this == BackgroundTaskStatus.RUNNING ||
         this == BackgroundTaskStatus.PAUSED
+}
+
+/**
+ * 判断新提交的后台任务是否需要自动弹出任务窗口。
+ *
+ * 批量重命名已在专属对话框中内嵌实时进度与错误反馈，不重复弹出任务中心遮挡对话框。
+ *
+ * @return 需要自动显示任务窗口时返回 true。
+ */
+internal fun BackgroundTask.shouldAutoRevealTaskCenter(): Boolean {
+    return kind != BackgroundTaskKind.RENAME
+}
+
+/**
+ * 判断自动唤起的任务窗口当前是否满足自动收起条件。
+ *
+ * 仅当窗口可见、由任务自动唤起、开启了自动关闭偏好，且不存在任何活动任务与未处理的失败任务时返回 true。
+ *
+ * @param state 当前任务中心展示状态。
+ * @param tasks 当前后台任务快照。
+ * @param autoCloseEnabled 用户设置中的完成后自动关闭开关。
+ * @return 允许进入自动收起倒计时时返回 true。
+ */
+internal fun shouldAutoCloseTaskCenter(
+    state: TaskCenterState,
+    tasks: List<BackgroundTask>,
+    autoCloseEnabled: Boolean,
+): Boolean {
+    if (!state.visible || !state.openedAutomatically || !autoCloseEnabled) return false
+    val hasActive = tasks.any { task -> task.status.isActiveTask() }
+    val hasFailed = tasks.any { task -> task.status == BackgroundTaskStatus.FAILED }
+    return !hasActive && !hasFailed
 }

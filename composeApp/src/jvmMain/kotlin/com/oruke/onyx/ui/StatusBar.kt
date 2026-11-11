@@ -22,6 +22,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.PaneState
+import com.oruke.onyx.app.component.TaskCenterComponent
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.core.model.COMPUTER_LOCATION
@@ -53,6 +54,7 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
  * @param onSetActiveViewMode 请求切换当前面板视图。
  * @param galleryItemSizeDp 画廊项目的逻辑尺寸。
  * @param onGalleryItemSizeChange 请求调整画廊尺寸。
+ * @param taskCenter 应用级任务中心组件；非空时在右侧展示后台任务实时胶囊。
  */
 @Composable
 internal fun StatusBar(
@@ -62,6 +64,7 @@ internal fun StatusBar(
     onSetActiveViewMode: (ViewMode) -> Unit,
     galleryItemSizeDp: Int = 160,
     onGalleryItemSizeChange: (Int) -> Unit = {},
+    taskCenter: TaskCenterComponent? = null,
 ) {
     val activeState = if (activePane == PaneId.PRIMARY) primaryPane else secondaryPane
     val computer = activeState.location == COMPUTER_LOCATION
@@ -90,8 +93,11 @@ internal fun StatusBar(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            if (taskCenter != null) {
+                StatusBarTaskIndicator(taskCenter)
+            }
             // 概览采用独立的自适应磁盘尺寸，不显示仅作用于普通文件缩略图的滑块。
             if (activeState.viewMode == ViewMode.GALLERY && !computer) {
                 ZoomSlider(

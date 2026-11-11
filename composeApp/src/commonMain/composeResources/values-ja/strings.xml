@@ -22,6 +22,7 @@
     <string name="action_rename">名前を変更</string>
     <string name="action_new_file">新規ファイル</string>
     <string name="action_new_directory">新規フォルダー</string>
+    <string name="action_copy_name">名前をコピー</string>
     <string name="action_copy_path">パスをコピー</string>
     <string name="action_close_menu">メニューを閉じる</string>
     <string name="action_close_window">閉じる</string>
@@ -287,6 +288,10 @@
     <string name="label_task_empty">バックグラウンドタスクはありません</string>
     <string name="label_task_filter_empty">この分類のタスクはありません</string>
     <string name="label_task_background_hint">このウィンドウを閉じても、タスクはバックグラウンドで続行します。</string>
+    <string name="label_task_auto_closing_hint">すべてのタスクが完了しました。まもなくウィンドウを閉じます…</string>
+    <string name="label_task_auto_close_paused">ポインターが離れると自動で閉じます。</string>
+    <string name="action_task_auto_close_when_finished">完了後に自動で閉じる</string>
+    <string name="label_task_failed_summary">失敗 %1$d 件</string>
     <string name="action_task_clear_finished">終了したタスクを消去</string>
     <string name="label_task_status_queued">待機中</string>
     <string name="label_task_status_running">実行中</string>
@@ -700,6 +705,9 @@
     <string name="label_double_click_blank_up">一覧の空白領域をダブルクリックして親フォルダーへ移動</string>
     <string name="label_section_delete_safety">削除ポリシーと安全確認</string>
     <string name="label_confirm_before_delete">削除前に確認ダイアログを表示</string>
+    <string name="label_section_task_feedback">バックグラウンドタスクと進捗表示</string>
+    <string name="label_auto_show_task_center">コピー・移動・削除・圧縮・展開の開始時にタスクウィンドウを自動表示</string>
+    <string name="label_auto_close_task_center">自動表示されたタスクウィンドウをすべてのタスク完了後に自動で閉じる</string>
     <string name="label_section_diagnostics_maintenance">診断ログとメンテナンス</string>
     <string name="label_custom_themes_section">保存済みカスタムテーマ</string>
     <string name="label_custom_theme_name_placeholder">カスタムテーマ名を入力…</string>

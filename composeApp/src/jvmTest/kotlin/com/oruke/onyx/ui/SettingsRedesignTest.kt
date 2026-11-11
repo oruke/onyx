@@ -107,6 +107,8 @@ class SettingsRedesignTest {
             doubleClickEmptySpaceToNavigateUp = false,
             deleteMode = DeleteMode.PERMANENT,
             confirmBeforeDelete = false,
+            autoShowTaskCenter = false,
+            autoCloseTaskCenterWhenFinished = false,
             favoriteLocations = listOf("C:\\Projects"),
             recentLocations = listOf("D:\\Media"),
         )
@@ -122,6 +124,8 @@ class SettingsRedesignTest {
         assertFalse(afterThemeReset.closeToTray)
         assertTrue(afterThemeReset.defaultShowHiddenItems)
         assertTrue(afterThemeReset.singleClickToOpen)
+        assertFalse(afterThemeReset.autoShowTaskCenter)
+        assertFalse(afterThemeReset.autoCloseTaskCenterWhenFinished)
 
         val afterFullReset = customized.resetAllPreferencesToDefaults()
         assertEquals(AppLocale.SYSTEM, afterFullReset.preferredLocale)
@@ -132,6 +136,8 @@ class SettingsRedesignTest {
         assertTrue(afterFullReset.directoriesFirst)
         assertFalse(afterFullReset.singleClickToOpen)
         assertTrue(afterFullReset.confirmBeforeDelete)
+        assertTrue(afterFullReset.autoShowTaskCenter)
+        assertTrue(afterFullReset.autoCloseTaskCenterWhenFinished)
         assertEquals(listOf(customPreset), afterFullReset.customThemes)
         assertEquals(listOf("C:\\Projects"), afterFullReset.favoriteLocations)
         assertEquals(listOf("D:\\Media"), afterFullReset.recentLocations)

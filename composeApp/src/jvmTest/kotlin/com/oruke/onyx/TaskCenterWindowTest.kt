@@ -179,12 +179,52 @@ class TaskCenterWindowTest {
             awaitTaskWindowTag("task-window-close")
             captureTaskWindow("task-center-scaled-minimum.png")
             listOf(
-                "task-window-close", "task-clear-finished", "task-filter-ALL",
+                "task-window-close", "task-clear-finished", "task-auto-close-toggle", "task-filter-ALL",
                 "task-filter-ACTIVE", "task-filter-FAILED", "task-filter-FINISHED",
             ).forEach { tag -> assertTaskWindowControlIsVisible(tag) }
             clickTaskWindowTag("task-window-close")
             waitUntil(timeoutMillis = TASK_WINDOW_WAIT_MILLIS) { runOnUiThread { visibleTaskWindows().isEmpty() } }
             assertEquals(3, component.tasks.value.size)
+        } finally {
+            runOnUiThread { component.dispatch(TaskCenterIntent.Close) }
+            waitForIdle()
+            scope.cancel()
+        }
+    }
+
+    /**
+     * 提交复制/删除等后台任务时无需手动点击按钮即自动弹出独立窗口，全部成功后自动收起，失败时保留展示。
+     *
+     * @return 无返回值。
+     */
+    @Test
+    fun backgroundTasksAutoOpenNativeWindowAndAutoCloseAfterCompletion() = runDesktopComposeUiTest {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val orchestrator = TaskOrchestrator(scope)
+        val preferences = MutableStateFlow(OnyxSettings())
+        val component = DefaultTaskCenterComponent(orchestrator, preferences)
+        try {
+            setContent { TaskWindowTestApplication(component, preferences, autoCloseDelayMillis = 250L) }
+            assertTrue(runOnUiThread { visibleTaskWindows().isEmpty() })
+
+            runOnUiThread { orchestrator.appendTask(windowTask("auto-copy", BackgroundTaskStatus.RUNNING)) }
+            awaitTaskWindow()
+            awaitTaskWindowTag("task-row-auto-copy")
+            assertTrue(component.state.value.openedAutomatically)
+
+            runOnUiThread {
+                orchestrator.updateTaskFields("auto-copy") { task ->
+                    task.copy(status = BackgroundTaskStatus.SUCCEEDED, progress = 1f, processedBytes = 100L)
+                }
+            }
+            waitUntil(timeoutMillis = TASK_WINDOW_WAIT_MILLIS) {
+                runOnUiThread { visibleTaskWindows().isEmpty() } && !component.state.value.visible
+            }
+
+            runOnUiThread { orchestrator.appendTask(windowTask("auto-fail", BackgroundTaskStatus.FAILED)) }
+            awaitTaskWindow()
+            awaitTaskWindowTag("task-row-auto-fail")
+            assertTrue(component.state.value.visible)
         } finally {
             runOnUiThread { component.dispatch(TaskCenterIntent.Close) }
             waitForIdle()
@@ -198,12 +238,14 @@ class TaskCenterWindowTest {
  *
  * @param component 真实任务中心组件。
  * @param preferences 当前应用外观设置流。
+ * @param autoCloseDelayMillis 自动关闭等待时长。
  * @return 无返回值。
  */
 @Composable
 private fun TaskWindowTestApplication(
     component: TaskCenterComponent,
     preferences: MutableStateFlow<OnyxSettings>,
+    autoCloseDelayMillis: Long = TASK_WINDOW_AUTO_CLOSE_DELAY_MILLIS,
 ) {
     val localeController = remember(preferences) { JvmApplicationLocaleController(preferences) }
     val localeScope = rememberCoroutineScope()
@@ -215,7 +257,12 @@ private fun TaskWindowTestApplication(
         theme = JewelTheme.lightThemeDefinition(),
         styling = ComponentStyling.default().decoratedWindow(titleBarStyle = TitleBarStyle.lightWithLightHeader()),
     ) {
-        TaskCenterWindow(component, preferences, localeController.appliedLocale)
+        TaskCenterWindow(
+            taskCenter = component,
+            settings = preferences,
+            resourceLocale = localeController.appliedLocale,
+            autoCloseDelayMillis = autoCloseDelayMillis,
+        )
         OnyxTheme { OnyxTooltipHost { TaskCenterButton(component) } }
     }
 }

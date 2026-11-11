@@ -60,6 +60,7 @@ import onyx.composeapp.generated.resources.action_batch_rename
 import onyx.composeapp.generated.resources.action_archive
 import onyx.composeapp.generated.resources.action_close_menu
 import onyx.composeapp.generated.resources.action_copy
+import onyx.composeapp.generated.resources.action_copy_name
 import onyx.composeapp.generated.resources.action_copy_path
 import onyx.composeapp.generated.resources.action_cut
 import onyx.composeapp.generated.resources.action_create_zip
@@ -421,6 +422,7 @@ private fun PaneContextMenuText.stringResourceKey(): StringResource {
         PaneContextMenuText.EXTRACT_SMART -> Res.string.action_extract_smart
         PaneContextMenuText.CREATE_ZIP -> Res.string.action_create_zip
         PaneContextMenuText.BATCH_RENAME -> Res.string.action_batch_rename
+        PaneContextMenuText.COPY_NAME -> Res.string.action_copy_name
         PaneContextMenuText.COPY_PATH -> Res.string.action_copy_path
         PaneContextMenuText.COPY -> Res.string.action_copy
         PaneContextMenuText.CUT -> Res.string.action_cut
@@ -489,6 +491,7 @@ private fun PaneContextMenuCommand.shortcutCommandOrNull(): OnyxCommand? {
         PaneContextMenuCommand.ExtractToDirectory,
         PaneContextMenuCommand.ExtractSmart,
         PaneContextMenuCommand.CreateZipArchive,
+        PaneContextMenuCommand.CopyName,
         PaneContextMenuCommand.CopyPath,
         PaneContextMenuCommand.OpenTerminal,
         is PaneContextMenuCommand.FileContext,

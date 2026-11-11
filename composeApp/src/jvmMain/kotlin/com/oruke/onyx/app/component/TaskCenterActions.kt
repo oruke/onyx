@@ -31,6 +31,10 @@ internal fun TaskOrchestrator.dispatchTaskCenterAction(intent: TaskCenterIntent)
             tasks.value.forTaskCenterFilter(TaskCenterFilter.FINISHED)
                 .forEach { task -> dismissTask(task.id) }
         }
-        TaskCenterIntent.Open, TaskCenterIntent.Close, is TaskCenterIntent.SetFilter -> Unit
+        TaskCenterIntent.Open,
+        TaskCenterIntent.Close,
+        TaskCenterIntent.AutoCloseWhenIdle,
+        is TaskCenterIntent.SetAutoCloseWhenFinished,
+        is TaskCenterIntent.SetFilter -> Unit
     }
 }

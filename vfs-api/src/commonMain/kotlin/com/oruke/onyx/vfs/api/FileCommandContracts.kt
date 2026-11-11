@@ -92,6 +92,13 @@ fun interface FileTransferProgressSink {
      */
     fun onBytesTransferred(byteCount: Long)
 
+    /**
+     * 可选接收当前正在传输的子文件或相对路径名称。
+     *
+     * @param fileName 当前活动文件或相对路径显示名。
+     */
+    fun onCurrentFileChanged(fileName: String) = Unit
+
     /** 无需接收字节进度时使用的空实现。 */
     object NoOp : FileTransferProgressSink {
         /**

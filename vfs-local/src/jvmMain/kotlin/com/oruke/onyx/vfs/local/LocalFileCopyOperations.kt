@@ -246,9 +246,17 @@ private class CopyFileVisitor(
         file: Path,
         attrs: BasicFileAttributes,
     ): FileVisitResult {
+        val relative = sourceRoot.relativize(file)
+        val rootName = sourceRoot.fileName?.toString().orEmpty()
+        val displayPath = if (rootName.isNotEmpty()) {
+            sourceRoot.fileName.resolve(relative).toString()
+        } else {
+            relative.toString()
+        }
+        progressSink.onCurrentFileChanged(displayPath)
         LocalFileCopyOperations.copyPathContent(
             source = file,
-            target = targetRoot.resolve(sourceRoot.relativize(file)),
+            target = targetRoot.resolve(relative),
             progressSink = progressSink,
         )
         return FileVisitResult.CONTINUE

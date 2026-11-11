@@ -170,10 +170,7 @@ class JvmLocalFileProvider :
         progressSink: FileTransferProgressSink,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val taskJob = currentCoroutineContext()[Job]
-        val cancellationAwareSink = FileTransferProgressSink { byteCount ->
-            taskJob?.ensureActive()
-            progressSink.onBytesTransferred(byteCount)
-        }
+        val cancellationAwareSink = progressSink.cancellationAware(taskJob)
         runCatching {
             val targetDirectory = LocalPathOperations.resolveTargetDirectory(targetDirectoryLocation)
             entries.forEach { entry ->
@@ -205,10 +202,7 @@ class JvmLocalFileProvider :
         progressSink: FileTransferProgressSink,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val taskJob = currentCoroutineContext()[Job]
-        val cancellationAwareSink = FileTransferProgressSink { byteCount ->
-            taskJob?.ensureActive()
-            progressSink.onBytesTransferred(byteCount)
-        }
+        val cancellationAwareSink = progressSink.cancellationAware(taskJob)
         runCatching {
             val targetDirectory = LocalPathOperations.resolveTargetDirectory(targetDirectoryLocation)
             entries.forEach { entry ->

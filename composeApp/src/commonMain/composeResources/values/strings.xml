@@ -22,6 +22,7 @@
     <string name="action_rename">Rename</string>
     <string name="action_new_file">New File</string>
     <string name="action_new_directory">New Directory</string>
+    <string name="action_copy_name">Copy Name</string>
     <string name="action_copy_path">Copy Path</string>
     <string name="action_close_menu">Close Menu</string>
     <string name="action_close_window">Close</string>
@@ -287,6 +288,10 @@
     <string name="label_task_empty">No background tasks</string>
     <string name="label_task_filter_empty">No tasks in this category</string>
     <string name="label_task_background_hint">Tasks continue in the background when this window is closed.</string>
+    <string name="label_task_auto_closing_hint">All tasks finished. Closing window shortly…</string>
+    <string name="label_task_auto_close_paused">Window will auto-close after pointer leaves.</string>
+    <string name="action_task_auto_close_when_finished">Auto-close when done</string>
+    <string name="label_task_failed_summary">%1$d task(s) failed</string>
     <string name="action_task_clear_finished">Clear finished tasks</string>
     <string name="label_task_status_queued">Queued</string>
     <string name="label_task_status_running">Running</string>
@@ -700,6 +705,9 @@
     <string name="label_double_click_blank_up">Double-click empty list area to go to parent folder</string>
     <string name="label_section_delete_safety">Deletion &amp; Safety Confirmation</string>
     <string name="label_confirm_before_delete">Show confirmation dialog before deleting items</string>
+    <string name="label_section_task_feedback">Background Tasks &amp; Progress Feedback</string>
+    <string name="label_auto_show_task_center">Automatically show task window for copy, move, delete, and archive tasks</string>
+    <string name="label_auto_close_task_center">Automatically close auto-opened task window when all tasks succeed</string>
     <string name="label_section_diagnostics_maintenance">Diagnostics &amp; Reset</string>
     <string name="label_custom_themes_section">Saved Custom Themes</string>
     <string name="label_custom_theme_name_placeholder">Enter custom theme name…</string>

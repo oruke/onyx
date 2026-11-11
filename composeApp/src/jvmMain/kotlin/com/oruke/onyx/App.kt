@@ -593,6 +593,7 @@ private fun AppStatusBar(state: RootState, rootComponent: RootComponent) {
         onSetActiveViewMode = { paneComponent.dispatch(PaneIntent.SetViewMode(it)) },
         galleryItemSizeDp = paneState.galleryItemSizeDp,
         onGalleryItemSizeChange = { paneComponent.dispatch(PaneIntent.SetGalleryItemSize(it)) },
+        taskCenter = rootComponent.taskCenter,
     )
 }
 

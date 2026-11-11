@@ -31,7 +31,10 @@ import com.oruke.onyx.ui.theme.rememberOnyxButtonStyle
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
+import onyx.composeapp.generated.resources.action_task_auto_close_when_finished
 import onyx.composeapp.generated.resources.action_task_clear_finished
+import onyx.composeapp.generated.resources.label_task_auto_close_paused
+import onyx.composeapp.generated.resources.label_task_auto_closing_hint
 import onyx.composeapp.generated.resources.label_task_background_hint
 import onyx.composeapp.generated.resources.label_task_empty
 import onyx.composeapp.generated.resources.label_task_filter_active
@@ -45,6 +48,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.foundation.theme.LocalTextStyle
 import org.jetbrains.jewel.ui.Orientation
+import org.jetbrains.jewel.ui.component.CheckboxRow
 import org.jetbrains.jewel.ui.component.DefaultButton
 import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.OutlinedButton
@@ -60,6 +64,10 @@ import org.jetbrains.jewel.ui.theme.outlinedButtonStyle
  * @param tasks 全部后台任务快照。
  * @param listState 窗口隐藏期间仍保留的列表滚动位置。
  * @param dispatch 统一任务中心事件入口。
+ * @param autoCloseWhenFinished 全部任务成功完成后是否自动收起窗口。
+ * @param autoClosingSoon 当前是否处于完成后自动收起倒计时阶段。
+ * @param autoClosePausedByHover 鼠标悬停是否正暂停自动收起倒计时。
+ * @param modifier 顶层容器修饰符。
  * @return 无返回值。
  */
 @Composable
@@ -68,13 +76,17 @@ internal fun TaskCenterContent(
     tasks: List<BackgroundTask>,
     listState: LazyListState,
     dispatch: (TaskCenterIntent) -> Unit,
+    autoCloseWhenFinished: Boolean = true,
+    autoClosingSoon: Boolean = false,
+    autoClosePausedByHover: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
     val summary = remember(tasks) { tasks.toTaskCenterSummary() }
     val visibleTasks = remember(tasks, state.filter) { tasks.forTaskCenterFilter(state.filter) }
     val outlinedButtonStyle = rememberOnyxButtonStyle(JewelTheme.outlinedButtonStyle)
-    Column(Modifier.fillMaxSize().background(palette.appBackground).testTag("task-center")) {
+    Column(modifier.fillMaxSize().background(palette.appBackground).testTag("task-center")) {
         TaskCenterFilters(state.filter, tasks, dispatch)
         Divider(Orientation.Horizontal)
         if (summary.shouldShowAggregateProgress()) {
@@ -108,11 +120,34 @@ internal fun TaskCenterContent(
             modifier = Modifier.fillMaxWidth().padding(10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = stringResource(Res.string.label_task_background_hint),
-                color = palette.mutedForeground,
-                fontSize = appearance.headerFontSize,
-            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(
+                        when {
+                            autoClosingSoon && autoClosePausedByHover -> Res.string.label_task_auto_close_paused
+                            autoClosingSoon -> Res.string.label_task_auto_closing_hint
+                            else -> Res.string.label_task_background_hint
+                        },
+                    ),
+                    color = if (autoClosingSoon && !autoClosePausedByHover) {
+                        palette.accent
+                    } else {
+                        palette.mutedForeground
+                    },
+                    fontSize = appearance.headerFontSize,
+                )
+                CheckboxRow(
+                    text = stringResource(Res.string.action_task_auto_close_when_finished),
+                    checked = autoCloseWhenFinished,
+                    onCheckedChange = { enabled -> dispatch(TaskCenterIntent.SetAutoCloseWhenFinished(enabled)) },
+                    modifier = Modifier.testTag("task-auto-close-toggle"),
+                )
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 OutlinedButton(
                     onClick = { dispatch(TaskCenterIntent.ClearFinished) },

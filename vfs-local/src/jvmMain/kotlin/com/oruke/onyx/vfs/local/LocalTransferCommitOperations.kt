@@ -24,6 +24,10 @@ internal object LocalTransferCommitOperations {
         source: Path, target: Path, strategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink, checkActive: () -> Unit,
     ) {
+        if (isNewDirectoryDestination(source, target)) {
+            copyNewDirectoryDirectly(source, target, progressSink, checkActive)
+            return
+        }
         val staging = Files.createTempDirectory(target.parent, ".onyx-transfer-")
         try {
             val content = staging.resolve("content")
@@ -39,7 +43,7 @@ internal object LocalTransferCommitOperations {
     }
 
     /**
-     * 优先同文件系统暂存移动；跨文件系统复制后提交，最后才删除源。
+     * 优先同文件系统直接移动；跨文件系统新增目录直接可见写入，覆盖场景经暂存交换保护旧内容。
      *
      * @param source 源路径。
      * @param target 最终目标路径。
@@ -52,6 +56,10 @@ internal object LocalTransferCommitOperations {
         source: Path, target: Path, strategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink, checkActive: () -> Unit,
     ) {
+        if (isNewDirectoryDestination(source, target)) {
+            moveNewDirectoryDirectly(source, target, progressSink, checkActive)
+            return
+        }
         val staging = Files.createTempDirectory(target.parent, ".onyx-transfer-")
         val content = staging.resolve("content")
         var sourceMoved = false
@@ -125,5 +133,73 @@ internal object LocalTransferCommitOperations {
         if (Files.exists(staging.resolve("previous"), LinkOption.NOFOLLOW_LINKS)) return
         runCatching { LocalPathDeletion.delete(staging) }
             .onFailure { cleanupFailure -> failure.addSuppressed(cleanupFailure) }
+    }
+
+    /**
+     * 判断是否为目标位置尚不存在同名条目的目录传输（可直接创建可见目标目录写入）。
+     */
+    private fun isNewDirectoryDestination(source: Path, target: Path): Boolean {
+        return Files.isDirectory(source) && !Files.exists(target, LinkOption.NOFOLLOW_LINKS)
+    }
+
+    /**
+     * 先原子创建可见目标目录再写入子项，传输取消或失败时清理新建目录，并发目标出现时不误删。
+     */
+    @Suppress("TooGenericExceptionCaught") // 新建目录在任意 I/O 或取消失败时均须回滚清理。
+    private fun copyNewDirectoryDirectly(
+        source: Path,
+        target: Path,
+        progressSink: FileTransferProgressSink,
+        checkActive: () -> Unit,
+    ) {
+        Files.newDirectoryStream(source).close()
+        Files.createDirectory(target)
+        try {
+            LocalFileCopyOperations.copyPathWithRollback(source, target, progressSink)
+            checkActive()
+        } catch (failure: Exception) {
+            runCatching { LocalPathDeletion.delete(target) }
+                .onFailure { cleanupFailure -> failure.addSuppressed(cleanupFailure) }
+            throw failure
+        }
+    }
+
+    /**
+     * 同分区直接原子移动目录；跨分区时先创建可见目标目录完整复制，确认未取消后再删除源目录。
+     */
+    private fun moveNewDirectoryDirectly(
+        source: Path,
+        target: Path,
+        progressSink: FileTransferProgressSink,
+        checkActive: () -> Unit,
+    ) {
+        var movedDirectly = false
+        try {
+            Files.move(source, target)
+            movedDirectly = true
+        } catch (alreadyExists: FileAlreadyExistsException) {
+            throw alreadyExists
+        } catch (moveFailure: IOException) {
+            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+                throw moveFailure
+            }
+        }
+        if (movedDirectly) {
+            verifyActiveOrRestore(source, target, checkActive)
+        } else {
+            copyNewDirectoryDirectly(source, target, progressSink, checkActive)
+            LocalPathDeletion.delete(source)
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught") // 直接移动后若发现已取消须恢复源目录。
+    private fun verifyActiveOrRestore(source: Path, target: Path, checkActive: () -> Unit) {
+        try {
+            checkActive()
+        } catch (failure: Exception) {
+            runCatching { Files.move(target, source) }
+                .onFailure { rollbackFailure -> failure.addSuppressed(rollbackFailure) }
+            throw failure
+        }
     }
 }

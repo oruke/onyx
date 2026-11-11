@@ -22,6 +22,7 @@
     <string name="action_rename">重命名</string>
     <string name="action_new_file">新建文件</string>
     <string name="action_new_directory">新建文件夹</string>
+    <string name="action_copy_name">复制名称</string>
     <string name="action_copy_path">复制路径</string>
     <string name="action_close_menu">关闭菜单</string>
     <string name="action_close_window">关闭</string>
@@ -285,6 +286,10 @@
     <string name="label_task_empty">暂无后台任务</string>
     <string name="label_task_filter_empty">此分类下暂无任务</string>
     <string name="label_task_background_hint">关闭此窗口后，任务仍会在后台继续。</string>
+    <string name="label_task_auto_closing_hint">全部任务已完成，窗口即将自动收起…</string>
+    <string name="label_task_auto_close_paused">鼠标移开后将自动收起窗口。</string>
+    <string name="action_task_auto_close_when_finished">完成后自动关闭</string>
+    <string name="label_task_failed_summary">%1$d 个任务失败</string>
     <string name="action_task_clear_finished">清理已结束任务</string>
     <string name="label_task_status_queued">排队中</string>
     <string name="label_task_status_running">执行中</string>
@@ -698,6 +703,9 @@
     <string name="label_double_click_blank_up">双击文件列表空白处返回上一级目录</string>
     <string name="label_section_delete_safety">删除策略与安全确认</string>
     <string name="label_confirm_before_delete">删除文件前显示确认提醒弹窗</string>
+    <string name="label_section_task_feedback">后台任务与进度反馈</string>
+    <string name="label_auto_show_task_center">执行复制、移动、删除、压缩或解压时自动弹出任务窗口</string>
+    <string name="label_auto_close_task_center">自动弹出的任务窗口在全部任务成功完成后自动收起</string>
     <string name="label_section_diagnostics_maintenance">诊断日志与维护</string>
     <string name="label_custom_themes_section">我的自定义主题</string>
     <string name="label_custom_theme_name_placeholder">输入自定义主题名称…</string>

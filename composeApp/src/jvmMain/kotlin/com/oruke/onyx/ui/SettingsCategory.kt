@@ -69,6 +69,8 @@ internal fun OnyxSettings.resetCategoryToDefaults(category: SettingsCategory): O
             doubleClickEmptySpaceToNavigateUp = defaults.doubleClickEmptySpaceToNavigateUp,
             deleteMode = defaults.deleteMode,
             confirmBeforeDelete = defaults.confirmBeforeDelete,
+            autoShowTaskCenter = defaults.autoShowTaskCenter,
+            autoCloseTaskCenterWhenFinished = defaults.autoCloseTaskCenterWhenFinished,
         )
 
         SettingsCategory.AUTOMATION -> copy(

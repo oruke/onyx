@@ -21,6 +21,7 @@ import com.oruke.onyx.app.component.PaneContextMenuBuildInput
 import com.oruke.onyx.app.component.PaneContextMenuModelBuilder
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
+import com.oruke.onyx.app.component.visibleEntriesIncludingExpanded
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.FileDropZone
@@ -44,7 +45,7 @@ internal fun PaneFileArea(
     paneDropBackground: Color,
     modifier: Modifier = Modifier,
 ) {
-    val readyEntries = (runtime.state.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
+    val readyEntries = runtime.state.visibleEntriesIncludingExpanded()
     val selectedEntries = readyEntries.filter { entry -> entry.id in runtime.state.selectedEntryIds }
     Row(modifier = modifier.fillMaxWidth().fillMaxHeight()) {
         PaneEntriesArea(runtime, readyEntries, paneDropBackground, Modifier.weight(1f))

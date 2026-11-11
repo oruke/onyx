@@ -90,6 +90,20 @@ private fun DefaultPaneComponent.selectedDirectoryForOpen(): VFile? {
         ?.takeIf(VFile::isBrowsableDirectory)
 }
 
+/** 将当前选中条目的名称复制到系统文本剪贴板。 */
+internal fun DefaultPaneComponent.copySelectedNames() {
+    val tab = activeTab() ?: return
+    val entries = currentVisibleEntries().filter { entry -> entry.id in tab.selectedEntryIds }
+    if (entries.isEmpty()) return
+    scope.launch {
+        textClipboardService.copyText(entries.joinToString(separator = "\n") { entry -> entry.name })
+            .onSuccess { clearOperationFeedback(tab.id) }
+            .onFailure { failure ->
+                updateFailure(tab.id, PaneOperationFeedbackKind.COPY_PATH_FAILED, failure.toI18nMessage())
+            }
+    }
+}
+
 /** 将当前选中条目的 VFS 路径复制到系统文本剪贴板。 */
 internal fun DefaultPaneComponent.copySelectedPaths() {
     val tab = activeTab() ?: return
@@ -119,7 +133,7 @@ internal fun DefaultPaneComponent.updateInlineEditDraft(draft: String) {
 /** 校验并提交活动内联编辑操作。 */
 internal fun DefaultPaneComponent.confirmInlineEdit() {
     val tab = activeTab() ?: return
-    val result = tab.confirmInlineEditState(currentTabEntries(tab))
+    val result = tab.confirmInlineEditState(currentVisibleEntries())
     if (result.tab != tab) updateTab(tab.id) { result.tab }
     executeInlineEditOperation(tab.id, result.operation)
 }

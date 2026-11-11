@@ -248,7 +248,12 @@ internal class PaneCommandController(
      */
     private fun selectedBrowsableDirectoryCount(): Int {
         val readyEntries = state.entriesState as? PaneEntriesState.Ready ?: return 0
-        return readyEntries.entries.count { entry ->
+        val allEntries = if (state.inlineExpandedEntries.isEmpty()) {
+            readyEntries.entries
+        } else {
+            readyEntries.entries + state.inlineExpandedEntries.values.flatMap { it.entries.orEmpty() }
+        }
+        return allEntries.count { entry ->
             entry.id in state.selectedEntryIds && entry.isBrowsableDirectory()
         }
     }

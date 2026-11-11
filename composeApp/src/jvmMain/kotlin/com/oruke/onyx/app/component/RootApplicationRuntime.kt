@@ -66,7 +66,25 @@ internal class RootApplicationRuntime(
     }
 
     /** 所有窗口共享的任务中心，不随任何单个文件管理器窗口关闭。 */
-    val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(taskOrchestrator)
+    val taskCenter: TaskCenterComponent = DefaultTaskCenterComponent(
+        taskOrchestrator = taskOrchestrator,
+        settings = settings,
+        onUpdateAutoCloseWhenFinished = ::updateTaskCenterAutoClose,
+    )
+
+    /**
+     * 更新任务窗口完成后自动关闭偏好并持久化到设置存储。
+     *
+     * @param enabled 是否启用自动关闭。
+     */
+    fun updateTaskCenterAutoClose(enabled: Boolean) {
+        val next = settings.value.copy(autoCloseTaskCenterWhenFinished = enabled)
+        if (next == settings.value) return
+        settings.value = next
+        scope.launch {
+            sessionManager.saveSettings(next)
+        }
+    }
 
     /**
      * 更新应用级独立窗口（如任务中心）尺寸与最大化状态并持久化到设置存储。

@@ -45,8 +45,20 @@ class TaskOrchestrator(
         TaskPersistenceCoordinator(scope, repository)
     }
 
+    /** 新后台任务提交监听器；仅在新任务入队时同步通知，缓存恢复与进度刷新不触发。 */
+    private val taskAppendedListeners = mutableListOf<(BackgroundTask) -> Unit>()
+
     init {
         taskPersistence?.restore(::mergePersistedTasks)
+    }
+
+    /**
+     * 注册新后台任务入队监听。
+     *
+     * @param listener 新任务加入顶部后的同步回调。
+     */
+    fun addTaskAppendedListener(listener: (BackgroundTask) -> Unit) {
+        taskAppendedListeners += listener
     }
 
     /**
@@ -56,6 +68,7 @@ class TaskOrchestrator(
      */
     fun appendTask(task: BackgroundTask) {
         replaceTasks(listOf(task) + _tasks.value)
+        taskAppendedListeners.toList().forEach { listener -> listener(task) }
     }
 
     /**

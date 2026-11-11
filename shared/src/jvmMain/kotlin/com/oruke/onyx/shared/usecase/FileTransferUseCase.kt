@@ -104,42 +104,20 @@ class FileTransferUseCase(
         awaitReady()
         val conflictStrategy = step.request.conflictStrategies[step.entry.id]
             ?: TransferConflictStrategy.KEEP_BOTH
-        val detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, step.entry.name)
+        val detail = I18nMessage(
+            MessageKey.MSG_STRING_LITERAL,
+            "${step.entry.name} -> ${step.request.targetDirectoryLocation}",
+        )
         send(step.startProgress(detail))
 
-        var entryTransferredBytes = 0L
         val transferJob = currentCoroutineContext()[Job]
-        var lastEmissionMillis = clockMillis()
-        val rateEstimator = TransferRateEstimator()
-        rateEstimator.record(step.accumulatedBytes, lastEmissionMillis)
-        var latestBytesPerSecond: Long? = null
-        val telemetryLock = Any()
-        val byteProgressSink = FileTransferProgressSink { byteCount ->
-            awaitTransferResume(isPaused, transferJob)
-            if (byteCount > 0L) {
-                synchronized(telemetryLock) {
-                    entryTransferredBytes += byteCount
-                    val entryProgress = if (step.entryBytes > 0L) {
-                        entryTransferredBytes.coerceAtMost(step.entryBytes)
-                    } else {
-                        entryTransferredBytes
-                    }
-                    val processedBytes = step.accumulatedBytes + entryProgress
-                    val nowMillis = clockMillis()
-                    latestBytesPerSecond = rateEstimator.record(processedBytes, nowMillis)
-                    if (nowMillis - lastEmissionMillis >= PROGRESS_EMISSION_INTERVAL_MILLIS) {
-                        lastEmissionMillis = nowMillis
-                        trySend(step.byteProgress(detail, processedBytes, latestBytesPerSecond))
-                    }
-                }
-            }
-        }
+        val telemetry = createStepProgressSink(step, detail, isPaused, transferJob)
 
         val result = executeTransfer(
             request = step.request,
             entry = step.entry,
             conflictStrategy = conflictStrategy,
-            progressSink = byteProgressSink,
+            progressSink = telemetry.sink,
         ).getOrThrow()
         val change = when (result) {
             is FileTransferResult.Committed -> DirectoryChange(
@@ -152,9 +130,71 @@ class FileTransferUseCase(
                 else setOf(step.request.targetDirectoryLocation))
         }
         val completedBytes = step.accumulatedBytes + step.entryBytes
-        send(step.completedProgress(completedBytes, latestBytesPerSecond).copy(directoryChange = change,
+        send(step.completedProgress(completedBytes, telemetry.latestBytesPerSecond()).copy(directoryChange = change,
             skippedCount = if (result == FileTransferResult.Skipped) 1 else 0))
         return completedBytes
+    }
+
+    private fun ProducerScope<TaskProgress>.createStepProgressSink(
+        step: FileTransferStep,
+        detail: I18nMessage,
+        isPaused: () -> Boolean,
+        transferJob: Job?,
+    ): StepTelemetry {
+        var entryTransferredBytes = 0L
+        var lastByteEmissionMillis = clockMillis()
+        var lastFileEmissionMillis = lastByteEmissionMillis - PROGRESS_EMISSION_INTERVAL_MILLIS
+        val rateEstimator = TransferRateEstimator().also { it.record(step.accumulatedBytes, lastByteEmissionMillis) }
+        var latestBytesPerSecond: Long? = null
+        var latestFileName = step.entry.name
+        val telemetryLock = Any()
+
+        fun currentProcessedBytes(): Long {
+            val entryProgress = if (step.entryBytes > 0L) {
+                entryTransferredBytes.coerceAtMost(step.entryBytes)
+            } else {
+                entryTransferredBytes
+            }
+            return step.accumulatedBytes + entryProgress
+        }
+
+        val sink = object : FileTransferProgressSink {
+            override fun onBytesTransferred(byteCount: Long) {
+                awaitTransferResume(isPaused, transferJob)
+                if (byteCount <= 0L) return
+                synchronized(telemetryLock) {
+                    entryTransferredBytes += byteCount
+                    val processedBytes = currentProcessedBytes()
+                    val nowMillis = clockMillis()
+                    latestBytesPerSecond = rateEstimator.record(processedBytes, nowMillis)
+                    if (nowMillis - lastByteEmissionMillis >= PROGRESS_EMISSION_INTERVAL_MILLIS) {
+                        lastByteEmissionMillis = nowMillis
+                        lastFileEmissionMillis = nowMillis
+                        trySend(step.byteProgress(detail, processedBytes, latestBytesPerSecond, latestFileName))
+                    }
+                }
+            }
+
+            override fun onCurrentFileChanged(fileName: String) {
+                awaitTransferResume(isPaused, transferJob)
+                if (fileName.isBlank()) return
+                synchronized(telemetryLock) {
+                    latestFileName = fileName
+                    val nowMillis = clockMillis()
+                    if (nowMillis - lastFileEmissionMillis >= PROGRESS_EMISSION_INTERVAL_MILLIS) {
+                        lastFileEmissionMillis = nowMillis
+                        val snapshot = step.byteProgress(
+                            detail = detail,
+                            processedBytes = currentProcessedBytes(),
+                            bytesPerSecond = latestBytesPerSecond,
+                            currentFileName = latestFileName,
+                        )
+                        trySend(snapshot)
+                    }
+                }
+            }
+        }
+        return StepTelemetry(sink) { synchronized(telemetryLock) { latestBytesPerSecond } }
     }
 
     /**
@@ -274,11 +314,12 @@ private data class FileTransferStep(
         detail: I18nMessage,
         processedBytes: Long,
         bytesPerSecond: Long?,
+        currentFileName: String = entry.name,
     ): TaskProgress = TaskProgress(
         status = BackgroundTaskStatus.RUNNING,
         detail = detail,
         progress = byteProgress(processedBytes, totalBytes),
-        currentFileName = entry.name,
+        currentFileName = currentFileName,
         processedCount = index,
         processedBytes = processedBytes,
         totalBytes = totalBytes,
@@ -418,3 +459,9 @@ private fun estimateRemainingSeconds(
     if (remainingBytes == 0L) return null
     return (remainingBytes + speed - 1L) / speed
 }
+
+/** 单个顶层条目传输期间的实时进度接收器与速率快照访问器。 */
+private class StepTelemetry(
+    val sink: FileTransferProgressSink,
+    val latestBytesPerSecond: () -> Long?,
+)

@@ -4,6 +4,7 @@ import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootDialogState
+import com.oruke.onyx.app.component.visibleEntries
 import com.oruke.onyx.app.component.withBatchRenamePreview
 import com.oruke.onyx.shared.usecase.BatchRenameUseCase
 import com.oruke.onyx.shared.usecase.DeleteEntriesUseCase
@@ -379,7 +380,7 @@ internal class FileActionDelegate(
      */
     fun resetBatchRenameForContinue(paneId: PaneId) {
         val paneState = callbacks.getPaneState(paneId)
-        val allEntries = (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty()
+        val allEntries = paneState.visibleEntries()
         if (allEntries.isEmpty()) {
             dialogState.value = null
             return

@@ -1,5 +1,6 @@
 package com.oruke.onyx.vfs.local
 
+import com.oruke.onyx.vfs.api.FileTransferProgressSink
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.sun.nio.file.ExtendedOpenOption
 import java.nio.channels.FileChannel
@@ -121,6 +122,58 @@ class LocalTransferSafetyTest {
             assertEquals("source-new", Files.readString(source))
             assertEquals("concurrent-content", Files.readString(target))
             assertCleanTargetDirectory(target)
+        }
+    }
+
+    /** 验证新增目录复制在传输期间即创建可见目标目录并上报子文件名，中途取消时完整清理新建目录。 */
+    @Test
+    fun newDirectoryCopyExposesTargetDuringTransferAndRollsBackOnCancel() = runBlocking {
+        val root = Files.createTempDirectory("onyx-dir-visible-")
+        try {
+            val sourceParent = Files.createDirectory(root.resolve("src"))
+            val sourceDir = Files.createDirectory(sourceParent.resolve("episodes"))
+            Files.write(sourceDir.resolve("ep01.mkv"), ByteArray(512 * 1024) { 7 })
+            val targetParent = Files.createDirectory(root.resolve("dst"))
+            val provider = JvmLocalFileProvider()
+            val dirEntry = provider.list(sourceParent.toString()).getOrThrow().single()
+
+            var visibleMidTransfer = false
+            val reportedFiles = mutableListOf<String>()
+            provider.copyWithProgress(
+                entries = listOf(dirEntry),
+                targetDirectoryLocation = targetParent.toString(),
+                conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+                progressSink = object : FileTransferProgressSink {
+                    override fun onBytesTransferred(byteCount: Long) {
+                        visibleMidTransfer = Files.isDirectory(targetParent.resolve("episodes"))
+                    }
+
+                    override fun onCurrentFileChanged(fileName: String) {
+                        reportedFiles += fileName
+                    }
+                },
+            ).getOrThrow()
+            assertTrue(visibleMidTransfer)
+            assertTrue(reportedFiles.any { name -> name.endsWith("ep01.mkv") })
+            assertCleanTargetDirectory(targetParent.resolve("episodes"))
+
+            val cancelTargetParent = Files.createDirectory(root.resolve("dst-cancel"))
+            coroutineScope {
+                val job = launch {
+                    provider.copyWithProgress(
+                        entries = listOf(dirEntry),
+                        targetDirectoryLocation = cancelTargetParent.toString(),
+                        conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+                    ) {
+                        cancel("取消目录复制")
+                    }
+                }
+                job.join()
+                assertTrue(job.isCancelled)
+            }
+            assertFalse(Files.exists(cancelTargetParent.resolve("episodes")))
+        } finally {
+            LocalPathDeletion.delete(root)
         }
     }
 

@@ -37,6 +37,7 @@ internal enum class PaneContextMenuText {
     EXTRACT_SMART,
     CREATE_ZIP,
     BATCH_RENAME,
+    COPY_NAME,
     COPY_PATH,
     COPY,
     CUT,
@@ -105,6 +106,9 @@ internal sealed interface PaneContextMenuCommand {
 
     /** 将当前选择项压缩为 ZIP 文件。 */
     data object CreateZipArchive : PaneContextMenuCommand
+
+    /** 复制当前选择项名称。 */
+    data object CopyName : PaneContextMenuCommand
 
     /** 复制当前选择项路径。 */
     data object CopyPath : PaneContextMenuCommand
@@ -263,6 +267,11 @@ internal class PaneContextMenuCommandController(
 
             PaneContextMenuCommand.CreateZipArchive -> {
                 externalActions.onCreateZipArchive()
+                true
+            }
+
+            PaneContextMenuCommand.CopyName -> {
+                paneCommandController.dispatch(PaneIntent.CopySelectedNames)
                 true
             }
 
@@ -446,6 +455,12 @@ internal object PaneContextMenuModelBuilder {
                 )
             )
         }
+        add(
+            externalItem(
+                "copy-name", PaneContextMenuText.COPY_NAME, PaneContextMenuIcon.COPY,
+                PaneContextMenuCommand.CopyName, selectedCount > 0
+            )
+        )
         add(
             externalItem(
                 "copy-path", PaneContextMenuText.COPY_PATH, PaneContextMenuIcon.COPY,

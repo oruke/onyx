@@ -111,6 +111,10 @@ data class OnyxSettings(
     val doubleClickEmptySpaceToNavigateUp: Boolean = true,
     /** 删除文件或目录前是否弹出确认对话框。 */
     val confirmBeforeDelete: Boolean = true,
+    /** 启动复制、移动、删除、压缩、解压等后台任务时是否自动显示任务窗口。 */
+    val autoShowTaskCenter: Boolean = true,
+    /** 自动弹出的任务窗口在所有活动任务成功完成后是否自动收起。 */
+    val autoCloseTaskCenterWhenFinished: Boolean = true,
 )
 
 @Serializable

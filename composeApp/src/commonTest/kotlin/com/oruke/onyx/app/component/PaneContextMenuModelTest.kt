@@ -105,6 +105,38 @@ class PaneContextMenuModelTest {
     }
 
     /**
+     * 校验选中条目（包括内联展开子目录条目）时复制名称、复制路径、复制与剪切均处于启用状态。
+     */
+    @Test
+    fun includesEnabledCopyNameCopyPathAndClipboardCommandsWhenEntriesSelected() {
+        val model = PaneContextMenuModelBuilder.build(
+            PaneContextMenuBuildInput(
+                entries = listOf(directory("test://local/A/ACCA13"), directory("test://local/A/AIR")),
+                canPaste = false,
+                canUndo = false,
+                canRedo = false,
+                canExtractSelection = false,
+                contextMenuSections = emptyList(),
+            )
+        )
+        val items = model.nodes.filterIsInstance<PaneContextMenuNode.Item>().associateBy { it.id }
+
+        val copyName = requireNotNull(items["copy-name"])
+        assertTrue(copyName.enabled)
+        assertEquals(PaneContextMenuText.COPY_NAME, copyName.text)
+        assertEquals(PaneContextMenuCommand.CopyName, copyName.command)
+
+        val copyPath = requireNotNull(items["copy-path"])
+        assertTrue(copyPath.enabled)
+        assertEquals(PaneContextMenuText.COPY_PATH, copyPath.text)
+        assertEquals(PaneContextMenuCommand.CopyPath, copyPath.command)
+
+        assertTrue(requireNotNull(items["copy"]).enabled)
+        assertTrue(requireNotNull(items["cut"]).enabled)
+        assertTrue(requireNotNull(items["delete"]).enabled)
+    }
+
+    /**
      * 创建目录测试条目。
      *
      * @param location 目录位置。
