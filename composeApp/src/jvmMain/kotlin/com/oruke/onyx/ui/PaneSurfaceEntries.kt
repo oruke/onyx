@@ -31,6 +31,7 @@ import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
 import com.oruke.onyx.core.model.UserCommandPlacement
+import com.oruke.onyx.core.model.isTrashLocation
 
 /**
  * 渲染面板文件区域和可选检查器。
@@ -253,6 +254,10 @@ private fun BoxScope.PaneContextMenuOverlay(runtime: PaneSurfaceRuntime, readyEn
     if (!runtime.ui.contextMenuVisible) return
     if (runtime.state.entriesState is com.oruke.onyx.app.component.ComputerEntriesState) {
         PaneComputerContextMenu(runtime)
+        return
+    }
+    if (isTrashLocation(runtime.state.location)) {
+        PaneTrashContextMenu(runtime, readyEntries)
         return
     }
     val entries = readyEntries.filter { entry -> entry.id in runtime.ui.contextMenuEntryIds }

@@ -832,6 +832,9 @@ private class EntryRowInteractionState {
     /** 本次主键按下时当前条目是否已满足慢速重命名条件。 */
     var pressCanRename by mutableStateOf(false)
 
+    /** 本次主键按下是否命中树形展开箭头（避免释放时误触单击打开或重命名）。 */
+    var handledExpandPress by mutableStateOf(false)
+
     /** 慢速重命名定时任务。 */
     var renameJob by mutableStateOf<Job?>(null)
 
@@ -1528,6 +1531,10 @@ internal fun EntryRow(
                 interactionSource = clickInteractionSource,
                 indication = null,
                 onClick = click@{
+                    if (interaction.handledExpandPress) {
+                        interaction.handledExpandPress = false
+                        return@click
+                    }
                     actions.onActivate()
                     if (singleClickToOpenState.value &&
                         !interaction.additiveSelection &&
@@ -1546,7 +1553,11 @@ internal fun EntryRow(
                         }
                     }
                 },
-                onDoubleClick = {
+                onDoubleClick = doubleClick@{
+                    if (interaction.handledExpandPress) {
+                        interaction.handledExpandPress = false
+                        return@doubleClick
+                    }
                     interaction.cancelRename()
                     actions.onActivate()
                     actions.onDismissContextMenu()
@@ -1634,8 +1645,10 @@ private fun handleEntryRowPrimaryPress(
 ) {
     interaction.cancelRename()
     interaction.pressCanRename = false
+    interaction.handledExpandPress = false
     val toggleExpand = actions.onToggleInlineExpand
     if (toggleExpand != null && interaction.isInExpandArrow(pointer)) {
+        interaction.handledExpandPress = true
         actions.onActivate()
         toggleExpand()
         return

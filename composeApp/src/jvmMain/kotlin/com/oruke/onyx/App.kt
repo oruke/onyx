@@ -48,6 +48,8 @@ import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.BatchRenameDialog
 import com.oruke.onyx.ui.ConfirmationDialog
+import com.oruke.onyx.ui.TrashPermanentDeleteConfirmationDialog
+import com.oruke.onyx.ui.EmptyTrashConfirmationDialog
 import com.oruke.onyx.ui.ArchivePasswordDialog
 import com.oruke.onyx.ui.ConflictResolutionDialog
 import com.oruke.onyx.ui.CreateDirectoriesDialog
@@ -366,7 +368,7 @@ private fun AppMainArea(
     modifier: Modifier,
 ) {
     Row(modifier = modifier) {
-        AppSidebar(state, rootComponent, onToggleFavoriteLocation)
+        AppSidebar(state, rootComponent, dragBindings, onToggleFavoriteLocation)
         AppPaneLayout(
             state = state,
             rootComponent = rootComponent,
@@ -382,12 +384,14 @@ private fun AppMainArea(
  *
  * @param state 根组件当前状态。
  * @param rootComponent 根组件业务接口。
+ * @param dragBindings 面板共享拖放绑定。
  * @param onToggleFavoriteLocation 切换收藏位置的回调。
  */
 @Composable
 private fun AppSidebar(
     state: RootState,
     rootComponent: RootComponent,
+    dragBindings: PaneDragBindings,
     onToggleFavoriteLocation: (String) -> Unit,
 ) {
     val visualSettings = state.effectiveSettings
@@ -415,6 +419,8 @@ private fun AppSidebar(
             onRetryTreeNode = { dispatch(RootIntent.RetrySidebarTreeNode(it)) },
             onToggleSection = { dispatch(RootIntent.ToggleSidebarSection(it)) },
         ),
+        activePane = state.activePane,
+        dragBindings = dragBindings,
     )
     Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
 }
@@ -607,6 +613,18 @@ private fun AppStatusBar(state: RootState, rootComponent: RootComponent) {
 private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
     when (val dialogState = state.dialogState) {
         is RootDialogState.DeleteSelectionConfirmation -> ConfirmationDialog(
+            state = dialogState,
+            onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+
+        is RootDialogState.TrashPermanentDeleteConfirmation -> TrashPermanentDeleteConfirmationDialog(
+            state = dialogState,
+            onConfirm = { dispatch(RootIntent.ConfirmDialog) },
+            onDismiss = { dispatch(RootIntent.DismissDialog) },
+        )
+
+        is RootDialogState.EmptyTrashConfirmation -> EmptyTrashConfirmationDialog(
             state = dialogState,
             onConfirm = { dispatch(RootIntent.ConfirmDialog) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },

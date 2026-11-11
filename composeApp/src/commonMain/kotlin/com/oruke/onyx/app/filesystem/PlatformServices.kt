@@ -34,6 +34,30 @@ internal interface VfsPathService {
 
     fun label(location: String): String
 
+    /**
+     * 计算后代位置相对祖先位置的目录路径段序列。
+     *
+     * @param ancestor 祖先目录位置。
+     * @param descendant 相同或后代目录位置。
+     * @return 相对路径段（相同位置返回空列表）；非后代关系时返回 `null`。
+     */
+    fun relativePathSegments(
+        ancestor: String,
+        descendant: String,
+    ): List<String>? = null
+
+    /**
+     * 在父目录位置下按相对目录段解析规范化子目录位置。
+     *
+     * @param parentLocation 父目录位置。
+     * @param childSegments 子目录名称序列。
+     * @return 解析后的目标目录位置。
+     */
+    fun resolveChildDirectory(
+        parentLocation: String,
+        childSegments: List<String>,
+    ): String = normalizeLocation(parentLocation)
+
     fun directChildName(
         ancestor: String,
         descendant: String,

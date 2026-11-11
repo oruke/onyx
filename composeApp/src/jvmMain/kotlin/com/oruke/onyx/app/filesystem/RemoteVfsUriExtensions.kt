@@ -85,6 +85,41 @@ internal fun URI.remoteDirectChildName(descendant: URI): String? {
 }
 
 /**
+ * 返回后代 URI 相对当前 URI 的路径段序列。
+ *
+ * @param descendant 待判断后代 URI。
+ * @return 相等时返回空列表，后代时返回相对路径段，非同一远程根或非后代时返回 `null`。
+ */
+internal fun URI.remoteRelativePathSegments(descendant: URI): List<String>? {
+    if (!hasSameRemoteRoot(descendant)) return null
+    val ancestorSegments = remotePathSegments()
+    val descendantSegments = descendant.remotePathSegments()
+    return when {
+        descendantSegments == ancestorSegments -> emptyList()
+        descendantSegments.size > ancestorSegments.size &&
+            descendantSegments.take(ancestorSegments.size) == ancestorSegments ->
+            descendantSegments.drop(ancestorSegments.size)
+
+        else -> null
+    }
+}
+
+/**
+ * 在当前远程目录 URI 下追加相对目录段并返回规范化目录位置。
+ *
+ * @param childSegments 子目录路径段。
+ * @return 带结尾斜杠的规范化远程目录位置。
+ */
+internal fun URI.resolveRemoteChildDirectory(childSegments: List<String>): String {
+    val cleaned = childSegments.map { it.trim('/') }.filter { it.isNotBlank() }
+    if (cleaned.isEmpty()) return toRemoteLocation(directory = true)
+    val mergedPath = (remotePathSegments() + cleaned)
+        .joinToString(separator = "/", prefix = "/")
+        .withTrailingSlash()
+    return buildRemoteLocation(mergedPath)
+}
+
+/**
  * 判断当前 URI 是否等于或位于指定远程父级之下。
  *
  * @param parent 待判断父级 URI。

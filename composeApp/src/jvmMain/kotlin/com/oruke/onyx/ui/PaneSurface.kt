@@ -58,6 +58,7 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import com.oruke.onyx.core.model.UserCommandPlacement
+import com.oruke.onyx.core.model.isTrashLocation
 
 /** 面板操作反馈自动消失前的展示时长。 */
 private const val OPERATION_FEEDBACK_DURATION_MS = 3_000L
@@ -141,6 +142,7 @@ private fun paneDropBackground(runtime: PaneSurfaceRuntime): Color {
     val target = runtime.dragBindings.fileDropTarget
     val state = runtime.state
     val paneTargeted = target?.paneId == state.paneId &&
+            !target.isSidebarTarget &&
             target.directoryEntryId == null &&
             target.targetDirectoryLocation == state.location
     return if (paneTargeted) {
@@ -286,6 +288,10 @@ private fun ColumnScope.PaneSurfaceContent(runtime: PaneSurfaceRuntime, paneDrop
     Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
     PaneNavigationToolbar(runtime)
     Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+    if (isTrashLocation(runtime.state.location)) {
+        TrashActionBar(runtime)
+        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+    }
     PaneOperationFeedback(runtime)
     PaneDirectorySyncStatus(runtime)
     PaneFileArea(runtime, paneDropBackground, Modifier.weight(1f))

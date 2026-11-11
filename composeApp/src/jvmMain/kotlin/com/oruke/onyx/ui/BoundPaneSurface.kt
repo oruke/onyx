@@ -4,15 +4,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.oruke.onyx.app.component.PaneComponent
+import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
 import com.oruke.onyx.app.component.RootState
-import com.oruke.onyx.vfs.api.FileContextMenuRequest
+import com.oruke.onyx.app.component.TrashContextMenuAction
 import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.ui.theme.key
 import com.oruke.onyx.core.model.UserCommandPlacement
-import com.oruke.onyx.app.component.PaneEntriesState
+import com.oruke.onyx.vfs.api.FileContextMenuRequest
 
 /**
  * PaneSurface 的绑定调用，将 RootComponent + PaneId 的重复参数封装为单次调用。
@@ -77,6 +77,22 @@ internal fun BoundPaneSurface(
         onQueryContextMenuSections = { request: FileContextMenuRequest ->
             rootComponent.listContextMenuSections(request)
         },
+        onTrashAction = { action ->
+            when (action) {
+                is TrashContextMenuAction.Restore ->
+                    dispatch(RootIntent.RestoreSelectedTrashItems(paneId, action.entryIds))
+                TrashContextMenuAction.RestoreAll ->
+                    dispatch(RootIntent.RestoreAllTrashItems(paneId))
+                is TrashContextMenuAction.OpenOriginalLocation ->
+                    dispatch(RootIntent.OpenTrashItemOriginalLocation(paneId, action.entry))
+                is TrashContextMenuAction.DeletePermanently ->
+                    dispatch(RootIntent.RequestPermanentDeleteTrashItems(paneId, action.entryIds))
+                is TrashContextMenuAction.CopyOriginalPath ->
+                    dispatch(RootIntent.CopyTrashItemOriginalPaths(paneId, action.entries))
+                TrashContextMenuAction.EmptyTrash ->
+                    dispatch(RootIntent.RequestEmptyTrash(paneId))
+            }
+        },
     )
     val commandShortcuts = remember(state.settings.commandShortcutOverrides) {
         commandShortcutMapFromSettings(state.settings.commandShortcutOverrides)
@@ -96,11 +112,11 @@ internal fun BoundPaneSurface(
             fileLabels = remember(
                 paneState.entriesState,
                 paneState.inlineExpandedEntries,
-                state.settings.fileLabelRules
+                state.settings.fileLabelRules,
             ) {
                 rootComponent.matchFileLabels(
                     (paneState.entriesState as? PaneEntriesState.Ready)?.entries.orEmpty() +
-                            paneState.inlineExpandedEntries.values.flatMap { it.entries.orEmpty() },
+                        paneState.inlineExpandedEntries.values.flatMap { it.entries.orEmpty() },
                 )
             },
         ),

@@ -6,9 +6,11 @@ import com.oruke.onyx.app.platform.DesktopOperatingSystem
 import com.oruke.onyx.app.platform.currentDesktopOperatingSystem
 import com.oruke.onyx.core.model.StandardUserDirectory
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
+import com.oruke.onyx.core.model.isTrashLocation
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_computer
 import onyx.composeapp.generated.resources.label_home
+import onyx.composeapp.generated.resources.label_recycle_bin
 import onyx.composeapp.generated.resources.label_system_desktop
 import onyx.composeapp.generated.resources.label_system_documents
 import onyx.composeapp.generated.resources.label_system_downloads
@@ -16,6 +18,7 @@ import onyx.composeapp.generated.resources.label_system_music
 import onyx.composeapp.generated.resources.label_system_pictures
 import onyx.composeapp.generated.resources.label_system_videos
 import onyx.composeapp.generated.resources.label_this_pc
+import onyx.composeapp.generated.resources.label_trash
 import org.jetbrains.compose.resources.stringResource
 
 /** @return 与宿主桌面习惯一致、随应用语言更新的设备概览名称。 */
@@ -27,6 +30,15 @@ internal fun desktopComputerLabel(): String =
         else Res.string.label_computer
     )
 
+/** @return 与宿主桌面习惯一致、随应用语言更新的回收站名称。 */
+@Composable
+internal fun desktopTrashLabel(): String =
+    stringResource(
+        if (currentDesktopOperatingSystem() == DesktopOperatingSystem.WINDOWS)
+            Res.string.label_recycle_bin
+        else Res.string.label_trash
+    )
+
 /**
  * 将系统位置的稳定标题标识转换为当前语言文案，其他系统名称原样显示。
  *
@@ -35,7 +47,11 @@ internal fun desktopComputerLabel(): String =
  */
 @Composable
 internal fun desktopLocationLabel(label: String): String =
-    if (isComputerLocation(label)) desktopComputerLabel() else label
+    when {
+        isComputerLocation(label) -> desktopComputerLabel()
+        isTrashLocation(label) -> desktopTrashLabel()
+        else -> label
+    }
 
 /**
  * 标准用户目录名称跟随应用语言，用户自定义目录继续保留其系统名称。

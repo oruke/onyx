@@ -113,6 +113,7 @@ val fileModule = module {
         OnyxStartupPreloader.obtainDefaultStorageDeviceService()
     } onClose { service -> (service as? java.io.Closeable)?.close() }
     single { com.oruke.onyx.app.filesystem.SystemLocationVfsProvider(get()) }
+    single { com.oruke.onyx.app.filesystem.TrashLocationVfsProvider(get()) }
     single { JvmLocalFileProvider() }
     single {
         ArchiveService(
@@ -177,6 +178,7 @@ val fileModule = module {
                 get<ArchiveVfsProvider>(),
                 get<FileCollectionVfsProvider>(),
                 get<com.oruke.onyx.app.filesystem.SystemLocationVfsProvider>(),
+                get<com.oruke.onyx.app.filesystem.TrashLocationVfsProvider>(),
                 get<SmbVfsProvider>(),
                 get<WebDavVfsProvider>(),
                 get<S3VfsProvider>(),
@@ -213,7 +215,7 @@ val fileModule = module {
         )
     }
     single<ExternalOpenService> { JvmDesktopExternalOpenService(get()) }
-    single<TrashService> { JvmDesktopTrashService() }
+    single<TrashService> { JvmDesktopTrashService(storageDevices = get()) }
     single<TextClipboardService> { JvmTextClipboardService() }
     single<SystemFileMaterializer> {
         JvmSystemFileMaterializer(

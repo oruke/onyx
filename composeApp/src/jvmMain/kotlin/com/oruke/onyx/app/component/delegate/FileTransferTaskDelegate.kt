@@ -44,9 +44,9 @@ internal class FileTransferTaskDelegate(
     /** 真实移除结果的最终选择续接入口。 */
     private val onRemovalFinished: (PaneRemovalContext?, Set<String>, Boolean) -> Unit,
     /** 成功移动的可逆历史登记入口。 */
-    onMoveSucceeded: (List<VFile>, String) -> Unit,
+    onMoveSucceeded: (CompletedTransferHistory) -> Unit,
     /** 成功复制的可逆历史登记入口。 */
-    onCopySucceeded: suspend (List<VFile>, String) -> Unit,
+    onCopySucceeded: suspend (CompletedTransferHistory) -> Unit,
     /** 冲突或部分完成时移除已不可靠的旧历史。 */
     private val onHistoryInvalidated: () -> Unit,
 ) {
@@ -57,8 +57,7 @@ internal class FileTransferTaskDelegate(
 
     /**
      * 启动文件传输后台任务。
-     * @param entries 待传输条目。
-     * @param targetDirectoryLocation 当前请求的目标目录。
+     * @param structure 本次结构化传输规划（含待传输条目、根目标目录与相对目录结构映射）。
      * @param operation 复制、移动或解压操作。
      * @param clipboardToClear 与本次传输绑定的剪切载荷，不清理后来复制的内容。
      * @param conflictStrategies 各冲突条目的处理策略。
@@ -66,42 +65,27 @@ internal class FileTransferTaskDelegate(
      */
     @Suppress("TooGenericExceptionCaught") // 传输任务边界统一将 Provider 异常写入任务中心。
     fun launch(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
+        structure: PlannedTransferStructure,
         operation: FileTransferOperation,
         clipboardToClear: ClipboardManager.ClipboardPayload?,
         conflictStrategies: Map<String, TransferConflictStrategy>,
     ) {
+        val entries = structure.entries
+        val targetDirectoryLocation = structure.targetDirectoryLocation
         if (entries.isEmpty()) return
 
         val taskId = UUID.randomUUID().toString()
         val removalContext = if (operation == FileTransferOperation.MOVE) onRemovalStarted(entries) else null
         val removedIds = mutableSetOf<String>()
         val invalidated = mutableSetOf<String>()
+        val createdIntermediateDirs = mutableListOf<VFile>()
         var skippedCount = 0
-        val taskKind = taskKindFor(operation)
         val pauseFlag = taskOrchestrator.getOrCreatePauseFlag(taskId)
-        val startTime = System.currentTimeMillis()
-        val initialTotalBytes = entries.sumOf { it.sizeBytes ?: 0L }
 
-        taskOrchestrator.appendTask(
-            BackgroundTask(
-                id = taskId,
-                kind = taskKind,
-                title = taskTitleFor(operation, entries.size),
-                status = BackgroundTaskStatus.QUEUED,
-                canPause = canPauseTransfer(entries, targetDirectoryLocation),
-                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
-                progress = 0f,
-                totalCount = entries.size,
-                totalBytes = initialTotalBytes,
-                startTimeMillis = startTime,
-            )
-        )
+        enqueueTransferTask(taskId, entries, targetDirectoryLocation, operation)
         taskOrchestrator.registerRetryHandler(taskId) {
             launch(
-                entries = entries,
-                targetDirectoryLocation = targetDirectoryLocation,
+                structure = structure,
                 operation = operation,
                 clipboardToClear = clipboardToClear,
                 conflictStrategies = conflictStrategies,
@@ -116,6 +100,8 @@ internal class FileTransferTaskDelegate(
                         targetDirectoryLocation = targetDirectoryLocation,
                         operation = operation,
                         conflictStrategies = conflictStrategies,
+                        entryTargetDirectories = structure.entryTargetDirectories,
+                        entryDirectoryChains = structure.entryDirectoryChains,
                     ),
                     awaitReady = {
                         while (pauseFlag.value) {
@@ -125,6 +111,7 @@ internal class FileTransferTaskDelegate(
                     },
                     isPaused = { pauseFlag.value },
                 ).collect { progress ->
+                    createdIntermediateDirs += progress.createdDirectories
                     progress.directoryChange?.let { change ->
                         removedIds += change.removed.map { it.id }
                         invalidated += change.invalidatedDirectories
@@ -137,41 +124,102 @@ internal class FileTransferTaskDelegate(
                 }
 
                 // 在任务显示完成前建立撤销记录，避免用户立即撤销时误操作上一条历史。
-                historyRecorder.record(operation, entries, targetDirectoryLocation, conflictStrategies)
+                historyRecorder.record(
+                    operation = operation,
+                    history = CompletedTransferHistory(
+                        entries = entries,
+                        targetDirectoryLocation = targetDirectoryLocation,
+                        entryTargetDirectories = structure.entryTargetDirectories,
+                        directorySteps = structure.allDirectorySteps,
+                        createdDirectories = createdIntermediateDirs.toList(),
+                    ),
+                    strategies = conflictStrategies,
+                )
                 completeSuccessfulTransfer(taskId, entries, targetDirectoryLocation,
                     operation, clipboardToClear, skippedCount)
             } catch (failure: CancellationException) {
-                onHistoryInvalidated()
-                taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.CANCELLED,
-                    detail = I18nMessage(MessageKey.MSG_CANCELLED),
-                    progress = null,
-                )
-                invalidated += entries.mapNotNull { it.parentLocation }
-                invalidated += targetDirectoryLocation
+                recordTransferCancellation(taskId, structure, createdIntermediateDirs, invalidated)
                 throw failure
             } catch (failure: Exception) {
-                onHistoryInvalidated()
-                OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
-                taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.FAILED,
-                    detail = failure.toTransferFailureMessage(operation),
-                    progress = null,
-                )
-                taskOrchestrator.updateTaskFields(taskId) { task ->
-                    task.copy(errors = failure.toTaskErrors(entries, targetDirectoryLocation))
-                }
-                invalidated += entries.mapNotNull { it.parentLocation }
-                invalidated += targetDirectoryLocation
+                recordTransferFailure(taskId, structure, operation, failure, createdIntermediateDirs, invalidated)
             } finally {
                 if (invalidated.isNotEmpty()) onRefreshDirectories(invalidated)
                 onRemovalFinished(removalContext, removedIds, invalidated.isNotEmpty())
             }
         }
+    }
+
+    private fun enqueueTransferTask(
+        taskId: String,
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        operation: FileTransferOperation,
+    ) {
+        taskOrchestrator.appendTask(
+            BackgroundTask(
+                id = taskId,
+                kind = taskKindFor(operation),
+                title = taskTitleFor(operation, entries.size),
+                status = BackgroundTaskStatus.QUEUED,
+                canPause = canPauseTransfer(entries, targetDirectoryLocation),
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
+                progress = 0f,
+                totalCount = entries.size,
+                totalBytes = entries.sumOf { it.sizeBytes ?: 0L },
+                startTimeMillis = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    private fun recordTransferCancellation(
+        taskId: String,
+        structure: PlannedTransferStructure,
+        createdDirectories: List<VFile>,
+        invalidated: MutableSet<String>,
+    ) {
+        onHistoryInvalidated()
+        taskOrchestrator.unregisterJob(taskId)
+        taskOrchestrator.updateTask(
+            taskId = taskId,
+            status = BackgroundTaskStatus.CANCELLED,
+            detail = I18nMessage(MessageKey.MSG_CANCELLED),
+            progress = null,
+        )
+        collectTouchedLocations(structure, createdDirectories, invalidated)
+    }
+
+    private fun recordTransferFailure(
+        taskId: String,
+        structure: PlannedTransferStructure,
+        operation: FileTransferOperation,
+        failure: Exception,
+        createdDirectories: List<VFile>,
+        invalidated: MutableSet<String>,
+    ) {
+        onHistoryInvalidated()
+        OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
+        taskOrchestrator.unregisterJob(taskId)
+        taskOrchestrator.updateTask(
+            taskId = taskId,
+            status = BackgroundTaskStatus.FAILED,
+            detail = failure.toTransferFailureMessage(operation),
+            progress = null,
+        )
+        taskOrchestrator.updateTaskFields(taskId) { task ->
+            task.copy(errors = failure.toTaskErrors(structure.entries, structure.targetDirectoryLocation))
+        }
+        collectTouchedLocations(structure, createdDirectories, invalidated)
+    }
+
+    private fun collectTouchedLocations(
+        structure: PlannedTransferStructure,
+        createdDirectories: List<VFile>,
+        invalidated: MutableSet<String>,
+    ) {
+        invalidated += structure.entries.mapNotNull { it.parentLocation }
+        invalidated += structure.targetDirectoryLocation
+        invalidated += structure.entryTargetDirectories.values
+        invalidated += createdDirectories.mapNotNull { it.parentLocation }
     }
 
     /**

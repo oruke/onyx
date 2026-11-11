@@ -15,6 +15,8 @@ import com.oruke.onyx.app.component.delegate.RootFileOperationHistoryFacade
 import com.oruke.onyx.app.component.delegate.RootRemoteConnectionManager
 import com.oruke.onyx.app.component.delegate.RootSearchDelegate
 import com.oruke.onyx.app.component.delegate.SidebarDelegate
+import com.oruke.onyx.app.component.delegate.TrashActionDelegate
+import com.oruke.onyx.app.component.delegate.TrashActionDelegateCallbacks
 import com.oruke.onyx.app.component.delegate.jvmFilesystemRoots
 import com.oruke.onyx.app.filesystem.ArchiveInfoRequest
 import com.oruke.onyx.app.filesystem.ArchiveInfoResult
@@ -31,6 +33,7 @@ import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.shared.usecase.FileSearchUseCase
 import com.oruke.onyx.vfs.api.FileContextMenuRequest
 import com.oruke.onyx.vfs.api.FileContextMenuSection
@@ -252,10 +255,23 @@ internal class DefaultRootComponent(
         onRefreshDirectories = ::refreshDirectories,
         onRemovalStarted = ::beginRemoval,
         onRemovalFinished = ::finishRemoval,
-        onMoveSucceeded = ::recordMoveOperation,
-        onCopySucceeded = { entries, target ->
-            fileOperationHistoryDelegate.recordCopy(entries, target)
-                .onFailure(::showActivePaneOperationFailure)
+        onMoveSucceeded = { history ->
+            recordMoveOperation(
+                entries = history.entries,
+                targetDirectoryLocation = history.targetDirectoryLocation,
+                entryTargetDirectories = history.entryTargetDirectories,
+                directorySteps = history.directorySteps,
+                createdDirectories = history.createdDirectories,
+            )
+        },
+        onCopySucceeded = { history ->
+            fileOperationHistoryDelegate.recordCopy(
+                entries = history.entries,
+                targetDirectoryLocation = history.targetDirectoryLocation,
+                entryTargetDirectories = history.entryTargetDirectories,
+                directorySteps = history.directorySteps,
+                createdDirectories = history.createdDirectories,
+            ).onFailure(::showActivePaneOperationFailure)
         },
         onHistoryInvalidated = { fileOperationHistoryDelegate.clear() },
     )
@@ -298,6 +314,19 @@ internal class DefaultRootComponent(
         fileRepository,
         trashService,
         fileHashService,
+    )
+
+    /** 回收站专属动作委托。 */
+    internal val trashActionDelegate = TrashActionDelegate(
+        trashService = trashService,
+        taskOrchestrator = taskOrchestrator,
+        callbacks = TrashActionDelegateCallbacks(
+            onRefreshDirectories = ::refreshDirectories,
+            onHistoryInvalidated = { fileOperationHistoryDelegate.clear() },
+            onRemovalStarted = ::beginRemoval,
+            onRemovalFinished = ::finishRemoval,
+            onOperationFailure = ::showPaneOperationFailure,
+        ),
     )
 
     /** 根组件文件操作历史门面。 */
@@ -399,8 +428,12 @@ internal class DefaultRootComponent(
         return fileContextMenuService.listSections(request)
     }
 
+    override val isTrashSupported: Boolean
+        get() = trashService.isSupported
+
     /** @param entries 待拖放文件。 @return 外部拖放文件已准备完成时返回 `true`。 */
     override fun prepareExternalDrag(entries: List<VFile>): Boolean {
+        if (entries.any { entry -> isTrashItemLocation(entry.location) }) return false
         return externalFileDragService.preparePendingFiles(entries)
     }
 

@@ -78,12 +78,18 @@ internal data class FileDropZone(
     val targetDirectoryLocation: String,
     val bounds: IntRect,
     val directoryEntryId: String? = null,
+    /** 可选显式放置区注册键，用于侧栏等非面板内联放置热区避免与主面板键冲突。 */
+    val zoneKeyOverride: String? = null,
+    /** 是否为侧栏系统级放置热区（如侧栏回收站入口）。 */
+    val isSidebarTarget: Boolean = false,
 )
 
 internal data class FileDropTarget(
     val paneId: PaneId,
     val targetDirectoryLocation: String,
     val directoryEntryId: String?,
+    /** 是否命中侧栏系统级放置热区。 */
+    val isSidebarTarget: Boolean = false,
 )
 
 // ── Tooltip ─────────────────────────────────────────────────────────────────
@@ -196,7 +202,7 @@ internal val IntRect.area: Int
     get() = (width.coerceAtLeast(0)) * (height.coerceAtLeast(0))
 
 internal val FileDropZone.key: String
-    get() = if (directoryEntryId == null) {
+    get() = zoneKeyOverride ?: if (directoryEntryId == null) {
         "${paneId.name}:__pane"
     } else {
         "${paneId.name}:$directoryEntryId:$targetDirectoryLocation"

@@ -1,5 +1,7 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.core.model.isTrashLocation
+
 /**
  * 面板级命令 ID，用于让快捷键、工具栏、命令面板和右键菜单共享同一套状态判断。
  */
@@ -110,6 +112,7 @@ internal class PaneCommandController(
      */
     fun isEnabled(command: PaneCommand): Boolean {
         if (state.entriesState is ComputerEntriesState) return computerCommandEnabled(state, command)
+        if (isTrashLocation(state.location)) return trashCommandEnabled(state, executionContext, command)
         val selectedCount = state.selectedEntryIds.size
         return when (command) {
             PaneCommand.OPEN_SELECTION,
@@ -165,14 +168,12 @@ internal class PaneCommandController(
                 dispatch(PaneIntent.BeginRename)
             }
 
-            PaneCommand.NEW_DIRECTORY -> {
+            PaneCommand.NEW_DIRECTORY -> executeIfEnabled(command) {
                 externalActions.onBeginCreateDirectory()
-                true
             }
 
-            PaneCommand.NEW_FILE -> {
+            PaneCommand.NEW_FILE -> executeIfEnabled(command) {
                 dispatch(PaneIntent.BeginCreateFile)
-                true
             }
 
             PaneCommand.COPY_SELECTION -> executeIfEnabled(command) {
@@ -184,9 +185,13 @@ internal class PaneCommandController(
             }
 
             PaneCommand.PASTE -> {
-                // 系统内容可能刚被外部程序重写；键盘命令必须实时读取，不能被较早的按钮快照拦截。
-                externalActions.onPaste()
-                true
+                if (state.entriesState is ComputerEntriesState || isTrashLocation(state.location)) {
+                    false
+                } else {
+                    // 系统内容可能刚被外部程序重写；键盘命令必须实时读取，不能被较早的按钮快照拦截。
+                    externalActions.onPaste()
+                    true
+                }
             }
 
             PaneCommand.UNDO_LAST_OPERATION -> executeIfEnabled(command) {

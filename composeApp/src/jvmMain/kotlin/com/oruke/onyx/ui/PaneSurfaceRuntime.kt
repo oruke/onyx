@@ -32,6 +32,7 @@ import com.oruke.onyx.vfs.api.FileContextMenuSection
 import com.oruke.onyx.core.model.FileLabelStyle
 import com.oruke.onyx.core.model.UserCommandPlacement
 import com.oruke.onyx.core.model.UserCommandDefinition
+import com.oruke.onyx.core.model.isTrashLocation
 
 /**
  * 面板视图所需的稳定状态、组件和跨组件动作。
@@ -246,6 +247,11 @@ internal class PaneSurfaceRuntime(
         ui.contextMenuSections = emptyList()
         val nextToken = ui.contextMenuQueryToken + 1
         ui.contextMenuQueryToken = nextToken
+        if (isTrashLocation(state.location)) {
+            if (!entrySelected) dispatch(PaneIntent.SelectEntry(entryId))
+            ui.contextMenuVisible = true
+            return
+        }
         platformActionLoader.load(
             targetEntries = readyEntries.filter { entry -> entry.id in targetIds },
             token = nextToken,
@@ -313,6 +319,7 @@ internal fun rememberPaneSurfaceRuntime(
             onFileContextMenuCommand = model.actions.onFileContextMenuCommand,
             onOpenTerminal = model.actions.onOpenTerminal,
             onUserCommand = model.actions.onUserCommand,
+            onTrashCommand = model.actions.onTrashAction,
         ),
     )
     val platformActionLoader = PaneContextMenuPlatformActionLoader(

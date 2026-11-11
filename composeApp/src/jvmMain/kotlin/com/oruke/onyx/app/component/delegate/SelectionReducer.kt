@@ -90,8 +90,9 @@ internal object SelectionReducer {
         allEntries: List<VFile>,
         visibleEntries: List<VFile>,
         selectedEntryIds: Set<String>,
+        selectableEntries: List<VFile> = visibleEntries,
     ): PaneStatusInfo {
-        val selectedEntries = visibleEntries.filter { entry -> selectedEntryIds.contains(entry.id) }
+        val selectedEntries = selectableEntries.filter { entry -> selectedEntryIds.contains(entry.id) }
         return PaneStatusInfo(
             totalItemCount = allEntries.size,
             visibleItemCount = visibleEntries.size,

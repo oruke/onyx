@@ -162,6 +162,36 @@ enum class MessageKey {
     MSG_DEVICE_OPERATION_TIMEOUT,
     /** 单设备容量查询超出界面等待预算，其他条目继续可用。 */
     MSG_DEVICE_METADATA_TIMEOUT,
+
+    /** 正在从回收站还原指定数量的项目。 */
+    MSG_TRASH_RESTORE_ITEMS,
+
+    /** 已从回收站成功还原指定数量的项目。 */
+    MSG_TRASH_RESTORED_ITEMS,
+
+    /** 从回收站还原项目失败。 */
+    MSG_TRASH_RESTORE_FAILED,
+
+    /** 正在清空回收站。 */
+    MSG_TRASH_EMPTY_RUNNING,
+
+    /** 已清空回收站。 */
+    MSG_TRASH_EMPTIED,
+
+    /** 清空回收站失败。 */
+    MSG_TRASH_EMPTY_FAILED,
+
+    /** 回收站内的条目不支持直接打开，提示先还原。 */
+    MSG_TRASH_ITEM_OPEN_UNSUPPORTED,
+
+    /** 回收站条目的原始父目录已不存在。 */
+    MSG_TRASH_ORIGINAL_LOCATION_UNAVAILABLE,
+
+    /** 回收站条目缺少原始路径元数据。 */
+    MSG_TRASH_ORIGINAL_PATH_UNKNOWN,
+
+    /** 当前平台不支持回收站操作。 */
+    MSG_TRASH_UNSUPPORTED,
 }
 
 /**

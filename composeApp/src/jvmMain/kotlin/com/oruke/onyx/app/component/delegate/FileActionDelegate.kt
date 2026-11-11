@@ -21,6 +21,7 @@ import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.TRASH_LOCATION
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.DirectoryChange
 import com.oruke.onyx.app.component.PaneRemovalContext
@@ -146,6 +147,9 @@ internal class FileActionDelegate(
                     progress = 1f,
                     processedCount = selectedEntries.size,
                 )
+                if (request.moveToTrash) {
+                    callbacks.onRefreshDirectories(setOf(TRASH_LOCATION))
+                }
                 callbacks.onTrashDeleteSucceeded(trashRecords)
                 taskOrchestrator.scheduleAutoCleanup(taskId)
             } catch (failure: CancellationException) {
@@ -158,7 +162,8 @@ internal class FileActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_CANCELLED),
                     progress = null,
                 )
-                callbacks.onRefreshDirectories(selectedEntries.mapNotNull { it.parentLocation }.toSet())
+                val trashRefresh = if (request.moveToTrash) setOf(TRASH_LOCATION) else emptySet()
+                callbacks.onRefreshDirectories(selectedEntries.mapNotNull { it.parentLocation }.toSet() + trashRefresh)
                 throw failure
             } catch (failure: Exception) {
                 verify = true
@@ -171,7 +176,8 @@ internal class FileActionDelegate(
                     detail = failure.toI18nMessage(MessageKey.MSG_DELETE_FAILED),
                     progress = null,
                 )
-                callbacks.onRefreshDirectories(selectedEntries.mapNotNull { it.parentLocation }.toSet())
+                val trashRefresh = if (request.moveToTrash) setOf(TRASH_LOCATION) else emptySet()
+                callbacks.onRefreshDirectories(selectedEntries.mapNotNull { it.parentLocation }.toSet() + trashRefresh)
             } finally {
                 callbacks.onRemovalFinished(context, removedIds, verify)
             }

@@ -1,6 +1,8 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.component.delegate.ClipboardManager
+import com.oruke.onyx.app.filesystem.isComputerLocation
+import com.oruke.onyx.app.filesystem.isSystemVirtualLocation
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
@@ -13,8 +15,13 @@ import kotlinx.coroutines.launch
  * @return 无返回值，系统写入失败显示在原操作面板。
  */
 internal fun DefaultRootComponent.stageCopySelectedInPane(paneId: PaneId) {
+    val currentLocation = paneState(paneId).location
+    if (isSystemVirtualLocation(currentLocation)) return
+    val sourceBaseLocation = currentLocation.takeUnless(::isComputerLocation)
     val entries = selectedEntriesInPane(paneId)
-    scope.launch { clipboardManager.stageCopy(entries).onFailure { showClipboardFailure(paneId, it) } }
+    scope.launch {
+        clipboardManager.stageCopy(entries, sourceBaseLocation).onFailure { showClipboardFailure(paneId, it) }
+    }
 }
 
 /**
@@ -23,8 +30,13 @@ internal fun DefaultRootComponent.stageCopySelectedInPane(paneId: PaneId) {
  * @return 无返回值，系统写入失败不发布可误执行的内部载荷。
  */
 internal fun DefaultRootComponent.stageCutSelectedInPane(paneId: PaneId) {
+    val currentLocation = paneState(paneId).location
+    if (isSystemVirtualLocation(currentLocation)) return
+    val sourceBaseLocation = currentLocation.takeUnless(::isComputerLocation)
     val entries = selectedEntriesInPane(paneId)
-    scope.launch { clipboardManager.stageCut(entries).onFailure { showClipboardFailure(paneId, it) } }
+    scope.launch {
+        clipboardManager.stageCut(entries, sourceBaseLocation).onFailure { showClipboardFailure(paneId, it) }
+    }
 }
 
 /**
@@ -34,6 +46,7 @@ internal fun DefaultRootComponent.stageCutSelectedInPane(paneId: PaneId) {
  */
 internal fun DefaultRootComponent.requestPasteIntoPane(paneId: PaneId) {
     val targetLocation = paneState(paneId).location
+    if (isSystemVirtualLocation(targetLocation)) return
     scope.launch {
         clipboardManager.consume().onSuccess { payload ->
             if (payload != null) {
@@ -44,6 +57,7 @@ internal fun DefaultRootComponent.requestPasteIntoPane(paneId: PaneId) {
                         FileTransferOperation.MOVE
                     } else FileTransferOperation.COPY,
                     clearClipboardOnSuccess = payload.operation == ClipboardManager.ClipboardOperation.CUT,
+                    sourceBaseLocation = payload.sourceBaseLocation,
                 )
             }
         }.onFailure { showClipboardFailure(paneId, it) }

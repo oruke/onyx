@@ -5,6 +5,7 @@ import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.vfs.archive.ArchiveService
 import kotlinx.coroutines.CancellationException
@@ -95,20 +96,14 @@ internal fun DefaultPaneComponent.openDirectoryAndSelect(location: String, entry
 internal fun DefaultPaneComponent.openEntry(entry: VFile) {
     val tab = activeTab() ?: return
     clearInlineEdit(tab.id)
-    if (entry.kind == VFileKind.DIRECTORY) {
-        if (!entry.isBrowsableDirectory()) {
-            updateFailure(
-                tab.id,
-                PaneOperationFeedbackKind.OPEN_FAILED,
-                I18nMessage(MessageKey.MSG_DIRECTORY_UNAVAILABLE, entry.location),
-            )
-            return
-        }
-        openDirectory(entry.location)
-        return
-    }
     val insideArchive = ArchiveService.isArchiveLocation(entry.location)
     when {
+        isTrashItemLocation(entry.location) -> updateFailure(
+            tab.id,
+            PaneOperationFeedbackKind.OPEN_FAILED,
+            I18nMessage(MessageKey.MSG_TRASH_ITEM_OPEN_UNSUPPORTED),
+        )
+        entry.kind == VFileKind.DIRECTORY -> openDirectoryEntry(tab.id, entry)
         fileTypeService.isArchiveFileName(entry.name) && !insideArchive -> {
             openDirectory(ArchiveService.archiveLocation(entry.location))
             clearOperationFeedback(tab.id)
@@ -120,6 +115,24 @@ internal fun DefaultPaneComponent.openEntry(entry: VFile) {
         insideArchive -> openArchiveContentEntry(entry, tab.id)
         onOpenImageViewer != null && fileTypeService.isImageFileName(entry.name) -> openImageEntry(entry)
         else -> openExternalEntry(entry, tab.id)
+    }
+}
+
+/**
+ * 打开目录条目；当目录不具备子项浏览能力时展示不可用反馈。
+ *
+ * @param tabId 当前活动标签 ID。
+ * @param entry 待打开的目录条目。
+ */
+private fun DefaultPaneComponent.openDirectoryEntry(tabId: String, entry: VFile) {
+    if (!entry.isBrowsableDirectory()) {
+        updateFailure(
+            tabId,
+            PaneOperationFeedbackKind.OPEN_FAILED,
+            I18nMessage(MessageKey.MSG_DIRECTORY_UNAVAILABLE, entry.location),
+        )
+    } else {
+        openDirectory(entry.location)
     }
 }
 

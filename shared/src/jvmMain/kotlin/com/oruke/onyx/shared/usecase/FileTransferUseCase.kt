@@ -71,6 +71,7 @@ class FileTransferUseCase(
         )
 
         var accumulatedBytes = 0L
+        val ensuredDirectories = mutableSetOf<String>()
         request.entries.forEachIndexed { index, entry ->
             accumulatedBytes = transferEntry(
                 step = FileTransferStep(
@@ -81,6 +82,7 @@ class FileTransferUseCase(
                     accumulatedBytes = accumulatedBytes,
                     totalBytes = totalBytes,
                 ),
+                ensuredDirectories = ensuredDirectories,
                 awaitReady = awaitReady,
                 isPaused = isPaused,
             )
@@ -91,12 +93,14 @@ class FileTransferUseCase(
      * 执行单个顶层条目并发送节流后的字节进度。
      *
      * @param step 当前条目传输上下文。
+     * @param ensuredDirectories 任务内已确认存在的中间目录集合。
      * @param awaitReady 条目开始前的暂停等待回调。
      * @param isPaused 返回任务当前是否暂停。
      * @return 当前条目完成后的累计字节数。
      */
     private suspend fun ProducerScope<TaskProgress>.transferEntry(
         step: FileTransferStep,
+        ensuredDirectories: MutableSet<String>,
         awaitReady: suspend () -> Unit,
         isPaused: () -> Boolean,
     ): Long {
@@ -104,21 +108,39 @@ class FileTransferUseCase(
         awaitReady()
         val conflictStrategy = step.request.conflictStrategies[step.entry.id]
             ?: TransferConflictStrategy.KEEP_BOTH
+        val targetDirectory = step.effectiveTargetDirectory
         val detail = I18nMessage(
             MessageKey.MSG_STRING_LITERAL,
-            "${step.entry.name} -> ${step.request.targetDirectoryLocation}",
+            "${step.entry.name} -> $targetDirectory",
         )
         send(step.startProgress(detail))
+
+        val createdDirectories = FileTransferDirectoryOperations.ensureChain(
+            chain = step.request.entryDirectoryChains[step.entry.id].orEmpty(),
+            ensuredLocations = ensuredDirectories,
+            providerRegistry = providerRegistry,
+            fileCommandService = fileCommandService,
+        )
+        if (createdDirectories.isNotEmpty()) {
+            send(
+                step.startProgress(detail).copy(
+                    directoryChange = DirectoryChange(upserted = createdDirectories),
+                    createdDirectories = createdDirectories,
+                )
+            )
+        }
 
         val transferJob = currentCoroutineContext()[Job]
         val telemetry = createStepProgressSink(step, detail, isPaused, transferJob)
 
         val result = executeTransfer(
-            request = step.request,
+            operation = step.request.operation,
             entry = step.entry,
+            targetDirectoryLocation = targetDirectory,
             conflictStrategy = conflictStrategy,
             progressSink = telemetry.sink,
         ).getOrThrow()
+        val touchedTargets = setOf(step.request.targetDirectoryLocation, targetDirectory)
         val change = when (result) {
             is FileTransferResult.Committed -> DirectoryChange(
                 removed = if (step.request.operation == FileTransferOperation.MOVE) listOf(step.entry) else emptyList(),
@@ -126,8 +148,8 @@ class FileTransferUseCase(
             FileTransferResult.Skipped -> null
             FileTransferResult.Uncertain -> DirectoryChange(invalidatedDirectories =
                 if (step.request.operation == FileTransferOperation.MOVE)
-                    setOfNotNull(step.entry.parentLocation, step.request.targetDirectoryLocation)
-                else setOf(step.request.targetDirectoryLocation))
+                    touchedTargets + setOfNotNull(step.entry.parentLocation)
+                else touchedTargets)
         }
         val completedBytes = step.accumulatedBytes + step.entryBytes
         send(step.completedProgress(completedBytes, telemetry.latestBytesPerSecond()).copy(directoryChange = change,
@@ -207,28 +229,29 @@ class FileTransferUseCase(
      * @return 操作结果。
      */
     private suspend fun executeTransfer(
-        request: FileTransferRequest,
+        operation: FileTransferOperation,
         entry: VFile,
+        targetDirectoryLocation: String,
         conflictStrategy: TransferConflictStrategy,
         progressSink: FileTransferProgressSink,
     ): Result<FileTransferResult> {
         val resultAware = fileCommandService as? ResultAwareFileCommandService
-        if (resultAware != null) return resultAware.transferEntry(entry, request.targetDirectoryLocation,
-            request.operation, conflictStrategy, progressSink)
+        if (resultAware != null) return resultAware.transferEntry(entry, targetDirectoryLocation,
+            operation, conflictStrategy, progressSink)
         val progressAwareService = fileCommandService as? ProgressAwareFileCommandService
-        val result = when (request.operation) {
+        val result = when (operation) {
             FileTransferOperation.COPY,
             FileTransferOperation.EXTRACT -> if (progressAwareService != null) {
                 progressAwareService.copyWithProgress(
                     entries = listOf(entry),
-                    targetDirectoryLocation = request.targetDirectoryLocation,
+                    targetDirectoryLocation = targetDirectoryLocation,
                     conflictStrategy = conflictStrategy,
                     progressSink = progressSink,
                 )
             } else {
                 fileCommandService.copy(
                     entries = listOf(entry),
-                    targetDirectoryLocation = request.targetDirectoryLocation,
+                    targetDirectoryLocation = targetDirectoryLocation,
                     conflictStrategy = conflictStrategy,
                 )
             }
@@ -236,14 +259,14 @@ class FileTransferUseCase(
             FileTransferOperation.MOVE -> if (progressAwareService != null) {
                 progressAwareService.moveWithProgress(
                     entries = listOf(entry),
-                    targetDirectoryLocation = request.targetDirectoryLocation,
+                    targetDirectoryLocation = targetDirectoryLocation,
                     conflictStrategy = conflictStrategy,
                     progressSink = progressSink,
                 )
             } else {
                 fileCommandService.move(
                     entries = listOf(entry),
-                    targetDirectoryLocation = request.targetDirectoryLocation,
+                    targetDirectoryLocation = targetDirectoryLocation,
                     conflictStrategy = conflictStrategy,
                 )
             }
@@ -261,6 +284,10 @@ class FileTransferUseCase(
         val operation: FileTransferOperation,
         /** 按条目 ID 指定的冲突策略。 */
         val conflictStrategies: Map<String, TransferConflictStrategy>,
+        /** 按条目 ID 指定的实际落盘父目录（未指定时回退至 targetDirectoryLocation）。 */
+        val entryTargetDirectories: Map<String, String> = emptyMap(),
+        /** 按条目 ID 指定的需预先确保存在的相对中间目录链。 */
+        val entryDirectoryChains: Map<String, List<TransferDirectoryStep>> = emptyMap(),
     )
 
     private companion object {
@@ -286,6 +313,9 @@ private data class FileTransferStep(
     /** 整个任务总字节数。 */
     val totalBytes: Long,
 ) {
+    /** 当前条目实际落盘父目录。 */
+    val effectiveTargetDirectory: String
+        get() = request.entryTargetDirectories[entry.id] ?: request.targetDirectoryLocation
     /**
      * 构造当前条目开始前的任务快照。
      *
@@ -345,7 +375,7 @@ private data class FileTransferStep(
         status = BackgroundTaskStatus.RUNNING,
         detail = I18nMessage(
             MessageKey.MSG_STRING_LITERAL,
-            "${entry.name} -> ${request.targetDirectoryLocation}",
+            "${entry.name} -> $effectiveTargetDirectory",
         ),
         progress = completedEntryProgress(
             accumulatedBytes = completedBytes,

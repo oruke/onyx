@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.filesystem.isSystemVirtualLocation
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
@@ -172,11 +173,14 @@ internal fun DefaultRootComponent.togglePreviewPane() {
 
 /** @param paneId 新建目录目标面板。 */
 internal fun DefaultRootComponent.beginCreateDirectoriesInPane(paneId: PaneId) {
+    val location = paneState(paneId).location
+    if (isSystemVirtualLocation(location)) return
     dialogState.value = RootDialogState.CreateDirectories(
         paneId = paneId,
-        location = paneState(paneId).location,
+        location = location,
         draft = "",
     )
+    syncImmediateRootState()
 }
 
 /** @param draft 多目录路径草稿。 */
@@ -189,6 +193,8 @@ internal fun DefaultRootComponent.updateCreateDirectoriesDraft(draft: String) {
 internal fun DefaultRootComponent.confirmDialog() {
     when (val currentDialog = dialogState.value) {
         is RootDialogState.DeleteSelectionConfirmation -> confirmDeleteDialog()
+        is RootDialogState.TrashPermanentDeleteConfirmation -> confirmTrashPermanentDeleteDialog(currentDialog)
+        is RootDialogState.EmptyTrashConfirmation -> confirmEmptyTrashDialog(currentDialog)
         is RootDialogState.CreateDirectories -> confirmCreateDirectoriesDialog(currentDialog)
         is RootDialogState.CreateZipArchive -> confirmCreateZipArchive(currentDialog)
         is RootDialogState.Settings -> {

@@ -11,6 +11,8 @@ import com.oruke.onyx.app.filesystem.FileHashService
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.LocalizedException
 import com.oruke.onyx.core.model.MessageKey
+import com.oruke.onyx.core.model.TRASH_LOCATION
+import com.oruke.onyx.shared.usecase.TransferDirectoryStep
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,12 +59,13 @@ internal class FileOperationHistoryDelegate(
      */
     fun affectedDirectories(redo: Boolean): Set<String> {
         return when (val record = (if (redo) redoStack else undoStack).lastOrNull()) {
-            is FileOperationRecord.CopyBatch -> setOf(record.copyRecord.targetDirectory)
+            is FileOperationRecord.CopyBatch -> record.copyRecord.affectedDirectories()
             is FileOperationRecord.RenameBatch -> record.steps.mapTo(linkedSetOf()) { it.parentLocation }
             is FileOperationRecord.MoveBatch -> record.steps.flatMap {
                 listOf(it.sourceParentLocation, it.targetDirectoryLocation)
-            }.toSet()
-            is FileOperationRecord.TrashBatch -> record.records.mapNotNull { it.originalEntry.parentLocation }.toSet()
+            }.toSet() + record.createdDirectories.mapNotNull { it.parentLocation }
+            is FileOperationRecord.TrashBatch ->
+                record.records.mapNotNull { it.originalEntry.parentLocation }.toSet() + TRASH_LOCATION
             null -> emptySet()
         }
     }
@@ -101,10 +104,15 @@ internal class FileOperationHistoryDelegate(
     fun recordMove(
         entries: List<VFile>,
         targetDirectoryLocation: String,
+        entryTargetDirectories: Map<String, String> = emptyMap(),
+        directorySteps: List<TransferDirectoryStep> = emptyList(),
+        createdDirectories: List<VFile> = emptyList(),
     ) {
-        val steps = entries.mapNotNull { entry -> FileMoveStep.from(entry, targetDirectoryLocation) }
+        val steps = entries.mapNotNull { entry ->
+            FileMoveStep.from(entry, entryTargetDirectories[entry.id] ?: targetDirectoryLocation)
+        }
         if (steps.isEmpty()) return
-        record(FileOperationRecord.MoveBatch(steps))
+        record(FileOperationRecord.MoveBatch(steps, directorySteps, createdDirectories))
     }
 
     /**
@@ -112,9 +120,18 @@ internal class FileOperationHistoryDelegate(
      *
      * @param entries 原始源条目。
      * @param targetDirectoryLocation 复制目标目录。
+     * @param entryTargetDirectories 嵌套子项对应的实际目标目录。
+     * @param directorySteps 重做时需确保存在的中间目录链。
+     * @param createdDirectories 本次复制新建的中间目录。
      * @return 目标快照登记结果。
      */
-    suspend fun recordCopy(entries: List<VFile>, targetDirectoryLocation: String): Result<Unit> {
+    suspend fun recordCopy(
+        entries: List<VFile>,
+        targetDirectoryLocation: String,
+        entryTargetDirectories: Map<String, String> = emptyMap(),
+        directorySteps: List<TransferDirectoryStep> = emptyList(),
+        createdDirectories: List<VFile> = emptyList(),
+    ): Result<Unit> {
         if (operationInProgress) {
             clear()
             return Result.failure(LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_UNAVAILABLE)))
@@ -125,11 +142,14 @@ internal class FileOperationHistoryDelegate(
         return try {
             runCatching {
                 val copyRecord = CopiedFilesHistoryRecord.capture(
-                    entries,
-                    targetDirectoryLocation,
-                    fileRepository,
-                    fileCommandService,
-                    hashService
+                    sources = entries,
+                    targetDirectory = targetDirectoryLocation,
+                    repository = fileRepository,
+                    commands = fileCommandService,
+                    hashService = hashService,
+                    entryTargetDirectories = entryTargetDirectories,
+                    directorySteps = directorySteps,
+                    createdDirectories = createdDirectories,
                 )
                 if (revision != startingRevision) {
                     throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_UNAVAILABLE))
@@ -258,12 +278,15 @@ internal class FileOperationHistoryDelegate(
                 rename(parentLocation = step.parentLocation, currentName = step.newName, targetName = step.oldName)
             }
 
-            is FileOperationRecord.MoveBatch -> steps.asReversed().forEach { step ->
-                move(
-                    name = step.name,
-                    sourceDirectory = step.targetDirectoryLocation,
-                    targetDirectory = step.sourceParentLocation,
-                )
+            is FileOperationRecord.MoveBatch -> {
+                steps.asReversed().forEach { step ->
+                    move(
+                        name = step.name,
+                        sourceDirectory = step.targetDirectoryLocation,
+                        targetDirectory = step.sourceParentLocation,
+                    )
+                }
+                deleteEmptyCreatedDirectories(createdDirectories, fileRepository, fileCommandService)
             }
 
             is FileOperationRecord.TrashBatch -> {
@@ -282,12 +305,15 @@ internal class FileOperationHistoryDelegate(
                 rename(parentLocation = step.parentLocation, currentName = step.oldName, targetName = step.newName)
             }
 
-            is FileOperationRecord.MoveBatch -> steps.forEach { step ->
-                move(
-                    name = step.name,
-                    sourceDirectory = step.sourceParentLocation,
-                    targetDirectory = step.targetDirectoryLocation,
-                )
+            is FileOperationRecord.MoveBatch -> {
+                createdDirectories = ensureHistoryDirectorySteps(directorySteps, fileRepository, fileCommandService)
+                steps.forEach { step ->
+                    move(
+                        name = step.name,
+                        sourceDirectory = step.sourceParentLocation,
+                        targetDirectory = step.targetDirectoryLocation,
+                    )
+                }
             }
 
             is FileOperationRecord.TrashBatch -> {
@@ -383,6 +409,8 @@ internal class FileOperationHistoryDelegate(
 
         data class MoveBatch(
             val steps: List<FileMoveStep>,
+            val directorySteps: List<TransferDirectoryStep> = emptyList(),
+            var createdDirectories: List<VFile> = emptyList(),
         ) : FileOperationRecord
 
         data class TrashBatch(

@@ -5,6 +5,7 @@ import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.shared.usecase.TransferDirectoryStep
 import com.oruke.onyx.vfs.api.TrashMoveRecord
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -103,8 +104,17 @@ internal class RootFileOperationHistoryFacade(
     fun recordMoveOperation(
         entries: List<VFile>,
         targetDirectoryLocation: String,
+        entryTargetDirectories: Map<String, String> = emptyMap(),
+        directorySteps: List<TransferDirectoryStep> = emptyList(),
+        createdDirectories: List<VFile> = emptyList(),
     ) {
-        delegate.recordMove(entries, targetDirectoryLocation)
+        delegate.recordMove(
+            entries = entries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            entryTargetDirectories = entryTargetDirectories,
+            directorySteps = directorySteps,
+            createdDirectories = createdDirectories,
+        )
     }
 
     /**

@@ -117,4 +117,21 @@ class JvmVfsPathServiceTest {
             service.buildBreadcrumbs(location),
         )
     }
+
+    /**
+     * 校验本地与远程（含 `#` 特殊字符目录名）相对路径段提取及子目录拼接。
+     */
+    @Test
+    fun resolvesRelativeSegmentsAndChildDirectoriesForLocalAndRemoteLocations() {
+        val localBase = java.nio.file.Path.of("D:/auqa/video/动画/TV").toAbsolutePath().normalize().toString()
+        val localNested = java.nio.file.Path.of("D:/auqa/video/动画/TV/#/2024").toAbsolutePath().normalize().toString()
+        assertEquals(listOf("#", "2024"), service.relativePathSegments(localBase, localNested))
+        assertEquals(emptyList(), service.relativePathSegments(localBase, localBase))
+        assertEquals(localNested, service.resolveChildDirectory(localBase, listOf("#", "2024")))
+
+        val smbBase = "smb://host/share/video/动画/TV/"
+        val smbNested = "smb://host/share/video/动画/TV/#/2024/"
+        assertEquals(listOf("#", "2024"), service.relativePathSegments(smbBase, smbNested))
+        assertEquals(smbNested, service.resolveChildDirectory(smbBase, listOf("#", "2024")))
+    }
 }

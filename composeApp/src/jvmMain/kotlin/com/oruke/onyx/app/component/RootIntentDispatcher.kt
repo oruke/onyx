@@ -7,8 +7,6 @@ package com.oruke.onyx.app.component
  */
 internal fun DefaultRootComponent.dispatchRootIntent(intent: RootIntent) {
     when {
-        intent is RootIntent.UpdateWindowSize -> updateWindowSize(intent)
-        intent is RootIntent.ExecuteUserCommand -> executeUserCommand(intent)
         dispatchBatchRenameDraftIntent(intent) -> Unit
         dispatchRootSettingsIntent(intent) -> Unit
         dispatchRootRemoteIntent(intent) -> Unit
@@ -18,6 +16,7 @@ internal fun DefaultRootComponent.dispatchRootIntent(intent: RootIntent) {
         dispatchRootQuickOpenIntent(intent) -> Unit
         dispatchRootSearchSettingsIntent(intent) -> Unit
         dispatchRootTransferIntent(intent) -> Unit
+        dispatchRootTrashIntent(intent) -> Unit
         dispatchRootArchiveIntent(intent) -> Unit
         dispatchRootTaskIntent(intent) -> Unit
         dispatchRootImageIntent(intent) -> Unit
@@ -34,6 +33,10 @@ internal fun DefaultRootComponent.dispatchRootIntent(intent: RootIntent) {
  */
 private fun DefaultRootComponent.dispatchRootSettingsIntent(intent: RootIntent): Boolean {
     return when (intent) {
+        is RootIntent.UpdateWindowSize -> {
+            updateWindowSize(intent); true
+        }
+
         is RootIntent.SetLayoutMode -> {
             setLayoutMode(intent.mode); true
         }
@@ -505,6 +508,10 @@ private fun DefaultRootComponent.dispatchRootImageIntent(intent: RootIntent): Bo
  */
 private fun DefaultRootComponent.dispatchRootPlatformIntent(intent: RootIntent): Boolean {
     return when (intent) {
+        is RootIntent.ExecuteUserCommand -> {
+            executeUserCommand(intent); true
+        }
+
         is RootIntent.OpenWithApp -> {
             openWithApp(intent.entry, intent.app); true
         }
@@ -523,6 +530,42 @@ private fun DefaultRootComponent.dispatchRootPlatformIntent(intent: RootIntent):
 
         is RootIntent.OpenTerminalAt -> {
             openTerminalAt(intent.location); true
+        }
+
+        else -> false
+    }
+}
+
+/**
+ * 派发回收站专属还原、永久删除、清空、打开原位置与复制原路径 intent。
+ *
+ * @param intent 待处理 intent。
+ * @return 已处理时返回 `true`。
+ */
+private fun DefaultRootComponent.dispatchRootTrashIntent(intent: RootIntent): Boolean {
+    return when (intent) {
+        is RootIntent.RestoreSelectedTrashItems -> {
+            restoreSelectedTrashItems(intent.paneId, intent.entryIds); true
+        }
+
+        is RootIntent.RestoreAllTrashItems -> {
+            restoreAllTrashItems(intent.paneId); true
+        }
+
+        is RootIntent.RequestPermanentDeleteTrashItems -> {
+            requestPermanentDeleteTrashItems(intent.paneId, intent.entryIds); true
+        }
+
+        is RootIntent.RequestEmptyTrash -> {
+            requestEmptyTrash(intent.paneId); true
+        }
+
+        is RootIntent.OpenTrashItemOriginalLocation -> {
+            openTrashItemOriginalLocation(intent.paneId, intent.entry); true
+        }
+
+        is RootIntent.CopyTrashItemOriginalPaths -> {
+            copyTrashItemOriginalPaths(intent.paneId, intent.entries); true
         }
 
         else -> false

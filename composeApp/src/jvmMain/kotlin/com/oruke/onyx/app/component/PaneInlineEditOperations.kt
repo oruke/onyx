@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.app.component.delegate.SelectionReducer
+import com.oruke.onyx.app.filesystem.isSystemVirtualLocation
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.DirectoryChange
@@ -15,7 +16,7 @@ internal fun DefaultPaneComponent.beginRename() {
     // 慢速单击的计时器可能在快捷键打开命令面板后到期，不能让底层编辑器抢走输入。
     if (state.value.commandPaletteVisible) return
     val tab = activeTab() ?: return
-    if (tab.inlineEditState != null) return
+    if (isSystemVirtualLocation(tab.location) || tab.inlineEditState != null) return
     val entries = currentVisibleEntries()
     val targetEntryId = SelectionReducer.resolveSelectionFocusId(
         entries,
@@ -30,7 +31,7 @@ internal fun DefaultPaneComponent.beginRename() {
 /** 开始在活动目录中内联新建文件。 */
 internal fun DefaultPaneComponent.beginCreateFile() {
     val tab = activeTab() ?: return
-    if (tab.inlineEditState != null) return
+    if (isSystemVirtualLocation(tab.location) || tab.inlineEditState != null) return
     scope.launch {
         val nextName = tab.nextCreateName(entryNameSuggestionService.newFileName())
         updateTab(tab.id) { currentTab -> currentTab.beginCreateFileInlineEdit(nextName) }
@@ -40,7 +41,7 @@ internal fun DefaultPaneComponent.beginCreateFile() {
 /** 开始在活动目录中内联新建目录。 */
 internal fun DefaultPaneComponent.beginCreateDirectory() {
     val tab = activeTab() ?: return
-    if (tab.inlineEditState != null) return
+    if (isSystemVirtualLocation(tab.location) || tab.inlineEditState != null) return
     scope.launch {
         val nextName = tab.nextCreateName(entryNameSuggestionService.newDirectoryName())
         updateTab(tab.id) { currentTab -> currentTab.beginCreateDirectoryInlineEdit(nextName) }

@@ -65,17 +65,18 @@ internal object WindowsRecycleBinMetadataService {
      * @param infoPath `$I` 元数据文件路径。
      * @return 解析成功的回收站记录；格式不符合预期时返回 `null`。
      */
-    private fun parseInfo(infoPath: Path): WindowsRecycleBinRecord? {
+    internal fun parseInfo(infoPath: Path): WindowsRecycleBinRecord? {
         val bytes = runCatching { Files.readAllBytes(infoPath) }.getOrNull()
         var record: WindowsRecycleBinRecord? = null
         if (bytes != null && bytes.size >= WINDOWS_RECYCLE_INFO_MIN_BYTES) {
             val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
             val version = buffer.long
-            val originalLocation = when (version) {
+            val rawOriginalLocation = when (version) {
                 WINDOWS_RECYCLE_VERSION_ONE -> decodeVersionOnePath(bytes)
                 WINDOWS_RECYCLE_VERSION_TWO -> decodeVersionTwoPath(bytes)
                 else -> null
             }
+            val originalLocation = rawOriginalLocation?.let(::stripWindowsExtendedLengthPrefix)
             if (originalLocation != null) {
                 val contentName = infoPath.fileName.toString().replaceFirst(
                     WINDOWS_RECYCLE_INFO_PREFIX,
@@ -86,10 +87,29 @@ internal object WindowsRecycleBinMetadataService {
                     contentPath = infoPath.resolveSibling(contentName),
                     originalLocation = originalLocation,
                     deletedAtMillis = windowsFileTimeToMillis(buffer.getLong(WINDOWS_RECYCLE_DELETED_AT_OFFSET)),
+                    originalSizeBytes = buffer.getLong(WINDOWS_RECYCLE_FILE_SIZE_OFFSET).coerceAtLeast(0L),
                 )
             }
         }
         return record
+    }
+
+    /**
+     * 剥离 Windows 扩展长路径前缀（`\\?\` 与 `\\?\UNC\`），统一为常规本地或 UNC 路径文本。
+     *
+     * @param rawPath `$I` 元数据解码出的原始路径。
+     * @return 规范化前缀后的路径文本。
+     */
+    private fun stripWindowsExtendedLengthPrefix(rawPath: String): String {
+        return when {
+            rawPath.startsWith(WINDOWS_EXTENDED_UNC_PREFIX, ignoreCase = true) -> {
+                "\\\\" + rawPath.substring(WINDOWS_EXTENDED_UNC_PREFIX.length)
+            }
+            rawPath.startsWith(WINDOWS_EXTENDED_PATH_PREFIX) -> {
+                rawPath.substring(WINDOWS_EXTENDED_PATH_PREFIX.length)
+            }
+            else -> rawPath
+        }
     }
 
     /**
@@ -170,6 +190,12 @@ internal object WindowsRecycleBinMetadataService {
     /** Windows 回收站目录名。 */
     private const val WINDOWS_RECYCLE_DIRECTORY_NAME = "\$Recycle.Bin"
 
+    /** Windows UNC 扩展长路径前缀。 */
+    private const val WINDOWS_EXTENDED_UNC_PREFIX = "\\\\?\\UNC\\"
+
+    /** Windows 本地扩展长路径前缀。 */
+    private const val WINDOWS_EXTENDED_PATH_PREFIX = "\\\\?\\"
+
     /** Windows 回收站元数据文件名前缀。 */
     private const val WINDOWS_RECYCLE_INFO_PREFIX = "\$I"
 
@@ -184,6 +210,9 @@ internal object WindowsRecycleBinMetadataService {
 
     /** Windows 回收站版本 2 标记。 */
     private const val WINDOWS_RECYCLE_VERSION_TWO = 2L
+
+    /** Windows `$I` 原始字节大小偏移。 */
+    private const val WINDOWS_RECYCLE_FILE_SIZE_OFFSET = 8
 
     /** Windows `$I` 删除时间偏移。 */
     private const val WINDOWS_RECYCLE_DELETED_AT_OFFSET = 16
@@ -223,10 +252,12 @@ internal object WindowsRecycleBinMetadataService {
  * @property contentPath `$R` 实际内容路径。
  * @property originalLocation 移入回收站前的原始路径。
  * @property deletedAtMillis 删除时间。
+ * @property originalSizeBytes 移入回收站前记录的原始大小。
  */
 internal data class WindowsRecycleBinRecord(
     val infoPath: Path,
     val contentPath: Path,
     val originalLocation: String,
     val deletedAtMillis: Long,
+    val originalSizeBytes: Long = 0L,
 )

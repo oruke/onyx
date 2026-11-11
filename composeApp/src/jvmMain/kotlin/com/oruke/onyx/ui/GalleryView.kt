@@ -92,7 +92,9 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
+import com.oruke.onyx.app.component.isBrowsableDirectory
 import com.oruke.onyx.core.model.FileLabelStyle
+import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 
 /** 画廊缩略图读取时请求的最大边长。 */
@@ -382,7 +384,7 @@ private fun Modifier.galleryPressInteractions(
     inlineEditing: Boolean,
 ): Modifier = onGloballyPositioned { coordinates ->
     interaction.coordinates = coordinates
-    state.entry?.takeIf { it.kind == VFileKind.DIRECTORY }?.let { entry ->
+    state.entry?.takeIf { it.isBrowsableDirectory() }?.let { entry ->
         actions.onFileDropZoneChange(
             FileDropZone(state.paneId, entry.location, coordinates.windowBounds(), entry.id),
         )
@@ -541,10 +543,15 @@ private fun GalleryThumbnail(
     services: GalleryThumbnailServices,
     modifier: Modifier,
 ) {
+    val canLoadRichThumbnail = entry != null && !isTrashItemLocation(entry.location)
     Box(modifier = modifier.clip(RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
         when {
-            entry != null && services.isImageFileName(entry.name) -> ImageGalleryThumbnail(entry, sizeDp, services)
-            entry != null && services.isArchiveFileName(entry.name) -> ArchiveGalleryThumbnail(entry, sizeDp, services)
+            canLoadRichThumbnail && services.isImageFileName(entry.name) -> {
+                ImageGalleryThumbnail(entry, sizeDp, services)
+            }
+            canLoadRichThumbnail && services.isArchiveFileName(entry.name) -> {
+                ArchiveGalleryThumbnail(entry, sizeDp, services)
+            }
             else -> GalleryFallbackIcon(entry, sizeDp)
         }
     }

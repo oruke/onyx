@@ -6,17 +6,14 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -25,29 +22,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.oruke.onyx.app.component.SidebarTreeNode
-import com.oruke.onyx.app.component.SidebarTreeNodeLoadState
 import com.oruke.onyx.app.component.SidebarTreeState
+import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.RemoteConnectionProfile
-import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.SidebarSectionKey
+import com.oruke.onyx.core.model.SystemQuickAccessLocation
+import com.oruke.onyx.core.model.isTrashLocation
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_edit_connection
 import onyx.composeapp.generated.resources.action_new_connection
-import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.label_remote_connection_empty
 import onyx.composeapp.generated.resources.label_sidebar_empty_favorites
 import onyx.composeapp.generated.resources.label_sidebar_empty_recent
-import onyx.composeapp.generated.resources.label_sidebar_section_favorites
 import onyx.composeapp.generated.resources.label_sidebar_section_connections
-import onyx.composeapp.generated.resources.label_sidebar_section_quick_access
+import onyx.composeapp.generated.resources.label_sidebar_section_favorites
 import onyx.composeapp.generated.resources.label_sidebar_section_recent
 import onyx.composeapp.generated.resources.label_sidebar_section_tree
 import org.jetbrains.compose.resources.stringResource
@@ -100,15 +94,19 @@ internal data class PaneSidebarActions(
 )
 
 /**
- * 绘制当前活动面板的收藏、网络位置、最近位置和目录树侧边栏。
+ * 绘制当前活动面板的系统入口、快速访问、收藏、网络位置、最近位置和目录树侧边栏。
  *
  * @param state 侧边栏渲染状态。
  * @param actions 侧边栏用户操作。
+ * @param activePane 当前活动面板标识。
+ * @param dragBindings 可选拖放绑定，用于为回收站入口注册文件放置热区。
  */
 @Composable
 internal fun PaneSidebar(
     state: PaneSidebarState,
     actions: PaneSidebarActions,
+    activePane: PaneId = PaneId.PRIMARY,
+    dragBindings: PaneDragBindings? = null,
 ) {
     val scrollState = rememberScrollState()
     Column(
@@ -120,15 +118,11 @@ internal fun PaneSidebar(
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        SidebarLocationItem(
-            label = desktopComputerLabel(),
-            selected = com.oruke.onyx.app.filesystem.isComputerLocation(state.location),
-            favorite = com.oruke.onyx.core.model.COMPUTER_LOCATION in state.favoriteLocations,
-            iconKey = AllIconsKeys.General.OpenDisk,
-            modifier = Modifier.testTag("sidebar-computer"),
-            leadingIcon = { StorageDeviceIcon(modifier = it) },
-            onOpen = { actions.activateAndOpen(com.oruke.onyx.core.model.COMPUTER_LOCATION) },
-            onToggleFavorite = { actions.onToggleFavoriteLocation(com.oruke.onyx.core.model.COMPUTER_LOCATION) },
+        SidebarSystemLocations(
+            state = state,
+            actions = actions,
+            activePane = activePane,
+            dragBindings = dragBindings,
         )
         SidebarQuickAccess(state, actions)
         SidebarFavorites(state, actions)
@@ -153,8 +147,10 @@ private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarAction
             state.favoriteLocations.forEach { favoriteLocation ->
                 SidebarLocationItem(
                     label = desktopLocationLabel(actions.locationLabel(favoriteLocation)),
-                    selected = state.location == favoriteLocation,
+                    selected = state.location == favoriteLocation ||
+                        (isTrashLocation(favoriteLocation) && isTrashLocation(state.location)),
                     favorite = true,
+                    iconKey = if (isTrashLocation(favoriteLocation)) AllIconsKeys.General.Delete else null,
                     onOpen = { actions.activateAndOpen(favoriteLocation) },
                     onToggleFavorite = { actions.onToggleFavoriteLocation(favoriteLocation) },
                 )
@@ -217,6 +213,7 @@ private fun SidebarRecentLocations(state: PaneSidebarState, actions: PaneSidebar
                     label = desktopLocationLabel(actions.locationLabel(recentLocation)),
                     selected = false,
                     favorite = state.favoriteLocations.contains(recentLocation),
+                    iconKey = if (isTrashLocation(recentLocation)) AllIconsKeys.General.Delete else null,
                     onOpen = { actions.activateAndOpen(recentLocation) },
                     onToggleFavorite = { actions.onToggleFavoriteLocation(recentLocation) },
                 )
@@ -257,6 +254,9 @@ internal fun PaneSidebarActions.activateAndOpen(location: String) {
 private fun PaneSidebarState.isSectionCollapsed(section: SidebarSectionKey): Boolean =
     section in collapsedSections
 
+/**
+ * 绘制带折叠开关和可选尾部动作按钮的侧栏分区。
+ */
 @Composable
 internal fun SidebarSection(
     section: SidebarSectionKey,
@@ -319,6 +319,9 @@ internal fun SidebarSection(
     }
 }
 
+/**
+ * 绘制侧栏分区的空状态说明文本。
+ */
 @Composable
 internal fun SidebarEmptyState(
     text: String,
@@ -375,8 +378,15 @@ internal fun SidebarLocationItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (leadingIcon != null) leadingIcon(Modifier.size(14.dp)) else Icon(
-            key = iconKey ?: AllIconsKeys.Nodes.Folder, contentDescription = null, modifier = Modifier.size(14.dp))
+        if (leadingIcon != null) {
+            leadingIcon(Modifier.size(14.dp))
+        } else {
+            Icon(
+                key = iconKey ?: AllIconsKeys.Nodes.Folder,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+            )
+        }
         Text(
             text = label,
             modifier = Modifier.weight(1f),
@@ -402,134 +412,6 @@ internal fun SidebarLocationItem(
                     contentDescription = stringResource(Res.string.action_edit_connection),
                     modifier = Modifier.size(12.dp),
                 )
-            }
-        }
-    }
-}
-
-@Composable
-internal fun SidebarTree(
-    selectedLocation: String,
-    treeState: SidebarTreeState,
-    onOpenLocation: (String) -> Unit,
-    onToggleNode: (String) -> Unit,
-    onRetryNode: (String) -> Unit,
-) {
-    val visibleNodes = remember(treeState.roots) { flattenSidebarNodes(treeState.roots) }
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 120.dp, max = 600.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        items(
-            count = visibleNodes.size,
-            key = { index -> visibleNodes[index].node.location },
-        ) { index ->
-            val item = visibleNodes[index]
-            SidebarTreeItem(
-                item = item,
-                selected = selectedLocation == item.node.location,
-                onOpenLocation = onOpenLocation,
-                onToggleNode = onToggleNode,
-                onRetryNode = onRetryNode,
-            )
-        }
-    }
-}
-
-@Composable
-internal fun SidebarTreeItem(
-    item: SidebarTreeItemState,
-    selected: Boolean,
-    onOpenLocation: (String) -> Unit,
-    onToggleNode: (String) -> Unit,
-    onRetryNode: (String) -> Unit,
-) {
-    val node = item.node
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-    val showExpander = node.loadState != SidebarTreeNodeLoadState.READY || node.children.isNotEmpty()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .hoverable(interactionSource)
-            .background(
-                when {
-                    selected -> LocalOnyxPalette.current.selectionBackground
-                    isHovered -> LocalOnyxPalette.current.rowHoverBackground
-                    else -> Color.Transparent
-                },
-                RoundedCornerShape(4.dp),
-            )
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = { onOpenLocation(node.location) },
-            )
-            .padding(start = (item.depth * 12).dp + 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(12.dp)
-                .clickable(enabled = showExpander, onClick = { onToggleNode(node.location) }),
-            contentAlignment = Alignment.Center,
-        ) {
-            when {
-                node.loadState == SidebarTreeNodeLoadState.LOADING -> {
-                    OnyxLoadingSpinner(size = 10.dp, strokeWidth = 1.4.dp)
-                }
-
-                showExpander -> {
-                    Icon(
-                        key = if (node.expanded) AllIconsKeys.General.ArrowDown else AllIconsKeys.General.ArrowRight,
-                        contentDescription = null,
-                        modifier = Modifier.size(10.dp),
-                    )
-                }
-            }
-        }
-        Icon(
-            key = AllIconsKeys.Nodes.Folder,
-            contentDescription = null,
-            modifier = Modifier.size(14.dp),
-        )
-        Text(
-            text = node.label,
-            modifier = Modifier.weight(1f),
-            fontSize = 11.sp,
-            color = LocalOnyxPalette.current.foreground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (node.loadState == SidebarTreeNodeLoadState.FAILURE) {
-            IconButton(onClick = { onRetryNode(node.location) }) {
-                Icon(
-                    key = AllIconsKeys.Actions.Refresh,
-                    contentDescription = stringResource(Res.string.action_refresh_active),
-                    modifier = Modifier.size(12.dp),
-                )
-            }
-        }
-    }
-}
-
-internal data class SidebarTreeItemState(
-    val node: SidebarTreeNode,
-    val depth: Int,
-)
-
-internal fun flattenSidebarNodes(
-    nodes: List<SidebarTreeNode>,
-    depth: Int = 0,
-): List<SidebarTreeItemState> {
-    return buildList {
-        nodes.forEach { node ->
-            add(SidebarTreeItemState(node = node, depth = depth))
-            if (node.expanded) {
-                addAll(flattenSidebarNodes(node.children, depth + 1))
             }
         }
     }

@@ -34,6 +34,7 @@ import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
@@ -49,6 +50,8 @@ import onyx.composeapp.generated.resources.label_preview_loading
 import onyx.composeapp.generated.resources.label_preview_no_selection
 import onyx.composeapp.generated.resources.label_preview_too_large
 import onyx.composeapp.generated.resources.label_preview_unavailable
+import onyx.composeapp.generated.resources.label_trash_deleted_at
+import onyx.composeapp.generated.resources.label_trash_original_location
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -98,8 +101,10 @@ internal fun PreviewPane(
                 PreviewVisual(selectedEntry, loadThumbnail, isImageFileName)
                 Spacer(modifier = Modifier.height(16.dp))
                 PreviewMetadata(selectedEntry)
-                Spacer(modifier = Modifier.height(16.dp))
-                TextFilePreview(selectedEntry, loadTextPreview, isTextPreviewFileName)
+                if (!isTrashItemLocation(selectedEntry.location)) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TextFilePreview(selectedEntry, loadTextPreview, isTextPreviewFileName)
+                }
             }
         }
     }
@@ -122,7 +127,7 @@ private fun PreviewVisual(
         modifier = Modifier.fillMaxWidth().height(200.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (isImageFileName(entry.name)) {
+        if (!isTrashItemLocation(entry.location) && isImageFileName(entry.name)) {
             val (thumbnail, _) = rememberAsyncBitmap(
                 entry.location,
                 PREVIEW_THUMBNAIL_DIMENSION,
@@ -153,6 +158,8 @@ private fun PreviewVisual(
  */
 @Composable
 private fun PreviewMetadata(entry: VFile) {
+    val isTrashEntry = isTrashItemLocation(entry.location)
+    val originalParent = entry.parentLocation
     Text(
         text = entry.name,
         fontSize = 16.sp,
@@ -180,9 +187,12 @@ private fun PreviewMetadata(entry: VFile) {
         )
     }
     PreviewMetadataText(
-        stringResource(Res.string.label_inspector_modified),
+        stringResource(if (isTrashEntry) Res.string.label_trash_deleted_at else Res.string.label_inspector_modified),
         formatModifiedTime(entry.modifiedAtEpochMillis),
     )
+    if (isTrashEntry && !originalParent.isNullOrBlank()) {
+        PreviewMetadataText(stringResource(Res.string.label_trash_original_location), originalParent)
+    }
 }
 
 /**

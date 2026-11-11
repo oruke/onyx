@@ -6,15 +6,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.IntOffset
 import com.oruke.onyx.app.component.PaneEntriesState
-import com.oruke.onyx.app.component.paneState
 import com.oruke.onyx.app.component.RootComponent
 import com.oruke.onyx.app.component.RootIntent
+import com.oruke.onyx.app.component.isBrowsableDirectory
+import com.oruke.onyx.app.component.paneState
 import com.oruke.onyx.app.component.visibleEntries
+import com.oruke.onyx.app.filesystem.isComputerLocation
+import com.oruke.onyx.app.filesystem.isSystemVirtualLocation
 import com.oruke.onyx.app.platform.ExternalFileDragService
+import com.oruke.onyx.core.model.COMPUTER_LOCATION
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
-import com.oruke.onyx.core.model.VFileKind
-import com.oruke.onyx.core.model.COMPUTER_LOCATION
+import com.oruke.onyx.core.model.isTrashItemLocation
+import com.oruke.onyx.core.model.isTrashLocation
 import com.oruke.onyx.ui.PaneDragBindings
 import com.oruke.onyx.ui.theme.FileDragState
 import com.oruke.onyx.ui.theme.FileDropTarget
@@ -107,8 +111,10 @@ internal class AppDragController(
      */
     private fun startFileDrag(sourcePaneId: PaneId, operation: FileTransferOperation) {
         val sourcePaneState = rootComponent.paneState(sourcePaneId)
+        if (isComputerLocation(sourcePaneState.location) || isTrashLocation(sourcePaneState.location)) return
         val entries = sourcePaneState.visibleEntries()
         val selectedEntries = entries.filter { it.id in sourcePaneState.selectedEntryIds }
+        if (selectedEntries.any { entry -> isTrashItemLocation(entry.location) }) return
         val isArchiveSource = rootComponent.prepareExternalDrag(selectedEntries)
         val effectiveOperation = when {
             isArchiveSource -> FileTransferOperation.EXTRACT
@@ -133,6 +139,12 @@ internal class AppDragController(
         val dragState = fileDragState
         val target = fileDropTarget
         if (dragState != null && target != null) {
+            if (isTrashLocation(target.targetDirectoryLocation)) {
+                if (dragState.operation != FileTransferOperation.MOVE) {
+                    fileDragState = dragState.copy(operation = FileTransferOperation.MOVE)
+                }
+                return
+            }
             val canResolveAutomatically = !dragState.userForced &&
                 dragState.operation != FileTransferOperation.EXTRACT
             if (canResolveAutomatically) {
@@ -161,7 +173,9 @@ internal class AppDragController(
                     operation = dragState.operation,
                 ),
             )
-            rootComponent.dispatch(RootIntent.ActivatePane(target.paneId))
+            if (!target.isSidebarTarget) {
+                rootComponent.dispatch(RootIntent.ActivatePane(target.paneId))
+            }
         }
         fileDragState = null
         fileDropTarget = null
@@ -192,19 +206,45 @@ internal class AppDragController(
         val dragState = fileDragState ?: return null
         val zone = fileDropZones.values
             .filter(::isCurrentFileDropZone)
+            .filter { candidate ->
+                !isTrashLocation(candidate.targetDirectoryLocation) || canDropIntoTrash(dragState)
+            }
             .filter { it.bounds.containsPoint(windowPosition) }
             .sortedWith(
-                compareByDescending<FileDropZone> { it.directoryEntryId != null }
+                compareByDescending<FileDropZone> { it.isSidebarTarget }
+                    .thenByDescending { it.directoryEntryId != null }
                     .thenBy { it.bounds.area },
             )
             .firstOrNull() ?: return null
         val sourceLocation = rootComponent.paneState(dragState.sourcePaneId).location
         val targetLocation = zone.targetDirectoryLocation
-        return FileDropTarget(zone.paneId, targetLocation, zone.directoryEntryId).takeUnless {
-            zone.paneId == dragState.sourcePaneId &&
+        return FileDropTarget(
+            paneId = zone.paneId,
+            targetDirectoryLocation = targetLocation,
+            directoryEntryId = zone.directoryEntryId,
+            isSidebarTarget = zone.isSidebarTarget,
+        ).takeUnless {
+            !zone.isSidebarTarget &&
+                zone.paneId == dragState.sourcePaneId &&
                 zone.directoryEntryId == null &&
                 targetLocation == sourceLocation
         }
+    }
+
+    /**
+     * 校验当前拖拽会话是否允许向回收站投放（仅支持本地文件系统且非用户强制复制或归档提取）。
+     *
+     * @param dragState 当前拖拽状态。
+     * @return 允许移入回收站时返回 `true`。
+     */
+    private fun canDropIntoTrash(dragState: FileDragState): Boolean {
+        if (!rootComponent.isTrashSupported) return false
+        if (dragState.userForced || dragState.operation == FileTransferOperation.EXTRACT) return false
+        val sourcePaneState = rootComponent.paneState(dragState.sourcePaneId)
+        if (isSystemVirtualLocation(sourcePaneState.location)) return false
+        val selectedEntries = sourcePaneState.visibleEntries()
+            .filter { entry -> entry.id in sourcePaneState.selectedEntryIds }
+        return selectedEntries.isNotEmpty() && selectedEntries.none { entry -> entry.location.contains("://") }
     }
 
     /**
@@ -214,6 +254,9 @@ internal class AppDragController(
      * @return 区域仍然有效时返回 true。
      */
     private fun isCurrentFileDropZone(zone: FileDropZone): Boolean {
+        if (zone.isSidebarTarget) {
+            return isTrashLocation(zone.targetDirectoryLocation)
+        }
         val paneState = rootComponent.paneState(zone.paneId)
         val ready = paneState.entriesState as? PaneEntriesState.Ready
         val directoryEntryId = zone.directoryEntryId
@@ -225,7 +268,7 @@ internal class AppDragController(
             else -> paneState.visibleEntries().any { entry ->
                 entry.id == directoryEntryId &&
                     entry.location == zone.targetDirectoryLocation &&
-                    entry.kind == VFileKind.DIRECTORY
+                    entry.isBrowsableDirectory()
             }
         }
     }

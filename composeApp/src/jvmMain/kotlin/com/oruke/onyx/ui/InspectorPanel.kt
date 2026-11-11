@@ -33,6 +33,7 @@ import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.core.model.PaneInspectorState
+import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
@@ -52,6 +53,8 @@ import onyx.composeapp.generated.resources.label_inspector_sha256
 import onyx.composeapp.generated.resources.label_inspector_size
 import onyx.composeapp.generated.resources.label_inspector_type
 import onyx.composeapp.generated.resources.label_inspector_unknown
+import onyx.composeapp.generated.resources.label_trash_deleted_at
+import onyx.composeapp.generated.resources.label_trash_original_location
 import onyx.composeapp.generated.resources.label_archive_capability_browse
 import onyx.composeapp.generated.resources.label_archive_capability_extract
 import onyx.composeapp.generated.resources.label_archive_capability_read_only
@@ -145,7 +148,7 @@ private fun InspectorPreview(
             .padding(8.dp),
         contentAlignment = Alignment.Center,
     ) {
-        if (isImageFileName(entry.name)) {
+        if (!isTrashItemLocation(entry.location) && isImageFileName(entry.name)) {
             val (thumbnail, _) = rememberAsyncBitmap(
                 entry.location,
                 INSPECTOR_THUMBNAIL_DIMENSION,
@@ -189,6 +192,7 @@ private fun InspectorDetails(
     readArchiveInfo: suspend (ArchiveInfoRequest) -> ArchiveInfoResult,
     isArchiveFileName: (String) -> Boolean,
 ) {
+    val isTrashEntry = isTrashItemLocation(entry.location)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = entry.name,
@@ -210,20 +214,32 @@ private fun InspectorDetails(
         if (entry.kind != VFileKind.DIRECTORY) {
             InspectorDetailRow(stringResource(Res.string.label_inspector_size), formatFileSize(entry.sizeBytes))
         }
+        val modifiedLabel = if (isTrashEntry) {
+            Res.string.label_trash_deleted_at
+        } else {
+            Res.string.label_inspector_modified
+        }
+        val locationLabel = if (isTrashEntry) {
+            Res.string.label_trash_original_location
+        } else {
+            Res.string.label_inspector_location
+        }
         InspectorDetailRow(
-            stringResource(Res.string.label_inspector_modified),
+            stringResource(modifiedLabel),
             formatModifiedTime(entry.modifiedAtEpochMillis),
         )
         InspectorDetailRow(
-            stringResource(Res.string.label_inspector_location),
+            stringResource(locationLabel),
             entry.parentLocation ?: stringResource(Res.string.label_inspector_unknown),
         )
         InspectorDetailRow(
             stringResource(Res.string.label_inspector_permissions),
             inspectorPermissionValue(entry),
         )
-        InspectorArchiveDetails(entry, readArchiveInfo, isArchiveFileName)
-        InspectorHashDetails(entry, readFileHash)
+        if (!isTrashEntry) {
+            InspectorArchiveDetails(entry, readArchiveInfo, isArchiveFileName)
+            InspectorHashDetails(entry, readFileHash)
+        }
     }
 }
 

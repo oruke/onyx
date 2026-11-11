@@ -7,7 +7,7 @@ import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 
 /** 按后序删除普通目录树，并将符号链接及 Windows Junction 作为不可递归的入口处理。 */
-internal object LocalPathDeletion {
+object LocalPathDeletion {
     /**
      * 删除指定入口；普通目录删除其子项，联接只删除入口本身。
      *

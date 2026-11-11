@@ -1,6 +1,17 @@
 package com.oruke.onyx.app.filesystem
 
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.vfs.api.StorageDeviceService
+import com.oruke.onyx.vfs.api.TrashItem
+import com.oruke.onyx.vfs.api.TrashMoveRecord
+import com.oruke.onyx.vfs.api.TrashRestoreOutcome
+import com.oruke.onyx.vfs.api.TrashService
+import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.VfsProviderError
+import com.oruke.onyx.vfs.api.VfsProviderException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.awt.Desktop
@@ -14,21 +25,30 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.io.path.name
 import kotlin.io.path.pathString
-import com.oruke.onyx.vfs.api.TrashService
-import com.oruke.onyx.vfs.api.TrashMoveRecord
 
 /**
- * JVM 桌面回收站服务，负责移入系统回收站并生成可撤销恢复记录。
+ * JVM 桌面回收站服务，负责移入系统回收站、枚举回收站内容、还原、永久删除与清空回收站。
  *
- * Windows 继续交给系统 Shell 创建真实回收站条目，再读取 `$I` 元数据定位 `$R` 内容；
- * Linux 遵循 FreeDesktop Trash 目录结构；macOS 使用当前用户的 `~/.Trash`。
+ * Windows 调用系统 Shell 创建真实回收站条目并通过 `$I`/`$R` 元数据枚举与还原；
+ * Linux 遵循 FreeDesktop Trash 目录规范；macOS 使用当前用户的 `~/.Trash`。
+ *
+ * @param windowsTrashMoveService Windows 单条目回收站移入实现。
+ * @param storageDevices 平台设备发现服务，用于过滤离线或网络盘的回收站扫描。
+ * @param storageOverride 可选的回收站底层存储覆盖实例（主要用于单元测试）。
  */
 internal class JvmDesktopTrashService(
     private val windowsTrashMoveService: WindowsTrashMoveService = WindowsTrashMoveService(),
+    storageDevices: StorageDeviceService? = null,
+    private val storageOverride: PlatformTrashStorageService? = null,
 ) : TrashService {
+
+    private val windowsStorage = WindowsRecycleBinStorageService(storageDevices = storageDevices)
+    private val freedesktopStorage = FreedesktopTrashStorageService(::linuxTrashRoot)
+    private val macOsStorage = MacOsTrashStorageService(::macosTrashDirectory)
+
     /** 当前平台是否存在可用的回收站实现。 */
     override val isSupported: Boolean
-        get() = when (currentHostPlatform()) {
+        get() = storageOverride != null || when (currentHostPlatform()) {
             HostPlatform.WINDOWS -> Desktop.isDesktopSupported() && runCatching {
                 Desktop.getDesktop().isSupported(Desktop.Action.MOVE_TO_TRASH)
             }.getOrDefault(false)
@@ -41,59 +61,89 @@ internal class JvmDesktopTrashService(
             }.getOrDefault(false)
         }
 
-    /**
-     * 将本地系统文件移入当前平台回收站。
-     *
-     * @param entries 需要移入回收站的本地文件条目。
-     * @return 每个成功移入回收站条目的恢复记录。
-     */
     override suspend fun moveToTrash(
         entries: List<VFile>,
     ): Result<List<TrashMoveRecord>> = withContext(Dispatchers.IO) {
         runCatching {
-            check(isSupported) { "Trash is not supported on this platform" }
-            entries.map { entry -> moveEntryToTrash(entry) }
+            if (!isSupported) throw LocalizedException(I18nMessage(MessageKey.MSG_TRASH_UNSUPPORTED))
+            entries.map(::moveEntryToTrash)
         }
     }
 
-    /**
-     * 将历史记录中的回收站条目移回原位置。
-     *
-     * @param records 移入回收站时生成的恢复记录。
-     * @return 恢复操作结果。
-     */
     override suspend fun restoreFromTrash(
         records: List<TrashMoveRecord>,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            records.forEach { record -> restoreEntry(record) }
+            records.forEach(::restoreEntry)
         }
     }
 
-    /**
-     * 按当前平台分派回收站移动实现。
-     *
-     * @param entry 需要移入回收站的本地文件条目。
-     * @return 可用于撤销的恢复记录。
-     */
+    override suspend fun listItems(): Result<List<TrashItem>> = withContext(Dispatchers.IO) {
+        runCatching {
+            activeStorageService()?.listEntries()?.map(TrashStorageEntry::item).orEmpty()
+        }
+    }
+
+    override suspend fun restoreItems(
+        entryIds: Set<String>,
+    ): Result<TrashRestoreOutcome> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (entryIds.isEmpty()) {
+                return@runCatching TrashRestoreOutcome(emptyList(), emptySet())
+            }
+            val storage = activeStorageService()
+                ?: throw LocalizedException(I18nMessage(MessageKey.MSG_TRASH_UNSUPPORTED))
+            val byId = storage.listEntries().associateBy { entry -> entry.item.id }
+            val targets = entryIds.map { id ->
+                byId[id] ?: throw VfsProviderException(VfsProviderError.NotFound(VfsProtocol.SYSTEM, id))
+            }
+            executeTrashRestore(targets)
+        }
+    }
+
+    override suspend fun deletePermanently(
+        entryIds: Set<String>,
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            if (entryIds.isEmpty()) return@runCatching 0
+            val storage = activeStorageService()
+                ?: throw LocalizedException(I18nMessage(MessageKey.MSG_TRASH_UNSUPPORTED))
+            val byId = storage.listEntries().associateBy { entry -> entry.item.id }
+            val targets = entryIds.mapNotNull { id -> byId[id] }
+            executeTrashPermanentDelete(targets)
+        }
+    }
+
+    override suspend fun emptyTrash(): Result<Int> = withContext(Dispatchers.IO) {
+        runCatching {
+            val storage = activeStorageService()
+                ?: throw LocalizedException(I18nMessage(MessageKey.MSG_TRASH_UNSUPPORTED))
+            val allEntries = storage.listEntries()
+            if (allEntries.isEmpty()) 0 else executeTrashPermanentDelete(allEntries)
+        }
+    }
+
+    private fun activeStorageService(): PlatformTrashStorageService? {
+        storageOverride?.let { override -> return override }
+        return when (currentHostPlatform()) {
+            HostPlatform.WINDOWS -> windowsStorage
+            HostPlatform.LINUX -> freedesktopStorage
+            HostPlatform.MACOS -> macOsStorage
+            HostPlatform.OTHER -> null
+        }
+    }
+
     private fun moveEntryToTrash(entry: VFile): TrashMoveRecord {
         val source = entry.requireSystemLocalPath("trash").normalize().toAbsolutePath()
         check(Files.exists(source)) { "Entry does not exist: ${entry.location}" }
         return when (currentHostPlatform()) {
             HostPlatform.WINDOWS -> windowsTrashMoveService.move(entry, source)
             HostPlatform.LINUX -> moveFreedesktopEntryToTrash(entry, source)
-            HostPlatform.MACOS -> moveSimpleDirectoryEntryToTrash(entry, source, macosTrashDirectory(), null)
+            HostPlatform.MACOS -> moveMacOsEntryToTrash(entry, source)
             HostPlatform.OTHER -> moveDesktopEntryToTrash(entry, source)
         }
     }
 
-    /**
-     * 按 FreeDesktop Trash 规范把 Linux 文件移入用户回收站。
-     *
-     * @param entry 需要移入回收站的文件条目。
-     * @param source 本地绝对路径。
-     * @return Linux 回收站恢复记录。
-     */
     private fun moveFreedesktopEntryToTrash(
         entry: VFile,
         source: Path,
@@ -119,26 +169,16 @@ internal class JvmDesktopTrashService(
         )
     }
 
-    /**
-     * 将文件移入 macOS 或通用目录式回收站。
-     *
-     * @param entry 需要移入回收站的文件条目。
-     * @param source 本地绝对路径。
-     * @param filesDirectory 回收站文件目录。
-     * @param infoDirectory 可选的回收站元数据目录。
-     * @return 目录式回收站恢复记录。
-     */
-    private fun moveSimpleDirectoryEntryToTrash(
+    private fun moveMacOsEntryToTrash(
         entry: VFile,
         source: Path,
-        filesDirectory: Path,
-        infoDirectory: Path?,
     ): TrashMoveRecord {
+        val filesDirectory = macosTrashDirectory()
         Files.createDirectories(filesDirectory)
-        infoDirectory?.let { directory -> Files.createDirectories(directory) }
-        val trashName = uniqueTrashName(filesDirectory, infoDirectory, source.name)
+        val trashName = uniqueTrashName(filesDirectory, null, source.name)
         val target = filesDirectory.resolve(trashName)
         Files.move(source, target)
+        macOsStorage.recordMovedEntry(target, source.pathString)
         return TrashMoveRecord(
             originalEntry = entry,
             trashedLocation = target.pathString,
@@ -146,13 +186,6 @@ internal class JvmDesktopTrashService(
         )
     }
 
-    /**
-     * 非主流平台使用 JVM Desktop 回收站能力；该路径没有恢复元数据，因此不会进入撤销历史。
-     *
-     * @param entry 需要移入回收站的文件条目。
-     * @param source 本地绝对路径。
-     * @return 无元数据的回收站记录。
-     */
     private fun moveDesktopEntryToTrash(
         entry: VFile,
         source: Path,
@@ -167,11 +200,6 @@ internal class JvmDesktopTrashService(
         )
     }
 
-    /**
-     * 根据恢复记录把条目移回原路径。
-     *
-     * @param record 需要恢复的回收站移动记录。
-     */
     private fun restoreEntry(record: TrashMoveRecord) {
         val trashedLocation = record.trashedLocation
         check(trashedLocation.isNotBlank()) {
@@ -179,9 +207,11 @@ internal class JvmDesktopTrashService(
         }
         val trashedPath = Path.of(trashedLocation).normalize().toAbsolutePath()
         val originalPath = Path.of(record.originalEntry.location).normalize().toAbsolutePath()
-        val originalParent = originalPath.parent
-        check(originalParent != null && Files.isDirectory(originalParent)) {
+        val originalParent = checkNotNull(originalPath.parent) {
             "Original parent directory is not available: ${record.originalEntry.parentLocation}"
+        }
+        if (!Files.exists(originalParent)) {
+            Files.createDirectories(originalParent)
         }
         if (Files.exists(originalPath)) {
             throw FileAlreadyExistsException(originalPath.pathString)
@@ -190,14 +220,9 @@ internal class JvmDesktopTrashService(
         record.metadataLocation?.let { metadataLocation ->
             Files.deleteIfExists(Path.of(metadataLocation).normalize().toAbsolutePath())
         }
+        macOsStorage.forgetMovedEntry(trashedPath)
     }
 
-    /**
-     * 写入 Linux FreeDesktop Trash 元数据。
-     *
-     * @param metadata 元数据文件路径。
-     * @param originalPath 原始本地路径。
-     */
     private fun writeFreedesktopTrashInfo(
         metadata: Path,
         originalPath: Path,
@@ -211,14 +236,6 @@ internal class JvmDesktopTrashService(
         Files.writeString(metadata, content, StandardCharsets.UTF_8)
     }
 
-    /**
-     * 生成回收站目录中不冲突的文件名。
-     *
-     * @param filesDirectory 回收站文件目录。
-     * @param infoDirectory 可选的元数据目录。
-     * @param sourceName 原始文件名。
-     * @return 不与现有回收站内容冲突的文件名。
-     */
     private fun uniqueTrashName(
         filesDirectory: Path,
         infoDirectory: Path?,
@@ -235,12 +252,6 @@ internal class JvmDesktopTrashService(
         }
     }
 
-    /**
-     * 为重复回收站文件名增加序号后缀。
-     *
-     * @param index 序号，从 1 开始递增。
-     * @return 带序号的文件名。
-     */
     private fun String.withDuplicateSuffix(index: Int): String {
         val dotIndex = lastIndexOf('.')
         return if (dotIndex > 0) {
@@ -250,11 +261,6 @@ internal class JvmDesktopTrashService(
         }
     }
 
-    /**
-     * 返回 Linux 用户级回收站根目录。
-     *
-     * @return FreeDesktop Trash 根目录。
-     */
     private fun linuxTrashRoot(): Path {
         val xdgDataHome = System.getenv("XDG_DATA_HOME")?.takeIf { value -> value.isNotBlank() }
         return if (xdgDataHome != null) {
@@ -264,20 +270,8 @@ internal class JvmDesktopTrashService(
         }
     }
 
-    /**
-     * 返回 macOS 当前用户回收站目录。
-     *
-     * @return `~/.Trash` 路径。
-     */
-    private fun macosTrashDirectory(): Path {
-        return Path.of(System.getProperty("user.home"), ".Trash")
-    }
+    private fun macosTrashDirectory(): Path = Path.of(System.getProperty("user.home"), ".Trash")
 
-    /**
-     * 识别当前 JVM 所在宿主平台。
-     *
-     * @return 当前宿主平台枚举。
-     */
     private fun currentHostPlatform(): HostPlatform {
         val osName = System.getProperty("os.name").lowercase(Locale.getDefault())
         return when {
@@ -288,7 +282,6 @@ internal class JvmDesktopTrashService(
         }
     }
 
-    /** 当前 JVM 宿主平台。 */
     private enum class HostPlatform {
         WINDOWS,
         MACOS,
@@ -297,7 +290,6 @@ internal class JvmDesktopTrashService(
     }
 
     private companion object {
-        /** FreeDesktop Trash 删除时间格式。 */
         val FREEDESKTOP_DELETION_DATE_FORMATTER: DateTimeFormatter =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
     }

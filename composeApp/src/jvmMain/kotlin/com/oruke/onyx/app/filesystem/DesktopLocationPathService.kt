@@ -1,12 +1,19 @@
 package com.oruke.onyx.app.filesystem
 
 import com.oruke.onyx.core.model.COMPUTER_LOCATION
+import com.oruke.onyx.core.model.FileTransferOperation
+import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.LocalizedException
+import com.oruke.onyx.core.model.MessageKey
+import com.oruke.onyx.core.model.TRASH_LOCATION
+import com.oruke.onyx.core.model.isTrashItemLocation
+import com.oruke.onyx.core.model.isTrashLocation
 import com.oruke.onyx.core.model.storageDriveDesignator
 import com.oruke.onyx.core.model.volumeLabel
 import com.oruke.onyx.vfs.api.StorageDeviceService
 
 /**
- * 在现有路径服务边界增加桌面虚拟位置，物理路径关系仍由原服务负责。
+ * 在现有路径服务边界增加桌面虚拟位置（此电脑与回收站），物理路径关系仍由原服务负责。
  *
  * @param paths 本地、归档与远程文件系统的原有路径服务。
  * @param storageDevices 已发现的设备名称，不在同步路径解析中执行设备查询。
@@ -18,25 +25,30 @@ internal class DesktopLocationPathService(
     private val storageDevices: StorageDeviceService? = null,
 ) : VfsPathService by paths {
     /**
-     * 识别稳定虚拟位置及 Windows 此电脑的标准 Shell 别名。
+     * 识别稳定虚拟位置及 Windows 此电脑与回收站的标准 Shell 别名。
      *
      * @param location 用户输入或持久化位置。
      * @return 规范化虚拟位置或原有文件系统位置。
      */
     override fun normalizeLocation(location: String): String =
-        if (isComputerLocation(location)) COMPUTER_LOCATION else paths.normalizeLocation(location)
+        when {
+            isComputerLocation(location) -> COMPUTER_LOCATION
+            isTrashLocation(location) -> TRASH_LOCATION
+            isTrashItemLocation(location) -> location.trim()
+            else -> paths.normalizeLocation(location)
+        }
 
     /**
-     * 虚拟概览没有物理父目录，不能参与文件传输的祖先关系判断。
+     * 虚拟概览与回收站容器没有物理父目录，不能参与文件传输的祖先关系判断。
      *
      * @param location 当前位置。
-     * @return 文件系统物理父级；概览为空。
+     * @return 文件系统物理父级；虚拟位置为空。
      */
     override fun parentLocation(location: String): String? =
-        if (isComputerLocation(location)) null else paths.parentLocation(location)
+        if (isSystemVirtualLocation(location)) null else paths.parentLocation(location)
 
     /**
-     * 本地卷和 UNC 共享根目录向上返回概览，远程协议保留自己的根层级。
+     * 回收站、本地卷和 UNC 共享根目录向上返回概览，远程协议保留自己的根层级。
      *
      * @param location 当前浏览位置。
      * @return 界面导航父级。
@@ -44,6 +56,8 @@ internal class DesktopLocationPathService(
     override fun navigationParent(location: String): String? =
         when {
             isComputerLocation(location) -> null
+            isTrashLocation(location) -> COMPUTER_LOCATION
+            isTrashItemLocation(location) -> TRASH_LOCATION
             paths.parentLocation(location) != null -> paths.parentLocation(location)
             !location.contains("://") -> COMPUTER_LOCATION
             else -> null
@@ -56,7 +70,11 @@ internal class DesktopLocationPathService(
      * @return 标题标识或文件系统标题。
      */
     override fun title(location: String): String =
-        if (isComputerLocation(location)) COMPUTER_LOCATION else paths.title(location)
+        when {
+            isComputerLocation(location) -> COMPUTER_LOCATION
+            isTrashLocation(location) -> TRASH_LOCATION
+            else -> paths.title(location)
+        }
 
     /**
      * 为收藏、最近位置提供可本地化的稳定标题。
@@ -65,29 +83,44 @@ internal class DesktopLocationPathService(
      * @return 虚拟位置标识或原有位置名称。
      */
     override fun label(location: String): String =
-        if (isComputerLocation(location)) COMPUTER_LOCATION else paths.label(location)
+        when {
+            isComputerLocation(location) -> COMPUTER_LOCATION
+            isTrashLocation(location) -> TRASH_LOCATION
+            else -> paths.label(location)
+        }
 
     /**
-     * 系统概览不是文件系统目录，不能用于猜测直接子项名称。
+     * 系统虚拟位置不是物理文件系统目录，不能用于猜测直接子项名称。
      *
      * @param ancestor 物理祖先位置。
      * @param descendant 物理后代位置。
-     * @return 普通文件系统中的直接子项名称，涉及概览时为空。
+     * @return 普通文件系统中的直接子项名称，涉及虚拟位置时为空。
      */
     override fun directChildName(ancestor: String, descendant: String): String? =
-        if (isComputerLocation(ancestor) || isComputerLocation(descendant)) null
+        if (isSystemVirtualLocation(ancestor) || isSystemVirtualLocation(descendant)) null
         else paths.directChildName(ancestor, descendant)
 
+    override fun relativePathSegments(ancestor: String, descendant: String): List<String>? =
+        if (isSystemVirtualLocation(ancestor) || isSystemVirtualLocation(descendant)) null
+        else paths.relativePathSegments(ancestor, descendant)
+
+    override fun resolveChildDirectory(parentLocation: String, childSegments: List<String>): String =
+        when {
+            isComputerLocation(parentLocation) -> COMPUTER_LOCATION
+            isTrashLocation(parentLocation) -> TRASH_LOCATION
+            else -> paths.resolveChildDirectory(parentLocation, childSegments)
+        }
+
     /**
-     * 保持文件操作的物理父级关系，设备概览没有文件系统子项。
+     * 保持文件操作的物理父级关系，虚拟位置没有文件系统子项。
      *
      * @param parent 物理父位置。
      * @param child 物理子位置。
      * @return 确认存在物理直接父子关系时返回 true。
      */
     override fun isDirectParent(parent: String, child: String): Boolean =
-        !isComputerLocation(parent) &&
-            !isComputerLocation(child) &&
+        !isSystemVirtualLocation(parent) &&
+            !isSystemVirtualLocation(child) &&
             paths.isDirectParent(parent, child)
 
     /**
@@ -98,43 +131,48 @@ internal class DesktopLocationPathService(
      * @return 普通文件系统中的相同或后代位置返回 true。
      */
     override fun isSameOrChildOf(location: String, parentLocation: String): Boolean =
-        !isComputerLocation(location) &&
-            !isComputerLocation(parentLocation) &&
+        !isSystemVirtualLocation(location) &&
+            !isSystemVirtualLocation(parentLocation) &&
             paths.isSameOrChildOf(location, parentLocation)
 
     /**
-     * 在统一路径边界拒绝把系统概览当作文件传输源或目标。
+     * 在统一路径边界拒绝把系统虚拟位置当作常规复制或移动目录。
      *
      * @param sourceLocation 源位置。
      * @param targetLocation 目标位置。
-     * @return 普通存储位置的传输策略；概览位置返回本地化失败。
+     * @return 普通存储位置的传输策略；虚拟位置返回本地化失败。
      */
     override fun resolveTransferOperation(
         sourceLocation: String,
         targetLocation: String,
-    ): com.oruke.onyx.core.model.FileTransferOperation {
-        val computer = listOf(sourceLocation, targetLocation).firstOrNull(::isComputerLocation)
-        if (computer != null)
-            throw com.oruke.onyx.core.model.LocalizedException(
-                com.oruke.onyx.core.model.I18nMessage(
-                    com.oruke.onyx.core.model.MessageKey.MSG_LOCATION_NOT_DIRECTORY,
-                    computer,
-                )
+    ): FileTransferOperation {
+        val virtualLocation = listOf(sourceLocation, targetLocation).firstOrNull(::isSystemVirtualLocation)
+        if (virtualLocation != null) {
+            throw LocalizedException(
+                I18nMessage(
+                    MessageKey.MSG_LOCATION_NOT_DIRECTORY,
+                    virtualLocation,
+                ),
             )
+        }
         return paths.resolveTransferOperation(sourceLocation, targetLocation)
     }
 
     /**
-     * 概览始终是有效的应用内入口，与设备是否在线分开判断。
+     * 此电脑与回收站始终是有效的应用内入口。
      *
      * @param location 会话或导航需要验证的位置。
-     * @return 虚拟概览或当前文件系统位置可用时返回 true。
+     * @return 虚拟容器入口或当前文件系统位置可用时返回 true。
      */
     override fun isLocationAvailable(location: String): Boolean =
-        isComputerLocation(location) || paths.isLocationAvailable(location)
+        when {
+            isComputerLocation(location) || isTrashLocation(location) -> true
+            isTrashItemLocation(location) -> false
+            else -> paths.isLocationAvailable(location)
+        }
 
     /**
-     * 为本地路径添加设备概览面包屑，远程和归档沿用原有层级。
+     * 为回收站与本地路径添加设备概览面包屑，远程和归档沿用原有层级。
      *
      * @param location 当前浏览位置。
      * @return 导航面包屑，虚拟位置名称由渲染层翻译。
@@ -143,16 +181,20 @@ internal class DesktopLocationPathService(
         val computer = VfsBreadcrumb(COMPUTER_LOCATION, COMPUTER_LOCATION)
         return when {
             isComputerLocation(location) -> listOf(computer)
+            isTrashLocation(location) -> listOf(computer, VfsBreadcrumb(TRASH_LOCATION, TRASH_LOCATION))
             !location.contains("://") -> {
                 val breadcrumbs = paths.buildBreadcrumbs(location)
                 val root = breadcrumbs.firstOrNull() ?: return listOf(computer)
                 val device = storageDevices?.cachedSnapshot()?.firstOrNull { item ->
                     item.locations.any { it.equals(root.location, ignoreCase = true) }
                 }
-                listOf(computer, root.copy(
-                    label = storageDriveDesignator(root.location) ?: root.label,
-                    storageLabel = device?.volumeLabel(),
-                )) + breadcrumbs.drop(1)
+                listOf(
+                    computer,
+                    root.copy(
+                        label = storageDriveDesignator(root.location) ?: root.label,
+                        storageLabel = device?.volumeLabel(),
+                    ),
+                ) + breadcrumbs.drop(1)
             }
             else -> paths.buildBreadcrumbs(location)
         }
@@ -171,3 +213,12 @@ internal fun isComputerLocation(location: String): Boolean =
             value.equals("shell:MyComputerFolder", ignoreCase = true) ||
             value.equals("shell:::{20D04FE0-3AEA-1069-A2D8-08002B30309D}", ignoreCase = true)
     }
+
+/**
+ * 判断位置是否属于系统虚拟容器或回收站虚拟条目（非物理文件系统路径）。
+ *
+ * @param location 待检查位置文本。
+ * @return 属于系统虚拟位置时返回 `true`。
+ */
+internal fun isSystemVirtualLocation(location: String): Boolean =
+    isComputerLocation(location) || isTrashLocation(location) || isTrashItemLocation(location)

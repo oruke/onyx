@@ -8,6 +8,7 @@ import com.oruke.onyx.core.model.LocalizedException
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.shared.usecase.TransferDirectoryStep
 import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.FileRepository
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
@@ -16,22 +17,36 @@ import com.oruke.onyx.vfs.api.TransferConflictStrategy
 internal class CopiedFilesHistoryRecord private constructor(
     /** 复制前的源条目位置。 */
     private val sources: List<VFile>,
-    /** 复制目标目录。 */
+    /** 复制根目标目录。 */
     internal val targetDirectory: String,
+    /** 嵌套子项对应的实际落盘父目录。 */
+    private val entryTargetDirectories: Map<String, String>,
+    /** 重做时需确保存在的中间目录链。 */
+    private val directorySteps: List<TransferDirectoryStep>,
     /** 统一文件查询能力。 */
     private val repository: FileRepository,
     /** 统一文件变更能力。 */
     private val commands: FileCommandService,
     /** 文件内容摘要读取能力。 */
     private val hashService: FileHashService,
+    /** 本次复制新建的中间目录，重做成功后更新。 */
+    private var createdDirectories: List<VFile>,
     /** 已提交副本的快照，重做成功后更新。 */
     private var targets: List<CopiedEntrySnapshot>,
 ) {
-    /** 核对全部副本未改变后删除副本，保留用户后续修改的内容。 */
+    /** 返回撤销或重做可能触及的全部目录。 */
+    internal fun affectedDirectories(): Set<String> = buildSet {
+        add(targetDirectory)
+        addAll(entryTargetDirectories.values)
+        createdDirectories.mapNotNullTo(this) { dir -> dir.parentLocation }
+    }
+
+    /** 核对全部副本未改变后删除副本，并清理本次新建且已为空的中间目录。 */
     suspend fun undo() {
         val current = targets.map { snapshot -> snapshot(entryAt(snapshot.entry), 0) }
         if (current != targets) throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_CHANGED))
         commands.delete(current.map { snapshot -> snapshot.entry }).getOrThrow()
+        deleteEmptyCreatedDirectories(createdDirectories, repository, commands)
     }
 
     /** 在源内容仍与原副本一致且目标空闲时重新复制，并更新可撤销快照。 */
@@ -42,12 +57,35 @@ internal class CopiedFilesHistoryRecord private constructor(
                 throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_CHANGED))
             }
         }
-        val existing = repository.list(targetDirectory).getOrThrow().map { entry -> entry.name }.toSet()
-        if (sources.any { source -> source.name in existing }) {
-            throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_CHANGED))
+        verifyRedoTargetsAvailable(currentSources)
+        createdDirectories = ensureHistoryDirectorySteps(directorySteps, repository, commands)
+        currentSources.groupBy(::effectiveTargetOf).forEach { (effectiveDir, groupedSources) ->
+            commands.copy(groupedSources, effectiveDir, TransferConflictStrategy.KEEP_BOTH).getOrThrow()
         }
-        commands.copy(currentSources, targetDirectory, TransferConflictStrategy.KEEP_BOTH).getOrThrow()
         targets = targetSnapshots()
+    }
+
+    private fun effectiveTargetOf(source: VFile): String =
+        entryTargetDirectories[source.id] ?: targetDirectory
+
+    private suspend fun verifyRedoTargetsAvailable(currentSources: List<VFile>) {
+        if (directorySteps.isEmpty()) {
+            val existing = repository.list(targetDirectory).getOrThrow().mapTo(mutableSetOf()) { it.name }
+            if (currentSources.any { source -> source.name in existing }) {
+                throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_CHANGED))
+            }
+            return
+        }
+        currentSources.groupBy(::effectiveTargetOf).forEach { (effectiveDir, groupedSources) ->
+            val existing = if (effectiveDir == targetDirectory) {
+                repository.list(targetDirectory).getOrThrow().mapTo(mutableSetOf()) { it.name }
+            } else {
+                repository.list(effectiveDir).getOrNull()?.mapTo(mutableSetOf()) { it.name }.orEmpty()
+            }
+            if (groupedSources.any { source -> source.name in existing }) {
+                throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_CHANGED))
+            }
+        }
     }
 
     /**
@@ -82,13 +120,15 @@ internal class CopiedFilesHistoryRecord private constructor(
     }
 
     /**
-     * 从复制目标目录读取每一个新建副本的完整快照。
+     * 从各条目对应的复制目标目录读取每一个新建副本的完整快照。
      *
      * @return 与源顺序一致的目标快照。
      */
     private suspend fun targetSnapshots(): List<CopiedEntrySnapshot> {
-        val entries = repository.list(targetDirectory).getOrThrow()
+        val entriesByDir = mutableMapOf<String, List<VFile>>()
         return sources.map { source ->
+            val effectiveDir = effectiveTargetOf(source)
+            val entries = entriesByDir.getOrPut(effectiveDir) { repository.list(effectiveDir).getOrThrow() }
             val target = entries.firstOrNull { entry -> entry.name == source.name }
                 ?: throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_UNAVAILABLE))
             snapshot(target, 0)
@@ -100,20 +140,37 @@ internal class CopiedFilesHistoryRecord private constructor(
          * 在复制已经完成后创建可撤销记录；不猜测冲突副本名称。
          *
          * @param sources 原始源条目。
-         * @param targetDirectory 无冲突复制目标目录。
+         * @param targetDirectory 无冲突复制根目标目录。
          * @param repository 统一文件查询服务。
-         * @param commands 统一文件命令服务。
+         * @param commands 统一文件变更服务。
          * @param hashService 文件摘要服务；未提供时拒绝登记可撤销副本。
+         * @param entryTargetDirectories 按条目 ID 指定的实际目标目录。
+         * @param directorySteps 重做时需确保存在的中间目录链。
+         * @param createdDirectories 本次复制新建的中间目录。
          * @return 完成目标快照后的记录。
          */
         suspend fun capture(
-            sources: List<VFile>, targetDirectory: String, repository: FileRepository,
-            commands: FileCommandService, hashService: FileHashService?,
+            sources: List<VFile>,
+            targetDirectory: String,
+            repository: FileRepository,
+            commands: FileCommandService,
+            hashService: FileHashService?,
+            entryTargetDirectories: Map<String, String> = emptyMap(),
+            directorySteps: List<TransferDirectoryStep> = emptyList(),
+            createdDirectories: List<VFile> = emptyList(),
         ): CopiedFilesHistoryRecord {
             val contentHashService =
                 hashService ?: throw LocalizedException(I18nMessage(MessageKey.MSG_COPY_HISTORY_UNAVAILABLE))
             val record = CopiedFilesHistoryRecord(
-                sources, targetDirectory, repository, commands, contentHashService, emptyList(),
+                sources = sources,
+                targetDirectory = targetDirectory,
+                entryTargetDirectories = entryTargetDirectories,
+                directorySteps = directorySteps,
+                repository = repository,
+                commands = commands,
+                hashService = contentHashService,
+                createdDirectories = createdDirectories,
+                targets = emptyList(),
             )
             record.targets = record.targetSnapshots()
             sources.zip(record.targets).forEach { (source, target) ->

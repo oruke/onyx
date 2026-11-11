@@ -12,7 +12,9 @@ import com.oruke.onyx.app.component.openEntry
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.SearchScope
+import com.oruke.onyx.core.model.TRASH_LOCATION
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileSearchUseCase
 import java.util.UUID
@@ -176,10 +178,14 @@ internal class RootSearchDelegate(
      * @param entry 要定位并选中的结果。
      */
     fun openSearchResultInFolder(entry: VFile) {
-        val parent = entry.parentLocation ?: return
+        val targetDirectory = if (isTrashItemLocation(entry.location)) {
+            TRASH_LOCATION
+        } else {
+            entry.parentLocation ?: return
+        }
         val paneId = mutableSearchState.value.paneId
         activatePane(paneId)
-        paneComponent(paneId).openDirectoryAndSelect(parent, entry.name)
+        paneComponent(paneId).openDirectoryAndSelect(targetDirectory, entry.name)
         if (mode == SearchPanelMode.QUICK_OPEN) closeSearchPanel()
     }
 

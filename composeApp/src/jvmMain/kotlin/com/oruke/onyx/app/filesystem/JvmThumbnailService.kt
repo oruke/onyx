@@ -161,6 +161,8 @@ internal class JvmThumbnailService(
                 val routedBytes = readRoutedContentBytes(location)
                 if (routedBytes != null) {
                     bytes = routedBytes
+                } else if (location.contains("://")) {
+                    return@withContext null
                 } else {
                     val file = File(location)
                     if (!file.exists() || !file.isFile) return@withContext null

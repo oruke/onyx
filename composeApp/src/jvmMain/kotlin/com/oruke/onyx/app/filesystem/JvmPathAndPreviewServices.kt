@@ -114,6 +114,43 @@ internal class JvmVfsPathService : VfsPathService {
         }.getOrNull()
     }
 
+    override fun relativePathSegments(ancestor: String, descendant: String): List<String>? {
+        val ancestorRemote = remoteUri(ancestor)
+        val descendantRemote = remoteUri(descendant)
+        if (ancestorRemote != null || descendantRemote != null) {
+            return if (ancestorRemote != null && descendantRemote != null) {
+                ancestorRemote.remoteRelativePathSegments(descendantRemote)
+            } else {
+                null
+            }
+        }
+        return runCatching {
+            val ancestorPath = Path.of(ancestor).toAbsolutePath().normalize()
+            val descendantPath = Path.of(descendant).toAbsolutePath().normalize()
+            when {
+                descendantPath == ancestorPath -> emptyList()
+                !descendantPath.startsWith(ancestorPath) -> null
+                else -> {
+                    val rel = ancestorPath.relativize(descendantPath)
+                    (0 until rel.nameCount).map { index -> rel.getName(index).pathString }
+                }
+            }
+        }.getOrNull()
+    }
+
+    override fun resolveChildDirectory(parentLocation: String, childSegments: List<String>): String {
+        val cleaned = childSegments.filter { it.isNotBlank() }
+        if (cleaned.isEmpty()) return normalizeLocation(parentLocation)
+        val remote = remoteUri(parentLocation)
+        return if (remote != null) {
+            remote.resolveRemoteChildDirectory(cleaned)
+        } else {
+            cleaned.fold(Path.of(parentLocation).normalize().toAbsolutePath()) { current, segment ->
+                current.resolve(segment)
+            }.normalize().pathString
+        }
+    }
+
     override fun isDirectParent(parent: String, child: String): Boolean {
         val parentRemote = remoteUri(parent)
         val childRemote = remoteUri(child)
@@ -362,6 +399,9 @@ internal class JvmPreviewService(
             if (request.entry.kind != VFileKind.FILE) return@withContext PreviewTextResult.Unavailable
             val routedPreview = loadTextPreviewFromContentService(request)
             if (routedPreview != null) return@withContext routedPreview
+            if (request.entry.location.contains("://")) {
+                return@withContext PreviewTextResult.Unavailable
+            }
             val path = Path.of(request.entry.location)
             if (!Files.exists(path)) {
                 return@withContext PreviewTextResult.Unavailable
@@ -651,6 +691,8 @@ internal class JvmImageMetadataService(
                 } finally {
                     image.close()
                 }
+            } else if (entry.location.contains("://")) {
+                null
             } else {
                 val path = Path.of(entry.location)
                 if (!Files.exists(path)) return@withContext null

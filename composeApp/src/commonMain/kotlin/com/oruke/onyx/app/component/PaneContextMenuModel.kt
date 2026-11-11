@@ -47,6 +47,18 @@ internal enum class PaneContextMenuText {
     REFRESH,
     OPEN_TERMINAL,
     CLOSE_MENU,
+    /** 还原选中的回收站条目。 */
+    TRASH_RESTORE,
+    /** 还原回收站全部条目。 */
+    TRASH_RESTORE_ALL,
+    /** 打开回收站条目原始所在位置。 */
+    TRASH_OPEN_ORIGINAL_LOCATION,
+    /** 永久删除选中的回收站条目。 */
+    TRASH_DELETE_PERMANENTLY,
+    /** 复制回收站条目的原始路径。 */
+    TRASH_COPY_ORIGINAL_PATH,
+    /** 清空回收站。 */
+    TRASH_EMPTY,
 }
 
 /**
@@ -208,6 +220,8 @@ internal data class PaneContextMenuExternalActions(
     val onOpenTerminal: (String) -> Unit,
     /** 使用菜单目标条目执行用户配置程序。 */
     val onUserCommand: (String, List<VFile>?) -> Unit = { _, _ -> },
+    /** 执行回收站专属菜单动作。 */
+    val onTrashCommand: (TrashContextMenuAction) -> Unit = {},
 )
 
 /**
@@ -236,6 +250,9 @@ internal class PaneContextMenuCommandController(
         return when (command) {
             is ComputerContextMenuCommand -> {
                 paneCommandController.dispatch(command.intent); true
+            }
+            is TrashContextMenuCommand -> {
+                externalActions.onTrashCommand(command.action); true
             }
             is PaneContextMenuCommand.UserCommand -> {
                 externalActions.onUserCommand(command.id, entries); true

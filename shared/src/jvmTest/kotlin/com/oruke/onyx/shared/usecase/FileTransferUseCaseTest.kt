@@ -60,6 +60,81 @@ class FileTransferUseCaseTest {
         assertEquals(1f, events.last().progress)
     }
 
+    /**
+     * 当请求包含相对目录链时，应先创建中间目录并实时上报目录变更，再将条目写入实际子目录。
+     */
+    @Test
+    fun createsIntermediateDirectoriesAndTransfersIntoNestedTarget() = runBlocking {
+        val entry = testFile(sizeBytes = TEST_FILE_SIZE)
+        val createdDirs = mutableListOf<Pair<String, String>>()
+        val transferredTargets = mutableListOf<String>()
+        val commandService = object : ProgressAwareFileCommandService {
+            override suspend fun copyWithProgress(
+                entries: List<VFile>,
+                targetDirectoryLocation: String,
+                conflictStrategy: TransferConflictStrategy,
+                progressSink: FileTransferProgressSink,
+            ): Result<Unit> {
+                transferredTargets += targetDirectoryLocation
+                progressSink.onBytesTransferred(TEST_FILE_SIZE)
+                return Result.success(Unit)
+            }
+
+            override suspend fun moveWithProgress(
+                entries: List<VFile>,
+                targetDirectoryLocation: String,
+                conflictStrategy: TransferConflictStrategy,
+                progressSink: FileTransferProgressSink,
+            ): Result<Unit> = copyWithProgress(entries, targetDirectoryLocation, conflictStrategy, progressSink)
+
+            override suspend fun delete(entries: List<VFile>): Result<Unit> = Result.success(Unit)
+            override suspend fun rename(entry: VFile, targetName: String): Result<VFile> = Result.success(entry)
+            override suspend fun createFile(parentLocation: String, name: String): Result<VFile> =
+                Result.failure(UnsupportedOperationException())
+
+            override suspend fun createDirectory(parentLocation: String, name: String): Result<VFile> {
+                createdDirs += parentLocation to name
+                val dirLocation = "$parentLocation/$name"
+                return Result.success(
+                    VFile(
+                        id = dirLocation,
+                        name = name,
+                        location = dirLocation,
+                        parentLocation = parentLocation,
+                        kind = VFileKind.DIRECTORY,
+                        sizeBytes = null,
+                        modifiedAtEpochMillis = null,
+                        hidden = false,
+                        capabilities = emptySet(),
+                    )
+                )
+            }
+        }
+        val useCase = FileTransferUseCase(
+            fileCommandService = commandService,
+            providerRegistry = VfsProviderRegistry(listOf(TestProvider)),
+        )
+        val nestedTarget = "$TEST_TARGET/#"
+        val events = useCase.execute(
+            request = FileTransferUseCase.FileTransferRequest(
+                entries = listOf(entry),
+                targetDirectoryLocation = TEST_TARGET,
+                operation = FileTransferOperation.COPY,
+                conflictStrategies = emptyMap(),
+                entryTargetDirectories = mapOf(entry.id to nestedTarget),
+                entryDirectoryChains = mapOf(
+                    entry.id to listOf(TransferDirectoryStep(TEST_TARGET, "#", nestedTarget)),
+                ),
+            ),
+            awaitReady = {},
+        ).toList()
+
+        assertEquals(listOf(TEST_TARGET to "#"), createdDirs)
+        assertEquals(listOf(nestedTarget), transferredTargets)
+        assertTrue(events.any { it.createdDirectories.map { dir -> dir.name } == listOf("#") })
+        assertEquals("source.bin -> $nestedTarget", events.last().detail.args.single())
+    }
+
     private companion object {
         /** 测试文件总字节数。 */
         const val TEST_FILE_SIZE = 1_000L

@@ -199,6 +199,7 @@ internal fun PaneTabState.withDerivedState(
                 allEntries = allEntries,
                 visibleEntries = visibleEntries,
                 selectedEntryIds = selection.selectedEntryIds,
+                selectableEntries = allVisibleForSelection,
             ),
             entriesState = nextEntriesState,
         )

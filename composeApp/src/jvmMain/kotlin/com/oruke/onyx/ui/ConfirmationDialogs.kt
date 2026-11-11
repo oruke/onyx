@@ -44,6 +44,8 @@ import onyx.composeapp.generated.resources.action_keep_both
 import onyx.composeapp.generated.resources.action_move
 import onyx.composeapp.generated.resources.action_overwrite
 import onyx.composeapp.generated.resources.action_skip
+import onyx.composeapp.generated.resources.action_trash_delete_permanently
+import onyx.composeapp.generated.resources.action_trash_empty
 import onyx.composeapp.generated.resources.label_conflict_resolution_message
 import onyx.composeapp.generated.resources.label_conflict_resolution_title
 import onyx.composeapp.generated.resources.label_delete_confirmation_move_to_trash
@@ -51,37 +53,31 @@ import onyx.composeapp.generated.resources.label_delete_confirmation_permanent
 import onyx.composeapp.generated.resources.label_delete_confirmation_trash_unavailable
 import onyx.composeapp.generated.resources.label_operation_copy
 import onyx.composeapp.generated.resources.label_operation_move
+import onyx.composeapp.generated.resources.label_trash_empty_confirmation
+import onyx.composeapp.generated.resources.label_trash_empty_title
+import onyx.composeapp.generated.resources.label_trash_permanent_delete_confirmation
+import onyx.composeapp.generated.resources.label_trash_permanent_delete_title
 import onyx.composeapp.generated.resources.message_apply_to_remaining_conflicts
 
+/**
+ * 破坏性操作的通用二次确认对话框底座。
+ *
+ * 默认取消按钮获焦，支持 Escape/Enter/DirectionLeft/Tab/DirectionRight 键盘导航。
+ *
+ * @param title 对话框窗口标题与卡片标题。
+ * @param message 确认提示文案。
+ * @param confirmLabel 确认按钮文案。
+ * @param onConfirm 确认回调。
+ * @param onDismiss 取消/关闭回调。
+ */
 @Composable
-internal fun ConfirmationDialog(
-    state: RootDialogState.DeleteSelectionConfirmation,
+private fun DestructiveConfirmationDialog(
+    title: String,
+    message: String,
+    confirmLabel: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val title = if (state.moveToTrash) {
-        stringResource(Res.string.action_move)
-    } else {
-        stringResource(Res.string.action_delete_selected)
-    }
-    val message = buildString {
-        append(
-            if (state.moveToTrash) {
-                stringResource(Res.string.label_delete_confirmation_move_to_trash, state.itemCount)
-            } else {
-                stringResource(Res.string.label_delete_confirmation_permanent, state.itemCount)
-            }
-        )
-        if (state.trashUnavailable) {
-            append("\n")
-            append(stringResource(Res.string.label_delete_confirmation_trash_unavailable))
-        }
-    }
-    val confirmLabel = if (state.moveToTrash) {
-        stringResource(Res.string.action_move)
-    } else {
-        stringResource(Res.string.action_delete_selected)
-    }
     // 0 = 取消（默认安全焦点），1 = 确认
     var focusedButton by remember { mutableStateOf(0) }
     val focusRequester = remember { FocusRequester() }
@@ -161,6 +157,95 @@ internal fun ConfirmationDialog(
             LaunchedEffect(Unit) { focusRequester.requestFocus() }
         }
     }
+}
+
+/**
+ * 确认删除选定项目的确认对话框。
+ *
+ * @param state 删除确认状态。
+ * @param onConfirm 确认回调。
+ * @param onDismiss 取消/关闭回调。
+ */
+@Composable
+internal fun ConfirmationDialog(
+    state: RootDialogState.DeleteSelectionConfirmation,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val title = if (state.moveToTrash) {
+        stringResource(Res.string.action_move)
+    } else {
+        stringResource(Res.string.action_delete_selected)
+    }
+    val message = buildString {
+        append(
+            if (state.moveToTrash) {
+                stringResource(Res.string.label_delete_confirmation_move_to_trash, state.itemCount)
+            } else {
+                stringResource(Res.string.label_delete_confirmation_permanent, state.itemCount)
+            }
+        )
+        if (state.trashUnavailable) {
+            append("\n")
+            append(stringResource(Res.string.label_delete_confirmation_trash_unavailable))
+        }
+    }
+    val confirmLabel = if (state.moveToTrash) {
+        stringResource(Res.string.action_move)
+    } else {
+        stringResource(Res.string.action_delete_selected)
+    }
+    DestructiveConfirmationDialog(
+        title = title,
+        message = message,
+        confirmLabel = confirmLabel,
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * 回收站永久删除所选条目的强制确认对话框。
+ *
+ * @param state 永久删除确认状态。
+ * @param onConfirm 确认永久删除回调。
+ * @param onDismiss 取消/关闭回调。
+ */
+@Composable
+internal fun TrashPermanentDeleteConfirmationDialog(
+    state: RootDialogState.TrashPermanentDeleteConfirmation,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DestructiveConfirmationDialog(
+        title = stringResource(Res.string.label_trash_permanent_delete_title),
+        message = stringResource(Res.string.label_trash_permanent_delete_confirmation, state.itemCount),
+        confirmLabel = stringResource(Res.string.action_trash_delete_permanently),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
+}
+
+/**
+ * 清空回收站全部条目的强制确认对话框。
+ *
+ * @param state 清空回收站确认状态。
+ * @param onConfirm 确认清空回调。
+ * @param onDismiss 取消/关闭回调。
+ */
+@Composable
+internal fun EmptyTrashConfirmationDialog(
+    state: RootDialogState.EmptyTrashConfirmation,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    DestructiveConfirmationDialog(
+        title = stringResource(Res.string.label_trash_empty_title),
+        message = stringResource(Res.string.label_trash_empty_confirmation, state.itemCount),
+        confirmLabel = stringResource(Res.string.action_trash_empty),
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+    )
 }
 
 @Composable

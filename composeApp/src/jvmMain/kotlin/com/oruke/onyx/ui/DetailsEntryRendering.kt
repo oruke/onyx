@@ -23,6 +23,7 @@ import com.oruke.onyx.app.component.isBrowsableDirectory
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
@@ -184,7 +185,7 @@ private fun EntryNameContent(
     Row(
         modifier = modifier.onGloballyPositioned { coordinates ->
             onNameCoordinates(coordinates)
-            if (state.entry.kind == VFileKind.DIRECTORY) {
+            if (state.entry.isBrowsableDirectory()) {
                 actions.onFileDropZoneChange(
                     FileDropZone(
                         state.paneId,
@@ -211,6 +212,17 @@ private fun EntryNameContent(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        val originalParent = state.entry.parentLocation
+        if (isTrashItemLocation(state.entry.location) && !originalParent.isNullOrBlank()) {
+            Text(
+                text = "· $originalParent",
+                modifier = Modifier.weight(1f, fill = false),
+                fontSize = LocalOnyxAppearance.current.listFontSize,
+                color = LocalOnyxPalette.current.mutedForeground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

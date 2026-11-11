@@ -50,6 +50,39 @@ interface TrashService {
      * @return 恢复操作结果。
      */
     suspend fun restoreFromTrash(records: List<TrashMoveRecord>): Result<Unit>
+
+    /**
+     * 列举当前用户回收站中的全部可识别条目。
+     *
+     * @return 回收站条目快照列表。
+     */
+    suspend fun listItems(): Result<List<TrashItem>> = Result.success(emptyList())
+
+    /**
+     * 将指定回收站条目还原至各自的原始位置；若原父目录已不存在则自动重建，若目标已存在则拒绝覆盖。
+     *
+     * @param entryIds 待还原的回收站条目 ID（即 [TrashItem.id]）集合。
+     * @return 还原成功条目与受影响原父目录集合。
+     */
+    suspend fun restoreItems(entryIds: Set<String>): Result<TrashRestoreOutcome> =
+        Result.failure(UnsupportedOperationException("Trash restore is not supported"))
+
+    /**
+     * 从回收站永久删除指定条目（不递归符号链接与目录联接）。
+     *
+     * @param entryIds 待永久删除的回收站条目 ID 集合。
+     * @return 实际永久删除的条目数量。
+     */
+    suspend fun deletePermanently(entryIds: Set<String>): Result<Int> =
+        Result.failure(UnsupportedOperationException("Trash permanent delete is not supported"))
+
+    /**
+     * 清空当前用户回收站内的全部条目。
+     *
+     * @return 实际清理的条目数量。
+     */
+    suspend fun emptyTrash(): Result<Int> =
+        Result.failure(UnsupportedOperationException("Empty trash is not supported"))
 }
 
 /**

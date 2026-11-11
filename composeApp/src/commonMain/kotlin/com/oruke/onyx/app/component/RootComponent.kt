@@ -126,6 +126,30 @@ internal sealed interface RootDialogState {
         val trashUnavailable: Boolean,
     ) : RootDialogState
 
+    /**
+     * 回收站内永久删除所选条目的强制确认对话框状态。
+     *
+     * @property paneId 发起删除操作的面板标识。
+     * @property entryIds 待永久删除的回收站条目 ID 集合。
+     * @property itemCount 待永久删除的条目数量。
+     */
+    data class TrashPermanentDeleteConfirmation(
+        val paneId: PaneId,
+        val entryIds: Set<String>,
+        val itemCount: Int,
+    ) : RootDialogState
+
+    /**
+     * 清空回收站的强制确认对话框状态。
+     *
+     * @property paneId 发起清空操作的面板标识。
+     * @property itemCount 当前回收站内的条目总数。
+     */
+    data class EmptyTrashConfirmation(
+        val paneId: PaneId,
+        val itemCount: Int,
+    ) : RootDialogState
+
     data class ConflictResolution(
         val sourceName: String,
         val targetLocation: String,
@@ -556,6 +580,40 @@ internal sealed interface RootIntent {
         val paneId: PaneId,
     ) : RootIntent
 
+    /** 还原指定面板中选中的回收站条目（可显式指定右键目标 ID 集合）。 */
+    data class RestoreSelectedTrashItems(
+        val paneId: PaneId,
+        val entryIds: Set<String>? = null,
+    ) : RootIntent
+
+    /** 还原回收站内的全部可还原条目。 */
+    data class RestoreAllTrashItems(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    /** 请求永久删除回收站中的指定或当前选中条目（始终弹出确认对话框）。 */
+    data class RequestPermanentDeleteTrashItems(
+        val paneId: PaneId,
+        val entryIds: Set<String>? = null,
+    ) : RootIntent
+
+    /** 请求清空回收站（始终弹出确认对话框）。 */
+    data class RequestEmptyTrash(
+        val paneId: PaneId,
+    ) : RootIntent
+
+    /** 在指定面板中打开回收站条目的原始所在目录。 */
+    data class OpenTrashItemOriginalLocation(
+        val paneId: PaneId,
+        val entry: VFile,
+    ) : RootIntent
+
+    /** 将回收站条目的原始路径复制到系统文本剪贴板。 */
+    data class CopyTrashItemOriginalPaths(
+        val paneId: PaneId,
+        val entries: List<VFile>? = null,
+    ) : RootIntent
+
     data class ExtractSelectedInPane(
         val paneId: PaneId,
     ) : RootIntent
@@ -690,6 +748,10 @@ internal sealed interface RootIntent {
 
 /** 平台菜单、打开方式、拖放和连接测试能力。 */
 internal interface RootPlatformServices {
+    /** 当前宿主平台是否具备可用的回收站支持。 */
+    val isTrashSupported: Boolean
+        get() = false
+
     suspend fun listOpenWithApps(entry: VFile): List<OpenWithApp>
 
     fun supportsOpenWith(entry: VFile): Boolean

@@ -7,11 +7,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 internal fun VFile.systemLocalPathOrNull(): Path? {
-    if (ArchiveService.isArchiveLocation(location) || RemoteVfsLocationParser.parse(location) != null) {
+    if (
+        location.contains("://") ||
+        ArchiveService.isArchiveLocation(location) ||
+        RemoteVfsLocationParser.parse(location) != null
+    ) {
         return null
     }
-    val path = runCatching { Path.of(location) }.getOrNull() ?: return null
-    return path.takeIf { candidate -> candidate.isAbsolute }
+    return runCatching { Path.of(location) }
+        .getOrNull()
+        ?.takeIf { candidate -> candidate.isAbsolute }
 }
 
 internal fun VFile.requireSystemLocalPath(capability: String): Path {

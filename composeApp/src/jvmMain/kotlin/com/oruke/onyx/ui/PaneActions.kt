@@ -1,9 +1,10 @@
 package com.oruke.onyx.ui
 
+import com.oruke.onyx.app.component.TrashContextMenuAction
+import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.FileContextMenuCommand
 import com.oruke.onyx.vfs.api.FileContextMenuRequest
 import com.oruke.onyx.vfs.api.FileContextMenuSection
-import com.oruke.onyx.core.model.VFile
 
 /**
  * 面板级的 RootComponent 操作打包。
@@ -14,7 +15,7 @@ import com.oruke.onyx.core.model.VFile
  *
  * 此类消除了 PaneSurface 参数列表中 20+ 个独立回调的散列传参。
  */
-data class PaneActions(
+internal data class PaneActions(
     /** 在根组件执行指定自定义命令，菜单可显式指定目标文件。 */
     val onUserCommand: (String, List<VFile>?) -> Unit = { _, _ -> },
     val onDeleteSelection: () -> Unit,
@@ -42,4 +43,6 @@ data class PaneActions(
     val isArchiveFileName: (String) -> Boolean,
     val isImageFileName: (String) -> Boolean,
     val onQueryContextMenuSections: (suspend (FileContextMenuRequest) -> List<FileContextMenuSection>)? = null,
+    /** 执行回收站专属菜单或顶部操作栏动作。 */
+    val onTrashAction: (TrashContextMenuAction) -> Unit = {},
 )

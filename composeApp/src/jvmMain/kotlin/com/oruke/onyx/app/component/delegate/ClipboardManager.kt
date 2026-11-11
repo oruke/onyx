@@ -84,14 +84,20 @@ internal class ClipboardManager(
      * @param entries 本次明确选择的复制条目。
      * @return 发布结果，失败由组件显示本地化反馈。
      */
-    suspend fun stageCopy(entries: List<VFile>): Result<Unit> = stage(entries, ClipboardOperation.COPY)
+    suspend fun stageCopy(
+        entries: List<VFile>,
+        sourceBaseLocation: String? = null,
+    ): Result<Unit> = stage(entries, ClipboardOperation.COPY, sourceBaseLocation)
 
     /**
      * 发布剪切条目，使用唯一标识区分随后发生的外部同路径复制。
      * @param entries 本次明确选择的剪切条目。
      * @return 发布结果，失败时不会保留可误执行的内部剪切载荷。
      */
-    suspend fun stageCut(entries: List<VFile>): Result<Unit> = stage(entries, ClipboardOperation.CUT)
+    suspend fun stageCut(
+        entries: List<VFile>,
+        sourceBaseLocation: String? = null,
+    ): Result<Unit> = stage(entries, ClipboardOperation.CUT, sourceBaseLocation)
 
     /**
      * 刷新当前系统载荷的可用状态，内容相同也不能仅凭格式列表判断是否被重写。
@@ -145,13 +151,22 @@ internal class ClipboardManager(
      * @param operation 明确的复制或剪切操作。
      * @return 发布结果，不在写入失败后回退到旧载荷。
      */
-    private suspend fun stage(entries: List<VFile>, operation: ClipboardOperation): Result<Unit> =
+    private suspend fun stage(
+        entries: List<VFile>,
+        operation: ClipboardOperation,
+        sourceBaseLocation: String? = null,
+    ): Result<Unit> =
         withContext(Dispatchers.Main.immediate) {
             if (entries.isEmpty()) return@withContext Result.success(Unit)
             accessMutex.withLock {
                 systemClipboard.write(entries, operation == ClipboardOperation.CUT, UUID.randomUUID().toString())
                     .map { snapshot ->
-                        mutableClipboard.value = ClipboardPayload(operation, entries.toList(), snapshot)
+                        mutableClipboard.value = ClipboardPayload(
+                            operation = operation,
+                            entries = entries.toList(),
+                            snapshot = snapshot,
+                            sourceBaseLocation = sourceBaseLocation,
+                        )
                         mutableAvailability.value = true
                     }.onFailure { invalidate() }
             }
@@ -181,6 +196,8 @@ internal class ClipboardManager(
         val entries: List<VFile>,
         /** 本载荷读取时的系统快照，用于传输完成后的清理判定。 */
         val snapshot: SystemFileClipboardSnapshot,
+        /** 应用内发起复制或剪切时的来源面板根位置；外部载荷为空。 */
+        val sourceBaseLocation: String? = null,
     )
 
     /** 文件剪贴板支持的业务操作，普通无标记文件列表按复制处理。 */

@@ -90,6 +90,16 @@ import onyx.composeapp.generated.resources.msg_search_no_eligible_roots
 import onyx.composeapp.generated.resources.msg_archive_password_invalid
 import onyx.composeapp.generated.resources.msg_copy_history_changed
 import onyx.composeapp.generated.resources.msg_copy_history_unavailable
+import onyx.composeapp.generated.resources.msg_trash_emptied
+import onyx.composeapp.generated.resources.msg_trash_empty_failed
+import onyx.composeapp.generated.resources.msg_trash_empty_running
+import onyx.composeapp.generated.resources.msg_trash_item_open_unsupported
+import onyx.composeapp.generated.resources.msg_trash_original_location_unavailable
+import onyx.composeapp.generated.resources.msg_trash_original_path_unknown
+import onyx.composeapp.generated.resources.msg_trash_restore_failed
+import onyx.composeapp.generated.resources.msg_trash_restore_items
+import onyx.composeapp.generated.resources.msg_trash_restored_items
+import onyx.composeapp.generated.resources.msg_trash_unsupported
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -201,5 +211,15 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_ARCHIVE_ENTRY_PATH_EMPTY -> Res.string.msg_archive_entry_path_empty
         MessageKey.MSG_ARCHIVE_ENTRY_NOT_FOUND -> Res.string.msg_archive_entry_not_found
         MessageKey.MSG_ARCHIVE_ENTRY_EMPTY -> Res.string.msg_archive_entry_empty
+        MessageKey.MSG_TRASH_RESTORE_ITEMS -> Res.string.msg_trash_restore_items
+        MessageKey.MSG_TRASH_RESTORED_ITEMS -> Res.string.msg_trash_restored_items
+        MessageKey.MSG_TRASH_RESTORE_FAILED -> Res.string.msg_trash_restore_failed
+        MessageKey.MSG_TRASH_EMPTY_RUNNING -> Res.string.msg_trash_empty_running
+        MessageKey.MSG_TRASH_EMPTIED -> Res.string.msg_trash_emptied
+        MessageKey.MSG_TRASH_EMPTY_FAILED -> Res.string.msg_trash_empty_failed
+        MessageKey.MSG_TRASH_ITEM_OPEN_UNSUPPORTED -> Res.string.msg_trash_item_open_unsupported
+        MessageKey.MSG_TRASH_ORIGINAL_LOCATION_UNAVAILABLE -> Res.string.msg_trash_original_location_unavailable
+        MessageKey.MSG_TRASH_ORIGINAL_PATH_UNKNOWN -> Res.string.msg_trash_original_path_unknown
+        MessageKey.MSG_TRASH_UNSUPPORTED -> Res.string.msg_trash_unsupported
     }
 }

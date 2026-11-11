@@ -167,12 +167,13 @@ internal fun FileDragOverlay(
         animationSpec = tween(durationMillis = 100),
     )
     val label = if (targetDirectoryLocation != null) {
+        val displayDestination = desktopLocationLabel(targetDirectoryLocation)
         when (operation) {
-            FileTransferOperation.COPY -> stringResource(Res.string.label_copy_to_destination, targetDirectoryLocation)
-            FileTransferOperation.MOVE -> stringResource(Res.string.label_move_to_destination, targetDirectoryLocation)
+            FileTransferOperation.COPY -> stringResource(Res.string.label_copy_to_destination, displayDestination)
+            FileTransferOperation.MOVE -> stringResource(Res.string.label_move_to_destination, displayDestination)
             FileTransferOperation.EXTRACT -> stringResource(
                 Res.string.label_extract_to_destination,
-                targetDirectoryLocation,
+                displayDestination,
             )
         }
     } else {

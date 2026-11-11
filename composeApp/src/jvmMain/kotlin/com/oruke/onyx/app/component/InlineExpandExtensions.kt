@@ -16,7 +16,9 @@ internal data class InlineExpandLoadRequest(
 internal fun PaneState.toggleInlineExpandState(directoryLocation: String): InlineExpandToggleResult {
     if (directoryLocation in inlineExpandedLocations) {
         val toRemove = inlineExpandedLocations.filter { location ->
-            location == directoryLocation || location.startsWith("$directoryLocation/")
+            location == directoryLocation ||
+                location.startsWith("$directoryLocation/") ||
+                location.startsWith("$directoryLocation\\")
         }.toSet()
         return InlineExpandToggleResult(
             state = copy(
