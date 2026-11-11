@@ -1,14 +1,8 @@
 package com.oruke.onyx.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.awaitDragOrCancellation
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -33,7 +27,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -52,18 +45,18 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
-import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
-import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -85,9 +78,6 @@ import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.windowBounds
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
@@ -117,6 +107,8 @@ internal data class GalleryItemState(
     val entry: VFile?,
     /** 内联编辑草稿；非编辑状态为 null。 */
     val draftName: String?,
+    /** 是否排除文件扩展名选中。 */
+    val selectNameWithoutExtension: Boolean = entry?.kind != VFileKind.DIRECTORY,
     /** 当前条目是否选中。 */
     val selected: Boolean,
     /** 当前面板选中条目数量。 */
@@ -198,37 +190,42 @@ private class GalleryInteractionState {
     /** 当前条目的布局坐标。 */
     var coordinates by mutableStateOf<LayoutCoordinates?>(null)
 
+    /** 纯文件名文本标签布局坐标（限定慢速点击重命名命中区）。 */
+    var renameLabelCoordinates by mutableStateOf<LayoutCoordinates?>(null)
+
     /** 是否等待松开后收敛多选。 */
     var pendingDeselectOthers by mutableStateOf(false)
 
-    /** 本次主键按下时当前条目是否已满足慢速重命名条件。 */
-    var pressCanRename by mutableStateOf(false)
-
-    /** 慢速重命名定时任务。 */
-    var renameJob by mutableStateOf<Job?>(null)
+    /** 统一的主键点击、双击打开与慢速重命名控制器。 */
+    val clickController = FileEntryClickController()
 
     /** 内联编辑框是否曾获得焦点。 */
     var hasFocused by mutableStateOf(false)
 
-    /** 取消尚未触发的慢速重命名。 */
-    fun cancelRename() {
-        renameJob?.cancel()
-        renameJob = null
-    }
-
     /**
-     * 确认再次单击已选条目后等待统一的一秒间隔，再请求重命名。
+     * 判断画廊项局部坐标是否精确命中底部文件名文本标签；坐标未就绪时保守返回 false。
      *
-     * @param scope 计时协程作用域。
-     * @param onBeginRename 开始重命名回调。
+     * @param position 画廊项局部指针坐标。
+     * @return 精确命中已附加文件名标签时返回 true。
      */
-    fun scheduleRename(scope: CoroutineScope, onBeginRename: () -> Unit) {
-        cancelRename()
-        renameJob = scope.launch {
-            delay(FILE_ENTRY_RENAME_DELAY_MILLIS)
-            onBeginRename()
-        }
+    fun isInRenameLabel(position: Offset): Boolean {
+        val label = renameLabelCoordinates ?: return false
+        val item = coordinates ?: return false
+        return label.isAttached && item.isAttached &&
+            item.localBoundingBoxOf(label, clipBounds = false).contains(position)
     }
+}
+
+/** 判断当前画廊项是否处于允许挂起慢速重命名的单选活动状态。 */
+private fun GalleryItemState.canScheduleRename(inlineEditing: Boolean): Boolean {
+    val activeSingleSelection = selected && selectedEntryCount == 1 && paneActive
+    return activeSingleSelection && draftName == null && !inlineEditing
+}
+
+/** 判断画廊项动作集合是否已完备提供内联编辑回调。 */
+private fun GalleryItemActions.supportsInlineEdit(draftName: String?): Boolean {
+    val hasCallbacks = onUpdateInlineEditDraft != null && onConfirmInlineEdit != null
+    return draftName != null && hasCallbacks && onCancelInlineEdit != null
 }
 
 /**
@@ -238,33 +235,43 @@ private class GalleryInteractionState {
  * @param actions 画廊项交互回调。
  * @param thumbnails 缩略图与类型识别服务。
  */
-@Suppress("CyclomaticComplexMethod")
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun GalleryItem(
     state: GalleryItemState,
     actions: GalleryItemActions,
     thumbnails: GalleryThumbnailServices,
 ) {
+    val density = LocalDensity.current
     val interaction = remember(state.entry?.id) { GalleryInteractionState() }
     val hoverInteractionSource = remember(state.entry?.id) { MutableInteractionSource() }
-    val clickInteractionSource = remember(state.entry?.id) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
-    val selectedState = rememberUpdatedState(state.selected)
-    val entryCountState = rememberUpdatedState(state.selectedEntryCount)
-    val draftNameState = rememberUpdatedState(state.draftName)
+    val currentState = rememberUpdatedState(state)
+    val currentActions = rememberUpdatedState(actions)
     val singleClickToOpenState = rememberUpdatedState(LocalOnyxAppearance.current.singleClickToOpen)
+    val dragSlopSquaredState = rememberUpdatedState(
+        with(density) { ENTRY_DRAG_SLOP_DP.dp.toPx().let { px -> px * px } },
+    )
+    val doubleClickSlopPxState = rememberUpdatedState(
+        with(density) { ENTRY_DOUBLE_CLICK_SLOP_DP.dp.toPx() },
+    )
     val scope = rememberCoroutineScope()
     val focusRequester = remember { FocusRequester() }
-    val canInlineEdit = state.draftName != null &&
-            actions.onUpdateInlineEditDraft != null &&
-            actions.onConfirmInlineEdit != null &&
-            actions.onCancelInlineEdit != null
+    val canInlineEdit = actions.supportsInlineEdit(state.draftName)
+    val canInlineEditState = rememberUpdatedState(canInlineEdit)
     val isDropTarget = state.fileDropTarget?.directoryEntryId == state.entry?.id
     val background = galleryItemBackground(state, isDropTarget, isHovered)
-    LaunchedEffect(canInlineEdit, state.draftName) {
+    val borderColor = galleryItemBorderColor(state.selected, isHovered)
+
+    LaunchedEffect(canInlineEdit) {
+        interaction.hasFocused = false
         if (canInlineEdit) focusRequester.requestFocus()
     }
+    LaunchedEffect(state.selected, state.selectedEntryCount, state.paneActive, canInlineEdit) {
+        if (!state.canScheduleRename(canInlineEdit)) {
+            interaction.clickController.cancelRename()
+        }
+    }
+
     Column(
         modifier = Modifier
             .padding(4.dp)
@@ -272,70 +279,64 @@ internal fun GalleryItem(
             .height((state.sizeDp * GALLERY_ITEM_HEIGHT_FACTOR).dp)
             .hoverable(hoverInteractionSource)
             .background(background, RoundedCornerShape(6.dp))
-            .border(
-                1.dp,
-                when {
-                    state.selected -> LocalOnyxPalette.current.outline
-                    isHovered -> LocalOnyxPalette.current.outlineVariant
-                    else -> Color.Transparent
-                },
-                RoundedCornerShape(6.dp),
+            .border(1.dp, borderColor, RoundedCornerShape(6.dp))
+            .galleryDropZoneRegistration(state, actions, interaction)
+            .galleryPointerInteractions(
+                entryId = state.entry?.id,
+                paneId = state.paneId,
+                currentState = currentState,
+                currentActions = currentActions,
+                interaction = interaction,
+                canInlineEditState = canInlineEditState,
+                singleClickToOpenState = singleClickToOpenState,
+                dragSlopSquaredState = dragSlopSquaredState,
+                doubleClickSlopPxState = doubleClickSlopPxState,
+                coroutineScope = scope,
             )
-            .galleryPressInteractions(state, actions, interaction, canInlineEdit)
-            .galleryDragInteractions(state, actions, interaction, selectedState)
-            .semantics {
-                selected = state.selected
-                if (state.entry != null && !canInlineEdit) {
-                    // 语义点击没有指针按下事件；独立选择，保留鼠标的 Ctrl/Shift 与慢速改名行为。
-                    onClick {
-                        interaction.cancelRename()
-                        actions.onActivate()
-                        actions.onDismissContextMenu()
-                        actions.onSelectEntry(state.entry.id, false, false)
-                        true
-                    }
-                }
-            }
-            .combinedClickable(
-                interactionSource = clickInteractionSource,
-                indication = null,
-                onClick = click@{
-                    // 双击识别会延迟单击回调；F2 已开启编辑时不能再把焦点抢回文件面板。
-                    if (draftNameState.value != null) return@click
-                    actions.onActivate()
-                    if (singleClickToOpenState.value &&
-                        !interaction.additiveSelection &&
-                        !interaction.rangeSelection
-                    ) {
-                        interaction.cancelRename()
-                        actions.onDismissContextMenu()
-                        state.entry?.let(actions.onOpenEntry)
-                        return@click
-                    }
-                    val canRename = state.entry != null && !canInlineEdit &&
-                            interaction.pressCanRename &&
-                            selectedState.value && entryCountState.value == 1
-                    if (canRename) {
-                        interaction.scheduleRename(scope) {
-                            if (selectedState.value && entryCountState.value == 1 && draftNameState.value == null) {
-                                actions.onBeginRename()
-                            }
-                        }
-                    }
-                },
-                onDoubleClick = {
-                    interaction.cancelRename()
-                    actions.onActivate()
-                    actions.onDismissContextMenu()
-                    state.entry?.let(actions.onOpenEntry)
-                },
-            )
+            .galleryItemSemantics(state, actions, interaction, canInlineEdit, singleClickToOpenState)
             .padding(2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
         GalleryThumbnail(state.entry, state.sizeDp, thumbnails, Modifier.weight(1f).fillMaxWidth())
         GalleryItemName(state, actions, interaction, focusRequester, canInlineEdit)
+    }
+}
+
+/**
+ * 根据条目的选中和悬停状态计算边框颜色。
+ */
+@Composable
+private fun galleryItemBorderColor(selected: Boolean, hovered: Boolean): Color = when {
+    selected -> LocalOnyxPalette.current.outline
+    hovered -> LocalOnyxPalette.current.outlineVariant
+    else -> Color.Transparent
+}
+
+/**
+ * 为画廊条目附加无障碍语义与无指针点击回退动作。
+ */
+private fun Modifier.galleryItemSemantics(
+    state: GalleryItemState,
+    actions: GalleryItemActions,
+    interaction: GalleryInteractionState,
+    canInlineEdit: Boolean,
+    singleClickToOpenState: State<Boolean>,
+): Modifier = semantics {
+    selected = state.selected
+    val entry = state.entry
+    if (entry != null && !canInlineEdit) {
+        onClick {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            actions.onActivate()
+            actions.onDismissContextMenu()
+            if (singleClickToOpenState.value) {
+                actions.onOpenEntry(entry)
+            } else {
+                actions.onSelectEntry(entry.id, false, false)
+            }
+            true
+        }
     }
 }
 
@@ -368,20 +369,12 @@ private fun galleryItemBackground(
 }
 
 /**
- * 注册目录放置区域并处理左右键按下。
- *
- * @param state 画廊项显示状态。
- * @param actions 画廊项交互回调。
- * @param interaction 指针交互状态。
- * @param inlineEditing 当前是否正在内联编辑。
- * @return 添加按下交互后的修饰符。
+ * 注册画廊目录项的拖放区域坐标。
  */
-@OptIn(ExperimentalComposeUiApi::class)
-private fun Modifier.galleryPressInteractions(
+private fun Modifier.galleryDropZoneRegistration(
     state: GalleryItemState,
     actions: GalleryItemActions,
     interaction: GalleryInteractionState,
-    inlineEditing: Boolean,
 ): Modifier = onGloballyPositioned { coordinates ->
     interaction.coordinates = coordinates
     state.entry?.takeIf { it.isBrowsableDirectory() }?.let { entry ->
@@ -389,18 +382,56 @@ private fun Modifier.galleryPressInteractions(
             FileDropZone(state.paneId, entry.location, coordinates.windowBounds(), entry.id),
         )
     }
-}.onPointerEvent(PointerEventType.Press) { event ->
-    handleGalleryPress(event, state, actions, interaction, inlineEditing)
 }
 
 /**
- * 处理画廊项按下事件中的选择和菜单。
- *
- * @param event 当前指针事件。
- * @param state 画廊项显示状态。
- * @param actions 画廊项交互回调。
- * @param interaction 指针交互状态。
- * @param inlineEditing 当前是否正在内联编辑。
+ * 在单一线性协程内顺序处理画廊项左右键按下、文件拖拽、框选、松开收敛及双击打开/慢速重命名。
+ */
+private fun Modifier.galleryPointerInteractions(
+    entryId: String?,
+    paneId: PaneId,
+    currentState: State<GalleryItemState>,
+    currentActions: State<GalleryItemActions>,
+    interaction: GalleryInteractionState,
+    canInlineEditState: State<Boolean>,
+    singleClickToOpenState: State<Boolean>,
+    dragSlopSquaredState: State<Float>,
+    doubleClickSlopPxState: State<Float>,
+    coroutineScope: CoroutineScope,
+): Modifier = pointerInput(entryId, paneId) {
+    if (entryId == null) return@pointerInput
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent()
+            if (event.type != PointerEventType.Press) continue
+            val primaryPointer = handleGalleryPress(
+                event = event,
+                state = currentState.value,
+                actions = currentActions.value,
+                interaction = interaction,
+                inlineEditing = canInlineEditState.value,
+                doubleClickSlopPx = doubleClickSlopPxState.value,
+            )
+            if (primaryPointer != null) {
+                trackGalleryPointer(
+                    pointerId = primaryPointer.id,
+                    startPosition = primaryPointer.position,
+                    currentState = currentState,
+                    currentActions = currentActions,
+                    interaction = interaction,
+                    selectedAtPress = currentState.value.selected,
+                    canInlineEditState = canInlineEditState,
+                    singleClickToOpenState = singleClickToOpenState,
+                    dragSlopSquaredState = dragSlopSquaredState,
+                    coroutineScope = coroutineScope,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 处理画廊项按下事件中的选择和菜单；若为主键点击则返回对应指针变更供后续追踪。
  */
 private fun handleGalleryPress(
     event: PointerEvent,
@@ -408,46 +439,66 @@ private fun handleGalleryPress(
     actions: GalleryItemActions,
     interaction: GalleryInteractionState,
     inlineEditing: Boolean,
-) {
-    val entry = state.entry ?: return
-    if (inlineEditing) return
+    doubleClickSlopPx: Float,
+): PointerInputChange? {
+    val entry = state.entry ?: return null
+    if (inlineEditing) {
+        interaction.clickController.onPointerDraggedOrCancelled()
+        return null
+    }
     val modified = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
     interaction.additiveSelection = modified
     interaction.rangeSelection = event.keyboardModifiers.isShiftPressed
     interaction.dragOperation = if (modified) FileTransferOperation.COPY else FileTransferOperation.MOVE
-    val pointer = event.changes.firstOrNull()?.position ?: return
-    if (event.buttons.isSecondaryPressed) {
-        interaction.cancelRename()
-        val windowPosition = interaction.coordinates?.localToWindow(pointer) ?: pointer
-        actions.onActivate()
-        actions.onShowContextMenu(
-            entry.id,
-            state.selected,
-            IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()),
-        )
-    } else if (event.buttons.isPrimaryPressed) {
-        handleGalleryPrimaryPress(state, actions, interaction)
+    val primaryChange = event.changes.firstOrNull() ?: return null
+    val pointer = primaryChange.position
+    return when {
+        event.buttons.isSecondaryPressed -> {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            val windowPosition = interaction.coordinates?.localToWindow(pointer) ?: pointer
+            actions.onActivate()
+            actions.onShowContextMenu(
+                entry.id,
+                state.selected,
+                IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()),
+            )
+            null
+        }
+
+        event.isPrimaryPointerPress() ->
+            handleGalleryPrimaryPress(state, actions, interaction, primaryChange, doubleClickSlopPx)
+
+        else -> {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            null
+        }
     }
 }
 
 /**
- * 处理主键按下后的选择。
- *
- * @param state 画廊项显示状态。
- * @param actions 画廊项交互回调。
- * @param interaction 指针交互状态。
+ * 处理画廊主键按下后的连击记录与立即选择。
  */
 private fun handleGalleryPrimaryPress(
     state: GalleryItemState,
     actions: GalleryItemActions,
     interaction: GalleryInteractionState,
-) {
+    change: PointerInputChange,
+    doubleClickSlopPx: Float,
+): PointerInputChange {
     val entry = requireNotNull(state.entry)
+    val wasActiveSingleSelection = state.paneActive && state.selected && state.selectedEntryCount == 1
+    interaction.clickController.onPrimaryPress(
+        FileEntryPressRequest(
+            pressMillis = change.uptimeMillis,
+            position = change.position,
+            wasSingleSelectedBeforePress = wasActiveSingleSelection,
+            additiveOrRange = interaction.additiveSelection || interaction.rangeSelection,
+            inRenameLabel = interaction.isInRenameLabel(change.position),
+            doubleClickSlopPx = doubleClickSlopPx,
+        ),
+    )
     actions.onActivate()
     actions.onDismissContextMenu()
-    interaction.cancelRename()
-    interaction.pressCanRename = state.selected && state.selectedEntryCount == 1 &&
-            !interaction.additiveSelection && !interaction.rangeSelection
     interaction.pendingDeselectOthers = false
     when {
         interaction.additiveSelection || interaction.rangeSelection -> actions.onSelectEntry(
@@ -459,73 +510,208 @@ private fun handleGalleryPrimaryPress(
         state.selected && state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(entry.id, false, false)
     }
+    return change
+}
+
+/** 一次画廊项指针移动处理后的拖拽与继续追踪状态。 */
+private data class GalleryPointerProgress(
+    val fileDragStarted: Boolean,
+    val continueTracking: Boolean,
+)
+
+/**
+ * 跟踪一次画廊项主键按下后的移动拖拽、框选或释放。
+ */
+private suspend fun AwaitPointerEventScope.trackGalleryPointer(
+    pointerId: PointerId,
+    startPosition: Offset,
+    currentState: State<GalleryItemState>,
+    currentActions: State<GalleryItemActions>,
+    interaction: GalleryInteractionState,
+    selectedAtPress: Boolean,
+    canInlineEditState: State<Boolean>,
+    singleClickToOpenState: State<Boolean>,
+    dragSlopSquaredState: State<Float>,
+    coroutineScope: CoroutineScope,
+) {
+    var fileDragStarted = false
+    var tracking = true
+    while (tracking) {
+        val event = awaitPointerEvent()
+        if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            tracking = false
+            continue
+        }
+        val change = event.changes.firstOrNull { it.id == pointerId } ?: event.changes.firstOrNull()
+        if (change == null || canInlineEditState.value) {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            tracking = false
+        } else if (!change.pressed) {
+            finishGalleryPointer(
+                releaseChange = change,
+                currentState = currentState,
+                currentActions = currentActions,
+                interaction = interaction,
+                fileDragStarted = fileDragStarted,
+                canInlineEditState = canInlineEditState,
+                singleClickToOpen = singleClickToOpenState.value,
+                coroutineScope = coroutineScope,
+            )
+            tracking = false
+        } else {
+            val progress = updateGalleryPointer(
+                change = change,
+                startPosition = startPosition,
+                state = currentState.value,
+                actions = currentActions.value,
+                interaction = interaction,
+                selectedAtPress = selectedAtPress,
+                fileDragStarted = fileDragStarted,
+                dragSlopSquared = dragSlopSquaredState.value,
+            )
+            fileDragStarted = progress.fileDragStarted
+            tracking = progress.continueTracking
+        }
+    }
 }
 
 /**
- * 处理画廊项拖拽、框选以及松开后选择收敛。
- *
- * @param state 画廊项显示状态。
- * @param actions 画廊项交互回调。
- * @param interaction 指针交互状态。
- * @param selectedState 最新选中状态。
- * @return 添加拖拽手势后的修饰符。
+ * 处理画廊项按住状态下的一次指针移动并识别是否启动文件拖拽或框选。
  */
-private fun Modifier.galleryDragInteractions(
+private fun updateGalleryPointer(
+    change: PointerInputChange,
+    startPosition: Offset,
     state: GalleryItemState,
     actions: GalleryItemActions,
     interaction: GalleryInteractionState,
-    selectedState: State<Boolean>,
-): Modifier = pointerInput(state.entry?.id, state.paneId) {
-    val entry = state.entry ?: return@pointerInput
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        var fileDragStarted = false
-        val selectedAtPress = selectedState.value
-        val drag = awaitTouchSlopOrCancellation(down.id) { change, _ -> change.consume() }
-        if (drag != null) {
-            interaction.cancelRename()
+    selectedAtPress: Boolean,
+    fileDragStarted: Boolean,
+    dragSlopSquared: Float,
+): GalleryPointerProgress {
+    val entry = state.entry ?: return GalleryPointerProgress(fileDragStarted = false, continueTracking = false)
+    val dx = change.position.x - startPosition.x
+    val dy = change.position.y - startPosition.y
+    val crossedThreshold = dx * dx + dy * dy > dragSlopSquared
+    return when {
+        fileDragStarted -> {
+            change.consume()
+            interaction.dragPosition = interaction.coordinates?.localToWindow(change.position)?.toIntOffset()
+            interaction.dragPosition?.let(actions.onFileDragPositionChange)
+            GalleryPointerProgress(fileDragStarted = true, continueTracking = true)
+        }
+
+        change.isConsumed -> {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            GalleryPointerProgress(fileDragStarted = false, continueTracking = false)
+        }
+
+        !crossedThreshold -> GalleryPointerProgress(fileDragStarted = false, continueTracking = true)
+        selectedAtPress -> {
             interaction.pendingDeselectOthers = false
-            if (selectedAtPress) {
-                fileDragStarted = true
-                runGalleryFileDrag(drag, state, actions, interaction)
-            } else {
-                val start = interaction.coordinates?.localToWindow(down.position) ?: down.position
-                actions.onStartRubberBand(entry.id, start, interaction.additiveSelection)
+            interaction.clickController.onPointerDraggedOrCancelled()
+            change.consume()
+            interaction.dragPosition = interaction.coordinates?.localToWindow(change.position)?.toIntOffset()
+            actions.onStartFileDrag(state.paneId, interaction.dragOperation)
+            interaction.dragPosition?.let(actions.onFileDragPositionChange)
+            GalleryPointerProgress(fileDragStarted = true, continueTracking = true)
+        }
+
+        else -> {
+            interaction.pendingDeselectOthers = false
+            interaction.clickController.onPointerDraggedOrCancelled()
+            change.consume()
+            val start = interaction.coordinates?.localToWindow(startPosition) ?: startPosition
+            actions.onStartRubberBand(entry.id, start, interaction.additiveSelection)
+            GalleryPointerProgress(fileDragStarted = false, continueTracking = false)
+        }
+    }
+}
+
+/**
+ * 处理画廊项主键释放事件，结束文件拖拽或派发最终的点击/打开/重命名动作。
+ */
+private fun finishGalleryPointer(
+    releaseChange: PointerInputChange,
+    currentState: State<GalleryItemState>,
+    currentActions: State<GalleryItemActions>,
+    interaction: GalleryInteractionState,
+    fileDragStarted: Boolean,
+    canInlineEditState: State<Boolean>,
+    singleClickToOpen: Boolean,
+    coroutineScope: CoroutineScope,
+) {
+    val state = currentState.value
+    val actions = currentActions.value
+    val entry = state.entry ?: return
+    if (fileDragStarted) {
+        actions.onFileDragEnd(interaction.dragPosition)
+        interaction.dragPosition = null
+        return
+    }
+    if (interaction.pendingDeselectOthers) {
+        actions.onSelectEntry(entry.id, false, false)
+        interaction.pendingDeselectOthers = false
+    }
+    val blockedByEditOrConsume = releaseChange.isConsumed || canInlineEditState.value || state.draftName != null
+    if (blockedByEditOrConsume) {
+        interaction.clickController.onPointerDraggedOrCancelled()
+    } else {
+        dispatchGalleryReleaseOutcome(
+            entry = entry,
+            releaseChange = releaseChange,
+            currentState = currentState,
+            currentActions = currentActions,
+            interaction = interaction,
+            canInlineEditState = canInlineEditState,
+            singleClickToOpen = singleClickToOpen,
+            coroutineScope = coroutineScope,
+        )
+    }
+}
+
+/**
+ * 将画廊主键释放手势交由控制器决断并派发单击打开、双击打开或启动慢速重命名。
+ */
+private fun dispatchGalleryReleaseOutcome(
+    entry: VFile,
+    releaseChange: PointerInputChange,
+    currentState: State<GalleryItemState>,
+    currentActions: State<GalleryItemActions>,
+    interaction: GalleryInteractionState,
+    canInlineEditState: State<Boolean>,
+    singleClickToOpen: Boolean,
+    coroutineScope: CoroutineScope,
+) {
+    val state = currentState.value
+    val actions = currentActions.value
+    val outcome = interaction.clickController.onPrimaryRelease(
+        FileEntryReleaseRequest(
+            releaseMillis = releaseChange.uptimeMillis,
+            inRenameLabel = interaction.isInRenameLabel(releaseChange.position),
+            singleClickToOpen = singleClickToOpen,
+            canStillRename = state.canScheduleRename(canInlineEditState.value),
+        ),
+    )
+    when (outcome) {
+        FileEntryReleaseOutcome.OPEN_SINGLE_CLICK,
+        FileEntryReleaseOutcome.OPEN_DOUBLE_CLICK -> {
+            interaction.clickController.cancelRename()
+            actions.onActivate()
+            actions.onDismissContextMenu()
+            actions.onOpenEntry(entry)
+        }
+
+        FileEntryReleaseOutcome.SCHEDULE_RENAME -> {
+            interaction.clickController.scheduleRename(coroutineScope) {
+                if (currentState.value.canScheduleRename(canInlineEditState.value)) {
+                    currentActions.value.onBeginRename()
+                }
             }
         }
-        if (!fileDragStarted && interaction.pendingDeselectOthers) {
-            actions.onSelectEntry(entry.id, false, false)
-            interaction.pendingDeselectOthers = false
-        }
-    }
-}
 
-/**
- * 从触发阈值后的变更开始持续执行文件拖拽。
- *
- * @param firstChange 首个越过拖拽阈值的指针变更。
- * @param state 画廊项显示状态。
- * @param actions 画廊项交互回调。
- * @param interaction 指针交互状态。
- */
-private suspend fun AwaitPointerEventScope.runGalleryFileDrag(
-    firstChange: PointerInputChange,
-    state: GalleryItemState,
-    actions: GalleryItemActions,
-    interaction: GalleryInteractionState,
-) {
-    var current = firstChange
-    interaction.dragPosition = interaction.coordinates?.localToWindow(current.position)?.toIntOffset()
-    actions.onStartFileDrag(state.paneId, interaction.dragOperation)
-    interaction.dragPosition?.let(actions.onFileDragPositionChange)
-    while (current.pressed) {
-        current = awaitDragOrCancellation(current.id) ?: break
-        current.consume()
-        interaction.dragPosition = interaction.coordinates?.localToWindow(current.position)?.toIntOffset()
-        interaction.dragPosition?.let(actions.onFileDragPositionChange)
+        FileEntryReleaseOutcome.NONE -> Unit
     }
-    actions.onFileDragEnd(interaction.dragPosition)
-    interaction.dragPosition = null
 }
 
 /**
@@ -674,6 +860,7 @@ private fun GalleryItemName(
     } else {
         Text(
             text = state.entry?.displayFileName(LocalOnyxAppearance.current.showFileExtensions).orEmpty(),
+            modifier = Modifier.onGloballyPositioned { interaction.renameLabelCoordinates = it },
             fontWeight = if (state.entry?.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
             fontSize = 12.sp,
             color = state.labelStyle?.textColorArgb?.let(::Color)
@@ -704,9 +891,14 @@ private fun GalleryInlineEditor(
 ) {
     val confirm = requireNotNull(actions.onConfirmInlineEdit)
     val cancel = requireNotNull(actions.onCancelInlineEdit)
+    val (fieldValue, onFieldValueChange) = rememberInlineEditFieldBinding(
+        draftName = requireNotNull(state.draftName),
+        selectWithoutExtension = state.selectNameWithoutExtension,
+        onUpdateDraft = requireNotNull(actions.onUpdateInlineEditDraft),
+    )
     BasicTextField(
-        value = requireNotNull(state.draftName),
-        onValueChange = requireNotNull(actions.onUpdateInlineEditDraft),
+        value = fieldValue,
+        onValueChange = onFieldValueChange,
         modifier = Modifier.fillMaxWidth()
             .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(2.dp))
             .background(LocalOnyxPalette.current.surface, RoundedCornerShape(2.dp))
@@ -732,7 +924,7 @@ private fun GalleryInlineEditor(
         cursorBrush = SolidColor(LocalOnyxPalette.current.foreground),
         decorationBox = { innerTextField ->
             Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) { innerTextField() }
         },

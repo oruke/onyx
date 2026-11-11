@@ -111,6 +111,7 @@ internal fun entryRowBackground(
  * @param actions 详情行交互回调。
  * @param onNameCoordinates 上报名称区域坐标。
  * @param onExpandCoordinates 上报展开箭头坐标。
+ * @param onRenameLabelCoordinates 上报纯文件名文本标签坐标（用于精确限定慢速点击重命名命中区）。
  */
 @Composable
 internal fun EntryRowCells(
@@ -118,11 +119,19 @@ internal fun EntryRowCells(
     actions: EntryRowActions,
     onNameCoordinates: (LayoutCoordinates) -> Unit,
     onExpandCoordinates: (LayoutCoordinates) -> Unit,
+    onRenameLabelCoordinates: (LayoutCoordinates) -> Unit = {},
 ) {
     visibleDetailsColumns(state.columns).forEach { column ->
         val width = detailsColumnWidth(state.columnWidths, column).dp
         if (column == DetailsColumn.NAME) {
-            EntryNameCell(state, actions, width, onNameCoordinates, onExpandCoordinates)
+            EntryNameCell(
+                state = state,
+                actions = actions,
+                width = width,
+                onNameCoordinates = onNameCoordinates,
+                onExpandCoordinates = onExpandCoordinates,
+                onRenameLabelCoordinates = onRenameLabelCoordinates,
+            )
         } else {
             EntryMetadataCell(column, state.entry, width)
         }
@@ -137,6 +146,7 @@ internal fun EntryRowCells(
  * @param width 名称列宽度。
  * @param onNameCoordinates 上报名称区域坐标。
  * @param onExpandCoordinates 上报展开箭头坐标。
+ * @param onRenameLabelCoordinates 上报纯文件名文本标签坐标。
  */
 @Composable
 internal fun EntryNameCell(
@@ -145,6 +155,7 @@ internal fun EntryNameCell(
     width: Dp,
     onNameCoordinates: (LayoutCoordinates) -> Unit,
     onExpandCoordinates: (LayoutCoordinates) -> Unit,
+    onRenameLabelCoordinates: (LayoutCoordinates) -> Unit = {},
 ) {
     Row(modifier = Modifier.width(width), verticalAlignment = Alignment.CenterVertically) {
         if (state.depth > 0) Spacer(Modifier.width((state.depth * INLINE_TREE_DEPTH_INDENT_DP).dp))
@@ -163,7 +174,13 @@ internal fun EntryNameCell(
             }
         }
         Spacer(Modifier.width(2.dp))
-        EntryNameContent(state, actions, onNameCoordinates, Modifier.weight(1f, fill = false))
+        EntryNameContent(
+            state = state,
+            actions = actions,
+            onNameCoordinates = onNameCoordinates,
+            onRenameLabelCoordinates = onRenameLabelCoordinates,
+            modifier = Modifier.weight(1f, fill = false),
+        )
     }
 }
 
@@ -173,6 +190,7 @@ internal fun EntryNameCell(
  * @param state 详情行显示状态。
  * @param actions 详情行交互回调。
  * @param onNameCoordinates 上报名称区域坐标。
+ * @param onRenameLabelCoordinates 上报纯文件名文本标签坐标。
  * @param modifier 名称内容布局修饰符。
  */
 @Composable
@@ -180,6 +198,7 @@ private fun EntryNameContent(
     state: EntryRowState,
     actions: EntryRowActions,
     onNameCoordinates: (LayoutCoordinates) -> Unit,
+    onRenameLabelCoordinates: (LayoutCoordinates) -> Unit,
     modifier: Modifier,
 ) {
     Row(
@@ -205,6 +224,7 @@ private fun EntryNameContent(
         )
         Text(
             text = state.entry.displayFileName(LocalOnyxAppearance.current.showFileExtensions),
+            modifier = Modifier.onGloballyPositioned(onRenameLabelCoordinates),
             fontWeight = if (state.entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
             fontSize = LocalOnyxAppearance.current.listFontSize,
             color = state.labelStyle?.textColorArgb?.let(::Color)

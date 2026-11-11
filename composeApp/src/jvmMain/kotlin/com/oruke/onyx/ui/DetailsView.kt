@@ -6,11 +6,9 @@ import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitDragOrCancellation
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -67,6 +65,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.isCtrlPressed
@@ -134,9 +133,7 @@ import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import kotlin.math.roundToInt
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import com.oruke.onyx.core.model.FileLabelStyle
 
@@ -362,6 +359,22 @@ internal fun PaneEntriesContent(
     }
 }
 
+/**
+ * 显示详情列表中的内联编辑行。
+ *
+ * @param columns 详情列列表。
+ * @param columnWidths 列宽映射。
+ * @param draftName 当前草稿名称。
+ * @param iconKey 图标标识。
+ * @param selected 是否选中。
+ * @param zebra 是否使用斑马纹。
+ * @param onUpdateInlineEditDraft 草稿更新回调。
+ * @param onConfirmInlineEdit 确认编辑回调。
+ * @param onCancelInlineEdit 取消编辑回调。
+ * @param onDismissContextMenu 关闭上下文菜单回调。
+ * @param scrollState 横向滚动状态。
+ * @param selectNameWithoutExtension 是否排除文件扩展名选中。
+ */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun InlineEditEntryRow(
@@ -376,9 +389,15 @@ internal fun InlineEditEntryRow(
     onCancelInlineEdit: () -> Unit,
     onDismissContextMenu: () -> Unit,
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    selectNameWithoutExtension: Boolean = true,
 ) {
     val focusRequester = remember { FocusRequester() }
     var hasFocused by remember { mutableStateOf(false) }
+    val (fieldValue, onFieldValueChange) = rememberInlineEditFieldBinding(
+        draftName = draftName,
+        selectWithoutExtension = selectNameWithoutExtension,
+        onUpdateDraft = onUpdateInlineEditDraft,
+    )
     val rowBackground = when {
         selected -> LocalOnyxPalette.current.selectionBackground
         zebra -> LocalOnyxPalette.current.surfaceVariant
@@ -430,10 +449,8 @@ internal fun InlineEditEntryRow(
                     ) {
                         Icon(key = iconKey, contentDescription = null)
                         BasicTextField(
-                            value = draftName,
-                            onValueChange = {
-                                onUpdateInlineEditDraft(it)
-                            },
+                            value = fieldValue,
+                            onValueChange = onFieldValueChange,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
@@ -823,20 +840,17 @@ private class EntryRowInteractionState {
     /** 名称区域布局坐标。 */
     var nameCoordinates by mutableStateOf<LayoutCoordinates?>(null)
 
+    /** 纯文件名文本标签布局坐标（限定慢速点击重命名命中区）。 */
+    var renameLabelCoordinates by mutableStateOf<LayoutCoordinates?>(null)
+
     /** 展开箭头布局坐标。 */
     var expandCoordinates by mutableStateOf<LayoutCoordinates?>(null)
 
     /** 是否等待松开后收敛多选。 */
     var pendingDeselectOthers by mutableStateOf(false)
 
-    /** 本次主键按下时当前条目是否已满足慢速重命名条件。 */
-    var pressCanRename by mutableStateOf(false)
-
-    /** 本次主键按下是否命中树形展开箭头（避免释放时误触单击打开或重命名）。 */
-    var handledExpandPress by mutableStateOf(false)
-
-    /** 慢速重命名定时任务。 */
-    var renameJob by mutableStateOf<Job?>(null)
+    /** 统一的主键点击、双击打开与慢速重命名控制器。 */
+    val clickController = FileEntryClickController()
 
     /**
      * 判断行内坐标是否命中展开箭头。
@@ -862,24 +876,17 @@ private class EntryRowInteractionState {
         return !name.isAttached || row.localBoundingBoxOf(name, clipBounds = false).contains(position)
     }
 
-    /** 取消尚未触发的慢速重命名。 */
-    fun cancelRename() {
-        renameJob?.cancel()
-        renameJob = null
-    }
-
     /**
-     * 确认再次单击已选条目后等待统一的一秒间隔，再请求重命名。
+     * 判断行内坐标是否精确命中文件名文本标签；坐标尚未就绪时保守返回 false。
      *
-     * @param scope 计时协程作用域。
-     * @param onBeginRename 开始重命名回调。
+     * @param position 行内指针坐标。
+     * @return 精确命中已附加的文件名标签时返回 true。
      */
-    fun scheduleRename(scope: CoroutineScope, onBeginRename: () -> Unit) {
-        cancelRename()
-        renameJob = scope.launch {
-            kotlinx.coroutines.delay(FILE_ENTRY_RENAME_DELAY_MILLIS)
-            onBeginRename()
-        }
+    fun isInRenameLabel(position: androidx.compose.ui.geometry.Offset): Boolean {
+        val label = renameLabelCoordinates ?: return false
+        val row = rowCoordinates ?: return false
+        return label.isAttached && row.isAttached &&
+            row.localBoundingBoxOf(label, clipBounds = false).contains(position)
     }
 }
 
@@ -1078,6 +1085,7 @@ internal fun GalleryCreateEntry(
         state = GalleryItemState(
             entry = null,
             draftName = model.inlineEditState?.draftName.orEmpty(),
+            selectNameWithoutExtension = model.inlineEditState?.mode != PaneInlineEditMode.CREATE_DIRECTORY,
             selected = false,
             selectedEntryCount = 0,
             paneActive = model.paneActive,
@@ -1116,6 +1124,7 @@ internal fun GalleryFileEntry(
             state = GalleryItemState(
                 entry = entry,
                 draftName = model.inlineEditState?.draftName?.takeIf { editing },
+                selectNameWithoutExtension = entry.kind != VFileKind.DIRECTORY,
                 labelStyle = model.fileLabels[entry.id],
                 selected = entry.id in model.selectedEntryIds,
                 selectedEntryCount = model.selectedEntryIds.size,
@@ -1184,6 +1193,7 @@ internal fun DetailsCreateEntry(
         },
         selected = false,
         zebra = false,
+        selectNameWithoutExtension = model.inlineEditState?.mode != PaneInlineEditMode.CREATE_DIRECTORY,
         onUpdateInlineEditDraft = actions.onUpdateInlineEditDraft,
         onConfirmInlineEdit = actions.onConfirmInlineEdit,
         onCancelInlineEdit = actions.onCancelInlineEdit,
@@ -1229,6 +1239,7 @@ internal fun DetailsFileEntry(
                 },
                 selected = entry.id in model.selectedEntryIds,
                 zebra = index % 2 == 1,
+                selectNameWithoutExtension = entry.kind != VFileKind.DIRECTORY,
                 onUpdateInlineEditDraft = actions.onUpdateInlineEditDraft,
                 onConfirmInlineEdit = actions.onConfirmInlineEdit,
                 onCancelInlineEdit = actions.onCancelInlineEdit,
@@ -1493,77 +1504,67 @@ private fun PaneRubberBandOverlay(selection: PaneRubberBandState) {
  * @param actions 文件行事件。
  * @param scrollState 与表头共享的水平滚动位置。
  */
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun EntryRow(
     state: EntryRowState,
     actions: EntryRowActions,
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
+    val density = LocalDensity.current
     val interaction = remember(state.entry.id) { EntryRowInteractionState() }
     val hoverInteractionSource = remember(state.entry.id) { MutableInteractionSource() }
-    val clickInteractionSource = remember(state.entry.id) { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
-    val selectedState = rememberUpdatedState(state.selected)
-    val entryCountState = rememberUpdatedState(state.selectedEntryCount)
+    val currentState = rememberUpdatedState(state)
+    val currentActions = rememberUpdatedState(actions)
     val singleClickToOpenState = rememberUpdatedState(LocalOnyxAppearance.current.singleClickToOpen)
+    val dragSlopSquaredState = rememberUpdatedState(
+        with(density) { ENTRY_DRAG_SLOP_DP.dp.toPx().let { px -> px * px } },
+    )
+    val doubleClickSlopPxState = rememberUpdatedState(
+        with(density) { ENTRY_DOUBLE_CLICK_SLOP_DP.dp.toPx() },
+    )
     val coroutineScope = rememberCoroutineScope()
     val rowBackground = entryRowBackground(state, isHovered)
+
+    LaunchedEffect(state.selected, state.selectedEntryCount, state.paneActive) {
+        if (!state.selected || state.selectedEntryCount != 1 || !state.paneActive) {
+            interaction.clickController.cancelRename()
+        }
+    }
 
     Row(
         modifier = Modifier
             .horizontalScroll(scrollState)
             .hoverable(hoverInteractionSource)
-            .entryRowPressInteractions(state, actions, interaction)
-            .entryRowDragInteractions(state, actions, interaction, selectedState)
+            .onGloballyPositioned { interaction.rowCoordinates = it }
+            .entryRowPointerInteractions(
+                stateKey = state.entry.id,
+                paneId = state.paneId,
+                currentState = currentState,
+                currentActions = currentActions,
+                interaction = interaction,
+                singleClickToOpenState = singleClickToOpenState,
+                dragSlopSquaredState = dragSlopSquaredState,
+                doubleClickSlopPxState = doubleClickSlopPxState,
+                coroutineScope = coroutineScope,
+            )
             .background(rowBackground)
             .semantics {
                 selected = state.selected
-                // 语义点击没有 Pointer Press；显式选择，且不重复鼠标的 Ctrl/Shift 选择逻辑。
+                // 语义点击没有 Pointer Press；显式选择或按单击打开模式打开，不重复鼠标的 Ctrl/Shift 逻辑。
                 onClick {
+                    interaction.clickController.onPointerDraggedOrCancelled()
                     actions.onActivate()
                     actions.onDismissContextMenu()
-                    actions.onSelectEntry(state.entry.id, false, false)
+                    if (singleClickToOpenState.value) {
+                        actions.onOpenEntry(state.entry)
+                    } else {
+                        actions.onSelectEntry(state.entry.id, false, false)
+                    }
                     true
                 }
             }
-            .combinedClickable(
-                interactionSource = clickInteractionSource,
-                indication = null,
-                onClick = click@{
-                    if (interaction.handledExpandPress) {
-                        interaction.handledExpandPress = false
-                        return@click
-                    }
-                    actions.onActivate()
-                    if (singleClickToOpenState.value &&
-                        !interaction.additiveSelection &&
-                        !interaction.rangeSelection
-                    ) {
-                        interaction.cancelRename()
-                        actions.onDismissContextMenu()
-                        actions.onOpenEntry(state.entry)
-                        return@click
-                    }
-                    val canRename = interaction.pressCanRename &&
-                            selectedState.value && entryCountState.value == 1
-                    if (canRename) {
-                        interaction.scheduleRename(coroutineScope) {
-                            if (selectedState.value && entryCountState.value == 1) actions.onBeginRename()
-                        }
-                    }
-                },
-                onDoubleClick = doubleClick@{
-                    if (interaction.handledExpandPress) {
-                        interaction.handledExpandPress = false
-                        return@doubleClick
-                    }
-                    interaction.cancelRename()
-                    actions.onActivate()
-                    actions.onDismissContextMenu()
-                    actions.onOpenEntry(state.entry)
-                },
-            )
             .padding(horizontal = 8.dp, vertical = 1.dp)
             .height(LocalOnyxAppearance.current.listRowHeight),
         verticalAlignment = Alignment.CenterVertically,
@@ -1574,90 +1575,124 @@ internal fun EntryRow(
             actions = actions,
             onNameCoordinates = { interaction.nameCoordinates = it },
             onExpandCoordinates = { interaction.expandCoordinates = it },
+            onRenameLabelCoordinates = { interaction.renameLabelCoordinates = it },
         )
     }
 }
 
 /**
- * 注册详情行坐标并处理左右键按下。
- *
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @return 添加按下交互后的修饰符。
+ * 在单一线性协程内顺序处理详情行左右键按下、文件拖拽、框选、松开收敛及双击打开/慢速重命名。
  */
-@OptIn(ExperimentalComposeUiApi::class)
-private fun Modifier.entryRowPressInteractions(
-    state: EntryRowState,
-    actions: EntryRowActions,
+private fun Modifier.entryRowPointerInteractions(
+    stateKey: String,
+    paneId: PaneId,
+    currentState: State<EntryRowState>,
+    currentActions: State<EntryRowActions>,
     interaction: EntryRowInteractionState,
-): Modifier = onGloballyPositioned { interaction.rowCoordinates = it }
-    .onPointerEvent(PointerEventType.Press) { event ->
-        handleEntryRowPress(event, state, actions, interaction)
+    singleClickToOpenState: State<Boolean>,
+    dragSlopSquaredState: State<Float>,
+    doubleClickSlopPxState: State<Float>,
+    coroutineScope: CoroutineScope,
+): Modifier = pointerInput(stateKey, paneId) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent()
+            if (event.type != PointerEventType.Press) continue
+            val primaryPointer = handleEntryRowPress(
+                event = event,
+                state = currentState.value,
+                actions = currentActions.value,
+                interaction = interaction,
+                doubleClickSlopPx = doubleClickSlopPxState.value,
+            )
+            if (primaryPointer != null) {
+                trackEntryRowPointer(
+                    pointerId = primaryPointer.id,
+                    startPosition = primaryPointer.position,
+                    currentState = currentState,
+                    currentActions = currentActions,
+                    interaction = interaction,
+                    selectedAtPress = currentState.value.selected,
+                    singleClickToOpenState = singleClickToOpenState,
+                    dragSlopSquaredState = dragSlopSquaredState,
+                    coroutineScope = coroutineScope,
+                )
+            }
+        }
     }
+}
 
 /**
- * 处理详情行按下事件中的选择、展开和菜单。
- *
- * @param event 当前指针事件。
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
+ * 处理详情行按下事件中的选择、展开和菜单；若为主键行点击则返回对应指针变更供后续追踪。
  */
 private fun handleEntryRowPress(
     event: PointerEvent,
     state: EntryRowState,
     actions: EntryRowActions,
     interaction: EntryRowInteractionState,
-) {
+    doubleClickSlopPx: Float,
+): PointerInputChange? {
     val modified = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
     interaction.additiveSelection = modified
     interaction.rangeSelection = event.keyboardModifiers.isShiftPressed
     interaction.dragOperation = if (modified) FileTransferOperation.COPY else FileTransferOperation.MOVE
-    val pointer = event.changes.firstOrNull()?.position ?: return
-    if (event.buttons.isSecondaryPressed) {
-        interaction.cancelRename()
-        val windowPosition = interaction.rowCoordinates?.localToWindow(pointer) ?: pointer
-        actions.onActivate()
-        actions.onShowContextMenu(
-            state.entry.id,
-            state.selected,
-            IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()),
-        )
-    } else if (event.buttons.isPrimaryPressed) {
-        handleEntryRowPrimaryPress(state, actions, interaction, pointer)
+    val primaryChange = event.changes.firstOrNull() ?: return null
+    val pointer = primaryChange.position
+    return when {
+        event.buttons.isSecondaryPressed -> {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            val windowPosition = interaction.rowCoordinates?.localToWindow(pointer) ?: pointer
+            actions.onActivate()
+            actions.onShowContextMenu(
+                state.entry.id,
+                state.selected,
+                IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()),
+            )
+            null
+        }
+
+        event.isPrimaryPointerPress() ->
+            handleEntryRowPrimaryPress(state, actions, interaction, primaryChange, doubleClickSlopPx)
+
+        else -> {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            null
+        }
     }
 }
 
 /**
- * 处理主键按下后的树形展开与选择。
- *
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @param pointer 行内指针坐标。
+ * 处理主键按下后的树形展开、连击记录与立即选择。
  */
 private fun handleEntryRowPrimaryPress(
     state: EntryRowState,
     actions: EntryRowActions,
     interaction: EntryRowInteractionState,
-    pointer: androidx.compose.ui.geometry.Offset,
-) {
-    interaction.cancelRename()
-    interaction.pressCanRename = false
-    interaction.handledExpandPress = false
+    change: PointerInputChange,
+    doubleClickSlopPx: Float,
+): PointerInputChange? {
+    val pointer = change.position
     val toggleExpand = actions.onToggleInlineExpand
     if (toggleExpand != null && interaction.isInExpandArrow(pointer)) {
-        interaction.handledExpandPress = true
+        interaction.clickController.onPointerDraggedOrCancelled()
         actions.onActivate()
         toggleExpand()
-        return
+        return null
     }
+    val wasActiveSingleSelection = state.paneActive && state.selected && state.selectedEntryCount == 1
+    interaction.clickController.onPrimaryPress(
+        FileEntryPressRequest(
+            pressMillis = change.uptimeMillis,
+            position = pointer,
+            wasSingleSelectedBeforePress = wasActiveSingleSelection,
+            additiveOrRange = interaction.additiveSelection || interaction.rangeSelection,
+            inRenameLabel = interaction.isInRenameLabel(pointer),
+            doubleClickSlopPx = doubleClickSlopPx,
+        ),
+    )
     actions.onActivate()
     actions.onDismissContextMenu()
     interaction.pendingDeselectOthers = false
-    interaction.pressCanRename = state.selected && state.selectedEntryCount == 1 &&
-            !interaction.additiveSelection && !interaction.rangeSelection
     when {
         interaction.additiveSelection || interaction.rangeSelection -> actions.onSelectEntry(
             state.entry.id,
@@ -1668,80 +1703,60 @@ private fun handleEntryRowPrimaryPress(
         state.selected && state.selectedEntryCount > 1 -> interaction.pendingDeselectOthers = true
         else -> actions.onSelectEntry(state.entry.id, false, false)
     }
+    return change
 }
 
 /**
- * 处理详情行文件拖拽、框选和松开后的选择收敛。
- *
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @param selectedState 最新选中状态。
- * @return 添加拖拽手势后的修饰符。
- */
-private fun Modifier.entryRowDragInteractions(
-    state: EntryRowState,
-    actions: EntryRowActions,
-    interaction: EntryRowInteractionState,
-    selectedState: State<Boolean>,
-): Modifier = pointerInput(state.entry.id, state.paneId) {
-    awaitPointerEventScope {
-        while (true) {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            if (actions.onToggleInlineExpand != null && interaction.isInExpandArrow(down.position)) {
-                waitForEntryPointerRelease()
-            } else {
-                trackEntryRowPointer(down.position, state, actions, interaction, selectedState.value)
-            }
-        }
-    }
-}
-
-/** 等待展开箭头按下后的全部指针松开，避免误触文件拖拽。 */
-private suspend fun AwaitPointerEventScope.waitForEntryPointerRelease() {
-    while (true) {
-        if (awaitPointerEvent().changes.none { it.pressed }) return
-    }
-}
-
-/**
- * 跟踪一次详情行按下后的拖拽或框选过程。
- *
- * @param startPosition 初始行内坐标。
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @param selectedAtPress 按下瞬间的选中状态。
+ * 跟踪一次详情行主键按下后的拖拽、框选或释放动作。
  */
 private suspend fun AwaitPointerEventScope.trackEntryRowPointer(
+    pointerId: PointerId,
     startPosition: androidx.compose.ui.geometry.Offset,
-    state: EntryRowState,
-    actions: EntryRowActions,
+    currentState: State<EntryRowState>,
+    currentActions: State<EntryRowActions>,
     interaction: EntryRowInteractionState,
     selectedAtPress: Boolean,
+    singleClickToOpenState: State<Boolean>,
+    dragSlopSquaredState: State<Float>,
+    coroutineScope: CoroutineScope,
 ) {
     var fileDragStarted = false
     var tracking = true
     val inNameArea = interaction.isInNameArea(startPosition)
     while (tracking) {
         val event = awaitPointerEvent()
-        val change = event.changes.firstOrNull()
+        if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            tracking = false
+            continue
+        }
+        val change = event.changes.firstOrNull { it.id == pointerId } ?: event.changes.firstOrNull()
         if (change == null) {
+            interaction.clickController.onPointerDraggedOrCancelled()
             tracking = false
         } else if (!change.pressed) {
-            finishEntryRowPointer(state, actions, interaction, fileDragStarted)
+            finishEntryRowPointer(
+                releaseChange = change,
+                currentState = currentState,
+                currentActions = currentActions,
+                interaction = interaction,
+                fileDragStarted = fileDragStarted,
+                singleClickToOpen = singleClickToOpenState.value,
+                coroutineScope = coroutineScope,
+            )
             tracking = false
         } else {
             val progress = updateEntryRowPointer(
-                event,
-                change,
-                startPosition,
-                state,
-                actions,
-                interaction,
-                selectedAtPress,
-                inNameArea,
-                fileDragStarted,
+                event = event,
+                change = change,
+                startPosition = startPosition,
+                state = currentState.value,
+                actions = currentActions.value,
+                interaction = interaction,
+                selectedAtPress = selectedAtPress,
+                inNameArea = inNameArea,
+                fileDragStarted = fileDragStarted,
+                dragSlopSquared = dragSlopSquaredState.value,
             )
             fileDragStarted = progress.fileDragStarted
             tracking = progress.continueTracking
@@ -1759,17 +1774,6 @@ private data class EntryPointerProgress(
 
 /**
  * 处理详情行按住状态下的一次指针移动。
- *
- * @param event 当前指针事件。
- * @param change 当前主指针变更。
- * @param startPosition 初始行内坐标。
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @param selectedAtPress 按下瞬间是否选中。
- * @param inNameArea 按下位置是否在名称区域。
- * @param fileDragStarted 是否已开始文件拖拽。
- * @return 更新后的拖拽与跟踪状态。
  */
 private fun updateEntryRowPointer(
     event: PointerEvent,
@@ -1781,15 +1785,21 @@ private fun updateEntryRowPointer(
     selectedAtPress: Boolean,
     inNameArea: Boolean,
     fileDragStarted: Boolean,
+    dragSlopSquared: Float,
 ): EntryPointerProgress {
     val dx = change.position.x - startPosition.x
     val dy = change.position.y - startPosition.y
-    val crossedThreshold = dx * dx + dy * dy > DRAG_START_DISTANCE_SQUARED
+    val crossedThreshold = dx * dx + dy * dy > dragSlopSquared
     return when {
         fileDragStarted -> {
             change.consume()
             updateEntryRowFileDrag(actions, interaction, change.position)
             EntryPointerProgress(fileDragStarted = true, continueTracking = true)
+        }
+
+        change.isConsumed -> {
+            interaction.clickController.onPointerDraggedOrCancelled()
+            EntryPointerProgress(fileDragStarted = false, continueTracking = false)
         }
 
         !crossedThreshold -> EntryPointerProgress(fileDragStarted = false, continueTracking = true)
@@ -1818,17 +1828,12 @@ private fun updateEntryRowPointer(
  */
 private fun prepareEntryRowDrag(interaction: EntryRowInteractionState, change: PointerInputChange) {
     interaction.pendingDeselectOthers = false
-    interaction.cancelRename()
+    interaction.clickController.onPointerDraggedOrCancelled()
     change.consume()
 }
 
 /**
  * 开始详情行文件拖拽并上报首个窗口坐标。
- *
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @param position 当前行内坐标。
  */
 private fun startEntryRowFileDrag(
     state: EntryRowState,
@@ -1843,10 +1848,6 @@ private fun startEntryRowFileDrag(
 
 /**
  * 更新详情行文件拖拽窗口坐标。
- *
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @param position 当前行内坐标。
  */
 private fun updateEntryRowFileDrag(
     actions: EntryRowActions,
@@ -1858,24 +1859,58 @@ private fun updateEntryRowFileDrag(
 }
 
 /**
- * 完成文件拖拽，或在普通点击后收敛多选。
- *
- * @param state 详情行显示状态。
- * @param actions 详情行交互回调。
- * @param interaction 指针交互状态。
- * @param fileDragStarted 是否已开始文件拖拽。
+ * 完成文件拖拽，或在普通点击松开后执行多选收敛、双击打开或慢速重命名计时。
  */
 private fun finishEntryRowPointer(
-    state: EntryRowState,
-    actions: EntryRowActions,
+    releaseChange: PointerInputChange,
+    currentState: State<EntryRowState>,
+    currentActions: State<EntryRowActions>,
     interaction: EntryRowInteractionState,
     fileDragStarted: Boolean,
+    singleClickToOpen: Boolean,
+    coroutineScope: CoroutineScope,
 ) {
+    val state = currentState.value
+    val actions = currentActions.value
     if (fileDragStarted) {
         actions.onFileDragEnd(interaction.dragPosition)
         interaction.dragPosition = null
-    } else if (interaction.pendingDeselectOthers) {
+        return
+    }
+    if (interaction.pendingDeselectOthers) {
         actions.onSelectEntry(state.entry.id, false, false)
         interaction.pendingDeselectOthers = false
+    }
+    if (releaseChange.isConsumed) {
+        interaction.clickController.onPointerDraggedOrCancelled()
+        return
+    }
+    val outcome = interaction.clickController.onPrimaryRelease(
+        FileEntryReleaseRequest(
+            releaseMillis = releaseChange.uptimeMillis,
+            inRenameLabel = interaction.isInRenameLabel(releaseChange.position),
+            singleClickToOpen = singleClickToOpen,
+            canStillRename = state.selected && state.selectedEntryCount == 1 && state.paneActive,
+        ),
+    )
+    when (outcome) {
+        FileEntryReleaseOutcome.OPEN_SINGLE_CLICK,
+        FileEntryReleaseOutcome.OPEN_DOUBLE_CLICK -> {
+            interaction.clickController.cancelRename()
+            actions.onActivate()
+            actions.onDismissContextMenu()
+            actions.onOpenEntry(state.entry)
+        }
+
+        FileEntryReleaseOutcome.SCHEDULE_RENAME -> {
+            interaction.clickController.scheduleRename(coroutineScope) {
+                val latest = currentState.value
+                if (latest.selected && latest.selectedEntryCount == 1 && latest.paneActive) {
+                    currentActions.value.onBeginRename()
+                }
+            }
+        }
+
+        FileEntryReleaseOutcome.NONE -> Unit
     }
 }
