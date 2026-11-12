@@ -121,10 +121,9 @@ class PlatformLocationsUiTest {
                 )
                 assertFalse(computerCommandEnabled(root.primaryPane.state.value, PaneCommand.PASTE))
                 waitUntil(timeoutMillis = 15_000) {
-                    (root.primaryPane.state.value.entriesState as? ComputerEntriesState)
-                        ?.devices
-                        ?.firstOrNull { it.id == device.id }
-                        ?.totalBytes != null
+                    val state = root.primaryPane.state.value.entriesState as? ComputerEntriesState
+                    state?.devices?.firstOrNull { it.id == device.id }?.totalBytes != null &&
+                        state.visiblePlaces.size >= 2
                 }
                 onNodeWithTag(tag, useUnmergedTree = true).assertIsSelected()
                 assertEquals(ViewMode.GALLERY, root.primaryPane.state.value.viewMode)
@@ -238,9 +237,9 @@ private fun verifyComputerLayout(
             val paneId = if (layout == PaneLayoutMode.SINGLE) PaneId.PRIMARY else PaneId.SECONDARY
             val pane = if (paneId == PaneId.PRIMARY) root.primaryPane else root.secondaryPane
             waitUntil(timeoutMillis = 15_000) {
-                (pane.state.value.entriesState as? ComputerEntriesState)?.devices?.any {
-                    sample.root.toString() in it.locations && it.totalBytes != null
-                } == true
+                val state = pane.state.value.entriesState as? ComputerEntriesState
+                state?.devices?.any { sample.root.toString() in it.locations && it.totalBytes != null } == true &&
+                    state.visiblePlaces.size >= 2
             }
             val device =
                 (pane.state.value.entriesState as ComputerEntriesState).devices.first {

@@ -292,7 +292,7 @@ private fun DesktopComposeUiTest.verifyDirectoryRetry(root: RootComponent, sampl
     val ready = assertIs<PaneEntriesState.Ready>(root.primaryPane.state.value.entriesState)
     val before = rowTop("item-05005.txt") -
         onNodeWithTag("pane-entries-PRIMARY", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
-    Files.move(sample, unavailable)
+    moveDirectoryWithRetry(sample, unavailable)
     try {
         runOnUiThread { root.primaryPane.dispatch(PaneIntent.Refresh) }
         waitUntil(timeoutMillis = 15_000) { root.primaryPane.state.value.activeTabState.directoryError != null }
@@ -310,7 +310,7 @@ private fun DesktopComposeUiTest.verifyDirectoryRetry(root: RootComponent, sampl
             onNodeWithTag("pane-entries-PRIMARY", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top)
         captureBrowsing(evidenceName)
     } finally {
-        Files.move(unavailable, sample)
+        moveDirectoryWithRetry(unavailable, sample)
     }
     onNodeWithTag("pane-directory-retry-PRIMARY", useUnmergedTree = true).performClick()
     waitUntil(timeoutMillis = 15_000) { root.primaryPane.state.value.activeTabState.let {
@@ -349,4 +349,25 @@ private fun DesktopComposeUiTest.captureBrowsing(name: String) {
     val output = Path.of("build", "browsing-acceptance", "$name.png")
     Files.createDirectories(output.parent)
     assertTrue(ImageIO.write(onRoot().captureToImage().toAwtImage(), "png", output.toFile()))
+}
+
+/**
+ * 在 Windows 后台目录流句柄尚未释放时短暂重试目录改名，消除并发校验引发的瞬时拒绝访问。
+ * @param source 待移动目录路径。
+ * @param target 目标目录路径。
+ */
+private fun moveDirectoryWithRetry(source: Path, target: Path) {
+    val maxAttempts = 30
+    val retryDelayMillis = 50L
+    var lastError: java.nio.file.AccessDeniedException? = null
+    repeat(maxAttempts) {
+        try {
+            Files.move(source, target)
+            return
+        } catch (error: java.nio.file.AccessDeniedException) {
+            lastError = error
+            Thread.sleep(retryDelayMillis)
+        }
+    }
+    throw checkNotNull(lastError)
 }

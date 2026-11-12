@@ -254,8 +254,10 @@ private fun Modifier.trackTaskWindowHover(onHoverChanged: (Boolean) -> Unit): Mo
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Main)
                 when (event.type) {
-                    PointerEventType.Enter -> onHoverChanged(true)
+                    PointerEventType.Move,
+                    PointerEventType.Press -> onHoverChanged(true)
                     PointerEventType.Exit -> onHoverChanged(false)
+                    else -> Unit
                 }
             }
         }

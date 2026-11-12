@@ -10,7 +10,6 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
-import kotlin.io.path.pathString
 
 /**
  * Windows `$Recycle.Bin` 存储枚举服务。
@@ -96,12 +95,10 @@ internal class WindowsRecycleBinStorageService(
             Files.readAttributes(record.contentPath, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
         }.getOrNull() ?: return null
         val kind = if (contentAttrs.isDirectory) VFileKind.DIRECTORY else VFileKind.FILE
-        val originalPath = runCatching { Path.of(record.originalLocation).normalize() }.getOrNull()
-        val displayName = originalPath?.fileName?.toString()?.takeIf { it.isNotBlank() }
-            ?: record.originalLocation.substringAfterLast('\\').substringAfterLast('/')
-                .ifBlank { record.contentPath.fileName.toString() }
-        val originalParent = originalPath?.parent?.pathString
-            ?: extractParentFallback(record.originalLocation)
+        val normalizedLocation = normalizeWindowsLocation(record.originalLocation)
+        val displayName = extractWindowsFileName(normalizedLocation)
+            .ifBlank { record.contentPath.fileName.toString() }
+        val originalParent = extractWindowsParent(normalizedLocation)
         val sizeBytes = when {
             kind == VFileKind.DIRECTORY && record.originalSizeBytes <= 0L -> null
             record.originalSizeBytes > 0L -> record.originalSizeBytes
@@ -113,7 +110,7 @@ internal class WindowsRecycleBinStorageService(
             item = TrashItem(
                 id = id,
                 displayName = displayName,
-                originalLocation = originalPath?.pathString ?: record.originalLocation,
+                originalLocation = normalizedLocation,
                 originalParentLocation = originalParent,
                 kind = kind,
                 sizeBytes = sizeBytes,
@@ -124,16 +121,33 @@ internal class WindowsRecycleBinStorageService(
         )
     }
 
-    private fun extractParentFallback(location: String): String? {
-        val lastBackslash = location.lastIndexOf('\\')
-        val lastSlash = location.lastIndexOf('/')
-        val lastSep = maxOf(lastBackslash, lastSlash)
-        return if (lastSep > 0) {
-            location.substring(0, lastSep).takeIf { it.isNotBlank() }
-        } else null
+    private fun normalizeWindowsLocation(rawLocation: String): String {
+        if (rawLocation.length == DRIVE_ROOT_LENGTH && rawLocation[1] == ':') {
+            return rawLocation
+        }
+        return rawLocation.trimEnd('\\', '/').ifBlank { rawLocation }
+    }
+
+    private fun extractWindowsFileName(location: String): String =
+        location.substringAfterLast('\\').substringAfterLast('/')
+
+    private fun extractWindowsParent(location: String): String? {
+        val lastSep = maxOf(location.lastIndexOf('\\'), location.lastIndexOf('/'))
+        return when {
+            lastSep <= 0 -> null
+            lastSep == DRIVE_ROOT_SEPARATOR_INDEX && location.getOrNull(1) == ':' ->
+                location.substring(0, DRIVE_ROOT_LENGTH)
+            location.startsWith("\\\\") ->
+                location.substring(0, lastSep).takeIf { parent ->
+                    parent.removePrefix("\\\\").contains('\\')
+                }
+            else -> location.substring(0, lastSep).takeIf { it.isNotBlank() }
+        }
     }
 
     private companion object {
         const val WINDOWS_RECYCLE_DIRECTORY_NAME = "\$Recycle.Bin"
+        const val DRIVE_ROOT_SEPARATOR_INDEX = 2
+        const val DRIVE_ROOT_LENGTH = 3
     }
 }
