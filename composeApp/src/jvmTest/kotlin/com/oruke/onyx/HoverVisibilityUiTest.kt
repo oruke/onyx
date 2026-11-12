@@ -343,7 +343,10 @@ class HoverVisibilityUiTest {
                 }
                 waitForIdle()
                 onNodeWithTag("pane-entries-loading-PRIMARY", useUnmergedTree = true).assertIsDisplayed()
-                // 验证加载状态下详情表头保持固定可见，且加载胶囊水平居中（不再贴在最左侧）
+                onNodeWithTag("pane-entries-loading-bar-PRIMARY", useUnmergedTree = true).assertIsDisplayed()
+                // 验证加载状态下详情表头与顶部跑马灯进度条保持可见，且不再渲染居中加载胶囊
+                onNodeWithText("正在加载...").assertDoesNotExist()
+                onNodeWithText("Loading...").assertDoesNotExist()
                 val containerBounds = onNodeWithTag("pane-entries-loading-PRIMARY", useUnmergedTree = true)
                     .fetchSemanticsNode().boundsInRoot
                 assertTrue(containerBounds.width > 800f)

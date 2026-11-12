@@ -14,17 +14,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +32,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -54,7 +53,6 @@ import com.oruke.onyx.ui.theme.resolve
 import com.oruke.onyx.ui.theme.visibleDetailsColumns
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_error_prefix
-import onyx.composeapp.generated.resources.label_loading_entries
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
@@ -68,8 +66,8 @@ private const val FULL_CIRCLE_DEGREES = 360f
 private const val TRACK_ALPHA = 0.38f
 private const val HALF_DIVISOR = 2f
 
-private const val PROGRESS_DURATION_MS = 1000
-private const val PROGRESS_SEGMENT_FRACTION = 0.32f
+internal const val INDETERMINATE_PROGRESS_DURATION_MS = 1100
+internal const val INDETERMINATE_PROGRESS_SEGMENT_FRACTION = 0.28f
 private const val PROGRESS_TRACK_ALPHA = 0.28f
 private const val PROGRESS_BAR_ALPHA = 0.92f
 
@@ -122,11 +120,11 @@ internal fun OnyxLoadingSpinner(
     Canvas(modifier = modifier.size(size)) {
         val strokePx = strokeWidth.toPx()
         val inset = strokePx / HALF_DIVISOR
-        val arcSize = androidx.compose.ui.geometry.Size(
+        val arcSize = Size(
             width = (this.size.width - strokePx).coerceAtLeast(1f),
             height = (this.size.height - strokePx).coerceAtLeast(1f),
         )
-        val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+        val topLeft = Offset(inset, inset)
         drawArc(
             color = trackColor.copy(alpha = TRACK_ALPHA),
             startAngle = 0f,
@@ -170,7 +168,49 @@ internal fun rememberLoadingIconRotation(active: Boolean): Float {
 }
 
 /**
- * 渲染面板顶部紧凑型不确定进度条，提供无布局抖动的连续加载反馈。
+ * 表示跑马灯进度条在单帧内的一段可见高亮区间。
+ *
+ * @property startPx 相对于轨道左边缘的起始横坐标（像素）。
+ * @property widthPx 当前可见区间的水平宽度（像素）。
+ */
+internal data class MarqueeBarSpan(
+    val startPx: Float,
+    val widthPx: Float,
+)
+
+/**
+ * 计算单向连续跑马灯进度条在给定相位下的可见高亮段集合。
+ * 当高亮段右端超出轨道右边界时，溢出部分从左边缘无缝环绕驶入，避免来回弹跳或闪烁跳变。
+ *
+ * @param trackWidthPx 进度条轨道总宽度（像素）。
+ * @param segmentFraction 进度滑块占轨道总宽度的比例。
+ * @param phase 归一化动画相位（0 到 1 单向递增）。
+ * @return 按从左到右排列的可见高亮区间列表。
+ */
+internal fun computeMarqueeBarSpans(
+    trackWidthPx: Float,
+    segmentFraction: Float = INDETERMINATE_PROGRESS_SEGMENT_FRACTION,
+    phase: Float,
+): List<MarqueeBarSpan> {
+    if (trackWidthPx <= 0f) return emptyList()
+    val normalizedPhase = ((phase % 1f) + 1f) % 1f
+    val clampedFraction = segmentFraction.coerceIn(0f, 1f)
+    val segmentWidth = (trackWidthPx * clampedFraction).coerceAtLeast(1f).coerceAtMost(trackWidthPx)
+    val primaryStart = trackWidthPx * normalizedPhase
+    val primaryWidth = (trackWidthPx - primaryStart).coerceAtMost(segmentWidth).coerceAtLeast(0f)
+    val wrapAroundWidth = (primaryStart + segmentWidth - trackWidthPx).coerceAtLeast(0f).coerceAtMost(trackWidthPx)
+    return buildList {
+        if (wrapAroundWidth > 0f) {
+            add(MarqueeBarSpan(startPx = 0f, widthPx = wrapAroundWidth))
+        }
+        if (primaryWidth > 0f) {
+            add(MarqueeBarSpan(startPx = primaryStart, widthPx = primaryWidth))
+        }
+    }
+}
+
+/**
+ * 渲染面板顶部紧凑型跑马灯不确定进度条，提供从左向右单向连续循环且无布局抖动的加载反馈。
  *
  * @param modifier 外部布局修饰符。
  * @param height 进度条高度。
@@ -183,34 +223,40 @@ internal fun OnyxIndeterminateProgressBar(
     color: Color = LocalOnyxPalette.current.accent,
 ) {
     val palette = LocalOnyxPalette.current
+    val trackColor = palette.outlineVariant.copy(alpha = PROGRESS_TRACK_ALPHA)
+    val barColor = color.copy(alpha = PROGRESS_BAR_ALPHA)
     val transition = rememberInfiniteTransition()
-    val phase by transition.animateFloat(
+    val phaseState = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = PROGRESS_DURATION_MS, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
+            animation = tween(durationMillis = INDETERMINATE_PROGRESS_DURATION_MS, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
         ),
     )
-    BoxWithConstraints(
+    Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(height)
-            .background(palette.outlineVariant.copy(alpha = PROGRESS_TRACK_ALPHA)),
+            .height(height),
     ) {
-        val travelWidth = maxWidth * (1f - PROGRESS_SEGMENT_FRACTION)
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(PROGRESS_SEGMENT_FRACTION)
-                .offset(x = travelWidth * phase)
-                .background(color.copy(alpha = PROGRESS_BAR_ALPHA)),
+        drawRect(color = trackColor)
+        val spans = computeMarqueeBarSpans(
+            trackWidthPx = size.width,
+            segmentFraction = INDETERMINATE_PROGRESS_SEGMENT_FRACTION,
+            phase = phaseState.value,
         )
+        spans.forEach { span ->
+            drawRect(
+                color = barColor,
+                topLeft = Offset(x = span.startPx, y = 0f),
+                size = Size(width = span.widthPx, height = size.height),
+            )
+        }
     }
 }
 
 /**
- * 渲染文件面板加载态：在详情视图下保留固定表头，并展示顶部进度条、骨架占位与居中加载胶囊。
+ * 渲染文件面板加载态：在详情视图下保留固定表头，并展示顶部跑马灯进度条与呼吸骨架占位。
  *
  * @param model 文件内容视图状态。
  * @param actions 文件内容交互回调。
@@ -245,10 +291,10 @@ internal fun PaneEntriesLoading(
             } else {
                 GalleryLoadingSkeleton(model.galleryItemSizeDp)
             }
-            OnyxIndeterminateProgressBar(modifier = Modifier.align(Alignment.TopStart))
-            OnyxLoadingStatusBadge(
-                text = stringResource(Res.string.label_loading_entries),
-                modifier = Modifier.align(Alignment.Center),
+            OnyxIndeterminateProgressBar(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .testTag("pane-entries-loading-bar-${model.paneId}"),
             )
         }
     }
