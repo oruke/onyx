@@ -29,6 +29,7 @@ import com.oruke.onyx.app.component.TaskCenterComponent
 import com.oruke.onyx.app.component.TaskCenterIntent
 import com.oruke.onyx.app.component.TaskCenterState
 import com.oruke.onyx.app.component.shouldAutoCloseTaskCenter
+import com.oruke.onyx.app.platform.BindWindowsTaskbarIdentity
 import com.oruke.onyx.app.platform.ObservePersistableWindowState
 import com.oruke.onyx.app.platform.SyncHiddenWindowState
 import com.oruke.onyx.app.platform.activateFromUserRequest
@@ -128,6 +129,7 @@ internal fun TaskCenterWindow(
                     }
                 },
             ) {
+                BindWindowsTaskbarIdentity(window)
                 BindNativeTaskWindowActivation(
                     window = window,
                     windowState = windowState,

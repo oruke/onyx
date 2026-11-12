@@ -19,6 +19,8 @@ import com.oruke.onyx.app.platform.OnyxSingleInstanceRelay
 import com.oruke.onyx.app.platform.OnyxStartupSplash
 import com.oruke.onyx.app.platform.OnyxSystemTrayController
 import com.oruke.onyx.app.platform.StartupSplashStage
+import com.oruke.onyx.app.platform.WindowsShortcutAppIdReconciler
+import com.oruke.onyx.app.platform.WindowsTaskbarGroupingService
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import org.koin.compose.KoinIsolatedContext
 import org.koin.compose.getKoin
@@ -62,6 +64,8 @@ private object OnyxDesktopRuntime {
     @Suppress("TooGenericExceptionCaught")
     fun start(args: Array<String>) {
         OnyxLogger.initialize()
+        WindowsTaskbarGroupingService.initializeProcessIdentity()
+        WindowsShortcutAppIdReconciler.reconcileInstalledShortcutsAsync()
         OnyxStartupSplash.showIfInteractive(args)
         val singleInstanceRelay = OnyxSingleInstanceRelay()
         OnyxStartupPreloader.start()

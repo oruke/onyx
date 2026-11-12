@@ -16,6 +16,7 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.rememberWindowState
 import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.SearchPanelState
+import com.oruke.onyx.app.platform.BindWindowsTaskbarIdentity
 import com.oruke.onyx.app.platform.ObservePersistableWindowState
 import com.oruke.onyx.app.platform.SyncHiddenWindowState
 import com.oruke.onyx.app.platform.activateFromUserRequest
@@ -112,6 +113,7 @@ internal fun SearchWindow(
                     }
                 },
             ) {
+                BindWindowsTaskbarIdentity(window)
                 SideEffect {
                     window.name = "onyx-search"
                     val scale = settings.uiScale / SEARCH_WINDOW_SCALE_BASE

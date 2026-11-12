@@ -22,6 +22,7 @@ import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.SessionRestoreState
 import com.oruke.onyx.app.component.effectiveSettings
 import com.oruke.onyx.app.component.rememberRootComponent
+import com.oruke.onyx.app.platform.BindWindowsTaskbarIdentity
 import com.oruke.onyx.app.platform.DesktopFileManagerWindowRequest
 import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.app.platform.OnyxStartupSplash
@@ -121,6 +122,7 @@ internal fun DesktopFileManagerWindow(
             icon = windowIcon,
             state = windowStates.main,
         ) {
+            BindWindowsTaskbarIdentity(window)
             window.minimumSize = Dimension(FILE_MANAGER_WINDOW_MIN_WIDTH, FILE_MANAGER_WINDOW_MIN_HEIGHT)
             DisposableEffect(window, request.id) {
                 OnyxLogger.info(
@@ -188,6 +190,7 @@ private fun ImageViewerWindow(
         icon = rememberOnyxWindowIconPainter(),
         state = windowState,
     ) {
+        BindWindowsTaskbarIdentity(window)
         window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
         TitleBar { _ ->
             Text(
