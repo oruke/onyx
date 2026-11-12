@@ -80,7 +80,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -126,9 +125,6 @@ import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_column_size
 import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_directory_badge
-import onyx.composeapp.generated.resources.label_empty_directory
-import onyx.composeapp.generated.resources.label_empty_directory_hint
-import onyx.composeapp.generated.resources.label_trash_empty_view
 import onyx.composeapp.generated.resources.label_column_visibility
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
@@ -138,9 +134,6 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import com.oruke.onyx.core.model.FileLabelStyle
-
-/** 空状态图标的弱化透明度。 */
-private const val EMPTY_STATE_ICON_ALPHA = 0.4f
 
 /** 指针移动超过此距离平方后才开始拖拽或框选。 */
 private const val DRAG_START_DISTANCE_SQUARED = 36f
@@ -259,12 +252,6 @@ internal data class PaneEntriesChildDragActions(
     val onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit,
 )
 
-/** 空白处双击最大时间间隔（毫秒）。 */
-private const val BLANK_AREA_DOUBLE_CLICK_TIMEOUT_MS = 380L
-
-/** 空白处双击允许的最大位移平方（像素²）。 */
-private const val BLANK_AREA_DOUBLE_CLICK_DISTANCE_SQUARED = 64f
-
 /** 保存文件内容区域框选、条目坐标与文件拖拽互斥状态。 */
 internal class PaneRubberBandState {
     /** 当前已布局条目的坐标。 */
@@ -294,11 +281,8 @@ internal class PaneRubberBandState {
     /** 内容容器布局坐标。 */
     var containerCoordinates by mutableStateOf<LayoutCoordinates?>(null)
 
-    /** 上一次空白区域单击的时间戳（毫秒）。 */
-    var lastBlankClickMillis: Long = 0L
-
-    /** 上一次空白区域单击的坐标。 */
-    var lastBlankClickPosition: androidx.compose.ui.geometry.Offset? = null
+    /** 空白区域点击与双击返回上级状态机。 */
+    val blankClickController = BlankAreaClickController()
 
     /** 结束框选并清理起止点。 */
     fun finishRubberBand() {
@@ -506,9 +490,11 @@ internal fun DetailsHeader(
     onToggleSort: (DetailsColumn) -> Unit,
     onResizeColumn: (DetailsColumn, Float) -> Unit,
     onToggleColumnVisibility: (DetailsColumn) -> Unit,
+    onActivate: () -> Unit = {},
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
     val density = LocalDensity.current
+    val currentOnActivate = rememberUpdatedState(onActivate)
     val visibleColumns = remember(columns, hiddenColumns) { visibleDetailsColumns(columns, hiddenColumns) }
     var showColumnMenu by remember { mutableStateOf(false) }
 
@@ -521,10 +507,15 @@ internal fun DetailsHeader(
                 .padding(horizontal = 8.dp)
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onLongPress = { showColumnMenu = true },
+                        onTap = { currentOnActivate.value() },
+                        onLongPress = {
+                            currentOnActivate.value()
+                            showColumnMenu = true
+                        },
                     )
                 }
                 .onPointerEvent(PointerEventType.Press) {
+                    currentOnActivate.value()
                     // 右键点击打开列可见性菜单
                     if (it.buttons.isSecondaryPressed) {
                         showColumnMenu = true
@@ -914,6 +905,7 @@ private fun ReadyPaneEntries(
             model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     if (ready.entries.isEmpty() && !createInlineEntry) {
         EmptyPaneEntries(
+            paneId = model.paneId,
             actions = actions,
             doubleClickEmptySpaceToNavigateUp = doubleClickBlankNavigateUp,
             isTrash = model.isTrash,
@@ -921,94 +913,15 @@ private fun ReadyPaneEntries(
         return
     }
     val selection = remember { PaneRubberBandState() }
+    val doubleClickSlopPx = with(LocalDensity.current) { ENTRY_DOUBLE_CLICK_SLOP_DP.dp.toPx() }
     val childDragActions = paneChildDragActions(model, actions, selection)
     Box(
         modifier = Modifier.fillMaxSize().clipToBounds()
-            .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp),
+            .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp, doubleClickSlopPx),
     ) {
         Box(modifier = Modifier.fillMaxSize().paneRubberBandTracker(actions, selection))
         PaneEntriesViews(model, actions, thumbnails, ready, selection, childDragActions)
         PaneRubberBandOverlay(selection)
-    }
-}
-
-/**
- * 显示空目录状态并允许在空白区域打开菜单或双击返回上级。
- *
- * @param actions 文件内容交互回调。
- * @param doubleClickEmptySpaceToNavigateUp 是否启用双击空白返回上级目录。
- * @param isTrash 当前位置是否为回收站。
- */
-@Composable
-private fun EmptyPaneEntries(
-    actions: PaneEntriesActions,
-    doubleClickEmptySpaceToNavigateUp: Boolean = true,
-    isTrash: Boolean = false,
-) {
-    val doubleClickEnabledState = rememberUpdatedState(doubleClickEmptySpaceToNavigateUp)
-    Box(
-        modifier = Modifier.fillMaxSize().padding(24.dp)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        if (doubleClickEnabledState.value) {
-                            actions.onActivate()
-                            actions.onNavigateUp()
-                        }
-                    },
-                )
-            }
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val position = event.changes.firstOrNull()?.position
-                        val isSecondaryPress = event.type == PointerEventType.Press && event.buttons.isSecondaryPressed
-                        if (isSecondaryPress && position != null) {
-                            actions.onActivate()
-                            actions.onBlankAreaContextMenu(IntOffset(position.x.toInt(), position.y.toInt()))
-                        }
-                    }
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (isTrash) {
-                Icon(
-                    key = AllIconsKeys.General.Delete,
-                    contentDescription = null,
-                    modifier = Modifier.alpha(EMPTY_STATE_ICON_ALPHA),
-                )
-                Text(
-                    text = stringResource(Res.string.label_trash_empty_view),
-                    modifier = Modifier.testTag("pane-trash-empty-state"),
-                    color = LocalOnyxPalette.current.mutedForeground,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-            } else {
-                Icon(
-                    key = AllIconsKeys.Nodes.Folder,
-                    contentDescription = null,
-                    modifier = Modifier.alpha(EMPTY_STATE_ICON_ALPHA),
-                )
-                Text(
-                    text = stringResource(Res.string.label_empty_directory),
-                    color = LocalOnyxPalette.current.mutedForeground,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = stringResource(Res.string.label_empty_directory_hint),
-                    color = LocalOnyxPalette.current.disabledForeground,
-                    fontSize = 11.sp,
-                )
-            }
-        }
     }
 }
 
@@ -1028,6 +941,7 @@ private fun paneChildDragActions(
     onStartFileDrag = { paneId, operation ->
         selection.fileDragging = true
         selection.pendingOrigin = null
+        selection.blankClickController.reset()
         actions.onStartFileDrag(paneId, operation)
     },
     onFileDragEnd = { position ->
@@ -1039,6 +953,7 @@ private fun paneChildDragActions(
         if (container != null) {
             val start = container.windowToLocal(windowPosition)
             selection.pendingOrigin = null
+            selection.blankClickController.reset()
             selection.active = true
             selection.start = start
             selection.end = start
@@ -1081,6 +996,7 @@ private fun PaneEntriesViews(
                 onToggleSort = actions.onToggleSort,
                 onResizeColumn = actions.onResizeColumn,
                 onToggleColumnVisibility = actions.onToggleColumnVisibility,
+                onActivate = actions.onActivate,
                 scrollState = horizontalScrollState,
             )
             DetailsEntriesList(model, actions, ready, selection, horizontalScrollState, dragActions)
@@ -1346,6 +1262,7 @@ private fun Modifier.paneSelectionInteractions(
     actions: PaneEntriesActions,
     selection: PaneRubberBandState,
     doubleClickEmptySpaceToNavigateUp: Boolean = true,
+    doubleClickSlopPx: Float = ENTRY_DOUBLE_CLICK_SLOP_DP,
 ): Modifier = onGloballyPositioned { selection.containerCoordinates = it }
     .onPointerEvent(PointerEventType.Press) { event ->
         handlePaneSelectionPress(event, actions, selection)
@@ -1354,7 +1271,7 @@ private fun Modifier.paneSelectionInteractions(
         handlePaneSelectionMove(event, model, actions, selection)
     }
     .onPointerEvent(PointerEventType.Release) { event ->
-        handlePaneSelectionRelease(event, actions, selection, doubleClickEmptySpaceToNavigateUp)
+        handlePaneSelectionRelease(event, actions, selection, doubleClickEmptySpaceToNavigateUp, doubleClickSlopPx)
     }
 
 /**
@@ -1370,23 +1287,29 @@ private fun handlePaneSelectionPress(
     selection: PaneRubberBandState,
 ) {
     if (event.changes.any { it.isConsumed }) return
-    val position = event.changes.firstOrNull()?.position ?: return
+    val primaryChange = event.changes.firstOrNull() ?: return
+    val position = primaryChange.position
     val hitsItem = selection.hitsItem(position)
     if (event.buttons.isSecondaryPressed && !event.buttons.isPrimaryPressed && !hitsItem) {
+        selection.blankClickController.reset()
         actions.onActivate()
         actions.onSelectEntries(emptySet())
         val windowPosition = selection.containerCoordinates?.localToWindow(position) ?: position
-        actions.onBlankAreaContextMenu(IntOffset(windowPosition.x.toInt(), windowPosition.y.toInt()))
-    } else if (event.buttons.isPrimaryPressed) {
+        actions.onBlankAreaContextMenu(IntOffset(windowPosition.x.roundToInt(), windowPosition.y.roundToInt()))
+    } else if (event.isPrimaryPointerPress()) {
         if (hitsItem) {
             selection.pendingOrigin = null
-            selection.lastBlankClickMillis = 0L
-            selection.lastBlankClickPosition = null
+            selection.blankClickController.reset()
         } else {
+            actions.onActivate()
+            actions.onDismissContextMenu()
             selection.pendingOrigin = position
             selection.active = false
             selection.fileDragging = false
+            selection.blankClickController.onPrimaryPress(primaryChange.uptimeMillis, position)
         }
+    } else {
+        selection.blankClickController.reset()
     }
 }
 
@@ -1411,6 +1334,7 @@ private fun handlePaneSelectionMove(
         val dx = position.x - origin.x
         val dy = position.y - origin.y
         if (dx * dx + dy * dy > DRAG_START_DISTANCE_SQUARED) {
+            selection.blankClickController.reset()
             selection.active = true
             selection.start = origin
             selection.additive = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
@@ -1434,34 +1358,32 @@ private fun handlePaneSelectionMove(
  * @param actions 文件内容交互回调。
  * @param selection 框选状态。
  * @param doubleClickEmptySpaceToNavigateUp 是否启用双击空白返回上级目录。
+ * @param doubleClickSlopPx 两次点击构成双击的最大位移容差（像素）。
  */
 private fun handlePaneSelectionRelease(
     event: PointerEvent,
     actions: PaneEntriesActions,
     selection: PaneRubberBandState,
     doubleClickEmptySpaceToNavigateUp: Boolean = true,
+    doubleClickSlopPx: Float = ENTRY_DOUBLE_CLICK_SLOP_DP,
 ) {
-    val position = event.changes.firstOrNull()?.position
+    val releaseChange = event.changes.firstOrNull()
+    val position = releaseChange?.position
     val blankClick = !selection.active && selection.pendingOrigin != null
-    if (blankClick && position != null && !selection.hitsItem(position)) {
+    val hitsBlankArea = position != null && !selection.hitsItem(position)
+    if (blankClick && releaseChange != null && hitsBlankArea) {
         actions.onSelectEntries(emptySet())
-        if (doubleClickEmptySpaceToNavigateUp) {
-            val now = System.currentTimeMillis()
-            val prevPos = selection.lastBlankClickPosition
-            val dx = if (prevPos != null) position.x - prevPos.x else Float.MAX_VALUE
-            val dy = if (prevPos != null) position.y - prevPos.y else Float.MAX_VALUE
-            val isDoubleClick = prevPos != null &&
-                now - selection.lastBlankClickMillis <= BLANK_AREA_DOUBLE_CLICK_TIMEOUT_MS &&
-                dx * dx + dy * dy <= BLANK_AREA_DOUBLE_CLICK_DISTANCE_SQUARED
-            if (isDoubleClick) {
-                selection.lastBlankClickMillis = 0L
-                selection.lastBlankClickPosition = null
-                actions.onNavigateUp()
-            } else {
-                selection.lastBlankClickMillis = now
-                selection.lastBlankClickPosition = position
-            }
+        val isDoubleClick = selection.blankClickController.onPrimaryRelease(
+            releaseMillis = releaseChange.uptimeMillis,
+            position = checkNotNull(position),
+            dragSlopSquared = DRAG_START_DISTANCE_SQUARED,
+            doubleClickSlopPx = doubleClickSlopPx,
+        )
+        if (doubleClickEmptySpaceToNavigateUp && isDoubleClick) {
+            actions.onNavigateUp()
         }
+    } else if (blankClick) {
+        selection.blankClickController.reset()
     }
     selection.pendingOrigin = null
     selection.fileDragging = false

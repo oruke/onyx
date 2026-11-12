@@ -235,6 +235,7 @@ internal fun PaneEntriesLoading(
                 onToggleSort = actions.onToggleSort,
                 onResizeColumn = actions.onResizeColumn,
                 onToggleColumnVisibility = actions.onToggleColumnVisibility,
+                onActivate = actions.onActivate,
                 scrollState = horizontalScrollState,
             )
         }
@@ -335,6 +336,7 @@ internal fun PaneEntriesFailure(
                 onToggleSort = actions.onToggleSort,
                 onResizeColumn = actions.onResizeColumn,
                 onToggleColumnVisibility = actions.onToggleColumnVisibility,
+                onActivate = actions.onActivate,
                 scrollState = horizontalScrollState,
             )
         }

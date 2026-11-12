@@ -100,6 +100,7 @@ private fun PaneEntriesArea(
                 interactionSource = interactionSource,
                 onClick = {
                     runtime.model.onActivate()
+                    runtime.focusRequester.requestFocus()
                     runtime.ui.contextMenuVisible = false
                 },
             ),
@@ -164,11 +165,19 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
             focusRequester.requestFocus()
         },
         onOpenEntry = { entry -> dispatch(PaneIntent.OpenEntry(entry)) },
-        onToggleSort = { column -> dispatch(PaneIntent.ToggleSort(column)) },
+        onToggleSort = { column ->
+            model.onActivate()
+            focusRequester.requestFocus()
+            dispatch(PaneIntent.ToggleSort(column))
+        },
         onResizeColumn = { column, deltaWeight ->
+            model.onActivate()
             dispatch(PaneIntent.ResizeDetailsColumn(column, deltaWeight))
         },
-        onToggleColumnVisibility = { column -> dispatch(PaneIntent.ToggleColumnVisibility(column)) },
+        onToggleColumnVisibility = { column ->
+            model.onActivate()
+            dispatch(PaneIntent.ToggleColumnVisibility(column))
+        },
         onSelectEntry = { entryId, additive, range ->
             dispatch(PaneIntent.SelectEntry(entryId, additive, range))
         },
@@ -187,9 +196,20 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
                 showComputerContextMenu(entryId, position)
             } else showEntryContextMenu(entryId, selected, position, readyEntries)
         },
-        onOpenLocation = { dispatch(PaneIntent.OpenDirectory(it)) },
-        onDeviceIntent = { dispatch(it) },
-        onRefreshComputer = { dispatch(PaneIntent.Refresh) },
+        onOpenLocation = {
+            model.onActivate()
+            focusRequester.requestFocus()
+            dispatch(PaneIntent.OpenDirectory(it))
+        },
+        onDeviceIntent = {
+            model.onActivate()
+            dispatch(it)
+        },
+        onRefreshComputer = {
+            model.onActivate()
+            focusRequester.requestFocus()
+            dispatch(PaneIntent.Refresh)
+        },
         onDismissContextMenu = { ui.contextMenuVisible = false },
         onBeginRename = { dispatch(PaneIntent.BeginRename) },
         onSelectEntries = { entryIds -> dispatch(PaneIntent.SelectEntries(entryIds)) },
