@@ -9,7 +9,9 @@ import kotlinx.coroutines.runBlocking
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
+import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,7 +50,7 @@ class TrashStorageServicesTest {
 
             val storage = WindowsRecycleBinStorageService(
                 rootsProvider = { listOf(tempRoot) },
-                currentUserOwnerProvider = { null },
+                currentUserSidProvider = { "S-1-5-21-1001" },
             )
             val entries = storage.listEntries()
 
@@ -84,7 +86,7 @@ class TrashStorageServicesTest {
 
             val storage = WindowsRecycleBinStorageService(
                 rootsProvider = { listOf(tempRoot) },
-                currentUserOwnerProvider = { null },
+                currentUserSidProvider = { "S-1-5-21-2002" },
             )
             val entries = storage.listEntries()
 
@@ -95,6 +97,180 @@ class TrashStorageServicesTest {
             assertEquals(8192L, entry.item.sizeBytes)
         } finally {
             deleteRecursively(tempRoot)
+        }
+    }
+
+    /**
+     * 验证按当前用户 SID 直达读取回收站，严格隔离其他用户 SID 目录，并兼容顶层 FAT32/exFAT 结构的 $I 文件。
+     */
+    @Test
+    fun windowsRecycleBinUserSidIsolationAndTopLevelFatFiles() {
+        val tempRoot = Files.createTempDirectory("onyx-test-win-sid-isolation-")
+        try {
+            val recycleBin = tempRoot.resolve("\$Recycle.Bin")
+            val userSidDir = recycleBin.resolve("S-1-5-21-1001")
+            val otherSidDir = recycleBin.resolve("S-1-5-21-9999")
+            Files.createDirectories(userSidDir)
+            Files.createDirectories(otherSidDir)
+
+            val userOriginal = "C:\\Users\\User1\\doc.txt"
+            val userInfo = userSidDir.resolve("\$IUSER1.txt")
+            val userContent = userSidDir.resolve("\$RUSER1.txt")
+            Files.write(userInfo, buildWindowsInfoV1(userOriginal, 1024L, 133500000000000000L))
+            Files.writeString(userContent, "user1 doc")
+
+            val otherOriginal = "C:\\Users\\Other\\secret.txt"
+            val otherInfo = otherSidDir.resolve("\$IOTHER.txt")
+            val otherContent = otherSidDir.resolve("\$ROTHER.txt")
+            Files.write(otherInfo, buildWindowsInfoV1(otherOriginal, 2048L, 133500000000000000L))
+            Files.writeString(otherContent, "other secret")
+
+            val fatOriginal = "E:\\fat-file.txt"
+            val fatInfo = recycleBin.resolve("\$IFAT01.txt")
+            val fatContent = recycleBin.resolve("\$RFAT01.txt")
+            Files.write(fatInfo, buildWindowsInfoV1(fatOriginal, 512L, 133500000000000000L))
+            Files.writeString(fatContent, "fat payload")
+
+            val storage = WindowsRecycleBinStorageService(
+                rootsProvider = { listOf(tempRoot) },
+                currentUserSidProvider = { "S-1-5-21-1001" },
+            )
+            val entries = storage.listEntries()
+
+            assertEquals(2, entries.size, "应仅包含当前用户 SID 目录与根目录顶层 FAT 文件")
+            val displayNames = entries.map { it.item.displayName }.toSet()
+            assertTrue(displayNames.contains("doc.txt"))
+            assertTrue(displayNames.contains("fat-file.txt"))
+            assertFalse(displayNames.contains("secret.txt"), "严禁泄漏其他用户的 SID 回收站文件")
+        } finally {
+            deleteRecursively(tempRoot)
+        }
+    }
+
+    /**
+     * 验证 Version 1 固定缓冲区在空终止符后包含非零脏字节时，仍能正确截断原路径。
+     */
+    @Test
+    fun windowsRecycleBinV1DirtyBytesAfterNullTerminator() {
+        val tempRoot = Files.createTempDirectory("onyx-test-win-v1-dirty-")
+        try {
+            val sidDir = tempRoot.resolve("\$Recycle.Bin").resolve("S-1-5-21-1001")
+            Files.createDirectories(sidDir)
+
+            val originalPath = "C:\\Work\\CleanPath.txt"
+            val infoPath = sidDir.resolve("\$IDIRTY.txt")
+            val contentPath = sidDir.resolve("\$RDIRTY.txt")
+
+            val cleanPathBytes = (originalPath + "\u0000").toByteArray(StandardCharsets.UTF_16LE)
+            val dirtyBytes = byteArrayOf(0xFF.toByte(), 0xAA.toByte(), 0x55.toByte(), 0x12.toByte(), 0x34.toByte())
+            val buffer = ByteBuffer.allocate(24 + cleanPathBytes.size + dirtyBytes.size).order(ByteOrder.LITTLE_ENDIAN)
+            buffer.putLong(1L)
+            buffer.putLong(100L)
+            buffer.putLong(133500000000000000L)
+            buffer.put(cleanPathBytes)
+            buffer.put(dirtyBytes)
+            Files.write(infoPath, buffer.array())
+            Files.writeString(contentPath, "clean content")
+
+            val record = WindowsRecycleBinMetadataService.parseInfo(infoPath)
+            assertTrue(record != null, "元数据解析必须成功")
+            assertEquals(originalPath, record.originalLocation, "路径必须在空字符处截断，不得包含脏字节")
+        } finally {
+            deleteRecursively(tempRoot)
+        }
+    }
+
+    /**
+     * 验证 WindowsRecycleBinMetadataService.findRecord 能按指定 SID 准确命中记录，并在 SID 不匹配时返回 null。
+     */
+    @Test
+    fun windowsRecycleBinFindRecordMatchesBySid() {
+        val tempRoot = Files.createTempDirectory("onyx-test-win-find-record-")
+        try {
+            val recycleBin = tempRoot.resolve("\$Recycle.Bin")
+            val targetSidDir = recycleBin.resolve("S-1-5-21-3003")
+            Files.createDirectories(targetSidDir)
+
+            val originalPath = tempRoot.resolve("deleted-file.txt")
+            val movedAtMillis = System.currentTimeMillis()
+            val infoPath = targetSidDir.resolve("\$IFIND01.txt")
+            val contentPath = targetSidDir.resolve("\$RFIND01.txt")
+
+            Files.write(
+                infoPath,
+                buildWindowsInfoV2(
+                    originalPath.normalize().toAbsolutePath().toString(),
+                    4096L,
+                    (movedAtMillis + 11_644_473_600_000L) * 10_000L,
+                ),
+            )
+            Files.writeString(contentPath, "found content")
+
+            val matched = WindowsRecycleBinMetadataService.findRecord(
+                originalPath = originalPath,
+                movedAtMillis = movedAtMillis,
+                currentUserSid = "S-1-5-21-3003",
+                recycleRoot = recycleBin,
+            )
+            assertTrue(matched != null, "指定对应 SID 时应命中回收站记录")
+            assertEquals(contentPath.toAbsolutePath(), matched.contentPath.toAbsolutePath())
+            assertEquals(infoPath.toAbsolutePath(), matched.infoPath.toAbsolutePath())
+
+            val mismatched = WindowsRecycleBinMetadataService.findRecord(
+                originalPath = originalPath,
+                movedAtMillis = movedAtMillis,
+                currentUserSid = "S-1-5-21-9999",
+                recycleRoot = recycleBin,
+            )
+            assertNull(mismatched, "SID 不匹配时不应命中记录")
+        } finally {
+            deleteRecursively(tempRoot)
+        }
+    }
+
+    /**
+     * Windows 宿主只读健康检查：验证用户 SID 解析正确，并对真实回收站进行只读枚举诊断。
+     */
+    @Test
+    fun windowsHostLiveRecycleBinReadOnlyHealthCheck() {
+        val isWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
+        if (!isWindows) return
+
+        val sid = WindowsProcessUserSidResolver.currentUserSid
+        assertTrue(sid != null && sid.startsWith("S-1-"), "Windows 宿主应解析出合法的用户 SID (S-1-...)，当前为: $sid")
+
+        val userHome = System.getProperty("user.home").orEmpty()
+        val userHomeOwner = runCatching {
+            Files.getOwner(Path.of(userHome), LinkOption.NOFOLLOW_LINKS)
+        }.getOrNull()
+
+        println("=== Windows Host Recycle Bin Diagnostic ===")
+        println("Resolved Current User SID: $sid")
+        println("user.home Path: $userHome")
+        println("user.home Owner Principal: $userHomeOwner")
+
+        val roots = FileSystems.getDefault().rootDirectories.toList()
+        for (root in roots) {
+            val localOrRemovable = WindowsProcessUserSidResolver.isLocalOrRemovableSystemRoot(root)
+            val readable = Files.isReadable(root)
+            println("Drive Root: $root | isLocalOrRemovable=$localOrRemovable | readable=$readable")
+        }
+
+        val storage = WindowsRecycleBinStorageService()
+        val entries = storage.listEntries()
+        println("Discovered Live Recycle Bin Entries Count: ${entries.size}")
+        for (entry in entries.take(10)) {
+            println("  - [${entry.item.displayName}] original: ${entry.item.originalLocation} size: ${entry.item.sizeBytes}")
+        }
+        println("===========================================")
+
+        for (entry in entries) {
+            assertTrue(entry.item.id.isNotBlank(), "条目 ID 不得为空")
+            assertTrue(entry.item.displayName.isNotBlank(), "条目显示名称不得为空")
+            assertTrue(
+                Files.exists(entry.contentPath, LinkOption.NOFOLLOW_LINKS),
+                "发现的回收站条目 contentPath 必须真实存在: ${entry.contentPath}",
+            )
         }
     }
 

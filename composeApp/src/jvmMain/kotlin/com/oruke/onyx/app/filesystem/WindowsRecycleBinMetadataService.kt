@@ -4,9 +4,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.io.path.pathString
-import kotlin.streams.toList
 
 /**
  * Windows 回收站元数据服务，负责等待并解析 Shell 写入的 `$I` / `$R` 文件。
@@ -39,23 +39,24 @@ internal object WindowsRecycleBinMetadataService {
      *
      * @param originalPath 移入回收站前的本地路径。
      * @param movedAtMillis 发起移动时的时间戳。
+     * @param currentUserSid 当前用户 SID；非空时仅扫描该 SID 目录及顶层。
+     * @param recycleRoot 待扫描的 `$Recycle.Bin` 目录路径；默认取原路径所在磁盘根下的 `$Recycle.Bin`。
      * @return 最可能对应本次移动的回收站记录。
      */
-    private fun findRecord(
+    internal fun findRecord(
         originalPath: Path,
         movedAtMillis: Long,
+        currentUserSid: String? = WindowsProcessUserSidResolver.currentUserSid,
+        recycleRoot: Path? = originalPath.normalize().toAbsolutePath().root?.resolve(WINDOWS_RECYCLE_DIRECTORY_NAME),
     ): WindowsRecycleBinRecord? {
-        val recycleRoot = originalPath.root?.resolve(WINDOWS_RECYCLE_DIRECTORY_NAME) ?: return null
+        val targetRecycleRoot = recycleRoot ?: return null
         val normalizedOriginal = originalPath.normalize().toAbsolutePath().pathString
-        return recycleRoot.children()
+        return WindowsProcessUserSidResolver.collectRecycleBinInfoFiles(targetRecycleRoot, currentUserSid)
             .asSequence()
-            .filter { directory -> Files.isDirectory(directory) }
-            .flatMap { directory -> directory.children().asSequence() }
-            .filter { candidate -> candidate.fileName.toString().startsWith(WINDOWS_RECYCLE_INFO_PREFIX) }
             .mapNotNull { infoPath -> parseInfo(infoPath) }
             .filter { record -> record.originalLocation.equals(normalizedOriginal, ignoreCase = true) }
             .filter { record -> record.wasDeletedDuringCurrentMove(movedAtMillis) }
-            .filter { record -> Files.exists(record.contentPath) }
+            .filter { record -> Files.exists(record.contentPath, LinkOption.NOFOLLOW_LINKS) }
             .maxByOrNull { record -> record.deletedAtMillis }
     }
 
@@ -81,6 +82,7 @@ internal object WindowsRecycleBinMetadataService {
                 val contentName = infoPath.fileName.toString().replaceFirst(
                     WINDOWS_RECYCLE_INFO_PREFIX,
                     WINDOWS_RECYCLE_CONTENT_PREFIX,
+                    ignoreCase = true,
                 )
                 record = WindowsRecycleBinRecord(
                     infoPath = infoPath,
@@ -125,7 +127,7 @@ internal object WindowsRecycleBinMetadataService {
             WINDOWS_RECYCLE_V1_PATH_OFFSET,
             bytes.size - WINDOWS_RECYCLE_V1_PATH_OFFSET,
             StandardCharsets.UTF_16LE,
-        ).trimEnd('\u0000')
+        ).substringBefore('\u0000')
             .takeIf { path -> path.isNotBlank() }
     }
 
@@ -136,23 +138,20 @@ internal object WindowsRecycleBinMetadataService {
      * @return 原始路径；解析失败时返回 `null`。
      */
     private fun decodeVersionTwoPath(bytes: ByteArray): String? {
-        var path: String? = null
-        if (bytes.size >= WINDOWS_RECYCLE_V2_PATH_OFFSET) {
-            val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-            val charCount = buffer.getInt(WINDOWS_RECYCLE_V2_LENGTH_OFFSET)
-            if (charCount > 0) {
-                val byteCount = (charCount * WINDOWS_UTF16_BYTES_PER_CHAR)
-                    .coerceAtMost(bytes.size - WINDOWS_RECYCLE_V2_PATH_OFFSET)
-                path = String(
-                    bytes,
-                    WINDOWS_RECYCLE_V2_PATH_OFFSET,
-                    byteCount,
-                    StandardCharsets.UTF_16LE,
-                ).trimEnd('\u0000')
-                    .takeIf { value -> value.isNotBlank() }
-            }
-        }
-        return path
+        if (bytes.size < WINDOWS_RECYCLE_V2_PATH_OFFSET) return null
+        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val charCount = buffer.getInt(WINDOWS_RECYCLE_V2_LENGTH_OFFSET)
+        if (charCount <= 0) return null
+        val availableBytes = (bytes.size - WINDOWS_RECYCLE_V2_PATH_OFFSET).toLong()
+        val requestedBytes = charCount.toLong() * WINDOWS_UTF16_BYTES_PER_CHAR
+        val byteCount = requestedBytes.coerceAtMost(availableBytes).toInt()
+        return String(
+            bytes,
+            WINDOWS_RECYCLE_V2_PATH_OFFSET,
+            byteCount,
+            StandardCharsets.UTF_16LE,
+        ).substringBefore('\u0000')
+            .takeIf { value -> value.isNotBlank() }
     }
 
     /**
@@ -173,18 +172,6 @@ internal object WindowsRecycleBinMetadataService {
      */
     private fun WindowsRecycleBinRecord.wasDeletedDuringCurrentMove(movedAtMillis: Long): Boolean {
         return deletedAtMillis >= movedAtMillis - WINDOWS_RECYCLE_TIMESTAMP_TOLERANCE_MS
-    }
-
-    /**
-     * 安全列出目录子项；Windows 回收站中其他 SID 目录不可读时直接跳过。
-     *
-     * @return 当前目录可读取的子路径。
-     */
-    private fun Path.children(): List<Path> {
-        return runCatching {
-            if (!Files.isDirectory(this)) return emptyList()
-            Files.list(this).use { stream -> stream.toList() }
-        }.getOrDefault(emptyList())
     }
 
     /** Windows 回收站目录名。 */

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.runDesktopComposeUiTest
@@ -210,6 +211,9 @@ class RecycleBinUiTest {
                     kotlinx.coroutines.runBlocking { isolatedTrashService.listItems().getOrThrow().size },
                     "隔离回收站应被清空",
                 )
+                onNodeWithText("右键点击以创建文件或文件夹").assertDoesNotExist()
+                onNodeWithText("文件夹为空").assertDoesNotExist()
+                onNodeWithTag("pane-trash-empty-state", useUnmergedTree = true).assertIsDisplayed()
             }
         } finally {
             deleteRecursivelyQuietly(tempDir)

@@ -86,6 +86,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -127,6 +128,7 @@ import onyx.composeapp.generated.resources.label_column_type
 import onyx.composeapp.generated.resources.label_directory_badge
 import onyx.composeapp.generated.resources.label_empty_directory
 import onyx.composeapp.generated.resources.label_empty_directory_hint
+import onyx.composeapp.generated.resources.label_trash_empty_view
 import onyx.composeapp.generated.resources.label_column_visibility
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
@@ -187,6 +189,8 @@ internal data class PaneEntriesViewModel(
     val tabId: String = "",
     /** 当前访问的视口与内容版本。 */
     val browserState: com.oruke.onyx.app.component.PaneBrowserState = com.oruke.onyx.app.component.PaneBrowserState(),
+    /** 当前位置是否为回收站。 */
+    val isTrash: Boolean = false,
 )
 
 /**
@@ -909,7 +913,11 @@ private fun ReadyPaneEntries(
     val createInlineEntry = model.inlineEditState?.mode == PaneInlineEditMode.CREATE_FILE ||
             model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     if (ready.entries.isEmpty() && !createInlineEntry) {
-        EmptyPaneEntries(actions, doubleClickBlankNavigateUp)
+        EmptyPaneEntries(
+            actions = actions,
+            doubleClickEmptySpaceToNavigateUp = doubleClickBlankNavigateUp,
+            isTrash = model.isTrash,
+        )
         return
     }
     val selection = remember { PaneRubberBandState() }
@@ -929,11 +937,13 @@ private fun ReadyPaneEntries(
  *
  * @param actions 文件内容交互回调。
  * @param doubleClickEmptySpaceToNavigateUp 是否启用双击空白返回上级目录。
+ * @param isTrash 当前位置是否为回收站。
  */
 @Composable
 private fun EmptyPaneEntries(
     actions: PaneEntriesActions,
     doubleClickEmptySpaceToNavigateUp: Boolean = true,
+    isTrash: Boolean = false,
 ) {
     val doubleClickEnabledState = rememberUpdatedState(doubleClickEmptySpaceToNavigateUp)
     Box(
@@ -967,22 +977,37 @@ private fun EmptyPaneEntries(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Icon(
-                key = AllIconsKeys.Nodes.Folder,
-                contentDescription = null,
-                modifier = Modifier.alpha(EMPTY_STATE_ICON_ALPHA),
-            )
-            Text(
-                text = stringResource(Res.string.label_empty_directory),
-                color = LocalOnyxPalette.current.mutedForeground,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                text = stringResource(Res.string.label_empty_directory_hint),
-                color = LocalOnyxPalette.current.disabledForeground,
-                fontSize = 11.sp,
-            )
+            if (isTrash) {
+                Icon(
+                    key = AllIconsKeys.General.Delete,
+                    contentDescription = null,
+                    modifier = Modifier.alpha(EMPTY_STATE_ICON_ALPHA),
+                )
+                Text(
+                    text = stringResource(Res.string.label_trash_empty_view),
+                    modifier = Modifier.testTag("pane-trash-empty-state"),
+                    color = LocalOnyxPalette.current.mutedForeground,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            } else {
+                Icon(
+                    key = AllIconsKeys.Nodes.Folder,
+                    contentDescription = null,
+                    modifier = Modifier.alpha(EMPTY_STATE_ICON_ALPHA),
+                )
+                Text(
+                    text = stringResource(Res.string.label_empty_directory),
+                    color = LocalOnyxPalette.current.mutedForeground,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = stringResource(Res.string.label_empty_directory_hint),
+                    color = LocalOnyxPalette.current.disabledForeground,
+                    fontSize = 11.sp,
+                )
+            }
         }
     }
 }

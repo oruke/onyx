@@ -143,6 +143,7 @@ private fun PaneSurfaceRuntime.toPaneEntriesViewModel(): PaneEntriesViewModel {
         fileLabels = model.fileLabels,
         tabId = state.activeTabId,
         browserState = state.activeTabState.browserState,
+        isTrash = isTrashLocation(state.location),
     )
 }
 
