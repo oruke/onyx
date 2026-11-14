@@ -446,7 +446,7 @@ private class StartupSplashCanvas(
         if (pulseProgress >= 0f) {
             val pulseRadius = ORBIT_RADIUS + pulseProgress * PULSE_EXPAND_SPAN
             val pulseAlpha = ((1f - pulseProgress) * 190f).toInt().coerceIn(0, 255)
-            g2.color = Color(0x4C, 0x9A, 0xFF, pulseAlpha)
+            g2.color = Color(0x38, 0xBD, 0xF8, pulseAlpha)
             g2.stroke = BasicStroke(2.2f * (1f - pulseProgress * 0.5f))
             g2.drawOval(
                 (centerX - pulseRadius).toInt(),
@@ -641,9 +641,9 @@ private class StartupSplashCanvas(
         const val SHADOW_BASE_ALPHA = 38
 
         const val ORBIT_CENTER_OFFSET_Y = 66f
-        const val ORBIT_RADIUS = 36f
-        const val GLOW_BASE_RADIUS = 56f
-        const val LOGO_SIZE = 42
+        const val ORBIT_RADIUS = 38f
+        const val GLOW_BASE_RADIUS = 58f
+        const val LOGO_SIZE = 48
         const val HEXAGON_VERTICES = 6
 
         const val FULL_CIRCLE_DEGREES = 360.0
@@ -679,17 +679,17 @@ private class StartupSplashCanvas(
         val CARD_BORDER_TOP_COLOR = Color(0x33, 0x3D, 0x56, 210)
         val CARD_BORDER_BOTTOM_COLOR = Color(0x1F, 0x25, 0x36, 180)
 
-        val GLOW_CORE_COLOR = Color(0x4C, 0x9A, 0xFF, 64)
-        val GLOW_MID_COLOR = Color(0x7C, 0x5C, 0xFF, 24)
+        val GLOW_CORE_COLOR = Color(0x38, 0xBD, 0xF8, 68)
+        val GLOW_MID_COLOR = Color(0x7D, 0xD3, 0xFC, 26)
         val GLOW_OUTER_COLOR = Color(0x13, 0x17, 0x22, 0)
 
-        val ORBIT_TRACK_COLOR = Color(0x22, 0x29, 0x3A)
-        val PRIMARY_ACCENT_COLOR = Color(0x4C, 0x9A, 0xFF)
-        val SECONDARY_ACCENT_COLOR = Color(0x8B, 0x6B, 0xFF)
+        val ORBIT_TRACK_COLOR = Color(0x22, 0x2B, 0x3C)
+        val PRIMARY_ACCENT_COLOR = Color(0x38, 0xBD, 0xF8)
+        val SECONDARY_ACCENT_COLOR = Color(0xBA, 0xE6, 0xFD)
 
         val TITLE_TEXT_COLOR = Color(0xF2, 0xF6, 0xFC)
-        val VERSION_PILL_BG_COLOR = Color(0x1E, 0x26, 0x38)
-        val VERSION_TEXT_COLOR = Color(0x7D, 0xA2, 0xFF)
+        val VERSION_PILL_BG_COLOR = Color(0x19, 0x26, 0x38)
+        val VERSION_TEXT_COLOR = Color(0x7D, 0xD3, 0xFC)
         val STATUS_TEXT_COLOR = Color(0x94, 0xA3, 0xB8)
         val REPEATED_STATUS_TEXT_COLOR = Color(0xBF, 0xDB, 0xFE)
 

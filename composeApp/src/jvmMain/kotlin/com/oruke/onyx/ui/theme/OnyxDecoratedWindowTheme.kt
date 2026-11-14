@@ -4,15 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.remember
-import androidx.compose.ui.graphics.painter.BitmapPainter
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.toComposeImageBitmap
-import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.core.model.OnyxSettings
-import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.onyx_logo
-import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.intui.standalone.theme.IntUiTheme
 import org.jetbrains.jewel.intui.standalone.theme.darkThemeDefinition
@@ -101,19 +93,4 @@ internal fun OnyxDecoratedWindowTheme(
     IntUiTheme(theme = windowTheme, styling = windowStyling) {
         CompositionLocalProvider(LocalOnyxSettings provides settings, content = content)
     }
-}
-
-/**
- * 优先复用启动预加载缓存的 Onyx 窗口图标 [Painter]，保证主窗口、独立工具窗口与模态对话框图标一致且零闪烁。
- *
- * @return 应用窗口图标绘制器。
- */
-@Composable
-internal fun rememberOnyxWindowIconPainter(): Painter {
-    val preloadedPainter = remember {
-        runCatching {
-            OnyxStartupPreloader.peekLogoImage()?.toComposeImageBitmap()?.let(::BitmapPainter)
-        }.getOrNull()
-    }
-    return preloadedPainter ?: painterResource(Res.drawable.onyx_logo)
 }

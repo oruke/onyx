@@ -35,8 +35,11 @@ package() {
     # Desktop Entry
     install -Dm644 "packaging/arch/onyx.desktop" "${pkgdir}/usr/share/applications/onyx.desktop"
 
-    # 图标（如果有）
+    # 图标（位图与可缩放矢量图）
     if [ -f "packaging/arch/onyx.png" ]; then
         install -Dm644 "packaging/arch/onyx.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/onyx.png"
+    fi
+    if [ -f "packaging/onyx_logo.svg" ]; then
+        install -Dm644 "packaging/onyx_logo.svg" "${pkgdir}/usr/share/icons/hicolor/scalable/apps/onyx.svg"
     fi
 }

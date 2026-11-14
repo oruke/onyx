@@ -1,6 +1,5 @@
 package com.oruke.onyx
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -8,8 +7,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowState
@@ -34,6 +31,7 @@ import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.SearchPanelPresentation
+import com.oruke.onyx.ui.TitleBarBrandTitle
 import com.oruke.onyx.ui.searchWindowActions
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
@@ -44,7 +42,6 @@ import kotlinx.coroutines.flow.StateFlow
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.window_image_viewer_title
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.TitleBar
 import org.koin.compose.getKoin
@@ -193,9 +190,9 @@ private fun ImageViewerWindow(
         BindWindowsTaskbarIdentity(window)
         window.minimumSize = Dimension(IMAGE_VIEWER_WINDOW_MIN_WIDTH, IMAGE_VIEWER_WINDOW_MIN_HEIGHT)
         TitleBar { _ ->
-            Text(
-                text = viewerTitle,
-                modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
+            TitleBarBrandTitle(
+                title = viewerTitle,
+                startPadding = 12.dp,
             )
         }
         OnyxLocaleEnvironment(resourceLocale) {

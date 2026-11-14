@@ -1,19 +1,23 @@
 package com.oruke.onyx.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.RootComponent
@@ -23,6 +27,7 @@ import com.oruke.onyx.core.model.PaneOperationFeedback
 import com.oruke.onyx.core.model.PaneOperationFeedbackKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.orEmpty
+import com.oruke.onyx.ui.theme.rememberOnyxTitleBarIconPainter
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
@@ -31,8 +36,8 @@ import onyx.composeapp.generated.resources.action_layout_dual_vertical
 import onyx.composeapp.generated.resources.action_layout_single
 import onyx.composeapp.generated.resources.action_open_settings
 import onyx.composeapp.generated.resources.action_search
-import onyx.composeapp.generated.resources.action_toggle_sidebar
 import onyx.composeapp.generated.resources.action_toggle_preview_pane
+import onyx.composeapp.generated.resources.action_toggle_sidebar
 import onyx.composeapp.generated.resources.app_name
 import onyx.composeapp.generated.resources.label_feedback_copy_path_failed
 import onyx.composeapp.generated.resources.label_feedback_create_directory_failed
@@ -47,8 +52,15 @@ import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.window.TitleBarScope
 
+/** 沉浸式标题栏左侧应用品牌图标的标准尺寸。 */
+private const val TITLE_BAR_BRAND_ICON_SIZE_DP = 16
+
+/** 沉浸式标题栏品牌图标与窗口标题文字之间的间距。 */
+private const val TITLE_BAR_BRAND_ICON_GAP_DP = 7
+
 /**
  * 将操作失败映射为本地化文字，并使用公共面板反馈条提供关闭入口。
+ *
  * @param feedback 统一操作失败模型。
  * @param onDismiss 关闭本次临时反馈。
  */
@@ -97,6 +109,47 @@ internal fun OperationFeedbackBar(
 
 // ── Title bar ───────────────────────────────────────────────────────────────
 
+/**
+ * 在沉浸式标题栏起始位置渲染统一的应用品牌 Logo 与窗口标题，自动避让各平台原生窗口控制区。
+ *
+ * @param title 标题栏显示的窗口标题。
+ * @param startPadding 起始侧内边距。
+ * @param fontSize 标题文字字号。
+ * @param fontWeight 标题文字字重。
+ * @param textColor 标题文字颜色，默认继承 Jewel 标题栏样式内容色。
+ */
+@Composable
+internal fun TitleBarScope.TitleBarBrandTitle(
+    title: String,
+    startPadding: Dp = 10.dp,
+    fontSize: TextUnit = 12.sp,
+    fontWeight: FontWeight = FontWeight.Medium,
+    textColor: Color = Color.Unspecified,
+) {
+    val brandPainter = rememberOnyxTitleBarIconPainter(TITLE_BAR_BRAND_ICON_SIZE_DP.dp)
+    Row(
+        modifier = Modifier
+            .align(Alignment.Start)
+            .padding(start = startPadding),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(TITLE_BAR_BRAND_ICON_GAP_DP.dp),
+    ) {
+        Image(
+            painter = brandPainter,
+            contentDescription = null,
+            modifier = Modifier.size(TITLE_BAR_BRAND_ICON_SIZE_DP.dp),
+        )
+        Text(
+            text = title,
+            fontWeight = fontWeight,
+            fontSize = fontSize,
+            color = textColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 internal fun TitleBarScope.TitleBarContent(
     rootComponent: RootComponent,
@@ -113,19 +166,14 @@ internal fun TitleBarScope.TitleBarContent(
         rootComponent.dispatch(intent)
     }
 
-    // 左侧：应用名称 — 使用 TitleBarScope.align(Start) 自动避让系统控件
-    Row(
-        modifier = Modifier.align(Alignment.Start)
-            .padding(start = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(Res.string.app_name),
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 13.sp,
-            color = LocalOnyxPalette.current.foreground,
-        )
-    }
+    // 左侧：应用品牌图标与名称 — 使用 TitleBarScope.align(Start) 自动避让系统控件
+    TitleBarBrandTitle(
+        title = stringResource(Res.string.app_name),
+        startPadding = 10.dp,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
+        textColor = LocalOnyxPalette.current.foreground,
+    )
 
     // 中间：缩放滑块 — 使用 TitleBarScope.align(Center)
     Row(
@@ -225,7 +273,7 @@ internal fun TitleBarScope.TitleBarContent(
         ) {
             Icon(
                 key = AllIconsKeys.General.GearPlain,
-                contentDescription = stringResource(Res.string.action_open_settings)
+                contentDescription = stringResource(Res.string.action_open_settings),
             )
         }
         TaskCenterButton(rootComponent.taskCenter)

@@ -123,6 +123,7 @@ compose.desktop {
             }
 
             linux {
+                iconFile.set(project.file("src/commonMain/composeResources/drawable/onyx_logo.png"))
                 shortcut = true
             }
         }

@@ -59,6 +59,7 @@ import com.oruke.onyx.ui.theme.LocalOnyxSettings
 import com.oruke.onyx.ui.theme.OnyxPalette
 import com.oruke.onyx.ui.theme.OnyxWindowTheme
 import com.oruke.onyx.ui.theme.rememberOnyxPalette
+import com.oruke.onyx.ui.theme.rememberOnyxTitleBarIconPainter
 import com.oruke.onyx.ui.theme.rememberOnyxWindowIconPainter
 import com.oruke.onyx.ui.theme.resolveEffectiveDarkTheme
 import java.awt.Dimension
@@ -177,7 +178,7 @@ internal fun OnyxDialogWindow(
             settings = settings,
             palette = palette,
             isDark = isDark,
-            windowIcon = windowIcon,
+            windowIcon = rememberOnyxTitleBarIconPainter(DIALOG_TITLE_BAR_ICON_SIZE_DP.dp),
             windowActive = windowActive,
             drawOuterBorder = customTitleBar == null,
             showCustomCloseButton = customTitleBar == null,
@@ -221,7 +222,7 @@ internal fun OnyxDialogSurface(
         themeColors = settings.themeColors,
     ),
     isDark: Boolean = resolveEffectiveDarkTheme(settings.themeMode, isSystemInDarkTheme()),
-    windowIcon: Painter = rememberOnyxWindowIconPainter(),
+    windowIcon: Painter = rememberOnyxTitleBarIconPainter(DIALOG_TITLE_BAR_ICON_SIZE_DP.dp),
     windowActive: Boolean = true,
     drawOuterBorder: Boolean = false,
     showCustomCloseButton: Boolean = false,
@@ -306,9 +307,9 @@ private fun OnyxDialogTitleBar(
                 Image(
                     painter = windowIcon,
                     contentDescription = null,
-                    modifier = Modifier.size(14.dp),
+                    modifier = Modifier.size(DIALOG_TITLE_BAR_ICON_SIZE_DP.dp),
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(DIALOG_TITLE_BAR_ICON_GAP_DP.dp))
                 Text(
                     text = title,
                     fontSize = 12.sp,
@@ -426,6 +427,8 @@ private fun Modifier.undecoratedWindowDragGesture(window: Window): Modifier =
     }
 
 private const val DIALOG_TITLE_BAR_HEIGHT_DP = 34f
+private const val DIALOG_TITLE_BAR_ICON_SIZE_DP = 16
+private const val DIALOG_TITLE_BAR_ICON_GAP_DP = 7
 private const val DIALOG_CLOSE_BUTTON_WIDTH_DP = 40
 private const val DARK_CONTROLS_LUMINANCE_THRESHOLD = 0.5f
 private const val UI_SCALE_PERCENT_BASE = 100.0

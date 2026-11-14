@@ -1,12 +1,9 @@
 package com.oruke.onyx
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -26,6 +23,7 @@ import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.SearchPanel
 import com.oruke.onyx.ui.SearchPanelActions
 import com.oruke.onyx.ui.SearchPanelPresentation
+import com.oruke.onyx.ui.TitleBarBrandTitle
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.OnyxWindowTheme
@@ -35,7 +33,6 @@ import kotlinx.coroutines.flow.StateFlow
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_search_title
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.TitleBar
 
@@ -127,9 +124,9 @@ internal fun SearchWindow(
                     window.activateFromUserRequest(windowState)
                 }
                 TitleBar { _ ->
-                    Text(
-                        stringResource(Res.string.label_search_title),
-                        modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
+                    TitleBarBrandTitle(
+                        title = stringResource(Res.string.label_search_title),
+                        startPadding = 12.dp,
                     )
                 }
                 OnyxWindowTheme(settings) {

@@ -1,0 +1,306 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Front sky-cyan folder pocket shape -->
+    <path id="frontPocketShape"
+          d="M 36 314
+             Q 36 278 72 278
+             L 192 278
+             Q 212 278 226 290
+             L 235 297
+             Q 245 305 256 305
+             Q 267 305 277 297
+             L 286 290
+             Q 300 278 320 278
+             L 440 278
+             Q 476 278 476 314
+             L 476 444
+             Q 476 488 432 488
+             L 80 488
+             Q 36 488 36 444 Z" />
+
+    <clipPath id="frontPocketClip">
+      <use href="#frontPocketShape" />
+    </clipPath>
+
+    <!-- Back folder shape -->
+    <path id="backFolderShape"
+          d="M 48 190
+             Q 48 160 78 160
+             L 178 160
+             Q 198 160 212 176
+             L 228 194
+             L 434 194
+             Q 464 194 464 224
+             L 464 444
+             Q 464 488 420 488
+             L 92 488
+             Q 48 488 48 444 Z" />
+
+    <!-- Cat head + ears + fluffy cheeks smooth anime silhouette -->
+    <path id="catHeadShape"
+          d="M 116 202
+             C 98 148, 94 96, 104 64
+             C 108 52, 122 50, 133 60
+             C 160 83, 184 109, 204 131
+             Q 230 120, 256 120
+             Q 282 120, 308 131
+             C 328 109, 352 83, 379 60
+             C 390 50, 404 52, 408 64
+             C 418 96, 414 148, 396 202
+             C 414 224, 420 250, 408 273
+             L 424 268
+             C 416 285, 402 296, 385 300
+             C 362 312, 330 316, 256 316
+             C 182 316, 150 312, 127 300
+             C 110 296, 96 285, 88 268
+             L 104 273
+             C 92 250, 98 224, 116 202 Z" />
+
+    <clipPath id="catHeadClip">
+      <use href="#catHeadShape" />
+    </clipPath>
+
+    <!-- Large Chibi Anime Jewel Eye Clips -->
+    <clipPath id="leftIrisClip">
+      <rect x="152" y="193" width="70" height="72" rx="33" />
+    </clipPath>
+    <clipPath id="rightIrisClip">
+      <rect x="290" y="193" width="70" height="72" rx="33" />
+    </clipPath>
+
+    <!-- Body Sticker Silhouette (Folder + Cards + Cat + Ahoge) -->
+    <g id="bodySilhouette">
+      <use href="#backFolderShape" />
+      <rect x="64" y="190" width="120" height="118" rx="16" transform="rotate(-6 124 249)" />
+      <rect x="328" y="196" width="118" height="114" rx="16" transform="rotate(5 387 253)" />
+      <use href="#catHeadShape" />
+      <path d="M 248 125 C 242 97, 260 81, 280 87 C 266 98, 264 111, 266 125 Z" />
+      <use href="#frontPocketShape" />
+    </g>
+  </defs>
+
+  <!-- 1A. GENUINELY HOLLOW BLUE-ARCHIVE HALO STICKER BACKING -->
+  <g transform="translate(256 38) rotate(-5.5)">
+    <!-- Outer Sky-Azure Keyline around Hollow Ring -->
+    <ellipse cx="0" cy="0" rx="86" ry="14.5" fill="none" stroke="#0EA5E9" stroke-width="25" />
+    <rect x="-102" y="-7" width="24" height="14" rx="7" fill="#0EA5E9" />
+    <rect x="78" y="-7" width="24" height="14" rx="7" fill="#0EA5E9" />
+    <circle cx="0" cy="-14.5" r="10" fill="#0EA5E9" />
+
+    <!-- Pure White Sticker Rim around Hollow Ring -->
+    <ellipse cx="0" cy="0" rx="86" ry="14.5" fill="none" stroke="#FFFFFF" stroke-width="18" />
+    <rect x="-99" y="-5" width="20" height="10" rx="5" fill="#FFFFFF" />
+    <rect x="79" y="-5" width="20" height="10" rx="5" fill="#FFFFFF" />
+    <circle cx="0" cy="-14.5" r="7" fill="#FFFFFF" />
+  </g>
+
+  <!-- 1B. BODY SINGLE STICKER RIM (Sky-Cyan Outer Edge + Crisp Pure White Rim) -->
+  <use href="#bodySilhouette" fill="#0EA5E9" stroke="#0EA5E9" stroke-width="26" stroke-linejoin="round" stroke-linecap="round" />
+  <use href="#bodySilhouette" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="18" stroke-linejoin="round" stroke-linecap="round" />
+
+  <!-- 2. HOLLOW BLUE ARCHIVE TILTED CYAN TECH-HALO FOREGROUND -->
+  <g transform="translate(256 38) rotate(-5.5)">
+    <ellipse cx="0" cy="0" rx="86" ry="14.5" fill="none" stroke="#0EA5E9" stroke-width="10" />
+    <ellipse cx="0" cy="0" rx="86" ry="14.5" fill="none" stroke="#38BDF8" stroke-width="6" />
+    <path d="M -68 -5.5 A 86 14.5 0 0 1 66 -5.5" fill="none" stroke="#FFFFFF" stroke-width="2.8" stroke-linecap="round" />
+    <rect x="-96" y="-3" width="14" height="6" rx="3" fill="#0EA5E9" />
+    <rect x="82" y="-3" width="14" height="6" rx="3" fill="#38BDF8" />
+    <path d="M 0 -22.5 Q 1.5 -15.5 8.5 -14.5 Q 1.5 -13.5 0 -6.5 Q -1.5 -13.5 -8.5 -14.5 Q -1.5 -15.5 0 -22.5 Z" fill="#0284C7" />
+  </g>
+
+  <!-- 3. BACK FOLDER TAB & BODY (Rich Clear Cerulean) -->
+  <use href="#backFolderShape" fill="#0284C7" />
+  <path d="M 48 190
+           Q 48 160 78 160
+           L 178 160
+           Q 198 160 212 176
+           L 228 194
+           L 434 194
+           Q 464 194 464 224
+           L 464 238
+           L 48 238 Z"
+        fill="#0EA5E9" />
+
+  <!-- 4. DUAL-PANE DOCUMENT CARDS (Left Pure White, Right Ice-Sky) -->
+  <g transform="rotate(-6 124 249)">
+    <rect x="64" y="190" width="120" height="118" rx="16" fill="#FFFFFF" stroke="#7DD3FC" stroke-width="3.5" />
+    <rect x="80" y="208" width="52" height="10" rx="5" fill="#38BDF8" />
+    <rect x="80" y="226" width="74" height="7" rx="3.5" fill="#BAE6FD" />
+    <rect x="80" y="240" width="58" height="7" rx="3.5" fill="#E0F2FE" />
+  </g>
+  <g transform="rotate(5 387 253)">
+    <rect x="328" y="196" width="118" height="114" rx="16" fill="#E6F8FF" stroke="#38BDF8" stroke-width="3.5" />
+    <rect x="362" y="214" width="50" height="10" rx="5" fill="#0EA5E9" />
+    <rect x="344" y="232" width="70" height="7" rx="3.5" fill="#7DD3FC" />
+    <rect x="356" y="246" width="58" height="7" rx="3.5" fill="#BAE6FD" />
+  </g>
+
+  <!-- 5. ONYX BLACK CAT MASCOT -->
+  <!-- Cute Ahoge cowlick -->
+  <path d="M 248 126 C 242 97, 260 81, 280 87 C 266 98, 264 111, 266 126 Z" fill="#1A2336" />
+
+  <g clip-path="url(#catHeadClip)">
+    <!-- Rich Navy-Obsidian Fur Base -->
+    <rect x="78" y="42" width="356" height="282" fill="#172033" />
+
+    <!-- Smooth Top Crown Lighting -->
+    <path d="M 88 48 L 424 48 L 424 184 Q 256 212 88 184 Z" fill="#202C46" />
+
+    <!-- Left Inner Ear (Refreshing Blue-Archive Ice-Cyan) -->
+    <path d="M 125 188 C 114 146, 111 106, 117 80 C 142 100, 167 124, 187 148 Z" fill="#38BDF8" />
+    <path d="M 125 188 C 118 155, 116 122, 119 96 C 139 114, 156 133, 171 153 Z" fill="#BAE6FD" />
+    <path d="M 116 194 Q 142 170 157 180 Q 171 162 195 148 L 198 202 L 116 202 Z" fill="#172033" />
+
+    <!-- Right Inner Ear -->
+    <path d="M 387 188 C 398 146, 401 106, 395 80 C 370 100, 345 124, 325 148 Z" fill="#38BDF8" />
+    <path d="M 387 188 C 394 155, 396 122, 393 96 C 373 114, 356 133, 341 153 Z" fill="#BAE6FD" />
+    <path d="M 396 194 Q 370 170 355 180 Q 341 162 317 148 L 314 202 L 396 202 Z" fill="#172033" />
+
+    <!-- Seamless Lower Face Base -->
+    <ellipse cx="256" cy="242" rx="158" ry="82" fill="#172033" />
+
+    <!-- Signature Japanese Anime Hair Gloss Halo ("天使の輪") -->
+    <path d="M 190 153
+             Q 256 137 322 153
+             L 313 164
+             L 298 155
+             L 288 163
+             Q 256 153 224 163
+             L 214 155
+             L 199 164 Z"
+          fill="#7DD3FC" opacity="0.34" />
+
+    <!-- Cute Layered Forehead Bangs Tuft -->
+    <path d="M 223 119 L 242 165 L 256 147 L 270 165 L 289 119 Z" fill="#121929" />
+
+    <!-- Tiny Sky-Cyan Onyx Crystal Hairpin -->
+    <g transform="translate(324 164) rotate(18)">
+      <polygon points="0,-12 8.5,0 0,12 -8.5,0" fill="#FFFFFF" />
+      <polygon points="0,-7.5 5.2,0 0,7.5 -5.2,0" fill="#38BDF8" />
+    </g>
+  </g>
+
+  <use href="#catHeadShape" fill="none" stroke="#0F172A" stroke-width="4" stroke-linejoin="round" />
+
+  <!-- 6. EXPRESSIVE CHIBI ANIME JEWEL EYES (Slightly larger & brighter for 16px!) -->
+  <rect x="150" y="193" width="74" height="72" rx="35" fill="#F8FAFC" />
+  <rect x="288" y="193" width="74" height="72" rx="35" fill="#F8FAFC" />
+
+  <!-- Left Jewel Iris -->
+  <g clip-path="url(#leftIrisClip)">
+    <rect x="152" y="193" width="70" height="72" rx="33" fill="#0284C7" />
+    <path d="M 146 188 L 228 188 L 228 223 Q 187 232 146 223 Z" fill="#075985" />
+    <ellipse cx="187" cy="238" rx="33" ry="26" fill="#38BDF8" />
+    <ellipse cx="187" cy="253" rx="26" ry="15" fill="#BAE6FD" />
+    <ellipse cx="187" cy="257" rx="17" ry="8.5" fill="#F0F9FF" />
+    <ellipse cx="189" cy="229" rx="10.5" ry="16.5" fill="#082F49" />
+    <ellipse cx="189" cy="238" rx="5.5" ry="5.5" fill="#38BDF8" opacity="0.6" />
+    <ellipse cx="172" cy="211" rx="12.5" ry="11" transform="rotate(-15 172 211)" fill="#FFFFFF" />
+    <circle cx="204" cy="244" r="5.6" fill="#FFFFFF" />
+  </g>
+  <path d="M 145 219
+           C 151 191, 176 185, 207 191
+           C 218 193, 225 201, 227 211
+           C 217 202, 202 197, 185 198
+           C 167 199, 155 208, 149 223 Z"
+        fill="#0B1120" />
+  <path d="M 148 209 L 136 201 L 152 201 Z" fill="#0B1120" />
+
+  <!-- Right Jewel Iris -->
+  <g clip-path="url(#rightIrisClip)">
+    <rect x="290" y="193" width="70" height="72" rx="33" fill="#0284C7" />
+    <path d="M 284 188 L 366 188 L 366 223 Q 325 232 284 223 Z" fill="#075985" />
+    <ellipse cx="325" cy="238" rx="33" ry="26" fill="#38BDF8" />
+    <ellipse cx="325" cy="253" rx="26" ry="15" fill="#BAE6FD" />
+    <ellipse cx="325" cy="257" rx="17" ry="8.5" fill="#F0F9FF" />
+    <ellipse cx="323" cy="229" rx="10.5" ry="16.5" fill="#082F49" />
+    <ellipse cx="323" cy="238" rx="5.5" ry="5.5" fill="#38BDF8" opacity="0.6" />
+    <ellipse cx="308" cy="211" rx="12.5" ry="11" transform="rotate(-15 308 211)" fill="#FFFFFF" />
+    <circle cx="340" cy="244" r="5.6" fill="#FFFFFF" />
+  </g>
+  <path d="M 367 219
+           C 361 191, 336 185, 305 191
+           C 294 193, 287 201, 285 211
+           C 295 202, 310 197, 327 198
+           C 345 199, 357 208, 363 223 Z"
+        fill="#0B1120" />
+  <path d="M 364 209 L 376 201 L 360 201 Z" fill="#0B1120" />
+
+  <!-- Cute Chibi Eyebrow Beans -->
+  <ellipse cx="207" cy="178" rx="8.5" ry="4.4" transform="rotate(-8 207 178)" fill="#BAE6FD" />
+  <ellipse cx="305" cy="178" rx="8.5" ry="4.4" transform="rotate(8 305 178)" fill="#BAE6FD" />
+
+  <!-- Soft Sakura-Coral Blush -->
+  <g opacity="0.7">
+    <ellipse cx="136" cy="256" rx="17.5" ry="9" fill="#FB7185" />
+    <ellipse cx="376" cy="256" rx="17.5" ry="9" fill="#FB7185" />
+  </g>
+
+  <!-- Tiny Sky Nose + Happy "ω" Cat Mouth + Fang -->
+  <path d="M 250 245 Q 256 241 262 245 Q 259 252 256 252 Q 253 252 250 245 Z" fill="#7DD3FC" />
+  <path d="M 235 258 Q 245.5 271 256 257 Q 266.5 271 277 258"
+        fill="none" stroke="#FFFFFF" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round" />
+  <polygon points="268,263 275,260 271,271" fill="#FFFFFF" />
+
+  <!-- 7. FRONT FLAT CEL-SHADED SKY-CYAN FOLDER POCKET -->
+  <g clip-path="url(#frontPocketClip)">
+    <rect x="34" y="274" width="444" height="218" fill="#29B6F6" />
+    <polygon points="34,274 348,274 198,492 34,492" fill="#5CE1FF" opacity="0.62" />
+    <polygon points="306,274 478,274 478,492 178,492" fill="#0284C7" opacity="0.34" />
+    <path d="M 36 289
+             L 192 289
+             Q 212 289 226 301
+             L 235 308
+             Q 245 316 256 316
+             Q 267 316 277 308
+             L 286 301
+             Q 300 289 320 289
+             L 476 289
+             L 476 274
+             L 36 274 Z"
+          fill="#FFFFFF" opacity="0.96" />
+  </g>
+  <path d="M 38 312
+           Q 38 278 72 278
+           L 192 278
+           Q 212 278 226 290
+           L 235 297
+           Q 245 305 256 305
+           Q 267 305 277 297
+           L 286 290
+           Q 300 278 320 278
+           L 440 278
+           Q 474 278 474 312"
+        fill="none" stroke="#0EA5E9" stroke-width="3.5" stroke-linecap="round" />
+
+  <!-- 8. CRISP PURE-WHITE DUAL-PANE EMBLEM + ANIME 4-POINT STAR ON FOLDER -->
+  <g transform="translate(256 391)">
+    <rect x="-54" y="-30" width="47" height="60" rx="12" fill="#FFFFFF" />
+    <rect x="7" y="-30" width="47" height="60" rx="12" fill="#FFFFFF" />
+    <rect x="-41" y="-14" width="21" height="7" rx="3.5" fill="#0EA5E9" />
+    <rect x="-41" y="0" width="21" height="7" rx="3.5" fill="#38BDF8" />
+    <rect x="-41" y="14" width="14" height="7" rx="3.5" fill="#7DD3FC" />
+    <path d="M 30.5 -16 Q 32.5 -2 46.5 0 Q 32.5 2 30.5 16 Q 28.5 2 14.5 0 Q 28.5 -2 30.5 -16 Z" fill="#0EA5E9" />
+  </g>
+
+  <!-- Schale-style clean pill & sparkles -->
+  <rect x="72" y="446" width="48" height="10" rx="5" fill="#FFFFFF" opacity="0.9" />
+  <circle cx="134" cy="451" r="5" fill="#FFFFFF" opacity="0.9" />
+
+  <path d="M 420 328 Q 422.2 344 438 346 Q 422.2 348 420 364 Q 417.8 348 402 346 Q 417.8 344 420 328 Z" fill="#FFFFFF" />
+  <path d="M 392 361 Q 393.2 368.8 401 370 Q 393.2 371.2 392 379 Q 390.8 371.2 383 370 Q 390.8 368.8 392 361 Z" fill="#E0F7FF" />
+
+  <!-- 9. TWO ADORABLE PAWS GRIPPING FOLDER EDGE -->
+  <g transform="translate(146 288)">
+    <ellipse cx="0" cy="0" rx="31" ry="22.5" fill="#FFFFFF" />
+    <ellipse cx="0" cy="0" rx="26" ry="18" fill="#172033" />
+    <line x1="-8.5" y1="4" x2="-8.5" y2="15.5" stroke="#7DD3FC" stroke-width="3.4" stroke-linecap="round" />
+    <line x1="8.5" y1="4" x2="8.5" y2="15.5" stroke="#7DD3FC" stroke-width="3.4" stroke-linecap="round" />
+  </g>
+  <g transform="translate(366 288)">
+    <ellipse cx="0" cy="0" rx="31" ry="22.5" fill="#FFFFFF" />
+    <ellipse cx="0" cy="0" rx="26" ry="18" fill="#172033" />
+    <line x1="-8.5" y1="4" x2="-8.5" y2="15.5" stroke="#7DD3FC" stroke-width="3.4" stroke-linecap="round" />
+    <line x1="8.5" y1="4" x2="8.5" y2="15.5" stroke="#7DD3FC" stroke-width="3.4" stroke-linecap="round" />
+  </g>
+</svg>

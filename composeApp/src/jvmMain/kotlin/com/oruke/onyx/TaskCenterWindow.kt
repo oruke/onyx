@@ -1,6 +1,5 @@
 package com.oruke.onyx
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -10,7 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.input.key.Key
@@ -38,6 +36,7 @@ import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.TaskCenterContent
+import com.oruke.onyx.ui.TitleBarBrandTitle
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.OnyxWindowTheme
@@ -50,7 +49,6 @@ import kotlinx.coroutines.flow.StateFlow
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_task_center
 import org.jetbrains.compose.resources.stringResource
-import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.window.DecoratedWindow
 import org.jetbrains.jewel.window.TitleBar
 
@@ -139,9 +137,9 @@ internal fun TaskCenterWindow(
                     previousFocusedWindow = previousFocusedWindow,
                 )
                 TitleBar { _ ->
-                    Text(
-                        stringResource(Res.string.label_task_center),
-                        modifier = Modifier.align(Alignment.Start).padding(start = 12.dp),
+                    TitleBarBrandTitle(
+                        title = stringResource(Res.string.label_task_center),
+                        startPadding = 12.dp,
                     )
                 }
                 if (state.visible) {
