@@ -47,6 +47,7 @@ internal fun GalleryEntriesGrid(
             inlineEdit?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     val entryIds = remember(ready.entries) { ready.entries.map { it.id } }
     val gridState = rememberPaneGridViewport(model, actions, entryIds, createInlineEntry)
+    val canScrollVertically = gridState.canScrollForward || gridState.canScrollBackward
     Box(modifier = Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(model.galleryItemSizeDp.dp),
@@ -64,11 +65,19 @@ internal fun GalleryEntriesGrid(
                 GalleryFileEntry(model, actions, thumbnails, dragActions, selection, entry)
             }
         }
-        VerticalScrollbar(
-            adapter = rememberScrollbarAdapter(gridState),
-            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-        )
-
+        if (canScrollVertically) {
+            VerticalScrollbar(
+                adapter = rememberScrollbarAdapter(gridState),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .fillMaxHeight()
+                    .testTag("pane-vertical-scrollbar-${model.paneId}")
+                    .isolateScrollbarPointerEvents(
+                        onActivate = actions.onActivate,
+                        onDismissContextMenu = actions.onDismissContextMenu,
+                    ),
+            )
+        }
     }
 }
 
@@ -102,10 +111,15 @@ internal fun DetailsEntriesList(
             model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     val entryIds = remember(flattenedEntries) { flattenedEntries.map { it.entry.id } }
     val listState = rememberPaneListViewport(model, actions, entryIds, createInlineEntry, horizontalScrollState)
+    val canScrollHorizontally = horizontalScrollState.canScrollForward || horizontalScrollState.canScrollBackward
+    val canScrollVertically = listState.canScrollForward || listState.canScrollBackward
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(bottom = 12.dp).testTag("pane-entries-${model.paneId}"),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = if (canScrollHorizontally) 10.dp else 0.dp)
+                .testTag("pane-entries-${model.paneId}"),
             contentPadding = PaddingValues(bottom = 4.dp),
             userScrollEnabled = !model.contextMenuVisible,
         ) {
@@ -116,14 +130,33 @@ internal fun DetailsEntriesList(
                 DetailsFileEntry(model, actions, dragActions, selection, horizontalScrollState, index, item)
             }
         }
-        HorizontalScrollbar(
-            adapter = rememberScrollbarAdapter(horizontalScrollState),
-            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
-        )
-        VerticalScrollbar(
-            adapter = rememberScrollbarAdapter(listState),
-            modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
-        )
-
+        if (canScrollHorizontally) {
+            HorizontalScrollbar(
+                adapter = rememberScrollbarAdapter(horizontalScrollState),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(end = if (canScrollVertically) 8.dp else 0.dp)
+                    .testTag("pane-horizontal-scrollbar-${model.paneId}")
+                    .isolateScrollbarPointerEvents(
+                        onActivate = actions.onActivate,
+                        onDismissContextMenu = actions.onDismissContextMenu,
+                    ),
+            )
+        }
+        if (canScrollVertically) {
+            VerticalScrollbar(
+                adapter = rememberScrollbarAdapter(listState),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .fillMaxHeight()
+                    .padding(bottom = if (canScrollHorizontally) 8.dp else 0.dp)
+                    .testTag("pane-vertical-scrollbar-${model.paneId}")
+                    .isolateScrollbarPointerEvents(
+                        onActivate = actions.onActivate,
+                        onDismissContextMenu = actions.onDismissContextMenu,
+                    ),
+            )
+        }
     }
 }

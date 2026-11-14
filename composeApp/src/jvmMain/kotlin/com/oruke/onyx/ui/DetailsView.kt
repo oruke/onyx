@@ -51,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -494,33 +495,51 @@ internal fun DetailsHeader(
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
 ) {
     val density = LocalDensity.current
+    val palette = LocalOnyxPalette.current
+    val headerHeight = LocalOnyxAppearance.current.headerHeight
+    val borderColor = palette.outlineVariant
     val currentOnActivate = rememberUpdatedState(onActivate)
     val visibleColumns = remember(columns, hiddenColumns) { visibleDetailsColumns(columns, hiddenColumns) }
     var showColumnMenu by remember { mutableStateOf(false) }
 
-    Box {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(headerHeight)
+            .background(palette.headerBackground)
+            .drawBehind {
+                val strokePx = 1.dp.toPx()
+                val y = size.height - strokePx / 2f
+                drawLine(
+                    color = borderColor,
+                    start = androidx.compose.ui.geometry.Offset(0f, y),
+                    end = androidx.compose.ui.geometry.Offset(size.width, y),
+                    strokeWidth = strokePx,
+                )
+            }
+            .testTag("pane-details-header")
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { currentOnActivate.value() },
+                    onLongPress = {
+                        currentOnActivate.value()
+                        showColumnMenu = true
+                    },
+                )
+            }
+            .onPointerEvent(PointerEventType.Press) {
+                currentOnActivate.value()
+                // 右键点击打开列可见性菜单
+                if (it.buttons.isSecondaryPressed) {
+                    showColumnMenu = true
+                }
+            },
+    ) {
         Row(
             modifier = Modifier
+                .fillMaxHeight()
                 .horizontalScroll(scrollState)
-                .background(LocalOnyxPalette.current.headerBackground)
-                .height(LocalOnyxAppearance.current.headerHeight)
-                .padding(horizontal = 8.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { currentOnActivate.value() },
-                        onLongPress = {
-                            currentOnActivate.value()
-                            showColumnMenu = true
-                        },
-                    )
-                }
-                .onPointerEvent(PointerEventType.Press) {
-                    currentOnActivate.value()
-                    // 右键点击打开列可见性菜单
-                    if (it.buttons.isSecondaryPressed) {
-                        showColumnMenu = true
-                    }
-                },
+                .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             visibleColumns.forEach { column ->
@@ -915,13 +934,32 @@ private fun ReadyPaneEntries(
     val selection = remember { PaneRubberBandState() }
     val doubleClickSlopPx = with(LocalDensity.current) { ENTRY_DOUBLE_CLICK_SLOP_DP.dp.toPx() }
     val childDragActions = paneChildDragActions(model, actions, selection)
-    Box(
-        modifier = Modifier.fillMaxSize().clipToBounds()
-            .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp, doubleClickSlopPx),
-    ) {
-        Box(modifier = Modifier.fillMaxSize().paneRubberBandTracker(actions, selection))
-        PaneEntriesViews(model, actions, thumbnails, ready, selection, childDragActions)
-        PaneRubberBandOverlay(selection)
+    val horizontalScrollState = rememberPaneHorizontalScroll(model)
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (model.viewMode == ViewMode.DETAILS) {
+            DetailsHeader(
+                columns = model.columns,
+                columnWidths = model.columnWeights,
+                hiddenColumns = model.hiddenColumns,
+                sort = model.sort,
+                onToggleSort = actions.onToggleSort,
+                onResizeColumn = actions.onResizeColumn,
+                onToggleColumnVisibility = actions.onToggleColumnVisibility,
+                onActivate = actions.onActivate,
+                scrollState = horizontalScrollState,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds()
+                .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp, doubleClickSlopPx),
+        ) {
+            Box(modifier = Modifier.fillMaxSize().paneRubberBandTracker(actions, selection))
+            PaneEntriesViewport(model, actions, thumbnails, ready, selection, horizontalScrollState, childDragActions)
+            PaneRubberBandOverlay(selection, model.paneId)
+        }
     }
 }
 
@@ -967,42 +1005,30 @@ private fun paneChildDragActions(
 )
 
 /**
- * 显示详情表头及当前视图模式对应的文件列表。
+ * 显示当前视图模式对应的可滚动文件列表或画廊视口。
  *
  * @param model 文件内容视图状态。
  * @param actions 文件内容交互回调。
  * @param thumbnails 缩略图服务。
  * @param ready 已加载文件列表。
  * @param selection 框选状态。
+ * @param horizontalScrollState 与详情表头共享的横向滚动状态。
  * @param dragActions 子条目拖拽回调。
  */
 @Composable
-private fun PaneEntriesViews(
+private fun PaneEntriesViewport(
     model: PaneEntriesViewModel,
     actions: PaneEntriesActions,
     thumbnails: GalleryThumbnailServices,
     ready: PaneEntriesState.Ready,
     selection: PaneRubberBandState,
+    horizontalScrollState: androidx.compose.foundation.ScrollState,
     dragActions: PaneEntriesChildDragActions,
 ) {
-    val horizontalScrollState = rememberPaneHorizontalScroll(model)
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (model.viewMode == ViewMode.DETAILS) {
-            DetailsHeader(
-                columns = model.columns,
-                columnWidths = model.columnWeights,
-                hiddenColumns = model.hiddenColumns,
-                sort = model.sort,
-                onToggleSort = actions.onToggleSort,
-                onResizeColumn = actions.onResizeColumn,
-                onToggleColumnVisibility = actions.onToggleColumnVisibility,
-                onActivate = actions.onActivate,
-                scrollState = horizontalScrollState,
-            )
-            DetailsEntriesList(model, actions, ready, selection, horizontalScrollState, dragActions)
-        } else {
-            GalleryEntriesGrid(model, actions, thumbnails, ready, selection, dragActions)
-        }
+    if (model.viewMode == ViewMode.DETAILS) {
+        DetailsEntriesList(model, actions, ready, selection, horizontalScrollState, dragActions)
+    } else {
+        GalleryEntriesGrid(model, actions, thumbnails, ready, selection, dragActions)
     }
 }
 
@@ -1286,7 +1312,11 @@ private fun handlePaneSelectionPress(
     actions: PaneEntriesActions,
     selection: PaneRubberBandState,
 ) {
-    if (event.changes.any { it.isConsumed }) return
+    if (event.changes.any { it.isConsumed }) {
+        selection.pendingOrigin = null
+        selection.blankClickController.reset()
+        return
+    }
     val primaryChange = event.changes.firstOrNull() ?: return
     val position = primaryChange.position
     val hitsItem = selection.hitsItem(position)
@@ -1327,7 +1357,14 @@ private fun handlePaneSelectionMove(
     actions: PaneEntriesActions,
     selection: PaneRubberBandState,
 ) {
-    if (selection.fileDragging || event.changes.any { it.isConsumed }) return
+    if (selection.fileDragging) return
+    if (event.changes.any { it.isConsumed }) {
+        if (!selection.active) {
+            selection.pendingOrigin = null
+            selection.blankClickController.reset()
+        }
+        return
+    }
     val position = event.changes.firstOrNull()?.position ?: return
     val origin = selection.pendingOrigin
     if (origin != null && !selection.active) {
@@ -1367,9 +1404,10 @@ private fun handlePaneSelectionRelease(
     doubleClickEmptySpaceToNavigateUp: Boolean = true,
     doubleClickSlopPx: Float = ENTRY_DOUBLE_CLICK_SLOP_DP,
 ) {
+    val consumed = event.changes.any { it.isConsumed }
     val releaseChange = event.changes.firstOrNull()
     val position = releaseChange?.position
-    val blankClick = !selection.active && selection.pendingOrigin != null
+    val blankClick = !consumed && !selection.active && selection.pendingOrigin != null
     val hitsBlankArea = position != null && !selection.hitsItem(position)
     if (blankClick && releaseChange != null && hitsBlankArea) {
         actions.onSelectEntries(emptySet())
@@ -1382,7 +1420,7 @@ private fun handlePaneSelectionRelease(
         if (doubleClickEmptySpaceToNavigateUp && isDoubleClick) {
             actions.onNavigateUp()
         }
-    } else if (blankClick) {
+    } else if (blankClick || consumed) {
         selection.blankClickController.reset()
     }
     selection.pendingOrigin = null
@@ -1421,9 +1459,13 @@ private fun Modifier.paneRubberBandTracker(
  * 绘制当前框选矩形。
  *
  * @param selection 框选状态。
+ * @param paneId 所属面板标识。
  */
 @Composable
-private fun PaneRubberBandOverlay(selection: PaneRubberBandState) {
+private fun PaneRubberBandOverlay(
+    selection: PaneRubberBandState,
+    paneId: PaneId,
+) {
     val start = selection.start ?: return
     val end = selection.end ?: return
     val left = minOf(start.x, end.x)
@@ -1431,7 +1473,9 @@ private fun PaneRubberBandOverlay(selection: PaneRubberBandState) {
     val width = maxOf(start.x, end.x) - left
     val height = maxOf(start.y, end.y) - top
     Box(
-        modifier = Modifier.offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+        modifier = Modifier
+            .testTag("pane-rubber-band-$paneId")
+            .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
             .size(
                 width = with(LocalDensity.current) { width.toDp() },
                 height = with(LocalDensity.current) { height.toDp() },
