@@ -107,11 +107,15 @@ internal fun TaskCenterContent(
                 TaskCenterList(
                     tasks = visibleTasks,
                     listState = listState,
+                    expandedErrorTaskIds = state.expandedErrorTaskIds,
+                    copiedFeedbackKey = state.copiedFeedbackKey,
                     onPauseTask = { dispatch(TaskCenterIntent.Pause(it)) },
                     onResumeTask = { dispatch(TaskCenterIntent.Resume(it)) },
                     onRetryTask = { dispatch(TaskCenterIntent.Retry(it)) },
                     onCancelTask = { dispatch(TaskCenterIntent.Cancel(it)) },
                     onDismissTask = { dispatch(TaskCenterIntent.Dismiss(it)) },
+                    onToggleTaskErrors = { dispatch(TaskCenterIntent.ToggleTaskErrors(it)) },
+                    onCopyErrorText = { key, text -> dispatch(TaskCenterIntent.CopyErrorText(key, text)) },
                 )
             }
         }

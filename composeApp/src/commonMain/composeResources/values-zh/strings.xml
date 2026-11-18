@@ -298,6 +298,13 @@
     <string name="label_task_status_failed">失败</string>
     <string name="label_task_status_cancelled">已取消</string>
     <string name="label_task_errors_count">%1$d 个错误</string>
+    <string name="action_task_expand_errors">展开全部 (%1$d)</string>
+    <string name="action_task_collapse_errors">收起</string>
+    <string name="label_task_more_errors_expand">还有 %1$d 个错误，点击展开全部</string>
+    <string name="label_task_error_reason">原因：%1$s</string>
+    <string name="action_copy_all_errors">复制全部</string>
+    <string name="action_copy_error_file_name">复制文件名</string>
+    <string name="label_task_copied_feedback">已复制</string>
     <string name="label_task_overall_progress">总进度</string>
     <string name="label_task_recent">最近任务</string>
     <string name="label_task_running_count">%1$d 个运行中</string>

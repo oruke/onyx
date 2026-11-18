@@ -104,6 +104,7 @@ internal data class TooltipRequest(
 internal class TooltipController(
     val show: (TooltipRequest) -> Unit,
     val hide: (Any) -> Unit,
+    val clear: () -> Unit = {},
 )
 
 internal val LocalTooltipController = staticCompositionLocalOf {

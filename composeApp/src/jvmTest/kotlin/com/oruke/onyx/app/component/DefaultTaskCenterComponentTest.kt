@@ -7,15 +7,18 @@ import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.OnyxSettings
+import com.oruke.onyx.vfs.api.TextClipboardService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
@@ -248,6 +251,40 @@ class DefaultTaskCenterComponentTest {
         settingsFlow.value = settingsFlow.value.copy(autoShowTaskCenter = false)
         orchestrator.appendTask(testTask("copy", BackgroundTaskStatus.RUNNING, kind = BackgroundTaskKind.COPY))
         assertFalse(component.state.value.visible)
+    }
+
+    /** 错误详情展开状态在移除后自动清理，复制动作写入统一剪贴板并在短暂反馈后自动复位。 */
+    @Test
+    fun togglesExpandedErrorsCopiesReportAndCleansStateOnDismiss() = runTest {
+        val orchestrator = TaskOrchestrator(this)
+        var copiedText: String? = null
+        val fakeClipboard = object : TextClipboardService {
+            override suspend fun copyText(text: String): Result<Unit> {
+                copiedText = text
+                return Result.success(Unit)
+            }
+        }
+        val component = DefaultTaskCenterComponent(
+            taskOrchestrator = orchestrator,
+            textClipboardService = fakeClipboard,
+            componentScope = this,
+        )
+        orchestrator.appendTask(testTask("failed-batch", BackgroundTaskStatus.FAILED))
+
+        component.dispatch(TaskCenterIntent.ToggleTaskErrors("failed-batch"))
+        assertEquals(setOf("failed-batch"), component.state.value.expandedErrorTaskIds)
+
+        component.dispatch(TaskCenterIntent.CopyErrorText("all:failed-batch", "[1] sample.zip\n    原因"))
+        runCurrent()
+        assertEquals("[1] sample.zip\n    原因", copiedText)
+        assertEquals("all:failed-batch", component.state.value.copiedFeedbackKey)
+
+        advanceTimeBy(1_700L)
+        runCurrent()
+        assertNull(component.state.value.copiedFeedbackKey)
+
+        component.dispatch(TaskCenterIntent.Dismiss("failed-batch"))
+        assertTrue(component.state.value.expandedErrorTaskIds.isEmpty())
     }
 
     private companion object {

@@ -35,6 +35,8 @@ internal fun TaskOrchestrator.dispatchTaskCenterAction(intent: TaskCenterIntent)
         TaskCenterIntent.Close,
         TaskCenterIntent.AutoCloseWhenIdle,
         is TaskCenterIntent.SetAutoCloseWhenFinished,
-        is TaskCenterIntent.SetFilter -> Unit
+        is TaskCenterIntent.SetFilter,
+        is TaskCenterIntent.ToggleTaskErrors,
+        is TaskCenterIntent.CopyErrorText -> Unit
     }
 }

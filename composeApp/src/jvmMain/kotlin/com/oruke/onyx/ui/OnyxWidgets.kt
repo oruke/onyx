@@ -23,40 +23,24 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.LocalTooltipController
 import com.oruke.onyx.ui.theme.PaneDividerHitSlop
-import com.oruke.onyx.ui.theme.TooltipRequest
-import com.oruke.onyx.ui.theme.centerBottom
 import com.oruke.onyx.ui.theme.horizontalResizePointerIcon
-import com.oruke.onyx.ui.theme.tooltipOffset
 import com.oruke.onyx.ui.theme.verticalResizePointerIcon
-import com.oruke.onyx.ui.theme.windowBounds
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_copy
 import onyx.composeapp.generated.resources.action_extract
@@ -70,90 +54,9 @@ import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import kotlin.math.roundToInt
 
 /** 禁用工具栏图标的显示透明度。 */
 private const val DISABLED_TOOLBAR_ICON_ALPHA = 0.45f
-
-@OptIn(ExperimentalComposeUiApi::class)
-@Composable
-internal fun OnyxTooltip(
-    text: String,
-    enabled: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-    val tooltipController = LocalTooltipController.current
-    val tooltipOwner = remember { Any() }
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-    var anchorBounds by remember { mutableStateOf<IntRect?>(null) }
-    var pointerPosition by remember { mutableStateOf<IntOffset?>(null) }
-
-    fun updatePointerPosition(eventPosition: Offset) {
-        pointerPosition = anchorBounds?.let { bounds ->
-            IntOffset(
-                x = bounds.left + eventPosition.x.roundToInt(),
-                y = bounds.top + eventPosition.y.roundToInt(),
-            )
-        }
-    }
-
-    LaunchedEffect(enabled, isHovered, text, anchorBounds, pointerPosition) {
-        val bounds = anchorBounds
-        val position = pointerPosition
-        val shouldShow = enabled && isHovered
-        val hasContentAndAnchor = text.isNotBlank() && bounds != null
-        if (shouldShow && hasContentAndAnchor) {
-            tooltipController.show(
-                TooltipRequest(
-                    owner = tooltipOwner,
-                    text = text,
-                    anchorBounds = bounds,
-                    pointerPosition = position ?: bounds.centerBottom(),
-                )
-            )
-        } else {
-            tooltipController.hide(tooltipOwner)
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .onGloballyPositioned { coordinates -> anchorBounds = coordinates.windowBounds() }
-            .onPointerEvent(PointerEventType.Enter) { event ->
-                event.changes.firstOrNull()?.position?.let(::updatePointerPosition)
-            }
-            .onPointerEvent(PointerEventType.Move) { event ->
-                event.changes.firstOrNull()?.position?.let(::updatePointerPosition)
-            }
-            .hoverable(enabled = enabled, interactionSource = interactionSource),
-    ) {
-        content()
-    }
-}
-
-@Composable
-internal fun OnyxTooltipOverlay(
-    request: TooltipRequest,
-    appSize: IntSize,
-    appWindowOrigin: IntOffset,
-) {
-    var tooltipSize by remember(request.text) { mutableStateOf(IntSize.Zero) }
-    Text(
-        text = request.text,
-        modifier = Modifier
-            .offset { tooltipOffset(request.pointerPosition, appWindowOrigin, appSize, tooltipSize) }
-            .onSizeChanged { tooltipSize = it }
-            .widthIn(max = 260.dp)
-            .border(1.dp, LocalOnyxPalette.current.outlineVariant, RoundedCornerShape(4.dp))
-            .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        color = LocalOnyxPalette.current.foreground,
-        fontSize = 11.sp,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
 
 @Composable
 internal fun FileDragOverlay(
@@ -378,4 +281,3 @@ internal fun ToolbarIconButton(
         }
     }
 }
-

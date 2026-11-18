@@ -7,11 +7,13 @@ import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
 import com.oruke.onyx.app.platform.JvmApplicationLocaleController
+import com.oruke.onyx.app.filesystem.JvmTextClipboardService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.SettingsRepository
 import com.oruke.onyx.vfs.api.TaskPersistenceRepository
+import com.oruke.onyx.vfs.api.TextClipboardService
 import com.oruke.onyx.vfs.api.FileRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,8 @@ internal class RootApplicationRuntime(
     val sessionManager: SessionManager,
     /** 所有窗口共享的即时设置状态。 */
     val settings: MutableStateFlow<OnyxSettings>,
+    /** 统一系统文本剪贴板服务。 */
+    textClipboardService: TextClipboardService = JvmTextClipboardService(),
 ) {
     /** 所有窗口共享的目录内容存储，按实际依赖首次创建。 */
     private var sharedDirectoryStore: com.oruke.onyx.shared.filesystem.DirectoryContentStore? = null
@@ -70,6 +74,8 @@ internal class RootApplicationRuntime(
         taskOrchestrator = taskOrchestrator,
         settings = settings,
         onUpdateAutoCloseWhenFinished = ::updateTaskCenterAutoClose,
+        textClipboardService = textClipboardService,
+        componentScope = scope,
     )
 
     /**
@@ -142,6 +148,7 @@ internal fun rememberRootApplicationRuntime(): RootApplicationRuntime {
                 sessionRepository = koin.get<SessionRepository>(),
             ),
             settings = MutableStateFlow(OnyxSettings()),
+            textClipboardService = koin.get<TextClipboardService>(),
         )
     }
     DisposableEffect(runtime) {

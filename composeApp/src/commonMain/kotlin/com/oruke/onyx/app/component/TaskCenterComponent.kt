@@ -39,6 +39,10 @@ internal data class TaskCenterState(
     val filter: TaskCenterFilter = TaskCenterFilter.ALL,
     /** 当前可见会话是否由后台新任务自动唤起（用于判断全部完成后是否允许自动收起）。 */
     val openedAutomatically: Boolean = false,
+    /** 当前已展开全部错误详情的任务 ID 集合。 */
+    val expandedErrorTaskIds: Set<String> = emptySet(),
+    /** 最近一次复制成功的短暂反馈键（如 `all:<taskId>` 或 `item:<taskId>:<index>`）。 */
+    val copiedFeedbackKey: String? = null,
 )
 
 /** 任务中心可选的生命周期筛选条件。 */
@@ -74,6 +78,20 @@ internal sealed interface TaskCenterIntent {
     data class SetFilter(
         /** 要展示的任务类别。 */
         val filter: TaskCenterFilter,
+    ) : TaskCenterIntent
+
+    /** 展开或收起指定任务的完整错误列表。 */
+    data class ToggleTaskErrors(
+        /** 目标任务唯一标识。 */
+        val id: String,
+    ) : TaskCenterIntent
+
+    /** 将全部错误报告或单个失败文件名复制到系统剪贴板。 */
+    data class CopyErrorText(
+        /** 用于匹配界面短暂“已复制”反馈的唯一键。 */
+        val feedbackKey: String,
+        /** 待写入系统剪贴板的文本。 */
+        val text: String,
     ) : TaskCenterIntent
 
     /** 暂停支持暂停的运行任务。 */

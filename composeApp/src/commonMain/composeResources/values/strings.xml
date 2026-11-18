@@ -300,6 +300,13 @@
     <string name="label_task_status_failed">Failed</string>
     <string name="label_task_status_cancelled">Cancelled</string>
     <string name="label_task_errors_count">%1$d error(s)</string>
+    <string name="action_task_expand_errors">Show all (%1$d)</string>
+    <string name="action_task_collapse_errors">Collapse</string>
+    <string name="label_task_more_errors_expand">%1$d more error(s) — click to show all</string>
+    <string name="label_task_error_reason">Reason: %1$s</string>
+    <string name="action_copy_all_errors">Copy all</string>
+    <string name="action_copy_error_file_name">Copy file name</string>
+    <string name="label_task_copied_feedback">Copied</string>
     <string name="label_task_overall_progress">Overall progress</string>
     <string name="label_task_recent">Recent jobs</string>
     <string name="label_task_running_count">%1$d running</string>

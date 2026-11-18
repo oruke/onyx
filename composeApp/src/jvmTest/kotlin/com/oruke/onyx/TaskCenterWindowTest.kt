@@ -21,9 +21,12 @@ import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.OnyxSettings
+import com.oruke.onyx.core.model.OnyxThemeMode
+import com.oruke.onyx.core.model.TaskError
 import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.TaskCenterButton
 import com.oruke.onyx.ui.theme.OnyxTheme
+import com.oruke.onyx.vfs.api.TextClipboardService
 import java.awt.Frame
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +36,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_pause_task
+import onyx.composeapp.generated.resources.action_remove_task
 import onyx.composeapp.generated.resources.action_resume_task
 import org.jetbrains.compose.resources.getString
 import org.jetbrains.jewel.foundation.theme.JewelTheme
@@ -225,6 +229,91 @@ class TaskCenterWindowTest {
             awaitTaskWindow()
             awaitTaskWindowTag("task-row-auto-fail")
             assertTrue(component.state.value.visible)
+        } finally {
+            runOnUiThread { component.dispatch(TaskCenterIntent.Close) }
+            waitForIdle()
+            scope.cancel()
+        }
+    }
+
+    /**
+     * 包含多条超长文件名错误的任务默认分层展示文件名与失败原因，支持一键展开全部 6 条与复制，且移除任务不残留浮层。
+     */
+    @Test
+    fun errorDetailsExpandCopyAndDismissCleanlyInDarkTheme() = runDesktopComposeUiTest {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val orchestrator = TaskOrchestrator(scope)
+        var copiedReport = ""
+        val clipboard = object : TextClipboardService {
+            override suspend fun copyText(text: String): Result<Unit> {
+                copiedReport = text
+                return Result.success(Unit)
+            }
+        }
+        val preferences = MutableStateFlow(
+            OnyxSettings(
+                themeMode = OnyxThemeMode.DARK,
+                taskCenterWindowWidth = 740,
+                taskCenterWindowHeight = 520,
+            )
+        )
+        val component = DefaultTaskCenterComponent(
+            taskOrchestrator = orchestrator,
+            settings = preferences,
+            textClipboardService = clipboard,
+            componentScope = scope,
+        )
+        val sampleErrors = (1..6).map { index ->
+            TaskError(
+                fileName = "[Akisaka Yamoka] Very Long Archive Series Vol.$index - My younger sister was cold " +
+                    "so I archived her files 因為文件名過長導致目標卷拒絕寫入第${index}卷 [Chinese] [Digital].zip",
+                message = "文件名、目录名或卷标语法不正确。",
+                detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, "文件名、目录名或卷标语法不正确。"),
+            )
+        }
+        try {
+            runOnUiThread {
+                orchestrator.appendTask(
+                    BackgroundTask(
+                        id = "batch",
+                        kind = BackgroundTaskKind.COPY,
+                        title = I18nMessage(MessageKey.MSG_COPY_ITEMS, 148),
+                        status = BackgroundTaskStatus.FAILED,
+                        detail = I18nMessage(
+                            MessageKey.MSG_COPY_PARTIAL_FAILED,
+                            142,
+                            """Z:\unsorted\ebook\H漫""",
+                            6,
+                        ),
+                        progress = 0.96f,
+                        processedCount = 142,
+                        totalCount = 148,
+                        processedBytes = 19_500_000_000L,
+                        totalBytes = 20_300_000_000L,
+                        errors = sampleErrors,
+                    )
+                )
+            }
+            setContent { TaskWindowTestApplication(component, preferences) }
+            val window = awaitTaskWindow()
+            awaitTaskWindowTag("task-errors-section-batch")
+            awaitTaskWindowTag("task-error-item-batch-0")
+            awaitTaskWindowTag("task-error-item-batch-1")
+            awaitTaskWindowTag("task-errors-more-batch")
+            assertFalse(runOnUiThread { window.hasTaskWindowTag("task-error-item-batch-5") })
+            captureTaskWindow("task-errors-collapsed-dark.png")
+
+            clickTaskWindowTag("task-errors-toggle-batch")
+            awaitTaskWindowTag("task-error-item-batch-5")
+            clickTaskWindowTag("task-errors-copy-all-batch")
+            waitUntil(timeoutMillis = TASK_WINDOW_WAIT_MILLIS) { copiedReport.contains("Vol.6") }
+            assertTrue(copiedReport.contains("文件名、目录名或卷标语法不正确。"))
+            captureTaskWindow("task-errors-expanded-dark.png")
+
+            val removeLabel = getString(Res.string.action_remove_task)
+            clickTaskWindowAction("batch", removeLabel)
+            waitUntil(timeoutMillis = TASK_WINDOW_WAIT_MILLIS) { component.tasks.value.isEmpty() }
+            assertFalse(runOnUiThread { window.hasTaskWindowTag("task-row-batch") })
         } finally {
             runOnUiThread { component.dispatch(TaskCenterIntent.Close) }
             waitForIdle()

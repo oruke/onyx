@@ -1,22 +1,22 @@
 package com.oruke.onyx.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -25,18 +25,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.BackgroundTaskStatus
-import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
+import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.resolve
 import com.oruke.onyx.ui.theme.taskStatusLabel
+import kotlin.math.roundToInt
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_cancel_task
 import onyx.composeapp.generated.resources.action_pause_task
 import onyx.composeapp.generated.resources.action_remove_task
 import onyx.composeapp.generated.resources.action_resume_task
 import onyx.composeapp.generated.resources.action_retry_task
-import onyx.composeapp.generated.resources.label_task_errors_count
-import onyx.composeapp.generated.resources.label_task_file_error
 import onyx.composeapp.generated.resources.label_task_item_progress
 import onyx.composeapp.generated.resources.label_task_remaining_time
 import org.jetbrains.compose.resources.stringResource
@@ -45,28 +44,35 @@ import org.jetbrains.jewel.ui.component.IconButton
 import org.jetbrains.jewel.ui.component.Text
 import org.jetbrains.jewel.ui.icon.IconKey
 import org.jetbrains.jewel.ui.icons.AllIconsKeys
-import kotlin.math.roundToInt
 
 /**
- * 使用虚拟化列表展示当前任务详情。
+ * 使用虚拟化列表展示当前任务详情与结构化错误列表。
  *
  * @param tasks 当前任务快照。
  * @param listState 由窗口宿主持有的滚动状态，隐藏与再次打开时复用。
+ * @param expandedErrorTaskIds 当前已展开完整错误列表的任务 ID 集合。
+ * @param copiedFeedbackKey 最近一次成功写入剪贴板的反馈键。
  * @param onPauseTask 暂停任务回调。
  * @param onResumeTask 恢复任务回调。
  * @param onRetryTask 重试任务回调。
  * @param onCancelTask 取消任务回调。
  * @param onDismissTask 移除终态任务回调。
+ * @param onToggleTaskErrors 展开或收起指定任务错误列表回调。
+ * @param onCopyErrorText 复制错误报告或文件名到系统剪贴板回调。
  */
 @Composable
 internal fun TaskCenterList(
     tasks: List<BackgroundTask>,
     listState: LazyListState,
+    expandedErrorTaskIds: Set<String> = emptySet(),
+    copiedFeedbackKey: String? = null,
     onPauseTask: (String) -> Unit,
     onResumeTask: (String) -> Unit,
     onRetryTask: (String) -> Unit,
     onCancelTask: (String) -> Unit,
     onDismissTask: (String) -> Unit,
+    onToggleTaskErrors: (String) -> Unit = {},
+    onCopyErrorText: (String, String) -> Unit = { _, _ -> },
 ) {
     val palette = LocalOnyxPalette.current
     Box(
@@ -84,11 +90,15 @@ internal fun TaskCenterList(
             ) { task ->
                 TaskCenterTaskRow(
                     task = task,
+                    errorsExpanded = task.id in expandedErrorTaskIds,
+                    copiedFeedbackKey = copiedFeedbackKey,
                     onPause = { onPauseTask(task.id) },
                     onResume = { onResumeTask(task.id) },
                     onRetry = { onRetryTask(task.id) },
                     onCancel = { onCancelTask(task.id) },
                     onDismiss = { onDismissTask(task.id) },
+                    onToggleErrors = { onToggleTaskErrors(task.id) },
+                    onCopyErrorText = onCopyErrorText,
                 )
                 Box(
                     modifier = Modifier
@@ -106,23 +116,20 @@ internal fun TaskCenterList(
 }
 
 /**
- * 渲染单个任务的标题、当前文件、进度、速度、ETA 和操作按钮。
- *
- * @param task 当前后台任务。
- * @param onPause 暂停回调。
- * @param onResume 恢复回调。
- * @param onRetry 重试回调。
- * @param onCancel 取消回调。
- * @param onDismiss 移除回调。
+ * 渲染单个任务的标题、当前文件、进度、速度、ETA、操作按钮与结构化错误区。
  */
 @Composable
 private fun TaskCenterTaskRow(
     task: BackgroundTask,
+    errorsExpanded: Boolean,
+    copiedFeedbackKey: String?,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onRetry: () -> Unit,
     onCancel: () -> Unit,
     onDismiss: () -> Unit,
+    onToggleErrors: () -> Unit,
+    onCopyErrorText: (String, String) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
@@ -183,19 +190,19 @@ private fun TaskCenterTaskRow(
                 )
             }
         }
-        TaskErrorList(task)
+
+        TaskErrorSection(
+            task = task,
+            expanded = errorsExpanded,
+            copiedFeedbackKey = copiedFeedbackKey,
+            onToggleExpand = onToggleErrors,
+            onCopyErrorText = onCopyErrorText,
+        )
     }
 }
 
 /**
  * 渲染任务生命周期对应的操作按钮。
- *
- * @param task 当前后台任务。
- * @param onPause 暂停回调。
- * @param onResume 恢复回调。
- * @param onRetry 重试回调。
- * @param onCancel 取消回调。
- * @param onDismiss 移除回调。
  */
 @Composable
 private fun TaskRowActions(
@@ -212,43 +219,47 @@ private fun TaskRowActions(
     ) {
         if (task.canPause) {
             when (task.status) {
-                BackgroundTaskStatus.RUNNING -> TaskActionIcon(
-                    onClick = onPause,
-                    icon = AllIconsKeys.Actions.Pause,
-                    description = stringResource(Res.string.action_pause_task),
-                )
-                BackgroundTaskStatus.PAUSED -> TaskActionIcon(
-                    onClick = onResume,
-                    icon = AllIconsKeys.RunConfigurations.TestState.Run,
-                    description = stringResource(Res.string.action_resume_task),
-                )
+                BackgroundTaskStatus.RUNNING -> key("pause") {
+                    TaskActionIcon(
+                        onClick = onPause,
+                        icon = AllIconsKeys.Actions.Pause,
+                        description = stringResource(Res.string.action_pause_task),
+                    )
+                }
+                BackgroundTaskStatus.PAUSED -> key("resume") {
+                    TaskActionIcon(
+                        onClick = onResume,
+                        icon = AllIconsKeys.RunConfigurations.TestState.Run,
+                        description = stringResource(Res.string.action_resume_task),
+                    )
+                }
                 else -> Unit
             }
         }
         if (task.status == BackgroundTaskStatus.FAILED) {
-            TaskActionIcon(
-                onClick = onRetry,
-                icon = AllIconsKeys.Actions.Refresh,
-                description = stringResource(Res.string.action_retry_task),
-            )
+            key("retry") {
+                TaskActionIcon(
+                    onClick = onRetry,
+                    icon = AllIconsKeys.Actions.Refresh,
+                    description = stringResource(Res.string.action_retry_task),
+                )
+            }
         }
         val isActive = task.status.isActiveTaskStatus()
-        TaskActionIcon(
-            onClick = if (isActive) onCancel else onDismiss,
-            icon = AllIconsKeys.Actions.Close,
-            description = stringResource(
-                if (isActive) Res.string.action_cancel_task else Res.string.action_remove_task
-            ),
-        )
+        key(if (isActive) "cancel" else "dismiss") {
+            TaskActionIcon(
+                onClick = if (isActive) onCancel else onDismiss,
+                icon = AllIconsKeys.Actions.Close,
+                description = stringResource(
+                    if (isActive) Res.string.action_cancel_task else Res.string.action_remove_task,
+                ),
+            )
+        }
     }
 }
 
 /**
  * 渲染带统一工具提示的任务操作图标。
- *
- * @param onClick 点击回调。
- * @param icon Jewel 图标键。
- * @param description 本地化操作说明。
  */
 @Composable
 private fun TaskActionIcon(
@@ -300,9 +311,6 @@ private fun TaskDetailLines(task: BackgroundTask) {
 
 /**
  * 构造任务字节、条目、百分比、速度和 ETA 指标。
- *
- * @param task 当前后台任务。
- * @return 本地化指标文本。
  */
 @Composable
 private fun taskMetrics(task: BackgroundTask): String {
@@ -328,40 +336,5 @@ private fun taskMetrics(task: BackgroundTask): String {
     return parts.joinToString(TASK_METRIC_SEPARATOR)
 }
 
-/**
- * 渲染错误摘要和有限数量的文件明细。
- *
- * @param task 当前后台任务。
- */
-@Composable
-private fun TaskErrorList(task: BackgroundTask) {
-    if (task.errors.isEmpty()) return
-    val palette = LocalOnyxPalette.current
-    Spacer(modifier = Modifier.height(1.dp))
-    Text(
-        text = stringResource(Res.string.label_task_errors_count, task.errors.size),
-        fontSize = LocalOnyxAppearance.current.headerFontSize,
-        color = palette.error,
-    )
-    task.errors.take(MAX_VISIBLE_TASK_ERRORS).forEach { error ->
-        val formattedError = stringResource(
-            Res.string.label_task_file_error,
-            error.fileName,
-            error.detail?.resolve() ?: error.message,
-        )
-        OnyxTooltip(text = formattedError) {
-            Text(
-                text = formattedError,
-                fontSize = LocalOnyxAppearance.current.headerFontSize,
-                color = palette.mutedForeground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
 /** 为垂直滚动条预留的内容右侧间距。 */
 private val TASK_SCROLLBAR_INSET = 10.dp
-/** 单项任务最多直接展示的错误数。 */
-private const val MAX_VISIBLE_TASK_ERRORS = 3
