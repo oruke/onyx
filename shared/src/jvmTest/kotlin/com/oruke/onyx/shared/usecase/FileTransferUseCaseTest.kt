@@ -11,10 +11,13 @@ import com.oruke.onyx.vfs.api.VfsProvider
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.vfs.api.VfsProtocol
+import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -135,6 +138,129 @@ class FileTransferUseCaseTest {
         assertEquals("source.bin -> $nestedTarget", events.last().detail.args.single())
     }
 
+    /**
+     * 单个条目 I/O 失败时应回退该条目的半截字节进度、发出单条失败记录，并继续完成后续正常条目。
+     */
+    @Test
+    fun continuesRemainingEntriesAfterSingleEntryFailureAndRollsBackFailedBytes() = runBlocking {
+        val first = namedFile("first.zip", TEST_FILE_SIZE)
+        val broken = namedFile("broken.zip", TEST_FILE_SIZE)
+        val third = namedFile("third.zip", TEST_FILE_SIZE)
+        val attempted = mutableListOf<String>()
+        val commandService = object : ProgressAwareFileCommandService {
+            override suspend fun copyWithProgress(
+                entries: List<VFile>,
+                targetDirectoryLocation: String,
+                conflictStrategy: TransferConflictStrategy,
+                progressSink: FileTransferProgressSink,
+            ): Result<Unit> {
+                val item = entries.single()
+                attempted += item.name
+                if (item.name == "broken.zip") {
+                    progressSink.onBytesTransferred(TEST_FILE_SIZE / 2)
+                    return Result.failure(IOException("文件名、目录名或卷标语法不正确。"))
+                }
+                progressSink.onBytesTransferred(TEST_FILE_SIZE)
+                return Result.success(Unit)
+            }
+
+            override suspend fun moveWithProgress(
+                entries: List<VFile>,
+                targetDirectoryLocation: String,
+                conflictStrategy: TransferConflictStrategy,
+                progressSink: FileTransferProgressSink,
+            ): Result<Unit> = copyWithProgress(entries, targetDirectoryLocation, conflictStrategy, progressSink)
+
+            override suspend fun delete(entries: List<VFile>): Result<Unit> = Result.success(Unit)
+            override suspend fun rename(entry: VFile, targetName: String): Result<VFile> = Result.success(entry)
+            override suspend fun createFile(parentLocation: String, name: String): Result<VFile> =
+                Result.failure(UnsupportedOperationException())
+            override suspend fun createDirectory(parentLocation: String, name: String): Result<VFile> =
+                Result.failure(UnsupportedOperationException())
+        }
+        val useCase = FileTransferUseCase(
+            fileCommandService = commandService,
+            providerRegistry = VfsProviderRegistry(listOf(TestProvider)),
+        )
+
+        val events = useCase.execute(
+            request = FileTransferUseCase.FileTransferRequest(
+                entries = listOf(first, broken, third),
+                targetDirectoryLocation = TEST_TARGET,
+                operation = FileTransferOperation.COPY,
+                conflictStrategies = emptyMap(),
+            ),
+            awaitReady = {},
+        ).toList()
+
+        assertEquals(listOf("first.zip", "broken.zip", "third.zip"), attempted)
+        val failures = events.mapNotNull { it.entryFailure }
+        assertEquals(1, failures.size)
+        assertEquals("broken.zip", failures.single().entry.name)
+
+        val failureSnapshot = events.first { it.entryFailure != null }
+        assertEquals(1, failureSnapshot.processedCount)
+        assertEquals(TEST_FILE_SIZE, failureSnapshot.processedBytes)
+
+        val completedNames = events.mapNotNull { it.completedEntry?.name }
+        assertEquals(listOf("first.zip", "third.zip"), completedNames)
+        assertEquals(2, events.last().processedCount)
+        assertEquals(TEST_FILE_SIZE * 2, events.last().processedBytes)
+        assertEquals(TEST_FILE_SIZE * 3, events.last().totalBytes)
+    }
+
+    /**
+     * 传输中途收到协程取消时必须立即向上抛出 CancellationException，不得作为单条目错误继续后续条目。
+     */
+    @Test
+    fun propagatesCancellationImmediatelyWithoutTreatingAsEntryFailure() = runBlocking {
+        val first = namedFile("first.zip", TEST_FILE_SIZE)
+        val second = namedFile("second.zip", TEST_FILE_SIZE)
+        val attempted = mutableListOf<String>()
+        val commandService = object : ProgressAwareFileCommandService {
+            override suspend fun copyWithProgress(
+                entries: List<VFile>,
+                targetDirectoryLocation: String,
+                conflictStrategy: TransferConflictStrategy,
+                progressSink: FileTransferProgressSink,
+            ): Result<Unit> {
+                attempted += entries.single().name
+                throw CancellationException("用户取消传输")
+            }
+
+            override suspend fun moveWithProgress(
+                entries: List<VFile>,
+                targetDirectoryLocation: String,
+                conflictStrategy: TransferConflictStrategy,
+                progressSink: FileTransferProgressSink,
+            ): Result<Unit> = copyWithProgress(entries, targetDirectoryLocation, conflictStrategy, progressSink)
+
+            override suspend fun delete(entries: List<VFile>): Result<Unit> = Result.success(Unit)
+            override suspend fun rename(entry: VFile, targetName: String): Result<VFile> = Result.success(entry)
+            override suspend fun createFile(parentLocation: String, name: String): Result<VFile> =
+                Result.failure(UnsupportedOperationException())
+            override suspend fun createDirectory(parentLocation: String, name: String): Result<VFile> =
+                Result.failure(UnsupportedOperationException())
+        }
+        val useCase = FileTransferUseCase(
+            fileCommandService = commandService,
+            providerRegistry = VfsProviderRegistry(listOf(TestProvider)),
+        )
+
+        assertFailsWith<CancellationException> {
+            useCase.execute(
+                request = FileTransferUseCase.FileTransferRequest(
+                    entries = listOf(first, second),
+                    targetDirectoryLocation = TEST_TARGET,
+                    operation = FileTransferOperation.COPY,
+                    conflictStrategies = emptyMap(),
+                ),
+                awaitReady = {},
+            ).toList()
+        }
+        assertEquals(listOf("first.zip"), attempted)
+    }
+
     private companion object {
         /** 测试文件总字节数。 */
         const val TEST_FILE_SIZE = 1_000L
@@ -153,10 +279,12 @@ class FileTransferUseCaseTest {
          * @param sizeBytes 文件大小。
          * @return 测试 VFile。
          */
-        fun testFile(sizeBytes: Long): VFile = VFile(
-            id = TEST_SOURCE,
-            name = "source.bin",
-            location = TEST_SOURCE,
+        fun testFile(sizeBytes: Long): VFile = namedFile("source.bin", sizeBytes)
+
+        fun namedFile(name: String, sizeBytes: Long): VFile = VFile(
+            id = "test://$name",
+            name = name,
+            location = "test://$name",
             parentLocation = "test://",
             kind = VFileKind.FILE,
             sizeBytes = sizeBytes,

@@ -4,6 +4,7 @@ import com.oruke.onyx.vfs.api.FileTransferProgressSink
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.sun.nio.file.ExtendedOpenOption
 import java.nio.channels.FileChannel
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
@@ -15,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /** 从真实本地 Provider 入口验证覆盖失败、取消和成功提交时的文件内容。 */
@@ -172,6 +174,68 @@ class LocalTransferSafetyTest {
                 assertTrue(job.isCancelled)
             }
             assertFalse(Files.exists(cancelTargetParent.resolve("episodes")))
+        } finally {
+            LocalPathDeletion.delete(root)
+        }
+    }
+
+    /** 验证目标文件名超出文件系统单组件上限时，在读取和写入任何源字节之前立即失败且不暴露暂存路径。 */
+    @Test
+    fun nearLimitInvalidTargetFailsBeforeTransferringSourceBytes() = runBlocking {
+        val root = Files.createTempDirectory("onyx-near-limit-")
+        try {
+            val sourceDir = Files.createDirectory(root.resolve("src"))
+            val targetDir = Files.createDirectory(root.resolve("dst"))
+            val sourceFile = sourceDir.resolve("payload.zip")
+            Files.write(sourceFile, ByteArray(2 * 1024 * 1024) { 42 })
+
+            val provider = JvmLocalFileProvider()
+            val realEntry = provider.list(sourceDir.toString()).getOrThrow().single()
+            // 伪装为来自其它文件系统的超长文件名源（或者在 KEEP_BOTH 冲突重命名导致超过 255 字符上限的场景）：
+            // 这里用真实冲突 + KEEP_BOTH 构造最终目标超过 255 字符的场景：源文件名 253 字符，目标已存在同名文件，
+            // KEEP_BOTH 追加 " copy" 后变成 258 字符（> 255 字符上限），真实复现源合法但最终目标名超限！
+            val maxValidName = "a".repeat(249) + ".zip" // 253 chars
+            val nearLimitSource = sourceDir.resolve(maxValidName)
+            Files.move(sourceFile, nearLimitSource)
+            Files.writeString(targetDir.resolve(maxValidName), "existing")
+            val nearLimitEntry = provider.list(sourceDir.toString()).getOrThrow()
+                .first { it.name == maxValidName && it.id != realEntry.id }
+
+            var transferredBytes = 0L
+            val result = provider.copyWithProgress(
+                entries = listOf(nearLimitEntry),
+                targetDirectoryLocation = targetDir.toString(),
+                conflictStrategy = TransferConflictStrategy.KEEP_BOTH,
+                progressSink = FileTransferProgressSink { count -> transferredBytes += count },
+            )
+            assertTrue(result.isFailure)
+            assertEquals(0L, transferredBytes)
+            val failureMessage = assertNotNull(result.exceptionOrNull()?.message)
+            assertFalse(failureMessage.contains(STAGING_DIRECTORY_PREFIX))
+            assertCleanTargetDirectory(targetDir.resolve(maxValidName))
+        } finally {
+            LocalPathDeletion.delete(root)
+        }
+    }
+
+    /** 验证暂存提交阶段的 FileSystemException 会剥离内部 `.onyx-transfer-*` 路径并保留目标路径与原因。 */
+    @Test
+    fun stagingFailureUnwrapsInternalTemporaryPathToTarget() {
+        val root = Files.createTempDirectory("onyx-unwrap-staging-")
+        try {
+            val staging = Files.createTempDirectory(root, STAGING_DIRECTORY_PREFIX)
+            val content = staging.resolve("content")
+            val target = root.resolve("final-archive.zip")
+            val rawFailure = FileSystemException(
+                content.toString(),
+                target.toString(),
+                "文件名、目录名或卷标语法不正确。",
+            )
+            val unwrapped = LocalTransferStagingDiagnostics.unwrapStagingFailure(rawFailure, staging, target)
+            assertTrue(unwrapped is FileSystemException)
+            assertEquals(target.toString(), unwrapped.file)
+            assertEquals("文件名、目录名或卷标语法不正确。", unwrapped.reason)
+            assertFalse(unwrapped.message.orEmpty().contains(STAGING_DIRECTORY_PREFIX))
         } finally {
             LocalPathDeletion.delete(root)
         }

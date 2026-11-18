@@ -596,6 +596,9 @@
     <string name="msg_system_clipboard_unavailable">The system clipboard is unavailable. Try again shortly.</string>
     <string name="msg_transfer_clipboard_clear_failed">The transfer finished, but the system clipboard could not be cleared.</string>
     <string name="msg_transfer_skipped_items">Processed %1$d items; skipped %2$d conflicting items</string>
+    <string name="msg_copy_partial_failed">Copied %1$d item(s) to %2$s (%3$d failed)</string>
+    <string name="msg_move_partial_failed">Moved %1$d item(s) to %2$s (%3$d failed)</string>
+    <string name="msg_extract_partial_failed">Extracted %1$d item(s) to %2$s (%3$d failed)</string>
     <string name="label_directory_refreshing">Updating…</string>
     <string name="msg_inline_edit_target_unavailable">The entry is no longer available. Rename editing has been closed.</string>
     <string name="label_directory_update_failed">Folder update failed: %1$s</string>

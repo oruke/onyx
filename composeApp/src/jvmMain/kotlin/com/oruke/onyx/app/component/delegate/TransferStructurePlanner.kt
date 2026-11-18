@@ -30,6 +30,29 @@ internal data class PlannedTransferStructure(
      * @return 实际目标目录位置。
      */
     fun effectiveTargetOf(entry: VFile): String = entryTargetDirectories[entry.id] ?: targetDirectoryLocation
+
+    /**
+     * 仅保留指定条目 ID 集合及其所需的目标目录和中间目录创建链，用于失败任务按未完成项精准重试。
+     *
+     * @param retainedIds 需保留重试的条目 ID 集合。
+     * @return 裁剪后的传输结构规划。
+     */
+    fun retainEntries(retainedIds: Set<String>): PlannedTransferStructure {
+        val filteredEntries = entries.filter { entry -> entry.id in retainedIds }
+        val filteredTargets = entryTargetDirectories.filterKeys { id -> id in retainedIds }
+        val filteredChains = entryDirectoryChains.filterKeys { id -> id in retainedIds }
+        val referencedLocations = filteredChains.values.asSequence()
+            .flatten()
+            .mapTo(mutableSetOf()) { step -> step.directoryLocation }
+        val filteredSteps = allDirectorySteps.filter { step -> step.directoryLocation in referencedLocations }
+        return PlannedTransferStructure(
+            entries = filteredEntries,
+            targetDirectoryLocation = targetDirectoryLocation,
+            entryTargetDirectories = filteredTargets,
+            entryDirectoryChains = filteredChains,
+            allDirectorySteps = filteredSteps,
+        )
+    }
 }
 
 /** 规划内联展开条目的相对目录结构并执行按实际目标目录分组的冲突检测。 */

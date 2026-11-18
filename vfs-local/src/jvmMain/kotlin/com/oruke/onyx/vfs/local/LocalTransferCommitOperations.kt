@@ -28,7 +28,8 @@ internal object LocalTransferCommitOperations {
             copyNewDirectoryDirectly(source, target, progressSink, checkActive)
             return
         }
-        val staging = Files.createTempDirectory(target.parent, ".onyx-transfer-")
+        LocalTransferStagingDiagnostics.probeNearLimitNewFileTarget(source, target, strategy)
+        val staging = Files.createTempDirectory(target.parent, STAGING_DIRECTORY_PREFIX)
         try {
             val content = staging.resolve("content")
             // 完整复制之前不改动最终目标，确保失败和取消都能保留旧内容。
@@ -37,7 +38,7 @@ internal object LocalTransferCommitOperations {
             commit(content, target, staging.resolve("previous"), strategy)
         } catch (failure: Exception) {
             cleanup(staging, failure)
-            throw failure
+            throw LocalTransferStagingDiagnostics.unwrapStagingFailure(failure, staging, target)
         }
         LocalPathDeletion.delete(staging)
     }
@@ -60,7 +61,8 @@ internal object LocalTransferCommitOperations {
             moveNewDirectoryDirectly(source, target, progressSink, checkActive)
             return
         }
-        val staging = Files.createTempDirectory(target.parent, ".onyx-transfer-")
+        LocalTransferStagingDiagnostics.probeNearLimitNewFileTarget(source, target, strategy)
+        val staging = Files.createTempDirectory(target.parent, STAGING_DIRECTORY_PREFIX)
         val content = staging.resolve("content")
         var sourceMoved = false
         var committed = false
@@ -89,10 +91,13 @@ internal object LocalTransferCommitOperations {
             }
             // 恢复源失败时，保留暂存副本；异常同时包含恢复失败的位置。
             val safeToClean = !sourceMoved || committed || !Files.exists(content, LinkOption.NOFOLLOW_LINKS)
-            if (!preserveStaging && safeToClean) {
+            val resolvedFailure = if (!preserveStaging && safeToClean) {
                 cleanup(staging, failure)
+                LocalTransferStagingDiagnostics.unwrapStagingFailure(failure, staging, target)
+            } else {
+                failure
             }
-            throw failure
+            throw resolvedFailure
         }
         LocalPathDeletion.delete(staging)
     }

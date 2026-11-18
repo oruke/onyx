@@ -594,6 +594,9 @@
     <string name="msg_system_clipboard_unavailable">系统剪贴板暂时无法访问，请稍后重试。</string>
     <string name="msg_transfer_clipboard_clear_failed">文件传输已完成，但系统剪贴板无法清空。</string>
     <string name="msg_transfer_skipped_items">已处理 %1$d 项，跳过 %2$d 个冲突项</string>
+    <string name="msg_copy_partial_failed">已复制 %1$d 个项目到 %2$s（%3$d 项失败）</string>
+    <string name="msg_move_partial_failed">已移动 %1$d 个项目到 %2$s（%3$d 项失败）</string>
+    <string name="msg_extract_partial_failed">已解压 %1$d 个项目到 %2$s（%3$d 项失败）</string>
     <string name="label_directory_refreshing">正在更新…</string>
     <string name="msg_inline_edit_target_unavailable">该条目已不可用，已结束重命名编辑。</string>
     <string name="label_directory_update_failed">目录更新失败：%1$s</string>

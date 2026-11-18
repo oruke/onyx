@@ -56,6 +56,12 @@ enum class MessageKey {
     MSG_TRANSFER_CLIPBOARD_CLEAR_FAILED,
     /** 传输完成并明确报告冲突跳过数量。 */
     MSG_TRANSFER_SKIPPED_ITEMS,
+    /** 复制任务部分成功、部分失败，显示已复制数量、目标位置与失败数量。 */
+    MSG_COPY_PARTIAL_FAILED,
+    /** 移动任务部分成功、部分失败，显示已移动数量、目标位置与失败数量。 */
+    MSG_MOVE_PARTIAL_FAILED,
+    /** 解压任务部分成功、部分失败，显示已解压数量、目标位置与失败数量。 */
+    MSG_EXTRACT_PARTIAL_FAILED,
     /** 被编辑条目已不可用，自动结束改名编辑。 */
     MSG_INLINE_EDIT_TARGET_UNAVAILABLE,
 

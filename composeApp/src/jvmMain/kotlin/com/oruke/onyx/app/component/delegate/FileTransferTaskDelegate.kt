@@ -3,21 +3,21 @@ package com.oruke.onyx.app.component.delegate
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.PaneRemovalContext
 import com.oruke.onyx.core.model.BackgroundTask
-import com.oruke.onyx.core.model.BackgroundTaskKind
 import com.oruke.onyx.core.model.BackgroundTaskStatus
 import com.oruke.onyx.core.model.DirectoryChange
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
+import com.oruke.onyx.core.model.TaskError
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.shared.usecase.FileTransferUseCase
 import com.oruke.onyx.shared.usecase.TaskProgress
+import com.oruke.onyx.shared.usecase.TransferEntryFailure
 import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
-import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -54,16 +54,17 @@ internal class FileTransferTaskDelegate(
 ) {
     /** 按 Provider 实际结果发出逐项传输进度。 */
     private val transferUseCase = FileTransferUseCase(fileCommandService, providerRegistry)
+
     /** 完成状态显示之前建立的可逆历史记录。 */
     private val historyRecorder = TransferHistoryRecordDelegate(onMoveSucceeded, onCopySucceeded, onHistoryInvalidated)
 
     /**
      * 启动文件传输后台任务。
+     *
      * @param structure 本次结构化传输规划（含待传输条目、根目标目录与相对目录结构映射）。
      * @param operation 复制、移动或解压操作。
      * @param clipboardToClear 与本次传输绑定的剪切载荷，不清理后来复制的内容。
      * @param conflictStrategies 各冲突条目的处理策略。
-     * @return 无返回值，最终状态写入任务中心。
      */
     @Suppress("TooGenericExceptionCaught") // 传输任务边界统一将 Provider 异常写入任务中心。
     fun launch(
@@ -81,18 +82,21 @@ internal class FileTransferTaskDelegate(
         val removedIds = mutableSetOf<String>()
         val invalidated = mutableSetOf<String>()
         val createdIntermediateDirs = mutableListOf<VFile>()
+        val completedEntryIds = ConcurrentHashMap.newKeySet<String>()
+        val recordedErrors = mutableListOf<TaskError>()
+        var firstEntryFailure: Throwable? = null
         var skippedCount = 0
         val pauseFlag = taskOrchestrator.getOrCreatePauseFlag(taskId)
 
         enqueueTransferTask(taskId, entries, targetDirectoryLocation, operation)
-        taskOrchestrator.registerRetryHandler(taskId) {
-            launch(
-                structure = structure,
-                operation = operation,
-                clipboardToClear = clipboardToClear,
-                conflictStrategies = conflictStrategies,
-            )
-        }
+        registerUnresolvedRetryHandler(
+            taskId = taskId,
+            structure = structure,
+            operation = operation,
+            clipboardToClear = clipboardToClear,
+            conflictStrategies = conflictStrategies,
+            completedEntryIds = completedEntryIds,
+        )
 
         taskOrchestrator.launchQueuedTask(taskId) {
             try {
@@ -114,6 +118,7 @@ internal class FileTransferTaskDelegate(
                     isPaused = { pauseFlag.value },
                 ).collect { progress ->
                     createdIntermediateDirs += progress.createdDirectories
+                    progress.completedEntry?.let { completed -> completedEntryIds += completed.id }
                     progress.directoryChange?.let { change ->
                         removedIds += change.removed.map { it.id }
                         invalidated += change.invalidatedDirectories
@@ -123,27 +128,83 @@ internal class FileTransferTaskDelegate(
                     }
                     skippedCount += progress.skippedCount
                     applyTaskProgress(taskId, progress)
+                    progress.entryFailure?.let { entryFailure ->
+                        if (firstEntryFailure == null) firstEntryFailure = entryFailure.cause
+                        recordSingleEntryFailure(taskId, operation, entryFailure, recordedErrors)
+                    }
                 }
 
-                // 提交落盘后安全登记历史并切换完成态，隔离历史阶段的异常与取消。
-                recordHistorySafelyAfterCommit(
-                    taskId = taskId,
-                    structure = structure,
-                    operation = operation,
-                    conflictStrategies = conflictStrategies,
-                    clipboardToClear = clipboardToClear,
-                    skippedCount = skippedCount,
-                    createdIntermediateDirs = createdIntermediateDirs,
-                )
+                if (recordedErrors.isEmpty()) {
+                    recordHistorySafelyAfterCommit(
+                        taskId = taskId,
+                        structure = structure,
+                        operation = operation,
+                        conflictStrategies = conflictStrategies,
+                        clipboardToClear = clipboardToClear,
+                        skippedCount = skippedCount,
+                        createdIntermediateDirs = createdIntermediateDirs,
+                    )
+                } else {
+                    completeTransferWithEntryFailures(
+                        taskId = taskId,
+                        structure = structure,
+                        operation = operation,
+                        completedCount = completedEntryIds.size,
+                        skippedCount = skippedCount,
+                        recordedErrors = recordedErrors.toList(),
+                        firstFailure = firstEntryFailure,
+                        createdDirectories = createdIntermediateDirs,
+                        invalidated = invalidated,
+                    )
+                }
             } catch (failure: CancellationException) {
                 recordTransferCancellation(taskId, structure, createdIntermediateDirs, invalidated)
                 throw failure
             } catch (failure: Exception) {
-                recordTransferFailure(taskId, structure, operation, failure, createdIntermediateDirs, invalidated)
+                recordUnexpectedTransferFailure(
+                    taskId = taskId,
+                    structure = structure,
+                    operation = operation,
+                    failure = failure,
+                    completedEntryIds = completedEntryIds,
+                    skippedCount = skippedCount,
+                    recordedErrors = recordedErrors,
+                    createdDirectories = createdIntermediateDirs,
+                    invalidated = invalidated,
+                )
             } finally {
                 if (invalidated.isNotEmpty()) onRefreshDirectories(invalidated)
                 onRemovalFinished(removalContext, removedIds, invalidated.isNotEmpty())
             }
+        }
+    }
+
+    /**
+     * 注册仅针对未完成（失败或未执行）条目的重试回调，避免重传前面已成功落盘的文件。
+     */
+    private fun registerUnresolvedRetryHandler(
+        taskId: String,
+        structure: PlannedTransferStructure,
+        operation: FileTransferOperation,
+        clipboardToClear: ClipboardManager.ClipboardPayload?,
+        conflictStrategies: Map<String, TransferConflictStrategy>,
+        completedEntryIds: Set<String>,
+    ) {
+        taskOrchestrator.registerRetryHandler(taskId) {
+            val remainingIds = structure.entries
+                .mapNotNullTo(LinkedHashSet()) { entry -> entry.id.takeIf { id -> id !in completedEntryIds } }
+            val retryStructure = if (remainingIds.isEmpty() || remainingIds.size == structure.entries.size) {
+                structure
+            } else {
+                structure.retainEntries(remainingIds)
+            }
+            val retainedIdSet = retryStructure.entries.mapTo(mutableSetOf()) { entry -> entry.id }
+            launch(
+                structure = retryStructure,
+                operation = operation,
+                clipboardToClear = clipboardToClear,
+                conflictStrategies = conflictStrategies.filterKeys { id -> id in retainedIdSet },
+            )
         }
     }
 
@@ -159,7 +220,7 @@ internal class FileTransferTaskDelegate(
                 kind = taskKindFor(operation),
                 title = taskTitleFor(operation, entries.size),
                 status = BackgroundTaskStatus.QUEUED,
-                canPause = canPauseTransfer(entries, targetDirectoryLocation),
+                canPause = canPauseTransfer(entries, targetDirectoryLocation, providerRegistry),
                 detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, targetDirectoryLocation),
                 progress = 0f,
                 totalCount = entries.size,
@@ -171,16 +232,6 @@ internal class FileTransferTaskDelegate(
 
     /**
      * 在传输文件已全量提交落盘后安全登记历史记录。
-     *
-     * 捕获并隔离登记阶段的异常与协程取消，确保已落盘任务正确完成并切换为成功态。
-     *
-     * @param taskId 本次任务 ID。
-     * @param structure 传输规划结构。
-     * @param operation 传输操作类型。
-     * @param conflictStrategies 各条目冲突策略。
-     * @param clipboardToClear 待清理剪贴板载荷。
-     * @param skippedCount 跳过的条目数。
-     * @param createdIntermediateDirs 本次新建的中间目录列表。
      */
     private suspend fun recordHistorySafelyAfterCommit(
         taskId: String,
@@ -231,6 +282,41 @@ internal class FileTransferTaskDelegate(
         }
     }
 
+    private fun completeTransferWithEntryFailures(
+        taskId: String,
+        structure: PlannedTransferStructure,
+        operation: FileTransferOperation,
+        completedCount: Int,
+        skippedCount: Int,
+        recordedErrors: List<TaskError>,
+        firstFailure: Throwable?,
+        createdDirectories: List<VFile>,
+        invalidated: MutableSet<String>,
+    ) {
+        onHistoryInvalidated()
+        taskOrchestrator.unregisterJob(taskId)
+        val currentTask = taskOrchestrator.tasks.value.firstOrNull { it.id == taskId }
+        val committedCount = (completedCount - skippedCount).coerceAtLeast(0)
+        val retainedProgress = if (completedCount > 0) currentTask?.progress else null
+        taskOrchestrator.updateTask(
+            taskId = taskId,
+            status = BackgroundTaskStatus.FAILED,
+            detail = partialTransferFailureMessageFor(
+                operation = operation,
+                committedCount = committedCount,
+                failedCount = recordedErrors.size,
+                targetDirectoryLocation = structure.targetDirectoryLocation,
+                firstFailure = firstFailure,
+            ),
+            progress = retainedProgress,
+            processedCount = completedCount,
+        )
+        taskOrchestrator.updateTaskFields(taskId) { task ->
+            task.copy(currentFileName = null, errors = recordedErrors)
+        }
+        collectTouchedTransferLocations(structure, createdDirectories, invalidated)
+    }
+
     private fun recordTransferCancellation(
         taskId: String,
         structure: PlannedTransferStructure,
@@ -248,54 +334,55 @@ internal class FileTransferTaskDelegate(
                 progress = null,
             )
         }
-        collectTouchedLocations(structure, createdDirectories, invalidated)
+        collectTouchedTransferLocations(structure, createdDirectories, invalidated)
     }
 
-    private fun recordTransferFailure(
+    private fun recordUnexpectedTransferFailure(
         taskId: String,
         structure: PlannedTransferStructure,
         operation: FileTransferOperation,
         failure: Exception,
+        completedEntryIds: Set<String>,
+        skippedCount: Int,
+        recordedErrors: List<TaskError>,
         createdDirectories: List<VFile>,
         invalidated: MutableSet<String>,
     ) {
         onHistoryInvalidated()
         OnyxLogger.error("FileTransferDelegate", "文件传输失败 (${operation.name})", failure)
         taskOrchestrator.unregisterJob(taskId)
-        val currentStatus = taskOrchestrator.tasks.value.firstOrNull { it.id == taskId }?.status
-        if (currentStatus != BackgroundTaskStatus.SUCCEEDED) {
+        val currentTask = taskOrchestrator.tasks.value.firstOrNull { it.id == taskId }
+        if (currentTask?.status != BackgroundTaskStatus.SUCCEEDED) {
+            val firstUnresolved = structure.entries.firstOrNull { entry -> entry.id !in completedEntryIds }
+            val unexpectedErrors = if (firstUnresolved != null) {
+                listOf(failure.toTaskError(firstUnresolved, structure.effectiveTargetOf(firstUnresolved)))
+            } else {
+                failure.toTaskErrors(emptyList(), structure.targetDirectoryLocation)
+            }
+            val mergedErrors = (recordedErrors + unexpectedErrors).distinctBy { it.fileName to it.message }
+            val committedCount = (completedEntryIds.size - skippedCount).coerceAtLeast(0)
             taskOrchestrator.updateTask(
                 taskId = taskId,
                 status = BackgroundTaskStatus.FAILED,
-                detail = failure.toTransferFailureMessage(operation),
-                progress = null,
+                detail = partialTransferFailureMessageFor(
+                    operation = operation,
+                    committedCount = committedCount,
+                    failedCount = mergedErrors.size,
+                    targetDirectoryLocation = structure.targetDirectoryLocation,
+                    firstFailure = failure,
+                ),
+                progress = if (completedEntryIds.isNotEmpty()) currentTask?.progress else null,
+                processedCount = completedEntryIds.size,
             )
             taskOrchestrator.updateTaskFields(taskId) { task ->
-                task.copy(errors = failure.toTaskErrors(structure.entries, structure.targetDirectoryLocation))
+                task.copy(currentFileName = null, errors = mergedErrors)
             }
         }
-        collectTouchedLocations(structure, createdDirectories, invalidated)
-    }
-
-    private fun collectTouchedLocations(
-        structure: PlannedTransferStructure,
-        createdDirectories: List<VFile>,
-        invalidated: MutableSet<String>,
-    ) {
-        invalidated += structure.entries.mapNotNull { it.parentLocation }
-        invalidated += structure.targetDirectoryLocation
-        invalidated += structure.entryTargetDirectories.values
-        invalidated += createdDirectories.mapNotNull { it.parentLocation }
+        collectTouchedTransferLocations(structure, createdDirectories, invalidated)
     }
 
     /**
      * 完成成功任务并按原始载荷条件清理剪贴板，跳过项不被误报为实际传输。
-     * @param taskId 本次任务身份。
-     * @param entries 原始顶层请求条目。
-     * @param targetDirectoryLocation 实际请求的目标目录。
-     * @param operation 原始业务操作。
-     * @param clipboardToClear 本次捕获的剪切载荷。
-     * @param skippedCount 明确跳过的顶层条目数量。
      */
     private suspend fun completeSuccessfulTransfer(
         taskId: String,
@@ -313,20 +400,7 @@ internal class FileTransferTaskDelegate(
         taskOrchestrator.updateTask(
             taskId = taskId,
             status = BackgroundTaskStatus.SUCCEEDED,
-            detail = if (skippedCount > 0) I18nMessage(
-                MessageKey.MSG_TRANSFER_SKIPPED_ITEMS,
-                entries.size - skippedCount,
-                skippedCount,
-            ) else when (operation) {
-                FileTransferOperation.COPY ->
-                    I18nMessage(MessageKey.MSG_COPIED_ITEMS, entries.size, targetDirectoryLocation)
-
-                FileTransferOperation.MOVE ->
-                    I18nMessage(MessageKey.MSG_MOVED_ITEMS, entries.size, targetDirectoryLocation)
-
-                FileTransferOperation.EXTRACT ->
-                    I18nMessage(MessageKey.MSG_EXTRACTED_ITEMS, entries.size, targetDirectoryLocation)
-            },
+            detail = completedTransferMessageFor(operation, entries.size, skippedCount, targetDirectoryLocation),
             progress = 1f,
             processedCount = entries.size,
             processedBytes = completedBytes,
@@ -345,11 +419,27 @@ internal class FileTransferTaskDelegate(
         taskOrchestrator.scheduleAutoCleanup(taskId)
     }
 
-    /**
-     * 将用例进度同步到任务中心，文件变化由单独回调更新目录。
-     * @param taskId 本次任务身份。
-     * @param progress 用例发出的实际进度。
-     */
+    private fun recordSingleEntryFailure(
+        taskId: String,
+        operation: FileTransferOperation,
+        entryFailure: TransferEntryFailure,
+        recordedErrors: MutableList<TaskError>,
+    ) {
+        OnyxLogger.error(
+            "FileTransferDelegate",
+            "单条目文件传输失败 (${operation.name}): ${entryFailure.entry.location}",
+            entryFailure.cause,
+        )
+        recordedErrors += entryFailure.cause.toTaskError(
+            entry = entryFailure.entry,
+            targetDirectoryLocation = entryFailure.targetDirectoryLocation,
+        )
+        val snapshotErrors = recordedErrors.toList()
+        taskOrchestrator.updateTaskFields(taskId) { task ->
+            task.copy(errors = snapshotErrors)
+        }
+    }
+
     private fun applyTaskProgress(
         taskId: String,
         progress: TaskProgress,
@@ -374,11 +464,6 @@ internal class FileTransferTaskDelegate(
 
     /**
      * 记录冲突预检失败，并保留从原始业务入口重试的能力。
-     * @param entries 原始请求条目。
-     * @param targetDirectoryLocation 原始目标目录。
-     * @param operation 原始操作类型。
-     * @param failure 预检真实失败原因。
-     * @param retry 重新执行预检的命令。
      */
     fun recordPreflightFailure(
         entries: List<VFile>,
@@ -388,6 +473,7 @@ internal class FileTransferTaskDelegate(
         retry: () -> Unit,
     ) {
         val taskId = UUID.randomUUID().toString()
+        val errorEntries = if (entries.size == 1) entries else emptyList()
         taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
@@ -398,85 +484,9 @@ internal class FileTransferTaskDelegate(
                 progress = null,
                 totalCount = entries.size,
                 startTimeMillis = System.currentTimeMillis(),
-                errors = failure.toTaskErrors(entries, targetDirectoryLocation),
+                errors = failure.toTaskErrors(errorEntries, targetDirectoryLocation),
             )
         )
         taskOrchestrator.registerRetryHandler(taskId, retry)
     }
-
-    /**
-     * 将传输操作映射为任务中心分类。
-     * @param operation 文件操作。
-     * @return 对应任务类型。
-     */
-    private fun taskKindFor(operation: FileTransferOperation): BackgroundTaskKind {
-        return when (operation) {
-            FileTransferOperation.COPY -> BackgroundTaskKind.COPY
-            FileTransferOperation.MOVE -> BackgroundTaskKind.MOVE
-            FileTransferOperation.EXTRACT -> BackgroundTaskKind.EXTRACT
-        }
-    }
-
-    /**
-     * 判断当前传输是否能在内容块或顶层条目边界可靠暂停。
-     *
-     * 同一远端 Provider 的单项服务端复制没有字节回调，因此不暴露无效暂停按钮。
-     *
-     * @param entries 待传输条目。
-     * @param targetDirectoryLocation 目标目录位置。
-     * @return 能可靠暂停时返回 true。
-     */
-    private fun canPauseTransfer(
-        entries: List<VFile>,
-        targetDirectoryLocation: String,
-    ): Boolean {
-        if (entries.size > 1) return true
-        val sourceProtocol = entries.firstOrNull()
-            ?.let { entry -> providerRegistry.providerFor(entry.location).getOrNull()?.protocol }
-            ?: return false
-        val targetProtocol = providerRegistry.providerFor(targetDirectoryLocation).getOrNull()?.protocol
-            ?: return false
-        return sourceProtocol == VfsProtocol.LOCAL || sourceProtocol != targetProtocol
-    }
-
-    /**
-     * 构造可随语言变化解析的传输任务标题。
-     * @param operation 文件操作。
-     * @param entryCount 顶层请求条目数量。
-     * @return 本地化任务标题。
-     */
-    private fun taskTitleFor(
-        operation: FileTransferOperation,
-        entryCount: Int,
-    ): I18nMessage {
-        return when (operation) {
-            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_ITEMS, entryCount)
-            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_ITEMS, entryCount)
-            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_ITEMS, entryCount)
-        }
-    }
-
-    /**
-     * 提供传输错误映射使用的操作级消息。
-     * @param operation 文件操作。
-     * @return 本地化通用失败消息。
-     */
-    private fun failureMessageFor(operation: FileTransferOperation): I18nMessage {
-        return when (operation) {
-            FileTransferOperation.COPY -> I18nMessage(MessageKey.MSG_COPY_FAILED)
-            FileTransferOperation.MOVE -> I18nMessage(MessageKey.MSG_MOVE_FAILED)
-            FileTransferOperation.EXTRACT -> I18nMessage(MessageKey.MSG_EXTRACT_FAILED)
-        }
-    }
-
-    /**
-     * 通过统一错误映射保留传输失败原因及本地化参数。
-     *
-     * @param operation 当前传输操作。
-     * @return 可在当前语言下解析的失败消息。
-     */
-    private fun Throwable.toTransferFailureMessage(operation: FileTransferOperation): I18nMessage {
-        return toI18nMessage(failureMessageFor(operation).key)
-    }
-
 }

@@ -344,17 +344,20 @@ private fun TaskErrorList(task: BackgroundTask) {
         color = palette.error,
     )
     task.errors.take(MAX_VISIBLE_TASK_ERRORS).forEach { error ->
-        Text(
-            text = stringResource(
-                Res.string.label_task_file_error,
-                error.fileName,
-                error.detail?.resolve() ?: error.message,
-            ),
-            fontSize = LocalOnyxAppearance.current.headerFontSize,
-            color = palette.mutedForeground,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        val formattedError = stringResource(
+            Res.string.label_task_file_error,
+            error.fileName,
+            error.detail?.resolve() ?: error.message,
         )
+        OnyxTooltip(text = formattedError) {
+            Text(
+                text = formattedError,
+                fontSize = LocalOnyxAppearance.current.headerFontSize,
+                color = palette.mutedForeground,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

@@ -5,6 +5,9 @@ import com.oruke.onyx.core.model.I18nMessage
 import onyx.composeapp.generated.resources.msg_system_clipboard_unavailable
 import onyx.composeapp.generated.resources.msg_transfer_clipboard_clear_failed
 import onyx.composeapp.generated.resources.msg_transfer_skipped_items
+import onyx.composeapp.generated.resources.msg_copy_partial_failed
+import onyx.composeapp.generated.resources.msg_move_partial_failed
+import onyx.composeapp.generated.resources.msg_extract_partial_failed
 import onyx.composeapp.generated.resources.msg_inline_edit_target_unavailable
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.ui.vfsProtocolLabel
@@ -188,6 +191,9 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_SYSTEM_CLIPBOARD_UNAVAILABLE -> Res.string.msg_system_clipboard_unavailable
         MessageKey.MSG_TRANSFER_CLIPBOARD_CLEAR_FAILED -> Res.string.msg_transfer_clipboard_clear_failed
         MessageKey.MSG_TRANSFER_SKIPPED_ITEMS -> Res.string.msg_transfer_skipped_items
+        MessageKey.MSG_COPY_PARTIAL_FAILED -> Res.string.msg_copy_partial_failed
+        MessageKey.MSG_MOVE_PARTIAL_FAILED -> Res.string.msg_move_partial_failed
+        MessageKey.MSG_EXTRACT_PARTIAL_FAILED -> Res.string.msg_extract_partial_failed
         MessageKey.MSG_INLINE_EDIT_TARGET_UNAVAILABLE -> Res.string.msg_inline_edit_target_unavailable
         MessageKey.MSG_SEARCH_NO_ELIGIBLE_ROOTS -> Res.string.msg_search_no_eligible_roots
         MessageKey.MSG_ARCHIVE_PASSWORD_INVALID -> Res.string.msg_archive_password_invalid

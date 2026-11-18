@@ -1,28 +1,25 @@
 package com.oruke.onyx.shared.usecase
 
 import com.oruke.onyx.core.model.BackgroundTaskStatus
+import com.oruke.onyx.core.model.DirectoryChange
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.I18nMessage
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.DirectoryChange
-import com.oruke.onyx.vfs.api.FileTransferResult
-import com.oruke.onyx.vfs.api.ResultAwareFileCommandService
 import com.oruke.onyx.vfs.api.FileCommandService
 import com.oruke.onyx.vfs.api.FileTransferProgressSink
+import com.oruke.onyx.vfs.api.FileTransferResult
 import com.oruke.onyx.vfs.api.ProgressAwareFileCommandService
+import com.oruke.onyx.vfs.api.ResultAwareFileCommandService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
-import java.util.concurrent.locks.LockSupport
-
-/** 暂停期间检查恢复和取消状态的间隔。 */
-private const val TRANSFER_PAUSE_POLL_INTERVAL_NANOS = 50_000_000L
 
 /** 按条目执行跨 Provider 复制、移动或提取的后台任务用例。 */
 class FileTransferUseCase(
@@ -34,7 +31,7 @@ class FileTransferUseCase(
     private val clockMillis: () -> Long = { System.nanoTime() / NANOS_PER_MILLISECOND },
 ) {
     /**
-     * 顺序传输条目并按真实内容字节发送节流后的进度。
+     * 顺序传输条目并按真实内容字节发送节流后的进度；单条目失败时记录错误并继续传输后续条目。
      *
      * @param request 传输条目、目标、操作和冲突策略。
      * @param awaitReady 每个条目开始前等待任务调度器放行的回调。
@@ -57,9 +54,7 @@ class FileTransferUseCase(
                 progress = if (request.entries.isEmpty()) 1f else null,
             )
         )
-        val entryBytesById = request.entries.associate { entry ->
-            entry.id to providerRegistry.totalSizeBytes(listOf(entry)).getOrThrow()
-        }
+        val entryBytesById = resolveEntrySizesSafely(request.entries)
         val totalBytes = entryBytesById.values.sum()
         send(
             TaskProgress(
@@ -71,39 +66,66 @@ class FileTransferUseCase(
         )
 
         var accumulatedBytes = 0L
+        var failedBytes = 0L
+        var completedCount = 0
         val ensuredDirectories = mutableSetOf<String>()
-        request.entries.forEachIndexed { index, entry ->
-            accumulatedBytes = transferEntry(
-                step = FileTransferStep(
-                    request = request,
-                    entry = entry,
-                    index = index,
-                    entryBytes = entryBytesById[entry.id] ?: entry.sizeBytes ?: 0L,
-                    accumulatedBytes = accumulatedBytes,
-                    totalBytes = totalBytes,
-                ),
+        for (entry in request.entries) {
+            val entryBytes = entryBytesById[entry.id] ?: entry.sizeBytes ?: 0L
+            val step = FileTransferStep(
+                request = request,
+                entry = entry,
+                completedCount = completedCount,
+                entryBytes = entryBytes,
+                accumulatedBytes = accumulatedBytes,
+                failedBytes = failedBytes,
+                totalBytes = totalBytes,
+            )
+            val succeeded = transferEntrySafely(
+                step = step,
                 ensuredDirectories = ensuredDirectories,
                 awaitReady = awaitReady,
                 isPaused = isPaused,
             )
+            if (succeeded) {
+                accumulatedBytes += entryBytes
+                completedCount += 1
+            } else {
+                failedBytes += entryBytes
+            }
         }
     }
 
     /**
-     * 执行单个顶层条目并发送节流后的字节进度。
+     * 安全计算各顶层条目字节数；单个坏条目读取失败时回退其自身已知大小，不提前炸毁整批任务。
+     */
+    private suspend fun resolveEntrySizesSafely(entries: List<VFile>): Map<String, Long> {
+        return entries.associate { entry ->
+            currentCoroutineContext().ensureActive()
+            val resolvedBytes = providerRegistry.totalSizeBytes(listOf(entry)).getOrElse { failure ->
+                if (failure is CancellationException) throw failure
+                currentCoroutineContext().ensureActive()
+                entry.sizeBytes ?: 0L
+            }
+            entry.id to resolvedBytes
+        }
+    }
+
+    /**
+     * 执行单个顶层条目并隔离非取消失败，确保同批其余正常条目继续完成传输。
      *
      * @param step 当前条目传输上下文。
      * @param ensuredDirectories 任务内已确认存在的中间目录集合。
      * @param awaitReady 条目开始前的暂停等待回调。
      * @param isPaused 返回任务当前是否暂停。
-     * @return 当前条目完成后的累计字节数。
+     * @return 当前条目完成（提交或按冲突跳过）时返回 `true`，单条目失败时返回 `false`。
      */
-    private suspend fun ProducerScope<TaskProgress>.transferEntry(
+    @Suppress("TooGenericExceptionCaught") // 单条目边界仅隔离业务与 I/O 异常，协程取消始终原样抛出。
+    private suspend fun ProducerScope<TaskProgress>.transferEntrySafely(
         step: FileTransferStep,
         ensuredDirectories: MutableSet<String>,
         awaitReady: suspend () -> Unit,
         isPaused: () -> Boolean,
-    ): Long {
+    ): Boolean {
         currentCoroutineContext().ensureActive()
         awaitReady()
         val conflictStrategy = step.request.conflictStrategies[step.entry.id]
@@ -115,118 +137,70 @@ class FileTransferUseCase(
         )
         send(step.startProgress(detail))
 
-        val createdDirectories = FileTransferDirectoryOperations.ensureChain(
-            chain = step.request.entryDirectoryChains[step.entry.id].orEmpty(),
-            ensuredLocations = ensuredDirectories,
-            providerRegistry = providerRegistry,
-            fileCommandService = fileCommandService,
-        )
-        if (createdDirectories.isNotEmpty()) {
+        return try {
+            val createdDirectories = FileTransferDirectoryOperations.ensureChain(
+                chain = step.request.entryDirectoryChains[step.entry.id].orEmpty(),
+                ensuredLocations = ensuredDirectories,
+                providerRegistry = providerRegistry,
+                fileCommandService = fileCommandService,
+            )
+            if (createdDirectories.isNotEmpty()) {
+                send(
+                    step.startProgress(detail).copy(
+                        directoryChange = DirectoryChange(upserted = createdDirectories),
+                        createdDirectories = createdDirectories,
+                    )
+                )
+            }
+
+            val transferJob = currentCoroutineContext()[Job]
+            val telemetry = createStepTelemetry(step, detail, clockMillis, isPaused, transferJob)
+            val result = executeTransfer(
+                operation = step.request.operation,
+                entry = step.entry,
+                targetDirectoryLocation = targetDirectory,
+                conflictStrategy = conflictStrategy,
+                progressSink = telemetry.sink,
+            ).getOrThrow()
+
+            val touchedTargets = setOf(step.request.targetDirectoryLocation, targetDirectory)
+            val change = when (result) {
+                is FileTransferResult.Committed -> DirectoryChange(
+                    removed = if (step.request.operation == FileTransferOperation.MOVE) {
+                        listOf(step.entry)
+                    } else {
+                        emptyList()
+                    },
+                    upserted = listOf(result.target),
+                )
+                FileTransferResult.Skipped -> null
+                FileTransferResult.Uncertain -> DirectoryChange(
+                    invalidatedDirectories = if (step.request.operation == FileTransferOperation.MOVE) {
+                        touchedTargets + setOfNotNull(step.entry.parentLocation)
+                    } else {
+                        touchedTargets
+                    },
+                )
+            }
+            val completedBytes = step.accumulatedBytes + step.entryBytes
             send(
-                step.startProgress(detail).copy(
-                    directoryChange = DirectoryChange(upserted = createdDirectories),
-                    createdDirectories = createdDirectories,
+                step.completedProgress(completedBytes, telemetry.latestBytesPerSecond()).copy(
+                    directoryChange = change,
+                    skippedCount = if (result == FileTransferResult.Skipped) 1 else 0,
                 )
             )
+            true
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            currentCoroutineContext().ensureActive()
+            send(step.failedProgress(failure))
+            false
         }
-
-        val transferJob = currentCoroutineContext()[Job]
-        val telemetry = createStepProgressSink(step, detail, isPaused, transferJob)
-
-        val result = executeTransfer(
-            operation = step.request.operation,
-            entry = step.entry,
-            targetDirectoryLocation = targetDirectory,
-            conflictStrategy = conflictStrategy,
-            progressSink = telemetry.sink,
-        ).getOrThrow()
-        val touchedTargets = setOf(step.request.targetDirectoryLocation, targetDirectory)
-        val change = when (result) {
-            is FileTransferResult.Committed -> DirectoryChange(
-                removed = if (step.request.operation == FileTransferOperation.MOVE) listOf(step.entry) else emptyList(),
-                upserted = listOf(result.target))
-            FileTransferResult.Skipped -> null
-            FileTransferResult.Uncertain -> DirectoryChange(invalidatedDirectories =
-                if (step.request.operation == FileTransferOperation.MOVE)
-                    touchedTargets + setOfNotNull(step.entry.parentLocation)
-                else touchedTargets)
-        }
-        val completedBytes = step.accumulatedBytes + step.entryBytes
-        send(step.completedProgress(completedBytes, telemetry.latestBytesPerSecond()).copy(directoryChange = change,
-            skippedCount = if (result == FileTransferResult.Skipped) 1 else 0))
-        return completedBytes
-    }
-
-    private fun ProducerScope<TaskProgress>.createStepProgressSink(
-        step: FileTransferStep,
-        detail: I18nMessage,
-        isPaused: () -> Boolean,
-        transferJob: Job?,
-    ): StepTelemetry {
-        var entryTransferredBytes = 0L
-        var lastByteEmissionMillis = clockMillis()
-        var lastFileEmissionMillis = lastByteEmissionMillis - PROGRESS_EMISSION_INTERVAL_MILLIS
-        val rateEstimator = TransferRateEstimator().also { it.record(step.accumulatedBytes, lastByteEmissionMillis) }
-        var latestBytesPerSecond: Long? = null
-        var latestFileName = step.entry.name
-        val telemetryLock = Any()
-
-        fun currentProcessedBytes(): Long {
-            val entryProgress = if (step.entryBytes > 0L) {
-                entryTransferredBytes.coerceAtMost(step.entryBytes)
-            } else {
-                entryTransferredBytes
-            }
-            return step.accumulatedBytes + entryProgress
-        }
-
-        val sink = object : FileTransferProgressSink {
-            override fun onBytesTransferred(byteCount: Long) {
-                awaitTransferResume(isPaused, transferJob)
-                if (byteCount <= 0L) return
-                synchronized(telemetryLock) {
-                    entryTransferredBytes += byteCount
-                    val processedBytes = currentProcessedBytes()
-                    val nowMillis = clockMillis()
-                    latestBytesPerSecond = rateEstimator.record(processedBytes, nowMillis)
-                    if (nowMillis - lastByteEmissionMillis >= PROGRESS_EMISSION_INTERVAL_MILLIS) {
-                        lastByteEmissionMillis = nowMillis
-                        lastFileEmissionMillis = nowMillis
-                        trySend(step.byteProgress(detail, processedBytes, latestBytesPerSecond, latestFileName))
-                    }
-                }
-            }
-
-            override fun onCurrentFileChanged(fileName: String) {
-                awaitTransferResume(isPaused, transferJob)
-                if (fileName.isBlank()) return
-                synchronized(telemetryLock) {
-                    latestFileName = fileName
-                    val nowMillis = clockMillis()
-                    if (nowMillis - lastFileEmissionMillis >= PROGRESS_EMISSION_INTERVAL_MILLIS) {
-                        lastFileEmissionMillis = nowMillis
-                        val snapshot = step.byteProgress(
-                            detail = detail,
-                            processedBytes = currentProcessedBytes(),
-                            bytesPerSecond = latestBytesPerSecond,
-                            currentFileName = latestFileName,
-                        )
-                        trySend(snapshot)
-                    }
-                }
-            }
-        }
-        return StepTelemetry(sink) { synchronized(telemetryLock) { latestBytesPerSecond } }
     }
 
     /**
      * 按操作类型调用命令服务；支持进度契约时传入字节接收器。
-     *
-     * @param request 当前传输请求。
-     * @param entry 当前顶层条目。
-     * @param conflictStrategy 当前条目的冲突策略。
-     * @param progressSink 字节增量接收器。
-     * @return 操作结果。
      */
     private suspend fun executeTransfer(
         operation: FileTransferOperation,
@@ -236,8 +210,9 @@ class FileTransferUseCase(
         progressSink: FileTransferProgressSink,
     ): Result<FileTransferResult> {
         val resultAware = fileCommandService as? ResultAwareFileCommandService
-        if (resultAware != null) return resultAware.transferEntry(entry, targetDirectoryLocation,
-            operation, conflictStrategy, progressSink)
+        if (resultAware != null) {
+            return resultAware.transferEntry(entry, targetDirectoryLocation, operation, conflictStrategy, progressSink)
+        }
         val progressAwareService = fileCommandService as? ProgressAwareFileCommandService
         val result = when (operation) {
             FileTransferOperation.COPY,
@@ -291,207 +266,7 @@ class FileTransferUseCase(
     )
 
     private companion object {
-        /** UI 进度事件的最小间隔。 */
-        const val PROGRESS_EMISSION_INTERVAL_MILLIS = 125L
         /** 将纳秒单调时钟换算为毫秒。 */
         const val NANOS_PER_MILLISECOND = 1_000_000L
     }
 }
-
-/** 单个顶层条目的传输进度上下文。 */
-private data class FileTransferStep(
-    /** 整体文件传输请求。 */
-    val request: FileTransferUseCase.FileTransferRequest,
-    /** 当前顶层条目。 */
-    val entry: VFile,
-    /** 当前条目索引。 */
-    val index: Int,
-    /** 当前条目递归总字节数。 */
-    val entryBytes: Long,
-    /** 当前条目前已完成累计字节数。 */
-    val accumulatedBytes: Long,
-    /** 整个任务总字节数。 */
-    val totalBytes: Long,
-) {
-    /** 当前条目实际落盘父目录。 */
-    val effectiveTargetDirectory: String
-        get() = request.entryTargetDirectories[entry.id] ?: request.targetDirectoryLocation
-    /**
-     * 构造当前条目开始前的任务快照。
-     *
-     * @param detail 当前条目详情。
-     * @return 开始任务快照。
-     */
-    fun startProgress(detail: I18nMessage): TaskProgress = TaskProgress(
-        status = BackgroundTaskStatus.RUNNING,
-        detail = detail,
-        progress = progressBeforeEntry(accumulatedBytes, totalBytes, index, request.entries.size),
-        currentFileName = entry.name,
-        processedCount = index,
-        processedBytes = accumulatedBytes,
-        totalBytes = totalBytes,
-    )
-
-    /**
-     * 构造当前条目传输中的任务快照。
-     *
-     * @param detail 当前条目详情。
-     * @param processedBytes 当前任务已完成字节数。
-     * @param bytesPerSecond 当前滚动速度。
-     * @return 传输中任务快照。
-     */
-    fun byteProgress(
-        detail: I18nMessage,
-        processedBytes: Long,
-        bytesPerSecond: Long?,
-        currentFileName: String = entry.name,
-    ): TaskProgress = TaskProgress(
-        status = BackgroundTaskStatus.RUNNING,
-        detail = detail,
-        progress = byteProgress(processedBytes, totalBytes),
-        currentFileName = currentFileName,
-        processedCount = index,
-        processedBytes = processedBytes,
-        totalBytes = totalBytes,
-        bytesPerSecond = bytesPerSecond,
-        estimatedRemainingSeconds = estimateRemainingSeconds(
-            processedBytes = processedBytes,
-            totalBytes = totalBytes,
-            bytesPerSecond = bytesPerSecond,
-        ),
-    )
-
-    /**
-     * 构造当前条目完成后的任务快照。
-     *
-     * @param completedBytes 当前任务累计完成字节数。
-     * @param bytesPerSecond 最近滚动速度。
-     * @return 条目完成任务快照。
-     */
-    fun completedProgress(
-        completedBytes: Long,
-        bytesPerSecond: Long?,
-    ): TaskProgress = TaskProgress(
-        status = BackgroundTaskStatus.RUNNING,
-        detail = I18nMessage(
-            MessageKey.MSG_STRING_LITERAL,
-            "${entry.name} -> $effectiveTargetDirectory",
-        ),
-        progress = completedEntryProgress(
-            accumulatedBytes = completedBytes,
-            totalBytes = totalBytes,
-            processedCount = index + 1,
-            totalCount = request.entries.size,
-        ),
-        currentFileName = entry.name,
-        processedCount = index + 1,
-        processedBytes = completedBytes,
-        totalBytes = totalBytes,
-        bytesPerSecond = bytesPerSecond,
-        estimatedRemainingSeconds = estimateRemainingSeconds(
-            processedBytes = completedBytes,
-            totalBytes = totalBytes,
-            bytesPerSecond = bytesPerSecond,
-        ),
-    )
-}
-
-/**
- * 在内容块边界等待任务恢复，并持续检查原传输协程是否已取消。
- *
- * @param isPaused 返回任务当前是否暂停。
- * @param transferJob 原传输协程 Job。
- */
-private fun awaitTransferResume(
-    isPaused: () -> Boolean,
-    transferJob: Job?,
-) {
-    while (isPaused()) {
-        transferJob?.ensureActive()
-        LockSupport.parkNanos(TRANSFER_PAUSE_POLL_INTERVAL_NANOS)
-    }
-}
-
-/**
- * 计算当前条目开始前的总体进度；首项尚未产生字节时返回不确定进度。
- *
- * @param accumulatedBytes 已完成条目的累计字节数。
- * @param totalBytes 任务总字节数。
- * @param processedCount 已完成条目数。
- * @param totalCount 总条目数。
- * @return 归一化进度或 null。
- */
-private fun progressBeforeEntry(
-    accumulatedBytes: Long,
-    totalBytes: Long,
-    processedCount: Int,
-    totalCount: Int,
-): Float? {
-    return when {
-        totalBytes > 0L && accumulatedBytes > 0L -> byteProgress(accumulatedBytes, totalBytes)
-        processedCount > 0 -> progressValue(processedCount, totalCount)
-        else -> null
-    }
-}
-
-/**
- * 计算单个条目完成后的总体进度。
- *
- * @param accumulatedBytes 已完成累计字节数。
- * @param totalBytes 任务总字节数。
- * @param processedCount 已完成条目数。
- * @param totalCount 总条目数。
- * @return 归一化进度。
- */
-private fun completedEntryProgress(
-    accumulatedBytes: Long,
-    totalBytes: Long,
-    processedCount: Int,
-    totalCount: Int,
-): Float {
-    return if (totalBytes > 0L) {
-        byteProgress(accumulatedBytes, totalBytes) ?: 0f
-    } else {
-        progressValue(processedCount, totalCount)
-    }
-}
-
-/**
- * 将字节完成量换算为归一化进度。
- *
- * @param processedBytes 已完成字节数。
- * @param totalBytes 总字节数。
- * @return 归一化进度；总字节未知时返回 null。
- */
-private fun byteProgress(
-    processedBytes: Long,
-    totalBytes: Long,
-): Float? {
-    if (totalBytes <= 0L) return null
-    return (processedBytes.toDouble() / totalBytes.toDouble()).toFloat().coerceIn(0f, 1f)
-}
-
-/**
- * 按当前滚动速度估算剩余秒数。
- *
- * @param processedBytes 已完成字节数。
- * @param totalBytes 总字节数。
- * @param bytesPerSecond 当前速度。
- * @return 向上取整的剩余秒数；信息不足时返回 null。
- */
-private fun estimateRemainingSeconds(
-    processedBytes: Long,
-    totalBytes: Long,
-    bytesPerSecond: Long?,
-): Long? {
-    val speed = bytesPerSecond?.takeIf { value -> value > 0L } ?: return null
-    val remainingBytes = (totalBytes - processedBytes).coerceAtLeast(0L)
-    if (remainingBytes == 0L) return null
-    return (remainingBytes + speed - 1L) / speed
-}
-
-/** 单个顶层条目传输期间的实时进度接收器与速率快照访问器。 */
-private class StepTelemetry(
-    val sink: FileTransferProgressSink,
-    val latestBytesPerSecond: () -> Long?,
-)
