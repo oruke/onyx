@@ -6,6 +6,7 @@ import com.oruke.onyx.app.platform.DesktopOperatingSystem
 import com.oruke.onyx.app.platform.currentDesktopOperatingSystem
 import com.oruke.onyx.core.model.StandardUserDirectory
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.core.model.isTrashLocation
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_computer
@@ -50,7 +51,7 @@ internal fun desktopLocationLabel(label: String): String =
     when {
         isComputerLocation(label) -> desktopComputerLabel()
         isTrashLocation(label) -> desktopTrashLabel()
-        else -> label
+        else -> label.decodeSfmDisplayText()
     }
 
 /**

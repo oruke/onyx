@@ -3,6 +3,8 @@ package com.oruke.onyx.app.component.delegate
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneState
 import com.oruke.onyx.app.component.SearchFilters
+import com.oruke.onyx.app.component.SearchNavigationFeedback
+import com.oruke.onyx.app.component.SearchNavigationKind
 import com.oruke.onyx.app.component.SearchPanelMode
 import com.oruke.onyx.app.component.SearchPanelState
 import com.oruke.onyx.app.component.SearchStatus
@@ -14,6 +16,8 @@ import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.SearchScope
 import com.oruke.onyx.core.model.TRASH_LOCATION
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.shared.usecase.FileCollectionUseCase
 import com.oruke.onyx.shared.usecase.FileSearchUseCase
@@ -48,19 +52,37 @@ internal class RootSearchDelegate(
     onRecordSearchHistory: (String) -> Unit,
     /** 当前会话固定的展示形态。 */
     private val mode: SearchPanelMode = SearchPanelMode.SEARCH_PANEL,
+    /** 判断打开某个条目是否属于在文件面板内部跳转（目录或可浏览归档）。 */
+    private val isNavigationTargetEntry: (VFile) -> Boolean = { it.kind == VFileKind.DIRECTORY },
+    /** 请求将所属主文件管理器窗口置前并聚焦活动面板。 */
+    private val onRequestOwnerWindowActivation: () -> Unit = {},
+    /** 同步持久化用户切换的“打开后保持窗口”偏好。 */
+    private val onKeepWindowOpenChanged: (Boolean) -> Unit = {},
 ) {
     /** 当前会话的可变状态，后台结果只合并执行字段。 */
     private val mutableSearchState = MutableStateFlow(SearchPanelState(mode = mode))
+
     /** 对外只读的独立搜索状态。 */
     val searchState: StateFlow<SearchPanelState> = mutableSearchState.asStateFlow()
+
     /** 当前会话独有的多根执行器与取消标识。 */
     private val searchRun = RootSearchRun(scope, fileSearchUseCase, mutableSearchState, onRecordSearchHistory)
 
-    /** 显示完整搜索；已有会话保持原始来源目录与查询。 */
+    /** 显示完整搜索；已有会话保持原始来源目录与查询，并同步保持窗口偏好。 */
     fun showSearchPanel() {
         if (mutableSearchState.value.rootLocation.isBlank()) useCurrentDirectory()
+        val persistedKeepOpen = if (mode == SearchPanelMode.SEARCH_PANEL) {
+            settings().keepSearchWindowOpen
+        } else {
+            false
+        }
         mutableSearchState.update { current ->
-            current.copy(visible = true, activationRequest = current.activationRequest + 1L)
+            current.copy(
+                visible = true,
+                keepWindowOpen = persistedKeepOpen,
+                lastNavigationFeedback = null,
+                activationRequest = current.activationRequest + 1L,
+            )
         }
     }
 
@@ -75,7 +97,9 @@ internal class RootSearchDelegate(
     /** 隐藏当前搜索；完整窗口继续后台工作，快速打开取消自身的搜索任务。 */
     fun closeSearchPanel() {
         if (mode == SearchPanelMode.QUICK_OPEN) cancelSearch()
-        mutableSearchState.update { current -> current.copy(visible = false) }
+        mutableSearchState.update { current ->
+            current.copy(visible = false, lastNavigationFeedback = null)
+        }
     }
 
     /** 显式采用当前面板目录，保留查询并清理旧运行结果。 */
@@ -126,6 +150,31 @@ internal class RootSearchDelegate(
     }
 
     /**
+     * 设置打开或定位结果后是否保持独立搜索窗口开启，并同步持久化设置。
+     *
+     * @param keepOpen 是否保持窗口开启。
+     */
+    fun setKeepWindowOpen(keepOpen: Boolean) {
+        mutableSearchState.update { current ->
+            current.copy(
+                keepWindowOpen = keepOpen,
+                lastNavigationFeedback = if (keepOpen) current.lastNavigationFeedback else null,
+            )
+        }
+        if (mode == SearchPanelMode.SEARCH_PANEL) {
+            onKeepWindowOpenChanged(keepOpen)
+        }
+    }
+
+    /**
+     * 主动激活来源面板并请求将主文件管理器窗口置前聚焦。
+     */
+    fun focusOwnerWindow() {
+        activatePane(mutableSearchState.value.paneId)
+        onRequestOwnerWindowActivation()
+    }
+
+    /**
      * 更新高级筛选区域可见性，不改变已运行的查询。
      *
      * @param expanded 高级筛选区域是否展开。
@@ -154,6 +203,7 @@ internal class RootSearchDelegate(
             favorites = settings().favoriteLocations, allRoots = filesystemRoots(),
             includeRemoteLocations = current.includeRemoteLocations,
         )
+        mutableSearchState.update { it.copy(lastNavigationFeedback = null) }
         searchRun.start(roots, query, current.query.trim())
     }
 
@@ -161,19 +211,35 @@ internal class RootSearchDelegate(
     fun cancelSearch() = searchRun.cancel()
 
     /**
-     * 在会话绑定的来源面板打开条目，快速打开同时结束自身会话。
+     * 在会话绑定的来源面板打开条目。
+     *
+     * 默认自动收起搜索窗口；若目标是文件夹或可浏览归档，同时唤醒置前主文件管理器窗口，
+     * 避免在后台静默切目录而用户毫无感知。勾选“打开后保持窗口”时保留搜索窗口并展示跳转反馈。
      *
      * @param entry 要打开的搜索结果。
      */
     fun openSearchResult(entry: VFile) {
-        val paneId = mutableSearchState.value.paneId
+        val current = mutableSearchState.value
+        val paneId = current.paneId
         activatePane(paneId)
         paneComponent(paneId).openEntry(entry)
-        if (mode == SearchPanelMode.QUICK_OPEN) closeSearchPanel()
+        val navigatesInPane = isNavigationTargetEntry(entry)
+        val shouldCloseWindow = mode == SearchPanelMode.QUICK_OPEN || !current.keepWindowOpen
+        if (shouldCloseWindow) {
+            closeSearchPanel()
+            if (navigatesInPane) {
+                onRequestOwnerWindowActivation()
+            }
+        } else if (navigatesInPane) {
+            recordNavigationFeedback(SearchNavigationKind.OPENED_DIRECTORY, entry.name.decodeSfmDisplayText())
+        }
     }
 
     /**
      * 在会话绑定的来源面板定位条目；没有父目录的条目不执行导航。
+     *
+     * 默认收起搜索窗口并置前聚焦主文件管理器窗口（滚动并高亮选中该条目）；
+     * 勾选“打开后保持窗口”时保留搜索窗口并更新底部定位反馈。
      *
      * @param entry 要定位并选中的结果。
      */
@@ -183,21 +249,41 @@ internal class RootSearchDelegate(
         } else {
             entry.parentLocation ?: return
         }
-        val paneId = mutableSearchState.value.paneId
+        val current = mutableSearchState.value
+        val paneId = current.paneId
         activatePane(paneId)
         paneComponent(paneId).openDirectoryAndSelect(targetDirectory, entry.name)
-        if (mode == SearchPanelMode.QUICK_OPEN) closeSearchPanel()
+        if (mode == SearchPanelMode.QUICK_OPEN || !current.keepWindowOpen) {
+            closeSearchPanel()
+            onRequestOwnerWindowActivation()
+        } else {
+            recordNavigationFeedback(SearchNavigationKind.LOCATED_IN_DIRECTORY, entry.name.decodeSfmDisplayText())
+        }
     }
 
     /** 把当前结果复制为新集合快照，后续搜索发布或再次固定不会修改已打开集合。 */
     fun openSearchResultsAsCollection() {
         val current = mutableSearchState.value
         if (current.results.isEmpty()) return
+        val label = current.query.trim().ifBlank { current.results.size.toString() }
         val collection = fileCollectionUseCase.saveSearchResults(
             id = UUID.randomUUID().toString(), name = current.query, entries = current.results.toList(),
         )
         activatePane(current.paneId)
         paneComponent(current.paneId).createTab(collection.location)
+        if (!current.keepWindowOpen) {
+            closeSearchPanel()
+            onRequestOwnerWindowActivation()
+        } else {
+            recordNavigationFeedback(SearchNavigationKind.PINNED_COLLECTION, label)
+        }
+    }
+
+    /** 记录保持窗口开启模式下的主窗口导航反馈。 */
+    private fun recordNavigationFeedback(kind: SearchNavigationKind, label: String) {
+        mutableSearchState.update { state ->
+            state.copy(lastNavigationFeedback = SearchNavigationFeedback(kind = kind, targetLabel = label))
+        }
     }
 
     /**
@@ -208,8 +294,10 @@ internal class RootSearchDelegate(
     private fun resetForChange(transform: (SearchPanelState) -> SearchPanelState) {
         searchRun.cancel()
         mutableSearchState.update { current ->
-            transform(current).copy(status = SearchStatus.IDLE, results = emptyList(), selectedIndex = 0,
-                scannedEntryCount = 0, limitReached = false, error = null)
+            transform(current).copy(
+                status = SearchStatus.IDLE, results = emptyList(), selectedIndex = 0,
+                scannedEntryCount = 0, limitReached = false, error = null, lastNavigationFeedback = null,
+            )
         }
     }
 }

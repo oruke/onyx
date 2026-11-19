@@ -116,16 +116,37 @@ class SearchWindowTest {
                         ?.config?.getOrNull(SemanticsProperties.Selected) == true
                 }
             }
-            pressSearchWindowEnter()
-            waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) { fixture.navigation.size == 1 }
-            assertEquals(PaneIntent.OpenEntry(results[1]), fixture.navigation.single())
-            assertTrue(fixture.delegate.searchState.value.visible)
+            // 默认不勾选“打开后保持窗口”：定位所在目录后自动关闭搜索窗口并唤醒置前主窗口。
             pressSearchWindowEnter(locate = true)
+            waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) { fixture.navigation.size == 1 }
+            assertEquals(
+                PaneIntent.OpenDirectoryAndSelect(assertNotNull(results[1].parentLocation), results[1].name),
+                fixture.navigation.single(),
+            )
+            assertFalse(fixture.delegate.searchState.value.visible)
+            assertEquals(1, fixture.ownerWindowActivations)
+
+            // 重新打开窗口并勾选“打开后保持窗口”：连续打开、定位和固定集合均保持搜索窗口开启并显示反馈。
+            runOnUiThread { fixture.delegate.showSearchPanel() }
+            awaitSearchWindowTag("search-keep-open")
+            clickSearchWindowTag("search-keep-open")
+            assertTrue(fixture.delegate.searchState.value.keepWindowOpen)
+            assertTrue(fixture.preferences.value.keepSearchWindowOpen)
+
+            clickSearchWindowTag("search-result-open-${results[1].id}")
             waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) { fixture.navigation.size == 2 }
+            assertEquals(PaneIntent.OpenEntry(results[1]), fixture.navigation.last())
+            assertTrue(fixture.delegate.searchState.value.visible)
+
+            clickSearchWindowTag("search-result-locate-${results[1].id}")
+            waitUntil(timeoutMillis = SEARCH_WINDOW_WAIT_MILLIS) { fixture.navigation.size == 3 }
             assertEquals(
                 PaneIntent.OpenDirectoryAndSelect(assertNotNull(results[1].parentLocation), results[1].name),
                 fixture.navigation.last(),
             )
+            awaitSearchWindowTag("search-navigation-feedback")
+            clickSearchWindowTag("search-focus-main-window")
+            assertEquals(2, fixture.ownerWindowActivations)
 
             clickSearchWindowTag("search-pin-results")
             val createTab = fixture.navigation.last() as PaneIntent.CreateTab
@@ -249,7 +270,7 @@ class SearchWindowTest {
             captureSearchWindow("search-scaled-minimum.png")
             listOf(
                 "search-window-close", "search-pin-results", "search-execute",
-                "search-advanced", "search-include-remote", "search-use-current-directory",
+                "search-advanced", "search-include-remote", "search-keep-open", "search-use-current-directory",
             ).forEach { tag -> assertSearchWindowControlIsVisible(tag) }
             val previousScroll = scrollSearchWindowResults(700f)
             clickSearchWindowTag("search-window-close")

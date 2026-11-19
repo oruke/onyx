@@ -29,6 +29,7 @@ internal fun DefaultPaneComponent.goBack() {
     val (restored, expansions) = navigationController.back(tab, mutableState.value.chromeState,
         pathService.title(previousLocation))
     pendingFocusEntryName.remove(tab.id)
+    updatePaneChrome { chrome -> chrome.copy(filterInputVisible = false) }
     restoreExpansions(expansions)
     updateTab(tab.id) { restored }
     loadTab(tab.id, previousLocation)
@@ -41,6 +42,7 @@ internal fun DefaultPaneComponent.goForward() {
     val (restored, expansions) = navigationController.forward(tab, mutableState.value.chromeState,
         pathService.title(nextLocation))
     pendingFocusEntryName.remove(tab.id)
+    updatePaneChrome { chrome -> chrome.copy(filterInputVisible = false) }
     restoreExpansions(expansions)
     updateTab(tab.id) { restored }
     loadTab(tab.id, nextLocation)
@@ -229,6 +231,7 @@ private fun DefaultPaneComponent.navigateActiveTab(location: String, recordHisto
     }
     val destination = navigationController.open(tab, mutableState.value.chromeState,
         normalizedLocation, pathService.title(normalizedLocation), recordHistory)
+    updatePaneChrome { chrome -> chrome.copy(filterInputVisible = false) }
     restoreExpansions(emptyMap())
     updateTab(tab.id) { destination }
     loadTab(tab.id, normalizedLocation)

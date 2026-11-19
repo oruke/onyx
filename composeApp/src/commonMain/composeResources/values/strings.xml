@@ -508,8 +508,9 @@
     <string name="action_search_pin_results">Pin results to a file tab</string>
     <string name="label_search_advanced_filters">Advanced filters (%1$d)</string>
     <string name="label_search_include_remote">Include network locations</string>
+    <string name="label_search_keep_window_open">Keep window open</string>
     <string name="label_search_root">Source: %1$s</string>
-    <string name="label_search_background_hint">Close to keep searching in the background. Enter opens a result; Ctrl+Enter reveals its folder.</string>
+    <string name="label_search_background_hint">Enter opens and jumps to the result; Ctrl+Enter reveals its folder. Enable "Keep window open" for multi-open.</string>
     <string name="msg_search_no_eligible_roots">No searchable locations in this scope. Choose a local folder, add an available favorite, or enable network locations.</string>
     <string name="label_vfs_protocol_local">Local files</string>
     <string name="label_vfs_protocol_archive">Archive</string>
@@ -754,4 +755,12 @@
     <string name="msg_trash_original_location_unavailable">The original folder no longer exists: %1$s</string>
     <string name="msg_trash_original_path_unknown">Original location metadata is not available for this item.</string>
     <string name="msg_trash_unsupported">Recycle Bin is not supported for this location.</string>
+    <string name="action_clear_filter">Clear filter (Esc)</string>
+    <string name="action_search_enter_directory">Open folder (Enter)</string>
+    <string name="action_search_open_item">Open (Enter)</string>
+    <string name="action_search_locate_in_folder">Open file location (Ctrl+Enter)</string>
+    <string name="action_search_focus_main_window">Show main window</string>
+    <string name="msg_search_opened_directory_in_pane">Opened folder in main window: %1$s</string>
+    <string name="msg_search_located_in_pane">Revealed in main window: %1$s</string>
+    <string name="msg_search_pinned_collection_in_pane">Pinned results tab in main window: %1$s</string>
 </resources>

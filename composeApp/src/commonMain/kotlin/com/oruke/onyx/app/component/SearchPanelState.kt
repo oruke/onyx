@@ -39,6 +39,30 @@ internal data class SearchPanelState(
     val advancedFiltersExpanded: Boolean = false,
     /** 是否允许扫描网络位置，默认排除显式网络位置。 */
     val includeRemoteLocations: Boolean = false,
+    /** 打开或定位结果后是否保持独立搜索窗口开启；默认自动收起并聚焦主窗口。 */
+    val keepWindowOpen: Boolean = false,
+    /** 保持窗口开启模式下最近一次在主窗口执行的跳转反馈。 */
+    val lastNavigationFeedback: SearchNavigationFeedback? = null,
+)
+
+/** 搜索窗口在保持开启模式下触发主窗口导航后的反馈类别。 */
+internal enum class SearchNavigationKind {
+    /** 在主窗口来源面板中打开了文件夹或归档。 */
+    OPENED_DIRECTORY,
+
+    /** 在主窗口来源面板中定位并选中了项目所在目录。 */
+    LOCATED_IN_DIRECTORY,
+
+    /** 将当前搜索结果固定为了主窗口来源面板的新标签页。 */
+    PINNED_COLLECTION,
+}
+
+/** 搜索窗口在保持开启模式下展示的最近一次主窗口跳转反馈。 */
+internal data class SearchNavigationFeedback(
+    /** 跳转动作类别。 */
+    val kind: SearchNavigationKind,
+    /** 已还原可读展示名称的目标文本。 */
+    val targetLabel: String,
 )
 
 /** 搜索会话的展示形态。 */

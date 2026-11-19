@@ -275,6 +275,16 @@ private fun DefaultRootComponent.dispatchRootSearchSettingsIntent(intent: RootIn
             true
         }
 
+        is RootIntent.SetSearchKeepWindowOpen -> {
+            searchDelegate.setKeepWindowOpen(intent.keepOpen)
+            true
+        }
+
+        RootIntent.FocusMainWindowFromSearch -> {
+            searchDelegate.focusOwnerWindow()
+            true
+        }
+
         RootIntent.UseCurrentDirectoryForSearch -> {
             searchDelegate.useCurrentDirectory(); true
         }

@@ -4,6 +4,7 @@ import com.oruke.onyx.app.component.PaneChromeState
 import com.oruke.onyx.app.component.PaneComponent
 import com.oruke.onyx.app.component.PaneIntent
 import com.oruke.onyx.app.component.PaneState
+import com.oruke.onyx.app.component.SearchNavigationKind
 import com.oruke.onyx.app.component.SearchPanelMode
 import com.oruke.onyx.app.component.SearchStatus
 import com.oruke.onyx.app.component.createDefaultPaneTabState
@@ -96,6 +97,101 @@ class RootSearchDelegateTest {
         }
     }
 
+    /** 验证完整搜索窗口默认打开文件夹或定位所在目录时自动关闭搜索窗口并唤醒置前主窗口，而打开外部文件不抢占焦点。 */
+    @Test
+    fun defaultSearchWindowClosesAndActivatesOwnerWindowOnFolderNavigation() = runBlocking {
+        val delegateScope = CoroutineScope(coroutineContext + SupervisorJob())
+        val dispatchedIntents = mutableListOf<PaneIntent>()
+        var ownerWindowActivations = 0
+        try {
+            val delegate = createDelegate(
+                scope = delegateScope,
+                fileRepository = EmptyFileRepository,
+                dispatchedIntents = dispatchedIntents,
+                filesystemRoots = listOf(TEST_ROOT),
+                onRequestOwnerWindowActivation = { ownerWindowActivations += 1 },
+            )
+            val folder = VFile(
+                id = "folder-1",
+                name = "我说过要戴安全套吧..\uF029",
+                location = "$TEST_ROOT/我说过要戴安全套吧..\uF029",
+                parentLocation = TEST_ROOT,
+                kind = VFileKind.DIRECTORY,
+                sizeBytes = null,
+                modifiedAtEpochMillis = 0L,
+                hidden = false,
+                capabilities = emptySet(),
+            )
+            val file = testFile()
+
+            delegate.showSearchPanel()
+            delegate.openSearchResult(folder)
+            assertFalse(delegate.searchState.value.visible)
+            assertEquals(1, ownerWindowActivations)
+            assertEquals(PaneIntent.OpenEntry(folder), dispatchedIntents.last())
+
+            // 重新打开后直接打开普通外部文件：收起搜索窗口，但不抢占外部播放器的窗口焦点
+            delegate.showSearchPanel()
+            delegate.openSearchResult(file)
+            assertFalse(delegate.searchState.value.visible)
+            assertEquals(1, ownerWindowActivations)
+
+            // 定位所在目录：收起搜索窗口并唤醒置前主窗口
+            delegate.showSearchPanel()
+            delegate.openSearchResultInFolder(file)
+            assertFalse(delegate.searchState.value.visible)
+            assertEquals(2, ownerWindowActivations)
+            assertEquals(PaneIntent.OpenDirectoryAndSelect(TEST_ROOT, file.name), dispatchedIntents.last())
+        } finally {
+            delegateScope.cancel()
+        }
+    }
+
+    /** 验证勾选“打开后保持窗口”时保留搜索窗口、展示可读跳转反馈并支持主动唤起主窗口。 */
+    @Test
+    fun keepWindowOpenRetainsSearchWindowAndPublishesNavigationFeedback() = runBlocking {
+        val delegateScope = CoroutineScope(coroutineContext + SupervisorJob())
+        val dispatchedIntents = mutableListOf<PaneIntent>()
+        var ownerWindowActivations = 0
+        var persistedKeepOpen = false
+        try {
+            val delegate = createDelegate(
+                scope = delegateScope,
+                fileRepository = EmptyFileRepository,
+                dispatchedIntents = dispatchedIntents,
+                filesystemRoots = listOf(TEST_ROOT),
+                onRequestOwnerWindowActivation = { ownerWindowActivations += 1 },
+                onKeepWindowOpenChanged = { persistedKeepOpen = it },
+            )
+            val folder = VFile(
+                id = "folder-sfm",
+                name = "我说过要戴安全套吧..\uF029",
+                location = "$TEST_ROOT/我说过要戴安全套吧..\uF029",
+                parentLocation = TEST_ROOT,
+                kind = VFileKind.DIRECTORY,
+                sizeBytes = null,
+                modifiedAtEpochMillis = 0L,
+                hidden = false,
+                capabilities = emptySet(),
+            )
+
+            delegate.showSearchPanel()
+            delegate.setKeepWindowOpen(true)
+            assertTrue(persistedKeepOpen)
+            delegate.openSearchResult(folder)
+
+            assertTrue(delegate.searchState.value.visible)
+            assertEquals(0, ownerWindowActivations)
+            assertEquals(SearchNavigationKind.OPENED_DIRECTORY, delegate.searchState.value.lastNavigationFeedback?.kind)
+            assertEquals("我说过要戴安全套吧...", delegate.searchState.value.lastNavigationFeedback?.targetLabel)
+
+            delegate.focusOwnerWindow()
+            assertEquals(1, ownerWindowActivations)
+        } finally {
+            delegateScope.cancel()
+        }
+    }
+
     /**
      * 构造可记录面板导航意图的搜索委托。
      *
@@ -112,6 +208,8 @@ class RootSearchDelegateTest {
         dispatchedIntents: MutableList<PaneIntent>,
         filesystemRoots: List<String>,
         mode: SearchPanelMode = SearchPanelMode.SEARCH_PANEL,
+        onRequestOwnerWindowActivation: () -> Unit = {},
+        onKeepWindowOpenChanged: (Boolean) -> Unit = {},
     ): RootSearchDelegate {
         val pane = recordingPane(dispatchedIntents)
         return RootSearchDelegate(
@@ -126,6 +224,8 @@ class RootSearchDelegateTest {
             filesystemRoots = { filesystemRoots },
             onRecordSearchHistory = {},
             mode = mode,
+            onRequestOwnerWindowActivation = onRequestOwnerWindowActivation,
+            onKeepWindowOpenChanged = onKeepWindowOpenChanged,
         )
     }
 

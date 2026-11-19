@@ -5,9 +5,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -17,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
+import com.oruke.onyx.app.component.PaneCommand
 import com.oruke.onyx.app.component.PaneContextMenuBuildInput
 import com.oruke.onyx.app.component.PaneContextMenuModelBuilder
 import com.oruke.onyx.app.component.PaneEntriesState
@@ -80,41 +83,44 @@ private fun PaneEntriesArea(
         appearance.fileListBackground != null -> appearance.fileListBackground
         else -> palette.surface
     }
-    Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .trackPanePointerInteraction(runtime.state.activeTabId,
-                runtime.state.activeTabState.browserState.visitId, runtime::dispatch)
-            .onGloballyPositioned { coordinates ->
-                runtime.updateFileDropZone(
-                    FileDropZone(
-                        paneId = runtime.state.paneId,
-                        targetDirectoryLocation = runtime.state.location,
-                        bounds = coordinates.windowBounds(),
+    Column(modifier = modifier.fillMaxHeight()) {
+        PaneFilterBar(runtime)
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .trackPanePointerInteraction(runtime.state.activeTabId,
+                    runtime.state.activeTabState.browserState.visitId, runtime::dispatch)
+                .onGloballyPositioned { coordinates ->
+                    runtime.updateFileDropZone(
+                        FileDropZone(
+                            paneId = runtime.state.paneId,
+                            targetDirectoryLocation = runtime.state.location,
+                            bounds = coordinates.windowBounds(),
+                        )
                     )
-                )
+                }
+                .background(entriesBackground)
+                .clickable(
+                    indication = null,
+                    interactionSource = interactionSource,
+                    onClick = {
+                        runtime.model.onActivate()
+                        runtime.focusRequester.requestFocus()
+                        runtime.ui.contextMenuVisible = false
+                    },
+                ),
+        ) {
+            PaneEntriesContent(
+                model = runtime.toPaneEntriesViewModel(),
+                actions = runtime.toPaneEntriesActions(readyEntries),
+                thumbnails = runtime.toGalleryThumbnailServices(),
+            )
+            if (runtime.state.activeTabState.refreshing && runtime.state.entriesState is PaneEntriesState.Ready) {
+                OnyxIndeterminateProgressBar(modifier = Modifier.align(Alignment.TopStart))
             }
-            .background(entriesBackground)
-            .clickable(
-                indication = null,
-                interactionSource = interactionSource,
-                onClick = {
-                    runtime.model.onActivate()
-                    runtime.focusRequester.requestFocus()
-                    runtime.ui.contextMenuVisible = false
-                },
-            ),
-    ) {
-        PaneEntriesContent(
-            model = runtime.toPaneEntriesViewModel(),
-            actions = runtime.toPaneEntriesActions(readyEntries),
-            thumbnails = runtime.toGalleryThumbnailServices(),
-        )
-        if (runtime.state.activeTabState.refreshing && runtime.state.entriesState is PaneEntriesState.Ready) {
-            OnyxIndeterminateProgressBar(modifier = Modifier.align(Alignment.TopStart))
+            PaneContextMenuOverlay(runtime, readyEntries)
         }
-        PaneFilterOverlay(runtime)
-        PaneContextMenuOverlay(runtime, readyEntries)
     }
 }
 
@@ -241,27 +247,56 @@ private fun PaneSurfaceRuntime.toGalleryThumbnailServices(): GalleryThumbnailSer
 }
 
 /**
- * 在文件区右上角渲染过滤输入覆盖层。
+ * 在文件列表上方渲染零遮挡的内联停靠快速筛选栏，避免压盖详情表头与首行匹配项。
  *
  * @param runtime 面板运行时控制器。
  */
 @Composable
-private fun BoxScope.PaneFilterOverlay(runtime: PaneSurfaceRuntime) {
+private fun PaneFilterBar(runtime: PaneSurfaceRuntime) {
     val state = runtime.state
     val visible = state.filterInputVisible || state.filterQuery.isNotEmpty()
     if (!visible) return
-    FloatingFilterInput(
-        query = state.filterQuery,
-        focusRequester = runtime.filterFocusRequester,
-        focusRequestId = state.filterInputFocusRequestId,
-        onQueryChange = { query -> runtime.dispatch(PaneIntent.SetFilterQuery(query)) },
-        onFocusChanged = { focused ->
-            runtime.ui.filterFocused = focused
-            if (focused) runtime.model.onActivate()
-        },
-        onClose = runtime::closeFilterInput,
-        modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 8.dp),
-    )
+    val readyEntries = (state.entriesState as? PaneEntriesState.Ready)?.entries
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(LocalOnyxPalette.current.headerBackground),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            FloatingFilterInput(
+                query = state.filterQuery,
+                focusRequester = runtime.filterFocusRequester,
+                focusRequestId = state.filterInputFocusRequestId,
+                matchCount = readyEntries?.let { state.statusInfo.visibleItemCount },
+                totalCount = state.statusInfo.totalItemCount,
+                onQueryChange = { query -> runtime.dispatch(PaneIntent.SetFilterQuery(query)) },
+                onFocusChanged = { focused ->
+                    runtime.ui.filterFocused = focused
+                    if (focused) runtime.model.onActivate()
+                },
+                onMoveSelection = { offset, extend ->
+                    runtime.dispatch(PaneIntent.MoveSelection(offset, extend))
+                },
+                onConfirmSelection = {
+                    if (state.selectedEntryIds.isNotEmpty()) {
+                        runtime.commands.execute(PaneCommand.OPEN_SELECTION)
+                    } else {
+                        val firstMatch = readyEntries?.firstOrNull()
+                        if (firstMatch != null) {
+                            runtime.dispatch(PaneIntent.OpenEntry(firstMatch))
+                        }
+                    }
+                },
+                onClose = runtime::closeFilterInput,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
+    }
 }
 
 /**

@@ -76,6 +76,8 @@ internal data class RootState(
     val quickOpenState: SearchPanelState = SearchPanelState(mode = SearchPanelMode.QUICK_OPEN),
     /** 可撤销与重做的文件操作历史状态。 */
     val operationHistoryState: OperationHistoryState = OperationHistoryState(),
+    /** 由子窗口（如独立搜索窗口）请求主文件管理器窗口置前聚焦的递增信号。 */
+    val windowActivationRequest: Long = 0L,
 )
 
 /**
@@ -522,6 +524,15 @@ internal sealed interface RootIntent {
         /** 是否明确允许本会话扫描网络位置。 */
         val include: Boolean,
     ) : RootIntent
+
+    /** 设置在独立搜索窗口打开或定位结果后是否保持窗口开启。 */
+    data class SetSearchKeepWindowOpen(
+        /** 是否保持搜索窗口开启。 */
+        val keepOpen: Boolean,
+    ) : RootIntent
+
+    /** 从独立搜索窗口主动唤起并聚焦所属主文件管理器窗口。 */
+    data object FocusMainWindowFromSearch : RootIntent
 
     /** 显式把完整搜索绑定到当前活动目录。 */
     data object UseCurrentDirectoryForSearch : RootIntent

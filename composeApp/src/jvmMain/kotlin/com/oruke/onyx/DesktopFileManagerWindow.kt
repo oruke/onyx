@@ -29,6 +29,7 @@ import com.oruke.onyx.app.platform.rememberDesktopWindowStates
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.TitleBarBrandTitle
@@ -134,6 +135,7 @@ internal fun DesktopFileManagerWindow(
                 window = window,
                 windowState = windowStates.main,
                 request = request,
+                ownerWindowActivationRequest = state.windowActivationRequest,
                 rootComponent = rootComponent,
                 onConsumePendingOpenLocation = onConsumePendingOpenLocation,
             )
@@ -180,7 +182,8 @@ private fun ImageViewerWindow(
     resourceLocale: StateFlow<AppLocale>,
     windowState: WindowState,
 ) {
-    val viewerTitle = imageViewerState.currentFile?.name ?: stringResource(Res.string.window_image_viewer_title)
+    val viewerTitle = imageViewerState.currentFile?.name?.decodeSfmDisplayText()
+        ?: stringResource(Res.string.window_image_viewer_title)
     DecoratedWindow(
         onCloseRequest = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
         title = viewerTitle,
@@ -221,12 +224,18 @@ private fun ObserveResidentWindowLifecycle(
     window: ComposeWindow,
     windowState: WindowState,
     request: DesktopFileManagerWindowRequest,
+    ownerWindowActivationRequest: Long,
     rootComponent: RootComponent,
     onConsumePendingOpenLocation: (Long) -> Unit,
 ) {
     LaunchedEffect(window, request.id) {
         withFrameNanos { }
         OnyxStartupSplash.dismiss()
+    }
+    LaunchedEffect(ownerWindowActivationRequest, request.visible) {
+        if (request.visible && ownerWindowActivationRequest > 0L) {
+            window.activateFromUserRequest(windowState)
+        }
     }
     LaunchedEffect(request.activationRequest, request.visible) {
         if (request.visible) {

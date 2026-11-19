@@ -81,6 +81,8 @@ data class OnyxSettings(
     val batchRenameWindowHeight: Int = 620,
     /** 全局搜索历史，最新在前，上限 20 条。 */
     val searchHistory: List<String> = emptyList(),
+    /** 在独立搜索窗口打开或定位结果后是否保持搜索窗口开启（默认自动收起并聚焦主窗口）。 */
+    val keepSearchWindowOpen: Boolean = false,
     /** 是否优先使用操作系统关联应用图标（未关联类型或远程协议回退至内置彩色矢量图标）。 */
     val useSystemFileIcons: Boolean = true,
     /** 明暗主题模式（跟随系统、浅色、深色）。 */

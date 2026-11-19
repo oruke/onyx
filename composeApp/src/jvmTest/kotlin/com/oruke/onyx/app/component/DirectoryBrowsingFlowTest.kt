@@ -106,6 +106,39 @@ class DirectoryBrowsingFlowTest {
         assertEquals(visitId, secondary.state.value.activeTabState.browserState.visitId)
     }
 
+    /** 打开子目录时自动清空新目录内的筛选文本并收起筛选浮层，避免旧筛选残留在新打开的文件夹中。 */
+    @Test
+    fun openingSubdirectoryClearsFilterAndClosesOverlay() = browsingScenario {
+        populate()
+        val child = Files.createDirectory(source.resolve("child"))
+        Files.writeString(child.resolve("inside-note.txt"), "child content")
+        primary.dispatch(PaneIntent.Refresh)
+        primary.awaitBrowsing { (it.entriesState as? PaneEntriesState.Ready)?.entries?.size == 81 }
+
+        primary.dispatch(PaneIntent.ShowFilterInput)
+        primary.dispatch(PaneIntent.SetFilterQuery("child"))
+        assertTrue(primary.state.value.filterInputVisible)
+        assertEquals("child", primary.state.value.filterQuery)
+
+        primary.dispatch(PaneIntent.OpenDirectory(child.toString()))
+        primary.awaitBrowsing { it.location == child.toString() && it.entriesState is PaneEntriesState.Ready }
+        assertFalse(primary.state.value.filterInputVisible)
+        assertEquals("", primary.state.value.filterQuery)
+        assertEquals(
+            listOf("inside-note.txt"),
+            assertIs<PaneEntriesState.Ready>(primary.state.value.entriesState).entries.map { it.name },
+        )
+
+        primary.dispatch(PaneIntent.GoBack)
+        primary.awaitBrowsing { it.location == source.toString() && it.entriesState is PaneEntriesState.Ready }
+        assertFalse(primary.state.value.filterInputVisible)
+        assertEquals("child", primary.state.value.filterQuery)
+        assertEquals(
+            listOf("child"),
+            assertIs<PaneEntriesState.Ready>(primary.state.value.entriesState).entries.map { it.name },
+        )
+    }
+
     /** SKIP 保留源条目，KEEP_BOTH 使用真实副本名；目标浏览选择不随传入文件改变。 */
     @Test
     fun moveConflictResultsMatchDiskAndPreserveTargetSelection() = browsingScenario {

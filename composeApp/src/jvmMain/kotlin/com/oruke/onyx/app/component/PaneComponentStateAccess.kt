@@ -127,6 +127,7 @@ internal fun DefaultPaneComponent.updateTab(
  */
 internal fun DefaultPaneComponent.applyTabStackUpdate(update: PaneTabStackUpdate) {
     navigateTabStack(update.tabs, update.activeTab.id)
+    updatePaneChrome { current -> current.copy(filterInputVisible = false) }
     val chrome = mutableState.value.chromeState
     applyActiveTab(update.activeTab, inlineExpandedLocations = chrome.inlineExpandedLocations,
         inlineExpandedEntries = chrome.inlineExpandedEntries)
@@ -139,6 +140,7 @@ internal fun DefaultPaneComponent.applyTabStackUpdate(update: PaneTabStackUpdate
  */
 internal fun DefaultPaneComponent.applyTabStackUpdate(update: PaneTabDetachUpdate) {
     navigateTabStack(update.tabs, update.activeTab.id)
+    updatePaneChrome { current -> current.copy(filterInputVisible = false) }
     val chrome = mutableState.value.chromeState
     applyActiveTab(update.activeTab, inlineExpandedLocations = chrome.inlineExpandedLocations,
         inlineExpandedEntries = chrome.inlineExpandedEntries)

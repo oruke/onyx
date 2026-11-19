@@ -32,6 +32,7 @@ import androidx.compose.foundation.Image
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.core.model.I18nMessage
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.isTrashItemLocation
@@ -160,8 +161,9 @@ private fun PreviewVisual(
 private fun PreviewMetadata(entry: VFile) {
     val isTrashEntry = isTrashItemLocation(entry.location)
     val originalParent = entry.parentLocation
+    val readableName = entry.name.decodeSfmDisplayText()
     Text(
-        text = entry.name,
+        text = readableName,
         fontSize = 16.sp,
         fontWeight = FontWeight.Bold,
         color = LocalOnyxPalette.current.foreground,
@@ -174,7 +176,7 @@ private fun PreviewMetadata(entry: VFile) {
     val typeValue = if (entry.kind == VFileKind.DIRECTORY) {
         stringResource(Res.string.label_inspector_directory)
     } else {
-        entry.name.substringAfterLast(
+        readableName.substringAfterLast(
             '.',
             stringResource(Res.string.label_inspector_file),
         ).uppercase()

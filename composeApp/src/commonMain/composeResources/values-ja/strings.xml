@@ -508,8 +508,9 @@
     <string name="action_search_pin_results">結果をファイルタブに固定</string>
     <string name="label_search_advanced_filters">詳細フィルター (%1$d)</string>
     <string name="label_search_include_remote">ネットワークの場所を含める</string>
+    <string name="label_search_keep_window_open">開いた後も維持</string>
     <string name="label_search_root">起点：%1$s</string>
-    <string name="label_search_background_hint">閉じても検索は続行します。Enter で開き、Ctrl+Enter で所在フォルダーを表示します。</string>
+    <string name="label_search_background_hint">Enter で開いて移動し、Ctrl+Enter で所在フォルダーを表示します。「開いた後も維持」で連続確認できます。</string>
     <string name="msg_search_no_eligible_roots">この範囲に検索可能な場所がありません。ローカルフォルダーを選ぶか、有効なお気に入りを追加するか、ネットワークの場所を有効にしてください。</string>
     <string name="label_vfs_protocol_local">ローカルファイル</string>
     <string name="label_vfs_protocol_archive">アーカイブ</string>
@@ -754,4 +755,12 @@
     <string name="msg_trash_original_location_unavailable">元のフォルダーは既に存在しません：%1$s</string>
     <string name="msg_trash_original_path_unknown">この項目には元の場所の情報がありません。</string>
     <string name="msg_trash_unsupported">この場所ではごみ箱を利用できません。</string>
+    <string name="action_clear_filter">フィルターを解除 (Esc)</string>
+    <string name="action_search_enter_directory">フォルダーを開く (Enter)</string>
+    <string name="action_search_open_item">開く (Enter)</string>
+    <string name="action_search_locate_in_folder">ファイルの場所を開く (Ctrl+Enter)</string>
+    <string name="action_search_focus_main_window">メインウィンドウを表示</string>
+    <string name="msg_search_opened_directory_in_pane">メインウィンドウでフォルダーを開きました：%1$s</string>
+    <string name="msg_search_located_in_pane">メインウィンドウで項目を表示しました：%1$s</string>
+    <string name="msg_search_pinned_collection_in_pane">メインウィンドウに検索結果タブを固定しました：%1$s</string>
 </resources>

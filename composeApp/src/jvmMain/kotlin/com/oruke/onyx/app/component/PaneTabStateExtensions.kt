@@ -302,6 +302,7 @@ private fun PaneTabState.navigateToLoadingLocation(
             location = location,
             canGoBack = backStack.isNotEmpty(),
             canGoForward = forwardStack.isNotEmpty(),
+            filterQuery = "",
             selectedEntryIds = emptySet(),
             selectionAnchorId = null,
             selectionFocusId = null,

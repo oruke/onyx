@@ -23,6 +23,7 @@ import com.oruke.onyx.app.component.isBrowsableDirectory
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
@@ -255,9 +256,10 @@ private fun EntryNameContent(
  * @return 展示用的文件或目录名称。
  */
 internal fun VFile.displayFileName(showExtensions: Boolean): String {
-    if (showExtensions || kind == VFileKind.DIRECTORY) return name
-    val dotIndex = name.lastIndexOf('.')
-    return if (dotIndex > 0) name.substring(0, dotIndex) else name
+    val readableName = name.decodeSfmDisplayText()
+    if (showExtensions || kind == VFileKind.DIRECTORY) return readableName
+    val dotIndex = readableName.lastIndexOf('.')
+    return if (dotIndex > 0) readableName.substring(0, dotIndex) else readableName
 }
 
 /**
@@ -275,7 +277,7 @@ internal fun EntryMetadataCell(column: DetailsColumn, entry: VFile, width: Dp) {
         DetailsColumn.TYPE -> if (entry.kind == VFileKind.DIRECTORY) {
             stringResource(Res.string.label_directory_badge)
         } else {
-            entry.name.substringAfterLast('.', "").ifEmpty { "-" }
+            entry.name.decodeSfmDisplayText().substringAfterLast('.', "").ifEmpty { "-" }
         }
 
         DetailsColumn.NAME -> return

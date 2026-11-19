@@ -5,6 +5,8 @@ import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.SortDirection
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.containsSfmMappedChars
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 
 /**
  * 文件条目排序工具 — 纯函数，支持自然数字排序与目录优先配置。
@@ -43,7 +45,11 @@ object EntrySorter {
             }
 
             DetailsColumn.TYPE -> compareBy<VFile> {
-                if (it.kind == VFileKind.DIRECTORY) "" else it.name.substringAfterLast('.', "").lowercase()
+                if (it.kind == VFileKind.DIRECTORY) {
+                    ""
+                } else {
+                    it.name.decodeSfmDisplayText().substringAfterLast('.', "").lowercase()
+                }
             }
 
             DetailsColumn.SIZE -> compareBy<VFile> { it.sizeBytes ?: -1L }
@@ -98,7 +104,9 @@ object EntrySorter {
         } else {
             val normalizedQuery = filterQuery.lowercase()
             visibleEntries.filter { entry ->
-                entry.name.lowercase().contains(normalizedQuery)
+                entry.name.lowercase().contains(normalizedQuery) ||
+                    (entry.name.containsSfmMappedChars() &&
+                        entry.name.decodeSfmDisplayText().lowercase().contains(normalizedQuery))
             }
         }
         return sortEntries(

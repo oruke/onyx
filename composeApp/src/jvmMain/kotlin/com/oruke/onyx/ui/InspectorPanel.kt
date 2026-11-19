@@ -33,6 +33,7 @@ import com.oruke.onyx.app.filesystem.ArchiveInfoResult
 import com.oruke.onyx.app.filesystem.FileHashRequest
 import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.core.model.PaneInspectorState
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
@@ -195,7 +196,7 @@ private fun InspectorDetails(
     val isTrashEntry = isTrashItemLocation(entry.location)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = entry.name,
+            text = entry.name.decodeSfmDisplayText(),
             color = LocalOnyxPalette.current.foreground,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,

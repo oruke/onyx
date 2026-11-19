@@ -58,6 +58,8 @@ internal data class PaneSurfaceModel(
     val fileLabels: Map<String, FileLabelStyle> = emptyMap(),
     /** 组件按展示入口筛选的用户命令。 */
     val userCommands: Map<UserCommandPlacement, List<UserCommandDefinition>> = emptyMap(),
+    /** 主窗口由子窗口唤起置前聚焦时的递增编号，用于同步恢复活动面板键盘焦点。 */
+    val windowActivationRequest: Long = 0L,
 )
 
 /**
@@ -93,6 +95,9 @@ internal class PaneSurfaceUiState(inlineEditActive: Boolean) {
 
     /** 上一次组合时是否存在内联编辑。 */
     var inlineEditWasActive by mutableStateOf(inlineEditActive)
+
+    /** 上一次效应同步时筛选框是否处于可见且持有焦点的状态。 */
+    var filterWasFocused by mutableStateOf(false)
 
     /** 右键菜单在面板内的锚点。 */
     var contextMenuOffset by mutableStateOf(IntOffset.Zero)

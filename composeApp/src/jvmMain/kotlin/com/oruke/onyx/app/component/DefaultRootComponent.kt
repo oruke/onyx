@@ -33,8 +33,10 @@ import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.PaneRoleState
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.VFile
+import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.shared.usecase.FileSearchUseCase
+import com.oruke.onyx.vfs.archive.ArchiveService
 import com.oruke.onyx.vfs.api.FileContextMenuRequest
 import com.oruke.onyx.vfs.api.FileContextMenuSection
 import com.oruke.onyx.vfs.api.OpenWithApp
@@ -232,6 +234,9 @@ internal class DefaultRootComponent(
     /** 是否显示预览面板。 */
     internal val showPreviewPane = MutableStateFlow(false)
 
+    /** 子窗口请求主文件管理器窗口置前聚焦的递增信号。 */
+    internal val windowActivationRequest = MutableStateFlow(0L)
+
     /** 图片查看器状态。 */
     override val imageViewerState: StateFlow<ImageViewerState> = imageViewerController.state
 
@@ -355,6 +360,17 @@ internal class DefaultRootComponent(
         settings = { settings.value },
         filesystemRoots = { jvmFilesystemRoots() },
         onRecordSearchHistory = ::recordSearchHistory,
+        isNavigationTargetEntry = { entry ->
+            entry.kind == VFileKind.DIRECTORY ||
+                (fileTypeService.isArchiveFileName(entry.name) &&
+                    !ArchiveService.isArchiveLocation(entry.location))
+        },
+        onRequestOwnerWindowActivation = { windowActivationRequest.value += 1L },
+        onKeepWindowOpenChanged = { keepOpen ->
+            if (settings.value.keepSearchWindowOpen != keepOpen) {
+                updateSettings(settings.value.copy(keepSearchWindowOpen = keepOpen))
+            }
+        },
     )
 
     /** 快速打开独立持有查询、任务与取消标识，不与完整搜索互相覆盖。 */
@@ -502,10 +518,17 @@ internal class DefaultRootComponent(
     /** 观察各根状态源并生成单一 RootState。 */
     private fun observeRootState() {
         scope.launch {
-            val layoutFlow =
-                combine(layoutMode, paneSplitFraction, activePane, showPreviewPane) { mode, fraction, pane, preview ->
-                    LayoutSlice(mode, fraction, pane, preview)
-                }
+        val previewAndActivationFlow = combine(showPreviewPane, windowActivationRequest) { preview, activation ->
+            preview to activation
+        }
+        val layoutFlow = combine(
+            layoutMode,
+            paneSplitFraction,
+            activePane,
+            previewAndActivationFlow,
+        ) { mode, fraction, pane, (preview, activation) ->
+            LayoutSlice(mode, fraction, pane, preview, activation)
+        }
             val paneFlow = combine(primaryPane.state, secondaryPane.state) { primary, secondary ->
                 primary to secondary
             }
@@ -628,6 +651,7 @@ internal fun DefaultRootComponent.initialRootState(): RootState {
         searchState = searchDelegate.searchState.value,
         quickOpenState = quickOpenDelegate.searchState.value,
         operationHistoryState = fileOperationHistoryDelegate.state.value.toRootOperationHistoryState(),
+        windowActivationRequest = windowActivationRequest.value,
     )
 }
 
@@ -652,6 +676,8 @@ private data class LayoutSlice(
     val activePane: PaneId,
     /** 是否显示预览面板。 */
     val showPreviewPane: Boolean,
+    /** 主窗口置前聚焦请求信号。 */
+    val windowActivationRequest: Long,
 )
 
 /** 侧栏平台位置、目录树与持久化上下文切片。 */
@@ -722,5 +748,6 @@ private fun ContextSlice.toRootState(layout: LayoutSlice, panes: Pair<PaneState,
         searchState = runtime.searchState,
         quickOpenState = runtime.quickOpenState,
         operationHistoryState = runtime.operationHistoryState,
+        windowActivationRequest = layout.windowActivationRequest,
     )
 }

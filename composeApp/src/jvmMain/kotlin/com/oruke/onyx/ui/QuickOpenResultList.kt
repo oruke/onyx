@@ -45,6 +45,7 @@ import com.oruke.onyx.app.component.SearchPanelState
 import com.oruke.onyx.app.component.SearchStatus
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.fileIconKey
 import kotlin.math.roundToInt
@@ -289,10 +290,11 @@ private fun QuickOpenResultRow(
             )
             Text(
                 text = highlightMatchText(
-                    text = entry.name,
+                    text = entry.name.decodeSfmDisplayText(),
                     query = query,
                     normalColor = palette.foreground,
                     highlightColor = palette.accent,
+                    highlightBackground = palette.accent.copy(alpha = 0.14f),
                 ),
                 fontSize = 12.sp,
                 maxLines = 1,
@@ -300,7 +302,7 @@ private fun QuickOpenResultRow(
                 modifier = Modifier.weight(QuickOpenPanelDefaults.RESULT_TEXT_COLUMN_WEIGHT),
             )
             Text(
-                text = locationLabel(parent),
+                text = desktopLocationLabel(locationLabel(parent)),
                 color = palette.mutedForeground,
                 fontSize = 11.sp,
                 maxLines = 1,
@@ -318,6 +320,7 @@ private fun QuickOpenResultRow(
  * @param query 当前搜索关键字。
  * @param normalColor 非匹配文本的颜色。
  * @param highlightColor 匹配文本的强调颜色。
+ * @param highlightBackground 匹配文本的可选底纹背景色。
  * @return 带有匹配片段样式的展示文本。
  */
 internal fun highlightMatchText(
@@ -325,9 +328,10 @@ internal fun highlightMatchText(
     query: String,
     normalColor: Color,
     highlightColor: Color,
+    highlightBackground: Color = Color.Unspecified,
 ): AnnotatedString {
     val trimmedQuery = query.trim()
-    val matchIndex = text.lowercase().indexOf(trimmedQuery.lowercase())
+    val matchIndex = text.indexOf(trimmedQuery, ignoreCase = true)
     val matchEndIndex = matchIndex + trimmedQuery.length
     return if (
         trimmedQuery.isBlank() ||
@@ -341,7 +345,13 @@ internal fun highlightMatchText(
                     append(text.substring(QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX, matchIndex))
                 }
             }
-            withStyle(SpanStyle(color = highlightColor, fontWeight = FontWeight.Bold)) {
+            withStyle(
+                SpanStyle(
+                    color = highlightColor,
+                    background = highlightBackground,
+                    fontWeight = FontWeight.Bold,
+                ),
+            ) {
                 append(text.substring(matchIndex, matchEndIndex))
             }
             if (matchEndIndex < text.length) {

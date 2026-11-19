@@ -1,16 +1,21 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,11 +25,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.oruke.onyx.app.component.SearchNavigationFeedback
+import com.oruke.onyx.app.component.SearchNavigationKind
 import com.oruke.onyx.app.component.SearchPanelState
 import com.oruke.onyx.app.component.SearchStatus
 import com.oruke.onyx.app.component.shouldShowSearchHistory
@@ -35,6 +44,7 @@ import com.oruke.onyx.ui.theme.rememberOnyxButtonStyle
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
+import onyx.composeapp.generated.resources.action_search_focus_main_window
 import onyx.composeapp.generated.resources.action_search_pin_results
 import onyx.composeapp.generated.resources.label_search_background_hint
 import onyx.composeapp.generated.resources.label_search_cancelled
@@ -43,13 +53,18 @@ import onyx.composeapp.generated.resources.label_search_completed_summary
 import onyx.composeapp.generated.resources.label_search_failed
 import onyx.composeapp.generated.resources.label_search_idle
 import onyx.composeapp.generated.resources.label_search_running_summary
+import onyx.composeapp.generated.resources.msg_search_located_in_pane
+import onyx.composeapp.generated.resources.msg_search_opened_directory_in_pane
+import onyx.composeapp.generated.resources.msg_search_pinned_collection_in_pane
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.foundation.theme.JewelTheme
 import org.jetbrains.jewel.foundation.theme.LocalTextStyle
 import org.jetbrains.jewel.ui.Orientation
 import org.jetbrains.jewel.ui.component.Divider
+import org.jetbrains.jewel.ui.component.Icon
 import org.jetbrains.jewel.ui.component.OutlinedButton
 import org.jetbrains.jewel.ui.component.Text
+import org.jetbrains.jewel.ui.icons.AllIconsKeys
 import org.jetbrains.jewel.ui.theme.outlinedButtonStyle
 
 /** 窗口内一次展开的结构化筛选器类型。 */
@@ -146,7 +161,7 @@ internal fun SearchPanel(
 }
 
 /**
- * 显示完整搜索的可观察状态及固定结果、关闭动作；错误详情可通过悬停完整查看。
+ * 显示完整搜索的可观察状态、主窗口跳转反馈及固定结果、关闭动作。
  *
  * @param state 当前完整搜索状态。
  * @param actions 发送到所属根组件的语义动作。
@@ -171,6 +186,12 @@ private fun SearchWindowFooter(state: SearchPanelState, actions: SearchPanelActi
         SearchStatus.FAILED -> stringResource(Res.string.label_search_failed, state.error?.resolve().orEmpty())
     }
     Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        state.lastNavigationFeedback?.let { feedback ->
+            SearchNavigationFeedbackBanner(
+                feedback = feedback,
+                onFocusMainWindow = actions.onFocusMainWindow,
+            )
+        }
         OnyxTooltip(status) {
             Text(
                 text = status,
@@ -185,6 +206,8 @@ private fun SearchWindowFooter(state: SearchPanelState, actions: SearchPanelActi
             text = stringResource(Res.string.label_search_background_hint),
             color = palette.mutedForeground,
             fontSize = appearance.headerFontSize,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
@@ -203,5 +226,66 @@ private fun SearchWindowFooter(state: SearchPanelState, actions: SearchPanelActi
                 modifier = Modifier.testTag("search-window-close"),
             ) { Text(stringResource(Res.string.action_close_window), style = LocalTextStyle.current) }
         }
+    }
+}
+
+/**
+ * 在“打开后保持窗口”模式下展示主窗口目录跳转或定位成功反馈，并提供一键切回主窗口入口。
+ */
+@Composable
+private fun SearchNavigationFeedbackBanner(
+    feedback: SearchNavigationFeedback,
+    onFocusMainWindow: () -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
+    val message = when (feedback.kind) {
+        SearchNavigationKind.OPENED_DIRECTORY -> stringResource(
+            Res.string.msg_search_opened_directory_in_pane, feedback.targetLabel,
+        )
+        SearchNavigationKind.LOCATED_IN_DIRECTORY -> stringResource(
+            Res.string.msg_search_located_in_pane, feedback.targetLabel,
+        )
+        SearchNavigationKind.PINNED_COLLECTION -> stringResource(
+            Res.string.msg_search_pinned_collection_in_pane, feedback.targetLabel,
+        )
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(palette.accent.copy(alpha = 0.12f))
+            .border(1.dp, palette.accent.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .testTag("search-navigation-feedback"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            key = AllIconsKeys.Nodes.Folder,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = palette.accent,
+        )
+        Text(
+            text = message,
+            color = palette.foreground,
+            fontSize = appearance.headerFontSize,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = stringResource(Res.string.action_search_focus_main_window),
+            color = palette.accent,
+            fontSize = appearance.headerFontSize,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .clickable(onClick = onFocusMainWindow)
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+                .testTag("search-focus-main-window"),
+        )
     }
 }

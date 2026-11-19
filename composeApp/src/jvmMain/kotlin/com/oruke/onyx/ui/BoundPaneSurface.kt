@@ -109,6 +109,7 @@ internal fun BoundPaneSurface(
             canPaste = state.canPaste,
             favoriteLocations = state.settings.favoriteLocations,
             onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
+            windowActivationRequest = state.windowActivationRequest,
             fileLabels = remember(
                 paneState.entriesState,
                 paneState.inlineExpandedEntries,

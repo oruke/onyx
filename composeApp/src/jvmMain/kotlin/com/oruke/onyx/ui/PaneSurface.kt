@@ -153,24 +153,46 @@ private fun paneDropBackground(runtime: PaneSurfaceRuntime): Color {
 }
 
 /**
- * 在活动面板与内联编辑切换时恢复正确的键盘焦点。
+ * 判断面板悬浮筛选框当前是否同时处于可见且持有键盘焦点的有效状态。
+ */
+private fun PaneSurfaceRuntime.isFilterEffectiveFocused(): Boolean {
+    val filterOverlayVisible = state.filterInputVisible || state.filterQuery.isNotEmpty()
+    return filterOverlayVisible && ui.filterFocused
+}
+
+/**
+ * 判断面板内是否有文本输入控件（地址栏编辑、有效筛选框、命令面板）正在独占键盘输入。
+ */
+private fun PaneSurfaceRuntime.isTextInputOwningKeyboard(): Boolean {
+    return ui.addressBarEditing || isFilterEffectiveFocused() || state.commandPaletteVisible
+}
+
+/**
+ * 在活动面板、目录跳转、筛选收起与内联编辑切换时恢复正确的键盘焦点。
  *
  * @param runtime 面板运行时控制器。
  */
 @Composable
 private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
     val inlineEditActive = runtime.state.inlineEditState != null
-    val textInputOwnsKeyboard = runtime.ui.addressBarEditing ||
-            runtime.ui.filterFocused ||
-            runtime.state.commandPaletteVisible
-    LaunchedEffect(runtime.model.active, runtime.state.activeTabId, runtime.state.location) {
-        // 侧栏和工具栏导航也会改变目录；同一活动面板必须在导航后恢复文件快捷键焦点。
+    val filterEffectiveFocused = runtime.isFilterEffectiveFocused()
+    val textInputOwnsKeyboard = runtime.isTextInputOwningKeyboard()
+    LaunchedEffect(
+        runtime.model.active,
+        runtime.state.activeTabId,
+        runtime.state.location,
+        runtime.model.windowActivationRequest,
+    ) {
+        // 侧栏、工具栏导航、筛选回车进入子目录及子窗口跳转唤醒均会触发此效应；活动面板必须在就绪后恢复文件快捷键焦点。
         if (runtime.model.active && !textInputOwnsKeyboard) runtime.focusRequester.requestFocus()
     }
-    LaunchedEffect(runtime.model.active, inlineEditActive, textInputOwnsKeyboard) {
+    LaunchedEffect(runtime.model.active, inlineEditActive, filterEffectiveFocused, textInputOwnsKeyboard) {
         val inlineEditFinished = runtime.ui.inlineEditWasActive && !inlineEditActive
+        val filterFinished = runtime.ui.filterWasFocused && !filterEffectiveFocused
+        val overlayInputFinished = inlineEditFinished || filterFinished
         runtime.ui.inlineEditWasActive = inlineEditActive
-        if (runtime.model.active && inlineEditFinished && !textInputOwnsKeyboard) {
+        runtime.ui.filterWasFocused = filterEffectiveFocused
+        if (runtime.model.active && overlayInputFinished && !textInputOwnsKeyboard) {
             runtime.focusRequester.requestFocus()
         }
     }
@@ -185,9 +207,7 @@ private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
  */
 private fun handlePaneKeyEvent(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
     if (!runtime.model.active || event.type != KeyEventType.KeyDown) return false
-    val textInputOwnsKeyboard = runtime.ui.addressBarEditing ||
-            runtime.ui.filterFocused ||
-            runtime.state.commandPaletteVisible
+    val textInputOwnsKeyboard = runtime.isTextInputOwningKeyboard()
     return when {
         textInputOwnsKeyboard -> false
         runtime.state.inlineEditState != null -> handleInlineEditKey(event, runtime)

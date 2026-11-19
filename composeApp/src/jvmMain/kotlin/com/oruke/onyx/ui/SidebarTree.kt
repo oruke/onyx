@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.SidebarTreeNode
 import com.oruke.onyx.app.component.SidebarTreeNodeLoadState
 import com.oruke.onyx.app.component.SidebarTreeState
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_refresh_active
@@ -143,7 +144,7 @@ internal fun SidebarTreeItem(
             modifier = Modifier.size(14.dp),
         )
         Text(
-            text = node.label,
+            text = node.label.decodeSfmDisplayText(),
             modifier = Modifier.weight(1f),
             fontSize = 11.sp,
             color = LocalOnyxPalette.current.foreground,

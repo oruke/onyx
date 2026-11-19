@@ -506,8 +506,9 @@
     <string name="action_search_pin_results">将结果固定为文件标签</string>
     <string name="label_search_advanced_filters">高级筛选 (%1$d)</string>
     <string name="label_search_include_remote">包含网络位置</string>
+    <string name="label_search_keep_window_open">打开后保持窗口</string>
     <string name="label_search_root">来源目录：%1$s</string>
-    <string name="label_search_background_hint">关闭窗口后继续搜索。Enter 打开结果，Ctrl+Enter 定位所在目录。</string>
+    <string name="label_search_background_hint">Enter 打开并跳转，Ctrl+Enter 定位所在目录；勾选“打开后保持窗口”可连续查看多项。</string>
     <string name="msg_search_no_eligible_roots">当前范围没有可搜索的位置。请选择本地目录、添加可用收藏，或勾选“包含网络位置”。</string>
     <string name="label_vfs_protocol_local">本地文件</string>
     <string name="label_vfs_protocol_archive">压缩包</string>
@@ -752,4 +753,12 @@
     <string name="msg_trash_original_location_unavailable">原所在文件夹已不存在：%1$s</string>
     <string name="msg_trash_original_path_unknown">该项目缺少原始路径信息。</string>
     <string name="msg_trash_unsupported">当前位置不支持移入回收站。</string>
+    <string name="action_clear_filter">清除筛选 (Esc)</string>
+    <string name="action_search_enter_directory">进入文件夹 (Enter)</string>
+    <string name="action_search_open_item">打开 (Enter)</string>
+    <string name="action_search_locate_in_folder">打开所在位置 (Ctrl+Enter)</string>
+    <string name="action_search_focus_main_window">查看主窗口</string>
+    <string name="msg_search_opened_directory_in_pane">已在主窗口打开文件夹：%1$s</string>
+    <string name="msg_search_located_in_pane">已在主窗口定位项目：%1$s</string>
+    <string name="msg_search_pinned_collection_in_pane">已在主窗口固定结果标签：%1$s</string>
 </resources>

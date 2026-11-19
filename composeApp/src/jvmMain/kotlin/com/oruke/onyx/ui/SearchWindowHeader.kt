@@ -24,6 +24,7 @@ import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_search_use_current_directory
 import onyx.composeapp.generated.resources.label_search_advanced_filters
 import onyx.composeapp.generated.resources.label_search_include_remote
+import onyx.composeapp.generated.resources.label_search_keep_window_open
 import onyx.composeapp.generated.resources.label_search_root
 import onyx.composeapp.generated.resources.search_scope_all_roots
 import onyx.composeapp.generated.resources.search_scope_current_directory
@@ -75,6 +76,12 @@ internal fun SearchWindowHeader(
                 onCheckedChange = actions.onSetIncludeRemoteLocations,
                 modifier = Modifier.testTag("search-include-remote"),
             )
+            CheckboxRow(
+                text = stringResource(Res.string.label_search_keep_window_open),
+                checked = state.keepWindowOpen,
+                onCheckedChange = actions.onSetKeepWindowOpen,
+                modifier = Modifier.testTag("search-keep-open"),
+            )
             OutlinedButton(
                 onClick = { actions.onSetAdvancedFiltersExpanded(!state.advancedFiltersExpanded) },
                 style = buttonStyle,
@@ -94,7 +101,8 @@ internal fun SearchWindowHeader(
         ) {
             Box(Modifier.weight(1f)) {
                 val rootLabel = stringResource(
-                    Res.string.label_search_root, presentation.locationLabel(state.rootLocation),
+                    Res.string.label_search_root,
+                    desktopLocationLabel(presentation.locationLabel(state.rootLocation)),
                 )
                 OnyxTooltip(rootLabel) {
                     Text(

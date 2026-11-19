@@ -61,6 +61,10 @@ internal class SearchWindowFixture(root: Path, releaseNested: CompletableDeferre
     /** 观察发往统一文件面板 API 的导航结果，不触发外部文件应用。 */
     val navigation = mutableListOf<PaneIntent>()
 
+    /** 记录独立搜索窗口请求唤醒置前所属主窗口的次数。 */
+    var ownerWindowActivations: Int = 0
+        private set
+
     /** 子目录实际开始读取时完成，保证生命周期断言覆盖运行中的任务。 */
     val nestedStarted = CompletableDeferred<Unit>()
 
@@ -96,6 +100,10 @@ internal class SearchWindowFixture(root: Path, releaseNested: CompletableDeferre
             filesystemRoots = { listOf(rootLocation) },
             onRecordSearchHistory = {},
             mode = SearchPanelMode.SEARCH_PANEL,
+            onRequestOwnerWindowActivation = { ownerWindowActivations += 1 },
+            onKeepWindowOpenChanged = { keepOpen ->
+                preferences.value = preferences.value.copy(keepSearchWindowOpen = keepOpen)
+            },
         )
         actions = SearchPanelActions(
             onQueryChange = delegate::updateSearchQuery,
@@ -109,6 +117,8 @@ internal class SearchWindowFixture(root: Path, releaseNested: CompletableDeferre
             onSelectIndex = delegate::setSelectedIndex,
             onSetAdvancedFiltersExpanded = delegate::setAdvancedFiltersExpanded,
             onSetIncludeRemoteLocations = delegate::setIncludeRemoteLocations,
+            onSetKeepWindowOpen = delegate::setKeepWindowOpen,
+            onFocusMainWindow = delegate::focusOwnerWindow,
             onUseCurrentDirectory = delegate::useCurrentDirectory,
             onOpenResultsAsCollection = delegate::openSearchResultsAsCollection,
             onClearHistory = {},

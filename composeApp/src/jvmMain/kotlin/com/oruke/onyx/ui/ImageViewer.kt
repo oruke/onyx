@@ -52,6 +52,7 @@ import com.github.panpf.zoomimage.compose.rememberZoomState
 import com.oruke.onyx.core.model.ImageFitMode
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.ImageViewerState
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.ui.theme.formatFileSize
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
@@ -230,7 +231,7 @@ private fun ImageViewerViewport(
             else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(AllIconsKeys.FileTypes.Any_type, null, Modifier.size(64.dp))
                 Spacer(Modifier.height(8.dp))
-                Text(file.name, color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
+                Text(file.name.decodeSfmDisplayText(), color = Color.White.copy(alpha = 0.6f), fontSize = 14.sp)
             }
         }
     }
@@ -369,7 +370,7 @@ private fun BoxScope.ImageViewerInfoBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            file.name,
+            file.name.decodeSfmDisplayText(),
             color = Color.White.copy(alpha = 0.9f),
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,

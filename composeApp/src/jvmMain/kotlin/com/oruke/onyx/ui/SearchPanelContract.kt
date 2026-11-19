@@ -45,6 +45,10 @@ internal data class SearchPanelActions(
     val onSetAdvancedFiltersExpanded: (Boolean) -> Unit,
     /** 明确选择是否扫描搜索范围中的网络位置。 */
     val onSetIncludeRemoteLocations: (Boolean) -> Unit,
+    /** 设置打开或定位结果后是否保持独立搜索窗口开启。 */
+    val onSetKeepWindowOpen: (Boolean) -> Unit = {},
+    /** 主动唤起并置前所属主文件管理器窗口。 */
+    val onFocusMainWindow: () -> Unit = {},
     /** 使用当前活跃文件面板的目录开始新的搜索会话。 */
     val onUseCurrentDirectory: () -> Unit,
     /** 将当前结果快照固定为来源面板中的文件集合标签。 */

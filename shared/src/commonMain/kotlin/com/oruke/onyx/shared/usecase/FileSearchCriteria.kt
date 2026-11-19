@@ -5,6 +5,8 @@ import com.oruke.onyx.core.model.LocalizedException
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.core.model.containsSfmMappedChars
+import com.oruke.onyx.core.model.decodeSfmDisplayText
 
 /** 解析完成且可重复用于条目匹配的搜索条件。 */
 internal data class FileSearchCriteria(
@@ -47,11 +49,22 @@ internal data class FileSearchCriteria(
      * @return 所有元数据条件均满足时返回 true。
      */
     fun matchesMetadata(entry: VFile): Boolean {
-        val normalizedName = entry.name.lowercase()
         return matchesKind(entry) &&
-            matchesName(normalizedName) &&
+            matchesEntryName(entry.name) &&
             matchesSize(entry.sizeBytes) &&
             matchesModifiedTime(entry.modifiedAtEpochMillis)
+    }
+
+    /**
+     * 同时兼容原始文件名与 SFM 私用区还原后的可读名称进行大小写无关匹配。
+     *
+     * @param rawName 条目底层原始名称。
+     * @return 原始名或还原名满足扩展名与名称条件时返回 true。
+     */
+    private fun matchesEntryName(rawName: String): Boolean {
+        val rawMatched = matchesName(rawName.lowercase())
+        return rawMatched ||
+            (rawName.containsSfmMappedChars() && matchesName(rawName.decodeSfmDisplayText().lowercase()))
     }
 
     /**
