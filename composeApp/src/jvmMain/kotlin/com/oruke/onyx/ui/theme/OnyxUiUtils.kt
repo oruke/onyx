@@ -202,12 +202,26 @@ internal fun IntRect.containsPoint(position: IntOffset): Boolean {
 internal val IntRect.area: Int
     get() = (width.coerceAtLeast(0)) * (height.coerceAtLeast(0))
 
+/**
+ * 生成文件放置热区的稳定注册键，确保注册与注销路径使用同一键格式。
+ *
+ * @param paneId 所属面板标识。
+ * @param directoryEntryId 目录条目 ID；面板整体放置区传 `null`。
+ * @param targetDirectoryLocation 目标目录位置。
+ * @return 稳定放置区注册键。
+ */
+internal fun fileDropZoneKey(
+    paneId: PaneId,
+    directoryEntryId: String?,
+    targetDirectoryLocation: String,
+): String = if (directoryEntryId == null) {
+    "${paneId.name}:__pane"
+} else {
+    "${paneId.name}:$directoryEntryId:$targetDirectoryLocation"
+}
+
 internal val FileDropZone.key: String
-    get() = zoneKeyOverride ?: if (directoryEntryId == null) {
-        "${paneId.name}:__pane"
-    } else {
-        "${paneId.name}:$directoryEntryId:$targetDirectoryLocation"
-    }
+    get() = zoneKeyOverride ?: fileDropZoneKey(paneId, directoryEntryId, targetDirectoryLocation)
 
 internal fun tooltipOffset(
     pointerWindowPosition: IntOffset,

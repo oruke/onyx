@@ -3,7 +3,11 @@ package com.oruke.onyx.vfs.local
 import com.oruke.onyx.core.model.LocalizedException
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
+import com.oruke.onyx.vfs.api.VfsProviderError
+import com.oruke.onyx.vfs.api.VfsProviderException
+import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.test.Test
@@ -94,6 +98,57 @@ class LocalPathOperationsTest {
 
             assertTrue(Files.exists(source))
             assertEquals("target", target.readText())
+        }
+    }
+
+    /**
+     * 仅变更大小写的重命名在 Windows/大小写不敏感文件系统上必须真实修改磁盘文件名并返回新大小写。
+     */
+    @Test
+    fun renameAppliesCaseOnlyChangeAndRejectsDistinctCollision() {
+        withTempDirectory { root ->
+            runBlocking {
+                val provider = JvmLocalFileProvider()
+                val file = Files.writeString(root.resolve("foo.txt"), "case-payload")
+                Files.writeString(root.resolve("bar.txt"), "other-payload")
+                val entry = provider.list(root.toString()).getOrThrow().first { it.name == "foo.txt" }
+
+                val renamed = provider.rename(entry, "FOO.TXT").getOrThrow()
+                assertEquals("FOO.TXT", renamed.name)
+                assertTrue(renamed.location.endsWith("FOO.TXT"))
+                val actualOnDisk = Path.of(renamed.location).toRealPath(LinkOption.NOFOLLOW_LINKS).fileName.toString()
+                assertEquals("FOO.TXT", actualOnDisk)
+                assertEquals("case-payload", Path.of(renamed.location).readText())
+
+                // 同名同大小写保持幂等无报错。
+                val unchanged = provider.rename(renamed, "FOO.TXT").getOrThrow()
+                assertEquals("FOO.TXT", unchanged.name)
+
+                // 碰撞另一不同文件仍必须返回 AlreadyExists。
+                val collision = provider.rename(unchanged, "bar.txt").exceptionOrNull()
+                assertTrue(collision is VfsProviderException && collision.error is VfsProviderError.AlreadyExists)
+                assertTrue(Files.exists(file.resolveSibling("FOO.TXT")))
+
+                // 非空目录仅大小写重命名必须同步保留全部子文件。
+                val subDir = Files.createDirectory(root.resolve("mediaDir"))
+                Files.writeString(subDir.resolve("inside.txt"), "nested-data")
+                val dirEntry = provider.list(root.toString()).getOrThrow().first { it.name == "mediaDir" }
+                val renamedDir = provider.rename(dirEntry, "MEDIADIR").getOrThrow()
+                assertEquals("MEDIADIR", renamedDir.name)
+                assertEquals(
+                    "MEDIADIR",
+                    Path.of(renamedDir.location).toRealPath(LinkOption.NOFOLLOW_LINKS).fileName.toString(),
+                )
+                assertEquals("nested-data", Path.of(renamedDir.location).resolve("inside.txt").readText())
+
+                // 拒绝非法相对段名称 `.` / `..` 及 Windows 盘符前缀/NTFS ADS。
+                assertFailsWith<LocalizedException> { LocalPathOperations.validateTargetName(".") }
+                assertFailsWith<LocalizedException> { LocalPathOperations.validateTargetName("..") }
+                assertFailsWith<LocalizedException> { LocalPathOperations.validateTargetName("C:evil.txt") }
+                assertFailsWith<LocalizedException> { LocalPathOperations.validateTargetName("file.txt:ads") }
+                assertFailsWith<LocalizedException> { LocalPathOperations.resolveCreateTarget(root, "C:evil.txt") }
+                assertFailsWith<LocalizedException> { LocalPathOperations.renamePath(Path.of(renamed.location), "C:evil.txt") }
+            }
         }
     }
 

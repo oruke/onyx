@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +31,7 @@ import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.detailsColumnWidth
+import com.oruke.onyx.ui.theme.fileDropZoneKey
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
@@ -202,6 +205,19 @@ private fun EntryNameContent(
     onRenameLabelCoordinates: (LayoutCoordinates) -> Unit,
     modifier: Modifier,
 ) {
+    val currentRemoveDropZone = rememberUpdatedState(actions.onFileDropZoneRemove)
+    val dropZoneKey = if (state.entry.isBrowsableDirectory()) {
+        fileDropZoneKey(state.paneId, state.entry.id, state.entry.location)
+    } else {
+        null
+    }
+    DisposableEffect(dropZoneKey) {
+        onDispose {
+            if (dropZoneKey != null) {
+                currentRemoveDropZone.value(dropZoneKey)
+            }
+        }
+    }
     Row(
         modifier = modifier.onGloballyPositioned { coordinates ->
             onNameCoordinates(coordinates)

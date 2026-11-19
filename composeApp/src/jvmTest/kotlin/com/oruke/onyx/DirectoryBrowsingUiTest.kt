@@ -243,6 +243,7 @@ class DirectoryBrowsingUiTest {
 @Composable
 internal fun DirectoryBrowsingApplication(location: String,
     onDragReady: (ExternalFileDragService) -> Unit = {}, storageDevices: StorageDeviceService? = null,
+    onDragControllerReady: (AppDragController) -> Unit = {},
     onRoot: (RootComponent) -> Unit) {
     KoinApplication(application = {
         modules(fileModule)
@@ -255,9 +256,10 @@ internal fun DirectoryBrowsingApplication(location: String,
             val drag = remember { koin.get<ExternalFileDragService>() }
             val launch = remember { RootLaunchConfiguration(initialLocation = location, persistsMainSession = false) }
             val root = rememberRootComponent(runtime, drag, launch)
-            SideEffect { onRoot(root); onDragReady(drag) }
+            val dragController = remember(root, drag) { AppDragController(root, drag) }
+            SideEffect { onRoot(root); onDragReady(drag); onDragControllerReady(dragController) }
             DisposableEffect(drag) { onDispose(drag::dispose) }
-            App(root, drag)
+            App(root, drag, dragController = dragController)
         }
     }
 }

@@ -5,6 +5,7 @@ import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.sf.sevenzipjbinding.ExtractAskMode
@@ -20,6 +21,24 @@ import java.io.FileOutputStream
 import java.util.Date
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+
+/**
+ * 受最大字节数保护的归档单条目提取结果。
+ */
+sealed interface ArchiveBoundedBytes {
+    /**
+     * 在大小上限内成功提取到内容。
+     *
+     * @property bytes 条目完整字节数组。
+     */
+    class Found(val bytes: ByteArray) : ArchiveBoundedBytes
+
+    /** 归档中未找到目标条目。 */
+    data object NotFound : ArchiveBoundedBytes
+
+    /** 目标条目实际或声明大小超过允许上限。 */
+    data object TooLarge : ArchiveBoundedBytes
+}
 
 /**
  * 压缩文件服务 — 基于 7-Zip-JBinding 实现。
@@ -62,6 +81,8 @@ class ArchiveService(
      * 压缩包格式识别与 `archive://` 地址工具。
      */
     companion object {
+        /** 内存提取缓冲区的初始预分配上限（4MB），防止归档头伪造超大尺寸导致一次性过度分配或 Int 溢出。 */
+        private const val MAX_INITIAL_EXTRACT_BUFFER_BYTES = 4L * 1024 * 1024
         private const val ARCHIVE_SCHEME = "archive://"
         private const val DEFAULT_TAR_COMMAND = "tar"
         private val ARCHIVE_EXTENSIONS = setOf(
@@ -243,6 +264,7 @@ class ArchiveService(
                         indicesToExtract.add(i)
                     }
                 }
+                validateSevenZipExtractionBatch(archive, indicesToExtract, targetDir, prefix)
 
                 val callback = FileExtractCallback(
                     archive = archive,
@@ -400,12 +422,42 @@ class ArchiveService(
         innerPath: String,
         maxBytes: Long? = null,
         password: String? = null,
-    ): Result<ByteArray?> = withContext(Dispatchers.IO) {
-        runCatching {
+    ): Result<ByteArray?> = extractToBytesBounded(
+        archivePath = archivePath,
+        innerPath = innerPath,
+        maxBytes = maxBytes,
+        password = password,
+    ).map { bounded ->
+        (bounded as? ArchiveBoundedBytes.Found)?.bytes
+    }
+
+    /**
+     * 在流式字节上限保护下从压缩包提取单个文件，并明确区分未找到与超限。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param innerPath 压缩包内条目路径。
+     * @param maxBytes 允许读取的最大字节数；为空时不限制。
+     * @param password 可选归档密码；为空时复用当前进程内已验证的密码。
+     * @return 提取结果（[ArchiveBoundedBytes.Found] / [ArchiveBoundedBytes.NotFound] / [ArchiveBoundedBytes.TooLarge]）。
+     */
+    suspend fun extractToBytesBounded(
+        archivePath: String,
+        innerPath: String,
+        maxBytes: Long?,
+        password: String? = null,
+    ): Result<ArchiveBoundedBytes> = withContext(Dispatchers.IO) {
+        val result = runCatching {
             if (archivePath.isTarZstdArchive()) {
-                val bytes = tarZstdArchiveService.extractEntryToBytes(archivePath, innerPath)
-                if (maxBytes != null && bytes != null && bytes.size > maxBytes) return@runCatching null
-                return@runCatching bytes
+                return@runCatching try {
+                    val bytes = tarZstdArchiveService.extractEntryToBytes(
+                        archivePath = archivePath,
+                        innerPath = innerPath,
+                        maxBytes = maxBytes,
+                    )
+                    if (bytes == null) ArchiveBoundedBytes.NotFound else ArchiveBoundedBytes.Found(bytes)
+                } catch (_: ArchiveExtractLimitExceededException) {
+                    ArchiveBoundedBytes.TooLarge
+                }
             }
             val resolvedPassword = password ?: archivePasswordSession.passwordFor(archivePath)
             openSevenZipArchive(archivePath, randomAccessService, resolvedPassword).use { handle ->
@@ -414,19 +466,90 @@ class ArchiveService(
                 val targetIndex = (0 until numItems).firstOrNull { index ->
                     archive.itemPath(index) == innerPath
                 } ?: -1
-                if (targetIndex < 0) return@runCatching null
+                if (targetIndex < 0) return@runCatching ArchiveBoundedBytes.NotFound
 
-                val size = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
-                if (maxBytes != null && size > maxBytes) return@runCatching null
-                val buffer = ByteArrayOutputStream(size.toInt().coerceAtLeast(1024))
-                val callback = MemoryExtractCallback(buffer, resolvedPassword)
-                archive.extract(intArrayOf(targetIndex), false, callback)
+                val declaredSize = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
+                if (maxBytes != null && declaredSize > maxBytes) {
+                    return@runCatching ArchiveBoundedBytes.TooLarge
+                }
+                val initialBufferCap = minOf(
+                    maxBytes?.coerceAtLeast(1024L) ?: MAX_INITIAL_EXTRACT_BUFFER_BYTES,
+                    MAX_INITIAL_EXTRACT_BUFFER_BYTES,
+                )
+                val initialCapacity = declaredSize
+                    .coerceAtLeast(1024L)
+                    .coerceAtMost(initialBufferCap)
+                    .toInt()
+                val buffer = ByteArrayOutputStream(initialCapacity)
+                val callback = MemoryExtractCallback(
+                    buffer = buffer,
+                    password = resolvedPassword,
+                    maxBytes = maxBytes,
+                )
+                try {
+                    archive.extract(intArrayOf(targetIndex), false, callback)
+                } catch (failure: Throwable) {
+                    if (failure is CancellationException) throw failure
+                    if (callback.limitExceeded || failure.hasCause<ArchiveExtractLimitExceededException>()) {
+                        return@runCatching ArchiveBoundedBytes.TooLarge
+                    }
+                    throw failure
+                }
+                if (callback.limitExceeded) {
+                    return@runCatching ArchiveBoundedBytes.TooLarge
+                }
                 if (callback.errors.isNotEmpty()) {
                     error("解压失败: ${callback.errors.joinToString(", ")}")
                 }
-                buffer.toByteArray()
+                ArchiveBoundedBytes.Found(buffer.toByteArray())
             }
         }
+        val failure = result.exceptionOrNull()
+        if (failure is CancellationException) throw failure
+        result
+    }
+
+    /**
+     * 在真正落盘解压前预检整批 7-Zip 条目的路径边界与符号链接属性，发现越界或符号链接立即整批中止且零写入。
+     *
+     * @param archive 已打开的 7-Zip 归档。
+     * @param indices 待解压条目索引列表。
+     * @param targetDirectory 目标解压目录。
+     * @param prefix 需要剥离的目录前缀。
+     */
+    private fun validateSevenZipExtractionBatch(
+        archive: IInArchive,
+        indices: List<Int>,
+        targetDirectory: File,
+        prefix: String,
+    ) {
+        for (index in indices) {
+            val itemPath = archive.itemPath(index) ?: continue
+            val symLink = archive.getProperty(index, PropID.SYM_LINK) as? String
+            if (!symLink.isNullOrBlank()) {
+                throw SecurityException("安全拦截：禁止解压符号链接条目 ($itemPath)")
+            }
+            val isDirectory = archive.getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
+            val relativePath = if (prefix.isNotEmpty()) itemPath.removePrefix(prefix) else itemPath
+            if (isDirectory && relativePath.trim('/', '\\', ' ').isEmpty()) {
+                continue
+            }
+            val outputFile = resolveSafeArchiveOutputFile(targetDirectory, relativePath)
+                ?: throw SecurityException("安全拦截：归档条目路径越界 ($itemPath)")
+            if (!verifyArchiveOutputParentContained(targetDirectory, outputFile)) {
+                throw SecurityException("安全拦截：目标目录内存在越界符号链接 ($itemPath)")
+            }
+        }
+    }
+
+    /** 判断异常链中是否包含指定类型的根因。 */
+    private inline fun <reified T : Throwable> Throwable.hasCause(): Boolean {
+        var current: Throwable? = this
+        while (current != null) {
+            if (current is T) return true
+            current = current.cause
+        }
+        return false
     }
 
     /**
@@ -503,6 +626,7 @@ class ArchiveService(
                 if (targetIndices.isEmpty()) {
                     error("未找到匹配的条目: $entryPaths")
                 }
+                validateSevenZipExtractionBatch(archive, targetIndices, targetDirectory, parentPrefix)
 
                 val callback = FileExtractCallback(
                     archive = archive,

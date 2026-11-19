@@ -23,9 +23,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.RandomAccessFile
-import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.io.path.pathString
 
@@ -232,15 +230,7 @@ class JvmLocalFileProvider :
         runCatching {
             val source = Path.of(entry.location).normalize().toAbsolutePath()
             val sanitizedTargetName = targetName.trim()
-            LocalPathOperations.validateTargetName(sanitizedTargetName)
-            val target = source.resolveSibling(sanitizedTargetName).normalize().toAbsolutePath()
-            if (target == source) {
-                return@runCatching source.toLocalVFile(source.parent ?: source.root ?: source)
-            }
-            if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-                throw FileAlreadyExistsException(target.pathString)
-            }
-            Files.move(source, target)
+            val target = LocalPathOperations.renamePath(source, sanitizedTargetName)
             target.toLocalVFile(target.parent ?: target.root ?: target)
         }.mapLocalError()
     }

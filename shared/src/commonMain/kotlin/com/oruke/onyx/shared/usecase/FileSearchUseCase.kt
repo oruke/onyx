@@ -8,6 +8,7 @@ import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -27,6 +28,19 @@ data class FileSearchRequest(
     val maxResults: Int = 500,
     /** 内容搜索允许读取的单文件最大字节数。 */
     val maxContentBytes: Long = 1_048_576L,
+    /** 允许向下遍历的最大目录深度，防止极端深层目录或未解析循环导致无限递归。 */
+    val maxDepth: Int = DEFAULT_MAX_SEARCH_DEPTH,
+)
+
+/** 搜索默认最大目录遍历深度。 */
+private const val DEFAULT_MAX_SEARCH_DEPTH = 64
+
+/** 广度优先目录遍历队列条目。 */
+private data class DirectoryVisit(
+    /** 待列举目录位置。 */
+    val location: String,
+    /** 距离搜索根目录的层级深度（根目录为 `0`）。 */
+    val depth: Int,
 )
 
 /** 文件搜索期间按顺序发送的状态事件。 */
@@ -100,32 +114,41 @@ class FileSearchUseCase(
             return@flow
         }
 
-        val directories = ArrayDeque<String>()
+        val directories = ArrayDeque<DirectoryVisit>()
         val visitedDirectories = mutableSetOf<String>()
         val results = mutableListOf<VFile>()
+        val effectiveMaxDepth = request.maxDepth.coerceAtLeast(0)
         var scannedEntryCount = 0
         var limitReached = false
-        directories.add(request.rootLocation)
+        directories.add(DirectoryVisit(location = request.rootLocation, depth = 0))
 
         while (directories.isNotEmpty() && !limitReached) {
             currentCoroutineContext().ensureActive()
-            val currentLocation = directories.removeFirst()
-            if (visitedDirectories.add(currentLocation)) {
-                val entries = fileRepository.list(currentLocation).getOrElse { failure ->
-                    emit(
-                        FileSearchEvent.Failed(
-                            scannedEntryCount = scannedEntryCount,
-                            failure = failure,
+            val current = directories.removeFirst()
+            val canonicalKey = resolveCanonicalSearchDirectoryKey(current.location)
+            if (visitedDirectories.add(canonicalKey)) {
+                val entries = fileRepository.list(current.location).getOrElse { failure ->
+                    if (failure is CancellationException) throw failure
+                    if (current.depth == 0) {
+                        emit(
+                            FileSearchEvent.Failed(
+                                scannedEntryCount = scannedEntryCount,
+                                failure = failure,
+                            )
                         )
-                    )
-                    return@flow
+                        return@flow
+                    }
+                    // 子目录遇到无权限（如 System Volume Information）或瞬时不可访问时跳过，继续扫描其余目录。
+                    continue
                 }
 
                 scannedEntryCount += entries.size
                 for (entry in entries) {
                     currentCoroutineContext().ensureActive()
                     if (!limitReached) {
-                        if (entry.kind == VFileKind.DIRECTORY) directories.add(entry.location)
+                        if (entry.kind == VFileKind.DIRECTORY && current.depth < effectiveMaxDepth) {
+                            directories.add(DirectoryVisit(location = entry.location, depth = current.depth + 1))
+                        }
                         val shouldMatch = entry.kind != VFileKind.DIRECTORY ||
                             request.includeDirectories ||
                             matcher.requiresDirectories
@@ -135,13 +158,21 @@ class FileSearchUseCase(
                                 contentSearchService,
                                 request.maxContentBytes,
                             ).getOrElse { failure ->
-                                emit(
-                                    FileSearchEvent.Failed(
-                                        scannedEntryCount = scannedEntryCount,
-                                        failure = failure,
+                                if (failure is CancellationException) throw failure
+                                if (
+                                    failure is LocalizedException &&
+                                    failure.userMessage.key == MessageKey.MSG_SEARCH_CONTENT_UNSUPPORTED
+                                ) {
+                                    emit(
+                                        FileSearchEvent.Failed(
+                                            scannedEntryCount = scannedEntryCount,
+                                            failure = failure,
+                                        )
                                     )
-                                )
-                                return@flow
+                                    return@flow
+                                }
+                                // 单个受保护/锁定文件无法读取内容时跳过该条目，不中止整次搜索。
+                                false
                             }
                             if (matches) {
                                 results.add(entry)

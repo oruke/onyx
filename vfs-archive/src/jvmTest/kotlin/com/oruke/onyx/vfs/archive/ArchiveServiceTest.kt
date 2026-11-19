@@ -256,6 +256,114 @@ class ArchiveServiceTest {
     }
 
     /**
+     * 校验 7-Zip 解压拦截含 `../` 路径穿越（Zip Slip）的恶意条目，绝不在目标目录外写入文件。
+     */
+    @Test
+    fun blocksZipSlipPathTraversalEntriesDuringExtraction() = runBlocking {
+        val sandbox = Files.createTempDirectory("onyx-zip-slip-sandbox-")
+        val targetDirectory = Files.createDirectory(sandbox.resolve("extract-target"))
+        val archive = createZipArchive(
+            entries = mapOf(
+                "../escaped.txt" to "pwned".encodeToByteArray(),
+                "nested/../../escaped2.txt" to "pwned2".encodeToByteArray(),
+                "safe/ok.txt" to "safe-content".encodeToByteArray(),
+            ),
+        )
+        try {
+            val result = ArchiveService().extract(
+                archivePath = archive.toString(),
+                targetDirectory = targetDirectory.toString(),
+            )
+
+            assertTrue(result.isFailure, "包含 Zip Slip 越界条目的压缩包解压应返回安全拦截失败")
+            assertFalse(Files.exists(sandbox.resolve("escaped.txt")), "不得在目标目录外写入 ../escaped.txt")
+            assertFalse(Files.exists(sandbox.resolve("escaped2.txt")), "不得在目标目录外写入 nested/../../escaped2.txt")
+            assertFalse(
+                Files.exists(targetDirectory.resolve("safe/ok.txt")),
+                "预检发现越界条目时必须整批拦截，不得预先写入前置正常文件造成脏落盘",
+            )
+            assertNull(resolveSafeArchiveOutputFile(targetDirectory.toFile(), "../evil.txt"))
+            assertNull(resolveSafeArchiveOutputFile(targetDirectory.toFile(), "/etc/passwd"))
+            assertNull(resolveSafeArchiveOutputFile(targetDirectory.toFile(), "C:\\Windows\\evil.txt"))
+            assertNull(resolveSafeArchiveOutputFile(targetDirectory.toFile(), "./C:evil.txt"))
+            assertNull(resolveSafeArchiveOutputFile(targetDirectory.toFile(), "safe/file.txt:ads"))
+            assertEquals(
+                targetDirectory.resolve("valid/ok.txt").toAbsolutePath().normalize().toFile(),
+                resolveSafeArchiveOutputFile(targetDirectory.toFile(), "./valid/ok.txt"),
+            )
+
+            // 校验 TarZstd 路径规范化与 tar 原始条目预检（拒绝越界、绝对路径、盘符、ADS、符号链接与硬链接）。
+            assertNull("../secret".toSafeTarEntryNameOrNull())
+            assertNull("/etc/passwd".toSafeTarEntryNameOrNull())
+            assertNull("C:\\evil.txt".toSafeTarEntryNameOrNull())
+            assertNull("safe/a.txt:ads".toSafeTarEntryNameOrNull())
+            assertEquals("safe/ok.txt", "./safe/ok.txt".toSafeTarEntryNameOrNull())
+
+            assertTrue(
+                runCatching {
+                    validateTarRawEntries(
+                        rawEntries = listOf("safe/ok.txt", "../escape.txt"),
+                        verboseLines = listOf("-rw-r--r-- 0/0 10 safe/ok.txt", "-rw-r--r-- 0/0 10 ../escape.txt"),
+                        targetDir = targetDirectory.toFile(),
+                        filterEntries = null,
+                        stripComponents = 0,
+                    )
+                }.exceptionOrNull() is SecurityException,
+            )
+            assertTrue(
+                runCatching {
+                    validateTarRawEntries(
+                        rawEntries = listOf("safe/link"),
+                        verboseLines = listOf("lrwxrwxrwx 0/0 0 safe/link -> /etc/passwd"),
+                        targetDir = targetDirectory.toFile(),
+                        filterEntries = null,
+                        stripComponents = 0,
+                    )
+                }.exceptionOrNull() is SecurityException,
+            )
+        } finally {
+            archive.toFile().delete()
+            sandbox.toFile().deleteRecursively()
+        }
+    }
+
+    /**
+     * 校验受限内存提取在流式阶段即可按 `maxBytes` 拦截超限条目并明确返回 `TooLarge`。
+     */
+    @Test
+    fun enforcesMaxBytesAndDistinguishesTooLargeFromNotFound() = runBlocking {
+        val payload = ByteArray(4096) { index -> (index % TEST_BYTE_RANGE).toByte() }
+        val archive = createZipArchive(mapOf("big.bin" to payload))
+        try {
+            val service = ArchiveService()
+            val tooLarge = service.extractToBytesBounded(
+                archivePath = archive.toString(),
+                innerPath = "big.bin",
+                maxBytes = 512L,
+            ).getOrThrow()
+            assertEquals(ArchiveBoundedBytes.TooLarge, tooLarge)
+            assertNull(service.extractToBytes(archive.toString(), "big.bin", maxBytes = 512L).getOrThrow())
+
+            val notFound = service.extractToBytesBounded(
+                archivePath = archive.toString(),
+                innerPath = "missing.bin",
+                maxBytes = 512L,
+            ).getOrThrow()
+            assertEquals(ArchiveBoundedBytes.NotFound, notFound)
+
+            val found = service.extractToBytesBounded(
+                archivePath = archive.toString(),
+                innerPath = "big.bin",
+                maxBytes = 8192L,
+            ).getOrThrow()
+            assertTrue(found is ArchiveBoundedBytes.Found)
+            assertContentEquals(payload, found.bytes)
+        } finally {
+            archive.toFile().delete()
+        }
+    }
+
+    /**
      * 创建可由 7-Zip-JBinding 读取的加密 ZIP 固件。
      *
      * @return 临时加密 ZIP 文件路径。

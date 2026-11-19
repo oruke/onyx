@@ -12,10 +12,49 @@ class InMemoryRemoteAuthStore : RemoteAuthStore {
         protocol: VfsProtocol,
         location: String,
     ): VfsAuthContext {
-        val scope = remoteAuthScope(protocol, location)
+        for (scope in candidateRemoteAuthScopes(protocol, location)) {
+            val exact = authContextForScope(scope)
+            if (exact != VfsAuthContext.None) return exact
+        }
+        return VfsAuthContext.None
+    }
+
+    @Synchronized
+    override fun peekAuthContext(
+        protocol: VfsProtocol,
+        location: String,
+    ): VfsAuthContext {
+        for (scope in candidateRemoteAuthScopes(protocol, location)) {
+            val exact = peekAuthContextForScope(scope)
+            if (exact != VfsAuthContext.None) return exact
+        }
+        return VfsAuthContext.None
+    }
+
+    @Synchronized
+    override fun peekExactAuthContext(
+        protocol: VfsProtocol,
+        location: String,
+    ): VfsAuthContext = peekAuthContextForScope(remoteAuthScope(protocol, location))
+
+    @Synchronized
+    override fun authContextForScope(scope: RemoteAuthScope): VfsAuthContext {
         return transientAuthContexts.remove(scope)
             ?: sessionAuthContexts[scope]
             ?: VfsAuthContext.None
+    }
+
+    @Synchronized
+    override fun peekAuthContextForScope(scope: RemoteAuthScope): VfsAuthContext {
+        return transientAuthContexts[scope]
+            ?: sessionAuthContexts[scope]
+            ?: VfsAuthContext.None
+    }
+
+    @Synchronized
+    override fun clearScope(scope: RemoteAuthScope) {
+        sessionAuthContexts.remove(scope)
+        transientAuthContexts.remove(scope)
     }
 
     @Synchronized
@@ -28,6 +67,7 @@ class InMemoryRemoteAuthStore : RemoteAuthStore {
         val scope = remoteAuthScope(protocol, location)
         return when (savePolicy) {
             RemoteCredentialSavePolicy.DO_NOT_SAVE -> {
+                sessionAuthContexts.remove(scope)
                 transientAuthContexts[scope] = authContext
                 RemoteCredentialSaveResult.AVAILABLE_FOR_CURRENT_REQUEST
             }

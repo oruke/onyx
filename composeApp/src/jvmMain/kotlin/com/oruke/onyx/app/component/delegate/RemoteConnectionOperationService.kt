@@ -19,6 +19,21 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
+ * 远程连接凭据同步结果。
+ */
+internal sealed interface RemoteCredentialSyncOutcome {
+    /**
+     * 凭据校验通过并完成同步。
+     *
+     * @property saveResult 实际写入结果；无需写入时为空。
+     */
+    data class Completed(val saveResult: RemoteCredentialSaveResult?) : RemoteCredentialSyncOutcome
+
+    /** 编辑已有连接时存储中已无旧密钥可复用，必须由用户重新输入密钥。 */
+    data object SecretRequired : RemoteCredentialSyncOutcome
+}
+
+/**
  * 远程连接阻塞操作服务，统一隔离凭据存储和连接测试的 IO 调度。
  *
  * 业务失败返回 [Result]，协程取消始终继续向上传播。
@@ -38,15 +53,23 @@ internal class RemoteConnectionOperationService(
      * @param existing 编辑前的连接；新建连接时为空。
      * @param draft 当前连接草稿。
      * @param normalizedLocation 规范化后的连接位置。
-     * @return 写入结果或异常。
+     * @param otherConnections 除当前编辑项外的其余已保存连接列表。
+     * @return 同步结果或异常。
      */
     suspend fun synchronizeCredentials(
         existing: RemoteConnectionProfile?,
         draft: RemoteConnectionDraft,
         normalizedLocation: String,
-    ): Result<RemoteCredentialSaveResult?> = runSuspendCatching {
+        otherConnections: List<RemoteConnectionProfile> = emptyList(),
+    ): Result<RemoteCredentialSyncOutcome> = runSuspendCatching {
         withContext(Dispatchers.IO) {
-            credentialService.synchronize(existing, draft, normalizedLocation)
+            if (existing != null && credentialService.requiresSecretReentry(existing, draft)) {
+                RemoteCredentialSyncOutcome.SecretRequired
+            } else {
+                RemoteCredentialSyncOutcome.Completed(
+                    credentialService.synchronize(existing, draft, normalizedLocation, otherConnections),
+                )
+            }
         }
     }
 
@@ -83,13 +106,17 @@ internal class RemoteConnectionOperationService(
     }
 
     /**
-     * 删除连接关联的会话与系统凭据。
+     * 删除连接关联的会话与系统凭据（仅在无其他连接引用同一作用域时清理）。
      *
      * @param profile 即将删除的连接配置。
+     * @param otherConnections 其余已保存连接列表。
      * @return 成功或异常结果。
      */
-    suspend fun deleteCredentials(profile: RemoteConnectionProfile): Result<Unit> = runSuspendCatching {
-        withContext(Dispatchers.IO) { credentialService.delete(profile) }
+    suspend fun deleteCredentials(
+        profile: RemoteConnectionProfile,
+        otherConnections: List<RemoteConnectionProfile> = emptyList(),
+    ): Result<Unit> = runSuspendCatching {
+        withContext(Dispatchers.IO) { credentialService.delete(profile, otherConnections) }
     }
 
     /**

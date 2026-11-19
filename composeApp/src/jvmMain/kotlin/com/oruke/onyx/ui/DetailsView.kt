@@ -211,6 +211,8 @@ internal data class PaneEntriesActions(
     val onFileDragEnd: (IntOffset?) -> Unit,
     /** 注册目录放置区域。 */
     val onFileDropZoneChange: (FileDropZone) -> Unit,
+    /** 注销已离屏或销毁的目录放置区域。 */
+    val onFileDropZoneRemove: (String) -> Unit = {},
     /** 显示条目菜单。 */
     val onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     /** 关闭条目菜单。 */
@@ -824,6 +826,8 @@ internal data class EntryRowActions(
     val onFileDragEnd: (IntOffset?) -> Unit,
     /** 注册目录放置区域。 */
     val onFileDropZoneChange: (FileDropZone) -> Unit,
+    /** 注销已离屏或销毁的目录放置区域。 */
+    val onFileDropZoneRemove: (String) -> Unit = {},
     /** 显示条目右键菜单。 */
     val onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     /** 关闭右键菜单。 */
@@ -1126,6 +1130,7 @@ private fun galleryEntryActions(
     onFileDragPositionChange = actions.onFileDragPositionChange,
     onFileDragEnd = dragActions.onFileDragEnd,
     onFileDropZoneChange = actions.onFileDropZoneChange,
+    onFileDropZoneRemove = actions.onFileDropZoneRemove,
     onShowContextMenu = actions.onShowContextMenu,
     onDismissContextMenu = actions.onDismissContextMenu,
     onUpdateInlineEditDraft = actions.onUpdateInlineEditDraft.takeIf { inlineEditing },
@@ -1265,6 +1270,7 @@ private fun DetailsReadyEntryRow(
             onFileDragPositionChange = actions.onFileDragPositionChange,
             onFileDragEnd = dragActions.onFileDragEnd,
             onFileDropZoneChange = actions.onFileDropZoneChange,
+            onFileDropZoneRemove = actions.onFileDropZoneRemove,
             onShowContextMenu = actions.onShowContextMenu,
             onDismissContextMenu = actions.onDismissContextMenu,
             onStartRubberBand = dragActions.onStartRubberBand,

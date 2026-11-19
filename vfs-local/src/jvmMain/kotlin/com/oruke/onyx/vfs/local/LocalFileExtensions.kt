@@ -8,6 +8,7 @@ import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
+import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import java.nio.file.AccessDeniedException
 import java.nio.file.FileAlreadyExistsException
@@ -65,6 +66,7 @@ internal fun Path.toLocalVFile(parent: Path): VFile {
  */
 internal fun <T> Result<T>.mapLocalError(): Result<T> {
     return exceptionOrNull()?.let { failure ->
+        if (failure is CancellationException) throw failure
         Result.failure(failure.toLocalFailure())
     } ?: this
 }

@@ -17,8 +17,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,21 +37,37 @@ import onyx.composeapp.generated.resources.label_shortcut_reset_default
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Text
 
+/**
+ * 渲染命令快捷键列表并支持录制、恢复默认与禁用。
+ *
+ * @param settings 当前设置草稿。
+ * @param onDraftChange 更新设置草稿回调。
+ * @param fontSize 正文字号。
+ * @param labelFontSize 标签字号。
+ * @param recordingCommand 由外层设置窗口提升的当前录制命令（用于拦截根级 Escape）。
+ * @param onRecordingCommandChange 更新录制状态的回调；为空时退回局部状态管理。
+ */
 @Composable
 internal fun CommandShortcutSettings(
     settings: OnyxSettings,
     onDraftChange: (OnyxSettings) -> Unit,
     fontSize: TextUnit,
     labelFontSize: TextUnit,
+    recordingCommand: OnyxCommand? = null,
+    onRecordingCommandChange: ((OnyxCommand?) -> Unit)? = null,
 ) {
-    var recordingCommand by remember { mutableStateOf<OnyxCommand?>(null) }
+    var localRecordingCommand by remember { mutableStateOf<OnyxCommand?>(null) }
+    val activeRecordingCommand = if (onRecordingCommandChange != null) recordingCommand else localRecordingCommand
+    val setRecordingCommand: (OnyxCommand?) -> Unit = onRecordingCommandChange ?: { next ->
+        localRecordingCommand = next
+    }
     val focusRequester = remember { FocusRequester() }
     val shortcutMap = remember(settings.commandShortcutOverrides) {
         commandShortcutMapFromSettings(settings.commandShortcutOverrides)
     }
 
-    LaunchedEffect(recordingCommand) {
-        if (recordingCommand != null) {
+    LaunchedEffect(activeRecordingCommand) {
+        if (activeRecordingCommand != null) {
             focusRequester.requestFocus()
         }
     }
@@ -58,16 +78,13 @@ internal fun CommandShortcutSettings(
             .focusRequester(focusRequester)
             .focusable()
             .onPreviewKeyEvent { event ->
-                val command = recordingCommand ?: return@onPreviewKeyEvent false
-                if (event.key == Key.Escape) {
-                    recordingCommand = null
-                    true
-                } else {
-                    val shortcut = event.toOnyxShortcutOrNull() ?: return@onPreviewKeyEvent false
-                    onDraftChange(settings.withCommandShortcut(command, shortcut))
-                    recordingCommand = null
-                    true
-                }
+                handleShortcutRecordingKeyEvent(
+                    event = event,
+                    recordingCommand = activeRecordingCommand,
+                    settings = settings,
+                    onDraftChange = onDraftChange,
+                    onRecordingCommandChange = setRecordingCommand,
+                )
             },
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -75,21 +92,52 @@ internal fun CommandShortcutSettings(
             CommandShortcutRow(
                 spec = spec,
                 shortcut = shortcutMap.shortcutFor(spec.command),
-                recording = recordingCommand == spec.command,
+                recording = activeRecordingCommand == spec.command,
                 fontSize = fontSize,
                 labelFontSize = labelFontSize,
-                onCapture = { recordingCommand = spec.command },
+                onCapture = { setRecordingCommand(spec.command) },
                 onReset = {
-                    recordingCommand = null
+                    setRecordingCommand(null)
                     onDraftChange(settings.resetCommandShortcut(spec.command))
                 },
                 onDisable = {
-                    recordingCommand = null
+                    setRecordingCommand(null)
                     onDraftChange(settings.withCommandShortcut(spec.command, shortcut = null))
                 },
             )
         }
     }
+}
+
+/**
+ * 统一处理快捷键录制期间的按键事件：按 Escape 取消录制而非关闭设置窗口，按有效组合键则写入草稿并退出录制。
+ *
+ * @param event 键盘事件。
+ * @param recordingCommand 当前正在录制的命令；为 `null` 时不拦截。
+ * @param settings 当前设置草稿。
+ * @param onDraftChange 更新设置草稿回调。
+ * @param onRecordingCommandChange 更新录制状态回调。
+ * @return 事件已被录制流程消费时返回 `true`。
+ */
+internal fun handleShortcutRecordingKeyEvent(
+    event: KeyEvent,
+    recordingCommand: OnyxCommand?,
+    settings: OnyxSettings,
+    onDraftChange: (OnyxSettings) -> Unit,
+    onRecordingCommandChange: (OnyxCommand?) -> Unit,
+): Boolean {
+    val command = recordingCommand ?: return false
+    if (event.type != KeyEventType.KeyDown) {
+        return false
+    }
+    if (event.key == Key.Escape) {
+        onRecordingCommandChange(null)
+        return true
+    }
+    val shortcut = event.toOnyxShortcutOrNull() ?: return false
+    onDraftChange(settings.withCommandShortcut(command, shortcut))
+    onRecordingCommandChange(null)
+    return true
 }
 
 @Composable
@@ -137,6 +185,7 @@ private fun CommandShortcutRow(
                 text = stringResource(Res.string.label_shortcut_capture),
                 fontSize = 10.sp,
                 focused = recording,
+                modifier = Modifier.testTag("shortcut-capture-${spec.command.name}"),
                 onClick = onCapture,
             )
             DialogTextButton(
@@ -153,7 +202,7 @@ private fun CommandShortcutRow(
     }
 }
 
-private fun OnyxSettings.withCommandShortcut(
+internal fun OnyxSettings.withCommandShortcut(
     command: OnyxCommand,
     shortcut: OnyxShortcut?,
 ): OnyxSettings {

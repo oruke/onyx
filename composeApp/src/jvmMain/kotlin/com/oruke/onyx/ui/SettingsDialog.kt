@@ -64,6 +64,7 @@ internal fun SettingsDialog(
     val title = stringResource(Res.string.label_settings_title)
     var category by remember { mutableStateOf(SettingsCategory.GENERAL) }
     var searchQuery by remember { mutableStateOf("") }
+    var recordingCommand by remember { mutableStateOf<OnyxCommand?>(null) }
     val dialogState = rememberDialogState(width = initialWidth.dp, height = initialHeight.dp)
 
     LaunchedEffect(dialogState) {
@@ -86,6 +87,15 @@ internal fun SettingsDialog(
         minimumHeightPx = SETTINGS_MIN_HEIGHT_PX,
         scaleMinimumSizeWithUi = true,
         windowName = "onyx-settings",
+        onPreviewKeyEvent = { event ->
+            handleShortcutRecordingKeyEvent(
+                event = event,
+                recordingCommand = recordingCommand,
+                settings = state.draft,
+                onDraftChange = onDraftChange,
+                onRecordingCommandChange = { next -> recordingCommand = next },
+            )
+        },
     ) {
         val appearance = LocalOnyxAppearance.current
         SettingsDialogLayout(
@@ -93,6 +103,7 @@ internal fun SettingsDialog(
             draft = state.draft,
             category = category,
             onCategoryChange = { nextCategory ->
+                recordingCommand = null
                 category = nextCategory
                 if (searchQuery.isNotBlank()) {
                     searchQuery = ""
@@ -100,13 +111,21 @@ internal fun SettingsDialog(
             },
             onDraftChange = onDraftChange,
             onCleanupInvalidLocations = onCleanupInvalidLocations,
-            onConfirm = onConfirm,
+            onConfirm = {
+                recordingCommand = null
+                onConfirm()
+            },
             onDismiss = onDismiss,
             bodyFontSize = appearance.listFontSize,
             labelFontSize = appearance.headerFontSize,
             searchQuery = searchQuery,
-            onSearchQueryChange = { nextQuery -> searchQuery = nextQuery },
+            onSearchQueryChange = { nextQuery ->
+                recordingCommand = null
+                searchQuery = nextQuery
+            },
             showTitlePrefix = false,
+            recordingCommand = recordingCommand,
+            onRecordingCommandChange = { next -> recordingCommand = next },
         )
     }
 }
@@ -131,6 +150,8 @@ internal fun SettingsDialogLayout(
     searchQuery: String = "",
     onSearchQueryChange: (String) -> Unit = {},
     showTitlePrefix: Boolean = true,
+    recordingCommand: OnyxCommand? = null,
+    onRecordingCommandChange: ((OnyxCommand?) -> Unit)? = null,
 ) {
     val palette = LocalOnyxPalette.current
     val navScrollState = rememberScrollState()
@@ -194,13 +215,18 @@ internal fun SettingsDialogLayout(
                     bodyFontSize = bodyFontSize,
                     labelFontSize = labelFontSize,
                     searchQuery = searchQuery,
+                    recordingCommand = recordingCommand,
+                    onRecordingCommandChange = onRecordingCommandChange,
                 )
             }
         }
         Divider(Orientation.Horizontal, color = palette.outlineVariant)
         SettingsDialogFooterBar(
             bodyFontSize = bodyFontSize,
-            onResetCurrentPage = { onDraftChange(draft.resetCategoryToDefaults(category)) },
+            onResetCurrentPage = {
+                onRecordingCommandChange?.invoke(null)
+                onDraftChange(draft.resetCategoryToDefaults(category))
+            },
             onDismiss = onDismiss,
             onConfirm = onConfirm,
         )

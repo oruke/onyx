@@ -6,11 +6,15 @@ import com.oruke.onyx.app.component.toAuthContextOrNull
 import com.oruke.onyx.app.component.toRemoteCredentialSavePolicy
 import com.oruke.onyx.app.component.toVfsProtocol
 import com.oruke.onyx.core.model.RemoteConnectionProfile
+import com.oruke.onyx.core.model.RemoteConnectionProtocol
+import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
 import com.oruke.onyx.vfs.api.RemoteAuthStore
 import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
 import com.oruke.onyx.vfs.api.RemoteCredentialSaveResult
 import com.oruke.onyx.vfs.api.RemoteKeyringAuthStore
 import com.oruke.onyx.vfs.api.VfsAuthContext
+import com.oruke.onyx.vfs.api.VfsProtocol
+import com.oruke.onyx.vfs.api.remoteAuthScope
 
 /**
  * 远程连接凭据协调服务，负责在配置编辑、目标迁移和保存策略切换时维护凭据生命周期。
@@ -23,6 +27,33 @@ internal class RemoteConnectionCredentialService(
     private val remoteAuthStore: RemoteAuthStore,
 ) {
     /**
+     * 判断编辑已有连接且未修改密钥时，是否因存储中已无可用凭据而必须提示用户重新输入密钥。
+     *
+     * 覆盖两类静默失配场景：
+     * 1. S3 连接必须具备密钥，但会话/临时凭据已失效或未保存；
+     * 2. SMB / WebDAV 填写了用户名且将保存策略升级为 `SESSION` / `SYSTEM_KEYRING`，但当前存储中无旧凭据可迁移。
+     *
+     * @param existing 正在编辑的原连接配置。
+     * @param draft 当前连接草稿。
+     * @return 需要重新输入密钥时返回 `true`。
+     */
+    fun requiresSecretReentry(
+        existing: RemoteConnectionProfile,
+        draft: RemoteConnectionDraft,
+    ): Boolean {
+        if (draft.secretChanged) return false
+        val storedAuth = remoteAuthStore.peekExactAuthContext(
+            existing.protocol.toVfsProtocol(),
+            existing.location,
+        )
+        if (storedAuth != VfsAuthContext.None) return false
+        val upgradingPersistence = existing.savePolicy != draft.savePolicy &&
+            draft.savePolicy != RemoteConnectionSavePolicy.DO_NOT_SAVE
+        return draft.protocol == RemoteConnectionProtocol.S3 ||
+            (upgradingPersistence && draft.username.isNotBlank())
+    }
+
+    /**
      * 将编辑草稿中的凭据变化同步到目标存储。
      *
      * 未修改密钥且连接作用域和保存策略均未改变时不会写入，避免空密钥覆盖已有凭据。
@@ -30,16 +61,18 @@ internal class RemoteConnectionCredentialService(
      * @param existing 正在编辑的原连接；新建连接时为空。
      * @param draft 当前连接草稿。
      * @param normalizedLocation 规范化后的新连接位置。
+     * @param otherConnections 除当前编辑项外的其余已保存连接，用于在清理旧作用域前避免误删共享凭据。
      * @return 实际写入结果；无需写入或只清理旧凭据时返回空。
      */
     fun synchronize(
         existing: RemoteConnectionProfile?,
         draft: RemoteConnectionDraft,
         normalizedLocation: String,
+        otherConnections: List<RemoteConnectionProfile> = emptyList(),
     ): RemoteCredentialSaveResult? = if (existing == null) {
         synchronizeNewConnection(draft, normalizedLocation)
     } else {
-        synchronizeExistingConnection(existing, draft, normalizedLocation)
+        synchronizeExistingConnection(existing, draft, normalizedLocation, otherConnections)
     }
 
     /**
@@ -72,6 +105,7 @@ internal class RemoteConnectionCredentialService(
         existing: RemoteConnectionProfile,
         draft: RemoteConnectionDraft,
         normalizedLocation: String,
+        otherConnections: List<RemoteConnectionProfile>,
     ): RemoteCredentialSaveResult? {
         val newProtocol = draft.protocol.toVfsProtocol()
         val newSavePolicy = draft.savePolicy.toRemoteCredentialSavePolicy()
@@ -87,6 +121,7 @@ internal class RemoteConnectionCredentialService(
                 normalizedLocation = normalizedLocation,
                 newProtocol = newProtocol,
                 newSavePolicy = newSavePolicy,
+                otherConnections = otherConnections,
             )
         }
     }
@@ -99,14 +134,16 @@ internal class RemoteConnectionCredentialService(
      * @param normalizedLocation 规范化后的连接位置。
      * @param newProtocol 新连接协议。
      * @param newSavePolicy 新保存策略。
+     * @param otherConnections 其余已保存连接列表。
      * @return 实际写入结果；无需写入时返回空。
      */
     private fun replaceExistingCredential(
         existing: RemoteConnectionProfile,
         draft: RemoteConnectionDraft,
         normalizedLocation: String,
-        newProtocol: com.oruke.onyx.vfs.api.VfsProtocol,
+        newProtocol: VfsProtocol,
         newSavePolicy: RemoteCredentialSavePolicy,
+        otherConnections: List<RemoteConnectionProfile>,
     ): RemoteCredentialSaveResult? {
         val oldProtocol = existing.protocol.toVfsProtocol()
         val targetChanged = oldProtocol != newProtocol ||
@@ -114,15 +151,16 @@ internal class RemoteConnectionCredentialService(
             existing.s3Config != draft.s3Config
         val savePolicyChanged = existing.savePolicy != draft.savePolicy
 
-        val previousAuth = remoteAuthStore.authContext(oldProtocol, existing.location)
+        val previousAuth = remoteAuthStore.peekExactAuthContext(oldProtocol, existing.location)
         val nextAuth = if (draft.secretChanged) {
             draft.toAuthContextOrNull()
         } else {
             previousAuth.mergeWithDraftMetadata(draft)
         }
-        val mustClearOldScope = targetChanged || savePolicyChanged
+        val oldScopeShared = isScopeReferencedByOthers(oldProtocol, existing.location, otherConnections)
+        val mustClearOldScope = (targetChanged || savePolicyChanged) && !oldScopeShared
         if (mustClearOldScope) {
-            remoteAuthStore.clear(oldProtocol, existing.location)
+            clearScopeAndUnreferencedLegacyHost(oldProtocol, existing.location, otherConnections)
         }
 
         val shouldWrite = nextAuth != null &&
@@ -204,7 +242,7 @@ internal class RemoteConnectionCredentialService(
     }
 
     /**
-     * 解析连接测试应使用的认证上下文。
+     * 解析连接测试应使用的认证上下文，采用非消费读取以免提前耗尽一次性 `DO_NOT_SAVE` 凭据。
      *
      * 编辑已有连接且密钥未修改时读取原凭据，并把草稿中的用户名、域或 Region 合并进去。
      *
@@ -220,18 +258,87 @@ internal class RemoteConnectionCredentialService(
             return draft.toAuthContextOrNull() ?: VfsAuthContext.None
         }
         return remoteAuthStore
-            .authContext(existing.protocol.toVfsProtocol(), existing.location)
+            .peekAuthContext(existing.protocol.toVfsProtocol(), existing.location)
             .mergeWithDraftMetadata(draft)
             ?: VfsAuthContext.None
     }
 
     /**
-     * 删除连接关联的会话凭据和系统钥匙串凭据。
+     * 删除连接关联的会话凭据和系统钥匙串凭据；若仍有其他连接引用同一凭据作用域则跳过清理。
      *
      * @param profile 即将删除的连接配置。
+     * @param otherConnections 除待删除项外的其余已保存连接。
      */
-    fun delete(profile: RemoteConnectionProfile) {
-        remoteAuthStore.clear(profile.protocol.toVfsProtocol(), profile.location)
+    fun delete(
+        profile: RemoteConnectionProfile,
+        otherConnections: List<RemoteConnectionProfile> = emptyList(),
+    ) {
+        val protocol = profile.protocol.toVfsProtocol()
+        if (!isScopeReferencedByOthers(protocol, profile.location, otherConnections)) {
+            clearScopeAndUnreferencedLegacyHost(protocol, profile.location, otherConnections)
+        }
+    }
+
+    /**
+     * 清理当前连接的精确凭据作用域；若同主机上已无任何其他已保存连接，顺带清理历史旧版的仅主机凭据记录以防死灰复燃。
+     *
+     * @param protocol 远程协议。
+     * @param location 连接位置。
+     * @param otherConnections 其余已保存连接列表。
+     */
+    private fun clearScopeAndUnreferencedLegacyHost(
+        protocol: VfsProtocol,
+        location: String,
+        otherConnections: List<RemoteConnectionProfile>,
+    ) {
+        remoteAuthStore.clear(protocol, location)
+        val exactScope = remoteAuthScope(protocol, location)
+        if (exactScope.pathScope.isNotEmpty() && !isHostReferencedByOthers(protocol, location, otherConnections)) {
+            remoteAuthStore.clearScope(exactScope.copy(pathScope = ""))
+        }
+    }
+
+    /**
+     * 检查同协议同主机下是否仍有其他已保存连接。
+     *
+     * @param protocol 远程协议。
+     * @param location 待检查位置。
+     * @param otherConnections 其余连接列表。
+     * @return 仍有其他连接位于相同主机时返回 `true`。
+     */
+    private fun isHostReferencedByOthers(
+        protocol: VfsProtocol,
+        location: String,
+        otherConnections: List<RemoteConnectionProfile>,
+    ): Boolean {
+        if (otherConnections.isEmpty()) return false
+        val targetScope = remoteAuthScope(protocol, location)
+        return otherConnections.any { other ->
+            val otherScope = remoteAuthScope(other.protocol.toVfsProtocol(), other.location)
+            otherScope.protocol == targetScope.protocol &&
+                otherScope.scheme == targetScope.scheme &&
+                otherScope.authority == targetScope.authority
+        }
+    }
+
+    /**
+     * 检查目标凭据作用域是否仍被其他已保存连接引用。
+     *
+     * @param protocol 远程协议。
+     * @param location 待检查位置。
+     * @param otherConnections 其余连接列表。
+     * @return 仍有其他连接落在相同作用域时返回 `true`。
+     */
+    private fun isScopeReferencedByOthers(
+        protocol: VfsProtocol,
+        location: String,
+        otherConnections: List<RemoteConnectionProfile>,
+    ): Boolean {
+        if (otherConnections.isEmpty()) return false
+        val targetScope = remoteAuthScope(protocol, location)
+        return otherConnections.any { other ->
+            remoteAuthScope(other.protocol.toVfsProtocol(), other.location) == targetScope
+        }
     }
 
     /**

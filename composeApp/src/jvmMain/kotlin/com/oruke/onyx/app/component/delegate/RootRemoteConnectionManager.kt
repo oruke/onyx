@@ -27,6 +27,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 /**
@@ -67,6 +69,12 @@ internal class RootRemoteConnectionManager(
 
     /** 当前即时凭据提交运行标识。 */
     private var credentialSubmitRunId: String? = null
+
+    /** 串行化远程连接删除操作，避免并发删除共享作用域书签时误判仍有引用导致凭据泄漏。 */
+    private val deleteMutex = Mutex()
+
+    /** 已排入删除队列但尚未完成的连接 ID 集合。 */
+    private val pendingDeleteIds = mutableSetOf<String>()
 
     /**
      * 打开网络位置管理窗口。
@@ -159,9 +167,16 @@ internal class RootRemoteConnectionManager(
                 dialogState.value = currentDialog.copy(saving = true, remoteConnectionError = null)
                 connectionSaveJob = scope.launch {
                     try {
-                        val outcome = operationService.synchronizeCredentials(existing, draft, location)
+                        val otherConnections = remoteConnections().filterNot { connection -> connection.id == profile.id }
+                        val outcome = operationService.synchronizeCredentials(
+                            existing = existing,
+                            draft = draft,
+                            normalizedLocation = location,
+                            otherConnections = otherConnections,
+                        )
                         if (connectionSaveRunId == runId) {
                             val failure = outcome.exceptionOrNull()
+                            val syncResult = outcome.getOrNull()
                             when {
                                 failure != null -> {
                                     OnyxLogger.error(
@@ -175,7 +190,15 @@ internal class RootRemoteConnectionManager(
                                     )
                                 }
 
-                                outcome.getOrNull() == RemoteCredentialSaveResult.UNSUPPORTED -> {
+                                syncResult == RemoteCredentialSyncOutcome.SecretRequired -> {
+                                    updateConnectionSaveError(
+                                        runId,
+                                        RemoteConnectionDialogError.SECRET_EMPTY,
+                                    )
+                                }
+
+                                syncResult is RemoteCredentialSyncOutcome.Completed &&
+                                    syncResult.saveResult == RemoteCredentialSaveResult.UNSUPPORTED -> {
                                     updateConnectionSaveError(
                                         runId,
                                         RemoteConnectionDialogError.SYSTEM_KEYRING_UNAVAILABLE,
@@ -268,37 +291,50 @@ internal class RootRemoteConnectionManager(
     fun deleteRemoteConnection(id: String) {
         val dialogOpen = dialogState.value is RootDialogState.RemoteConnections
         val profile = remoteConnections().firstOrNull { connection -> connection.id == id }
-        if (dialogOpen && profile != null) {
+        if (dialogOpen && profile != null && pendingDeleteIds.add(id)) {
             cancelConnectionTest()
             scope.launch {
-                operationService.deleteCredentials(profile)
-                    .onSuccess {
-                        replaceRemoteConnections(remoteConnections().filterNot { connection -> connection.id == id })
-                        onConnectionChanged(profile.location)
-                        val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
-                        if (latestDialog != null) {
-                            val editingId = latestDialog.editingRemoteConnectionId
-                            dialogState.value = latestDialog.copy(
-                                editingRemoteConnectionId = editingId?.takeUnless { it == id },
-                                remoteConnectionDraft = if (editingId == id) {
-                                    RemoteConnectionDraft()
-                                } else {
-                                    latestDialog.remoteConnectionDraft
-                                },
-                                remoteConnectionError = null,
-                                remoteConnectionTestState = RemoteConnectionTestState.Idle,
-                            )
+                try {
+                    deleteMutex.withLock {
+                        val currentProfile = remoteConnections().firstOrNull { connection -> connection.id == id }
+                            ?: return@withLock
+                        val otherConnections = remoteConnections().filterNot { connection ->
+                            connection.id == id || connection.id in pendingDeleteIds
                         }
+                        operationService.deleteCredentials(currentProfile, otherConnections)
+                            .onSuccess {
+                                replaceRemoteConnections(
+                                    remoteConnections().filterNot { connection -> connection.id == id },
+                                )
+                                onConnectionChanged(currentProfile.location)
+                                val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
+                                if (latestDialog != null) {
+                                    val editingId = latestDialog.editingRemoteConnectionId
+                                    dialogState.value = latestDialog.copy(
+                                        editingRemoteConnectionId = editingId?.takeUnless { it == id },
+                                        remoteConnectionDraft = if (editingId == id) {
+                                            RemoteConnectionDraft()
+                                        } else {
+                                            latestDialog.remoteConnectionDraft
+                                        },
+                                        remoteConnectionError = null,
+                                        remoteConnectionTestState = RemoteConnectionTestState.Idle,
+                                    )
+                                }
+                            }
+                            .onFailure { failure ->
+                                OnyxLogger.error("RootRemoteConnectionManager", "删除远程连接凭据失败", failure)
+                                val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
+                                if (latestDialog != null) {
+                                    dialogState.value = latestDialog.copy(
+                                        remoteConnectionError = RemoteConnectionDialogError.CREDENTIAL_SAVE_FAILED,
+                                    )
+                                }
+                            }
                     }
-                    .onFailure { failure ->
-                        OnyxLogger.error("RootRemoteConnectionManager", "删除远程连接凭据失败", failure)
-                        val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
-                        if (latestDialog != null) {
-                            dialogState.value = latestDialog.copy(
-                                remoteConnectionError = RemoteConnectionDialogError.CREDENTIAL_SAVE_FAILED,
-                            )
-                        }
-                    }
+                } finally {
+                    pendingDeleteIds.remove(id)
+                }
             }
         }
     }

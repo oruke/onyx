@@ -7,10 +7,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toAwtImage
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.runDesktopComposeUiTest
+import androidx.compose.ui.test.withKeyDown
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import com.oruke.onyx.app.component.delegate.EntrySorter
 import com.oruke.onyx.core.model.AppLocale
@@ -331,5 +346,92 @@ class SettingsRedesignTest {
             val lightViewsImage = onRoot().captureToImage().toAwtImage()
             assertTrue(lightViewsImage.width == 880 && lightViewsImage.height == 720)
             ImageIO.write(lightViewsImage, "png", File(reportDir, "visual-settings-views-light.png"))
+        }
+
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun `escape cancels active shortcut recording before closing settings window`() =
+        runDesktopComposeUiTest(width = 880, height = 640) {
+            var dismissed = false
+            var latestRecording: OnyxCommand? = null
+            var latestSettings = OnyxSettings(themeMode = OnyxThemeMode.DARK)
+            val targetCommand = OnyxCommandRegistry.paneCommands.first().command
+
+            setContent {
+                var settings by remember { mutableStateOf(latestSettings) }
+                var recordingCommand by remember { mutableStateOf<OnyxCommand?>(null) }
+                latestRecording = recordingCommand
+                latestSettings = settings
+                OnyxWindowTheme(settings = settings) {
+                    val appearance = LocalOnyxAppearance.current
+                    // 模拟 OnyxDialogWindow 的根级按键管线：优先执行 SettingsDialog 传入的拦截器，再走默认 Escape 关闭。
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onPreviewKeyEvent { event ->
+                                val consumed = handleShortcutRecordingKeyEvent(
+                                    event = event,
+                                    recordingCommand = recordingCommand,
+                                    settings = settings,
+                                    onDraftChange = { next -> settings = next },
+                                    onRecordingCommandChange = { next -> recordingCommand = next },
+                                )
+                                if (consumed) {
+                                    true
+                                } else if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                                    dismissed = true
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                    ) {
+                        SettingsDialogLayout(
+                            title = "设置",
+                            draft = settings,
+                            category = SettingsCategory.SHORTCUTS_ADVANCED,
+                            onCategoryChange = { recordingCommand = null },
+                            onDraftChange = { next -> settings = next },
+                            onCleanupInvalidLocations = {},
+                            onConfirm = {},
+                            onDismiss = { dismissed = true },
+                            bodyFontSize = appearance.listFontSize,
+                            labelFontSize = appearance.headerFontSize,
+                            recordingCommand = recordingCommand,
+                            onRecordingCommandChange = { next -> recordingCommand = next },
+                        )
+                    }
+                }
+            }
+
+            waitForIdle()
+            onNodeWithTag("shortcut-capture-${targetCommand.name}").performClick()
+            waitForIdle()
+            assertEquals(targetCommand, latestRecording, "点击录制后应进入快捷键录制态")
+
+            // 录制态下首次按 Escape 应仅退出录制，不得关闭设置窗口。
+            onRoot().performKeyInput { pressKey(Key.Escape) }
+            waitForIdle()
+            assertNull(latestRecording, "首次按 Escape 应退出录制态")
+            assertFalse(dismissed, "录制态下按 Escape 不得关闭整个设置窗口")
+
+            // 再次进入录制态并录入 Ctrl+F5 应写入草稿并自动退出录制态。
+            onNodeWithTag("shortcut-capture-${targetCommand.name}").performClick()
+            waitForIdle()
+            onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.F5) } }
+            waitForIdle()
+            assertNull(latestRecording, "录入有效快捷键后应退出录制态")
+            assertEquals(
+                OnyxShortcut(
+                    key = OnyxShortcutKey.F5,
+                    modifiers = setOf(OnyxShortcutModifier.PRIMARY),
+                ),
+                commandShortcutMapFromSettings(latestSettings.commandShortcutOverrides).shortcutFor(targetCommand),
+            )
+
+            // 退出录制态后再次按 Escape 才应触发关闭设置窗口。
+            onRoot().performKeyInput { pressKey(Key.Escape) }
+            waitForIdle()
+            assertTrue(dismissed, "非录制态下按 Escape 应正常关闭设置窗口")
         }
 }

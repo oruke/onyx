@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.Properties
 import java.util.concurrent.TimeUnit
+import com.oruke.onyx.vfs.api.RemoteAuthScope
 import com.oruke.onyx.vfs.api.RemoteAuthStore
 import com.oruke.onyx.vfs.api.RemoteKeyringAuthStore
 import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
@@ -13,34 +14,107 @@ import com.oruke.onyx.vfs.api.RemoteCredentialSaveResult
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.InMemoryRemoteAuthStore
+import com.oruke.onyx.vfs.api.candidateRemoteAuthScopes
+import com.oruke.onyx.vfs.api.remoteAuthScope
+
+/**
+ * 操作系统安全凭据存储后端抽象，默认委托平台钥匙串实现，测试可注入内存桩验证跨层优先级与清理行为。
+ */
+internal interface JvmKeyringSecretBackend {
+    /** 当前运行环境钥匙串是否可用。 */
+    fun isAvailable(): Boolean
+
+    /** 读取指定精确作用域密钥。 */
+    fun lookup(scope: RemoteAuthScope): String?
+
+    /** 写入指定精确作用域密钥。 */
+    fun store(scope: RemoteAuthScope, secret: String): Boolean
+
+    /** 清理指定精确作用域密钥。 */
+    fun clear(scope: RemoteAuthScope): Boolean
+}
 
 /**
  * 组合会话凭据与操作系统安全凭据存储的 JVM 远程认证仓库。
  *
+ * 按候选作用域从最具体到最宽泛逐层查询：同一作用域内先查会话/临时存储再查系统钥匙串，
+ * 避免宽泛的主机级会话凭据劫持更精确路径的系统钥匙串凭据。
+ *
  * @param sessionStore 当前应用会话凭据存储。
+ * @param keyringBackend 可选系统钥匙串后端实现；为空时自动接入宿主平台钥匙串。
  */
-class JvmRemoteAuthStore(
-    private val sessionStore: RemoteAuthStore = InMemoryRemoteAuthStore(),
+class JvmRemoteAuthStore internal constructor(
+    private val sessionStore: RemoteAuthStore,
+    private val keyringBackend: JvmKeyringSecretBackend?,
 ) : RemoteKeyringAuthStore {
+    constructor(
+        sessionStore: RemoteAuthStore = InMemoryRemoteAuthStore(),
+    ) : this(sessionStore = sessionStore, keyringBackend = null)
+
     private val hostPlatform: HostPlatform by lazy { detectHostPlatform() }
     private val windowsCredentialManager: JvmWindowsCredentialManager by lazy { JvmWindowsCredentialManager() }
     private val macOsKeychainManager: JvmMacOsKeychainManager by lazy { JvmMacOsKeychainManager() }
-    private val systemKeyringAvailable: Boolean by lazy { detectSystemKeyringAvailable() }
+    private val systemKeyringAvailable: Boolean by lazy {
+        keyringBackend?.isAvailable() ?: detectSystemKeyringAvailable()
+    }
 
     override fun authContext(
         protocol: VfsProtocol,
         location: String,
     ): VfsAuthContext {
-        val sessionContext = sessionStore.authContext(protocol, location)
-        return if (sessionContext != VfsAuthContext.None) {
-            sessionContext
-        } else if (isSystemKeyringAvailable()) {
-            lookupSecret(remoteCredentialKey(protocol, location))
-                ?.let(::decodeAuthContext)
-                ?: VfsAuthContext.None
-        } else {
-            VfsAuthContext.None
+        for (scope in candidateRemoteAuthScopes(protocol, location)) {
+            val exact = authContextForScope(scope)
+            if (exact != VfsAuthContext.None) {
+                return exact
+            }
         }
+        return VfsAuthContext.None
+    }
+
+    override fun peekAuthContext(
+        protocol: VfsProtocol,
+        location: String,
+    ): VfsAuthContext {
+        for (scope in candidateRemoteAuthScopes(protocol, location)) {
+            val exact = peekAuthContextForScope(scope)
+            if (exact != VfsAuthContext.None) {
+                return exact
+            }
+        }
+        return VfsAuthContext.None
+    }
+
+    override fun peekExactAuthContext(
+        protocol: VfsProtocol,
+        location: String,
+    ): VfsAuthContext = peekAuthContextForScope(remoteAuthScope(protocol, location))
+
+    override fun authContextForScope(scope: RemoteAuthScope): VfsAuthContext {
+        val sessionContext = sessionStore.authContextForScope(scope)
+        if (sessionContext != VfsAuthContext.None) {
+            return sessionContext
+        }
+        return lookupKeyringForExactScope(scope)
+    }
+
+    override fun peekAuthContextForScope(scope: RemoteAuthScope): VfsAuthContext {
+        val sessionContext = sessionStore.peekAuthContextForScope(scope)
+        if (sessionContext != VfsAuthContext.None) {
+            return sessionContext
+        }
+        return lookupKeyringForExactScope(scope)
+    }
+
+    /**
+     * 在系统钥匙串中仅查询给定精确作用域的凭据记录。
+     *
+     * @param scope 精确凭据作用域。
+     * @return 解码后的认证上下文；未命中或系统钥匙串不可用时返回 [VfsAuthContext.None]。
+     */
+    private fun lookupKeyringForExactScope(scope: RemoteAuthScope): VfsAuthContext {
+        if (!isSystemKeyringAvailable()) return VfsAuthContext.None
+        val raw = keyringBackend?.lookup(scope) ?: lookupSecret(RemoteCredentialKey(scope))
+        return raw?.let(::decodeAuthContext) ?: VfsAuthContext.None
     }
 
     override fun put(
@@ -59,10 +133,12 @@ class JvmRemoteAuthStore(
             )
 
             RemoteCredentialSavePolicy.SYSTEM_KEYRING -> {
-                val stored = isSystemKeyringAvailable() && storeSecret(
-                    key = remoteCredentialKey(protocol, location),
-                    secret = encodeAuthContext(authContext),
-                )
+                val scope = remoteAuthScope(protocol, location)
+                val encoded = encodeAuthContext(authContext)
+                val stored = isSystemKeyringAvailable() && (
+                    keyringBackend?.store(scope, encoded)
+                        ?: storeSecret(key = RemoteCredentialKey(scope), secret = encoded)
+                    )
                 if (stored) {
                     sessionStore.put(
                         protocol = protocol,
@@ -82,9 +158,13 @@ class JvmRemoteAuthStore(
         protocol: VfsProtocol,
         location: String,
     ) {
-        sessionStore.clear(protocol, location)
+        clearScope(remoteAuthScope(protocol, location))
+    }
+
+    override fun clearScope(scope: RemoteAuthScope) {
+        sessionStore.clearScope(scope)
         if (isSystemKeyringAvailable()) {
-            clearSecret(remoteCredentialKey(protocol, location))
+            keyringBackend?.clear(scope) ?: clearSecret(RemoteCredentialKey(scope))
         }
     }
 
@@ -237,32 +317,6 @@ class JvmRemoteAuthStore(
         }
     }
 
-    private fun remoteCredentialKey(
-        protocol: VfsProtocol,
-        location: String,
-    ): RemoteCredentialKey {
-        val schemeSeparator = location.indexOf("://")
-        if (schemeSeparator < 0) {
-            return RemoteCredentialKey(
-                protocol = protocol,
-                scheme = protocol.name.lowercase(),
-                authority = location.trim().lowercase(),
-            )
-        }
-        val scheme = location.substring(0, schemeSeparator).lowercase()
-        val remainder = location.substring(schemeSeparator + 3)
-        val authority = remainder
-            .substringBefore('/')
-            .substringBefore('?')
-            .substringBefore('#')
-            .lowercase()
-        return RemoteCredentialKey(
-            protocol = protocol,
-            scheme = scheme,
-            authority = authority,
-        )
-    }
-
     private fun encodeAuthContext(authContext: VfsAuthContext): String {
         val properties = Properties()
         when (authContext) {
@@ -322,12 +376,13 @@ class JvmRemoteAuthStore(
     }
 
     private data class RemoteCredentialKey(
-        val protocol: VfsProtocol,
-        val scheme: String,
-        val authority: String,
+        val scope: RemoteAuthScope,
     ) {
+        val protocol: VfsProtocol = scope.protocol
+        val scheme: String = scope.scheme
+        val authority: String = scope.scopedAuthority
         val serviceName: String = "$KEYRING_APPLICATION.${protocol.name.lowercase()}.$scheme"
-        val windowsTargetName: String = "$serviceName.$authority"
+        val windowsTargetName: String = "$serviceName.${scope.scopedAuthority}"
     }
 
     private data class ProcessResult(

@@ -227,6 +227,27 @@ internal class PaneSurfaceRuntime(
     }
 
     /**
+     * 注销已离屏或销毁的文件放置区域，避免残留幽灵热区误收拖放文件。
+     *
+     * @param zoneKey 放置区域注册键。
+     */
+    fun removeFileDropZone(zoneKey: String) {
+        dragBindings.fileDropZones.remove(zoneKey)
+    }
+
+    /**
+     * 清理当前面板注册的全部标签与文件放置热区（例如双栏切单栏隐藏副面板时）。
+     */
+    fun clearPaneDropZones() {
+        val paneId = state.paneId
+        dragBindings.tabDropZones.remove(paneId)
+        val staleKeys = dragBindings.fileDropZones.entries
+            .filter { (_, zone) -> !zone.isSidebarTarget && zone.paneId == paneId }
+            .map { (key, _) -> key }
+        staleKeys.forEach { key -> dragBindings.fileDropZones.remove(key) }
+    }
+
+    /**
      * 展示文件条目的右键菜单，并启动平台菜单查询。
      *
      * @param entryId 右键命中的条目 ID。

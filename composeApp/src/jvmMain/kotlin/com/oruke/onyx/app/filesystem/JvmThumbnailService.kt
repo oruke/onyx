@@ -43,30 +43,43 @@ internal class JvmThumbnailService(
 ) : ThumbnailService {
 
     private companion object {
-        const val MAX_CACHE_SIZE = 500
+        /** 缩略图与查看器大图缓存分池阈值（超过 1024px 归入查看器大图池）。 */
+        const val VIEWER_DIMENSION_THRESHOLD = 1024
+        const val MAX_THUMBNAIL_CACHE_ENTRIES = 500
+        const val MAX_THUMBNAIL_CACHE_BYTES = 96L * 1024 * 1024
+        const val MAX_VIEWER_CACHE_ENTRIES = 6
+        const val MAX_VIEWER_CACHE_BYTES = 128L * 1024 * 1024
         const val MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024
         const val MAX_ARCHIVE_IMAGE_BYTES = 20L * 1024 * 1024
     }
 
-    private val cache = object : LinkedHashMap<String, ImageBitmap>(
-        MAX_CACHE_SIZE + 1, 0.75f, true
-    ) {
-        override fun removeEldestEntry(
-            eldest: MutableMap.MutableEntry<String, ImageBitmap>?
-        ): Boolean = size > MAX_CACHE_SIZE
+    /** 画廊与预览缩略图专用字节封顶 LRU 池。 */
+    internal val thumbnailCache = ByteBoundedBitmapLruCache(
+        maxEntries = MAX_THUMBNAIL_CACHE_ENTRIES,
+        maxBytes = MAX_THUMBNAIL_CACHE_BYTES,
+    )
+
+    /** 独立图片查看器全尺寸大图专用字节封顶 LRU 池，避免挤占画廊缩略图或造成 OOM。 */
+    internal val viewerCache = ByteBoundedBitmapLruCache(
+        maxEntries = MAX_VIEWER_CACHE_ENTRIES,
+        maxBytes = MAX_VIEWER_CACHE_BYTES,
+    )
+
+    private fun cachePoolFor(maxDimension: Int): ByteBoundedBitmapLruCache {
+        return if (maxDimension > VIEWER_DIMENSION_THRESHOLD) viewerCache else thumbnailCache
     }
 
-    @Synchronized
-    private fun getCached(key: String): ImageBitmap? = cache[key]
-
-    @Synchronized
-    private fun putCache(key: String, bitmap: ImageBitmap) {
-        cache[key] = bitmap
+    private fun getCached(key: String, maxDimension: Int): ImageBitmap? {
+        return cachePoolFor(maxDimension).get(key)
     }
 
-    @Synchronized
+    private fun putCache(key: String, maxDimension: Int, bitmap: ImageBitmap) {
+        cachePoolFor(maxDimension).put(key, bitmap)
+    }
+
     override fun clearCache() {
-        cache.clear()
+        thumbnailCache.clear()
+        viewerCache.clear()
     }
 
     /**
@@ -93,46 +106,84 @@ internal class JvmThumbnailService(
         // 如果原图已经不大于目标，直接返回
         if (cw <= targetW && ch <= targetH) return skImage
 
-        // 逐步半分缩小：每次宽高各减半，直到再减半会小于目标尺寸
-        while (cw / 2 >= targetW && ch / 2 >= targetH) {
-            val nw = cw / 2
-            val nh = ch / 2
-            val surface = Surface.makeRasterN32Premul(nw, nh)
-            surface.canvas.drawImageRect(
-                current,
-                Rect.makeWH(cw.toFloat(), ch.toFloat()),
-                Rect.makeWH(nw.toFloat(), nh.toFloat()),
-                FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE),
-                null,
-                true
-            )
-            val previous = current
-            current = surface.makeImageSnapshot()
-            surface.close()
-            // 释放中间 SkiaImage 的 native 内存（不释放原始输入图像）
-            if (previous !== skImage) previous.close()
-            cw = nw
-            ch = nh
-        }
+        try {
+            // 逐步半分缩小：每次宽高各减半，直到再减半会小于目标尺寸
+            while (cw / 2 >= targetW && ch / 2 >= targetH) {
+                val nw = cw / 2
+                val nh = ch / 2
+                val nextImage = Surface.makeRasterN32Premul(nw, nh).use { surface ->
+                    surface.canvas.drawImageRect(
+                        current,
+                        Rect.makeWH(cw.toFloat(), ch.toFloat()),
+                        Rect.makeWH(nw.toFloat(), nh.toFloat()),
+                        FilterMipmap(FilterMode.LINEAR, MipmapMode.NONE),
+                        null,
+                        true
+                    )
+                    surface.makeImageSnapshot()
+                }
+                val previous = current
+                current = nextImage
+                // 释放中间 SkiaImage 的 native 内存（不释放原始输入图像）
+                if (previous !== skImage) previous.close()
+                cw = nw
+                ch = nh
+            }
 
-        // 最后一步精确缩放（Mitchell 三次重采样 B=1/3 C=1/3）
-        return if (cw != targetW || ch != targetH) {
-            val surface = Surface.makeRasterN32Premul(targetW, targetH)
-            surface.canvas.drawImageRect(
-                current,
-                Rect.makeWH(cw.toFloat(), ch.toFloat()),
-                Rect.makeWH(targetW.toFloat(), targetH.toFloat()),
-                SamplingMode.MITCHELL,
-                null,
-                true
-            )
-            val result = surface.makeImageSnapshot()
-            surface.close()
-            // 释放最后一个中间图像
+            // 最后一步精确缩放（Mitchell 三次重采样 B=1/3 C=1/3）
+            return if (cw != targetW || ch != targetH) {
+                val result = Surface.makeRasterN32Premul(targetW, targetH).use { surface ->
+                    surface.canvas.drawImageRect(
+                        current,
+                        Rect.makeWH(cw.toFloat(), ch.toFloat()),
+                        Rect.makeWH(targetW.toFloat(), targetH.toFloat()),
+                        SamplingMode.MITCHELL,
+                        null,
+                        true
+                    )
+                    surface.makeImageSnapshot()
+                }
+                // 释放最后一个中间图像
+                if (current !== skImage) current.close()
+                result
+            } else {
+                current
+            }
+        } catch (failure: Throwable) {
             if (current !== skImage) current.close()
-            result
-        } else {
-            current
+            throw failure
+        }
+    }
+
+    /**
+     * 解码图片字节、按目标边界高质量缩放并转换为 [ImageBitmap]，确保及时释放所有原生 [SkiaImage]。
+     *
+     * @param bytes 原始编码图片字节。
+     * @param maxDimension 最大宽高边界像素。
+     * @return 可供 Compose 绘制的独立位图副本。
+     */
+    private fun decodeAndDownscale(
+        bytes: ByteArray,
+        maxDimension: Int,
+    ): ImageBitmap {
+        val skImage = SkiaImage.makeFromEncoded(bytes)
+        try {
+            val width = skImage.width
+            val height = skImage.height
+            val scale = min(maxDimension.toFloat() / width, maxDimension.toFloat() / height)
+                .coerceAtMost(1f)
+            val targetWidth = max(1, (width * scale).toInt())
+            val targetHeight = max(1, (height * scale).toInt())
+            val scaled = progressiveDownscale(skImage, targetWidth, targetHeight)
+            try {
+                return scaled.toComposeImageBitmap()
+            } finally {
+                if (scaled !== skImage) {
+                    scaled.close()
+                }
+            }
+        } finally {
+            skImage.close()
         }
     }
 
@@ -142,7 +193,7 @@ internal class JvmThumbnailService(
         maxDimension: Int,
     ): ImageBitmap? = withContext(Dispatchers.IO) {
         val cacheKey = "$location@$maxDimension"
-        getCached(cacheKey)?.let { return@withContext it }
+        getCached(cacheKey, maxDimension)?.let { return@withContext it }
 
         return@withContext try {
             val bytes: ByteArray
@@ -171,20 +222,8 @@ internal class JvmThumbnailService(
                 }
             }
 
-            val skImage = SkiaImage.makeFromEncoded(bytes)
-
-            val w = skImage.width
-            val h = skImage.height
-
-            val scale = min(maxDimension.toFloat() / w, maxDimension.toFloat() / h)
-                .coerceAtMost(1f)
-            val newW = max(1, (w * scale).toInt())
-            val newH = max(1, (h * scale).toInt())
-
-            val scaled = progressiveDownscale(skImage, newW, newH)
-            val composeBitmap = scaled.toComposeImageBitmap()
-
-            putCache(cacheKey, composeBitmap)
+            val composeBitmap = decodeAndDownscale(bytes, maxDimension)
+            putCache(cacheKey, maxDimension, composeBitmap)
             composeBitmap
         } catch (failure: CancellationException) {
             throw failure
@@ -258,23 +297,15 @@ internal class JvmThumbnailService(
         maxDimension: Int,
     ): ImageBitmap? = withContext(Dispatchers.IO) {
         val cacheKey = "archive:$location@$maxDimension"
-        getCached(cacheKey)?.let { return@withContext it }
+        getCached(cacheKey, maxDimension)?.let { return@withContext it }
 
         return@withContext try {
             val imageBytes = archiveService.extractFirstImageToBytes(
                 archivePath = location,
                 maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
             ).getOrNull() ?: return@withContext null
-            val skImage = SkiaImage.makeFromEncoded(imageBytes)
-            val width = skImage.width
-            val height = skImage.height
-            val scale = min(maxDimension.toFloat() / width, maxDimension.toFloat() / height)
-                .coerceAtMost(1f)
-            val targetWidth = max(1, (width * scale).toInt())
-            val targetHeight = max(1, (height * scale).toInt())
-            val scaled = progressiveDownscale(skImage, targetWidth, targetHeight)
-            val composeBitmap = scaled.toComposeImageBitmap()
-            putCache(cacheKey, composeBitmap)
+            val composeBitmap = decodeAndDownscale(imageBytes, maxDimension)
+            putCache(cacheKey, maxDimension, composeBitmap)
             composeBitmap
         } catch (failure: CancellationException) {
             throw failure

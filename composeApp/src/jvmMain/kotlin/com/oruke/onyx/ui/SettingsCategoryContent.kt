@@ -111,6 +111,7 @@ import org.jetbrains.jewel.ui.component.Text
 /**
  * 分派当前设置分类内容；当搜索框非空时跨分类筛选并展示匹配的设置分组卡片。
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun SettingsCategoryContent(
     category: SettingsCategory,
@@ -120,6 +121,8 @@ internal fun SettingsCategoryContent(
     bodyFontSize: TextUnit,
     labelFontSize: TextUnit,
     searchQuery: String = "",
+    recordingCommand: OnyxCommand? = null,
+    onRecordingCommandChange: ((OnyxCommand?) -> Unit)? = null,
 ) {
     val trimmedQuery = searchQuery.trim()
     if (trimmedQuery.isEmpty()) {
@@ -130,6 +133,8 @@ internal fun SettingsCategoryContent(
             onCleanupInvalidLocations = onCleanupInvalidLocations,
             bodyFontSize = bodyFontSize,
             labelFontSize = labelFontSize,
+            recordingCommand = recordingCommand,
+            onRecordingCommandChange = onRecordingCommandChange,
         )
         return
     }
@@ -153,6 +158,8 @@ internal fun SettingsCategoryContent(
             onCleanupInvalidLocations = onCleanupInvalidLocations,
             bodyFontSize = bodyFontSize,
             labelFontSize = labelFontSize,
+            recordingCommand = recordingCommand,
+            onRecordingCommandChange = onRecordingCommandChange,
         )
     }
 }
@@ -160,6 +167,7 @@ internal fun SettingsCategoryContent(
 /**
  * 渲染单个分类页的全部分组卡片。
  */
+@Suppress("LongParameterList")
 @Composable
 private fun RenderCategoryPage(
     category: SettingsCategory,
@@ -168,6 +176,8 @@ private fun RenderCategoryPage(
     onCleanupInvalidLocations: () -> Unit,
     bodyFontSize: TextUnit,
     labelFontSize: TextUnit,
+    recordingCommand: OnyxCommand?,
+    onRecordingCommandChange: ((OnyxCommand?) -> Unit)?,
 ) {
     when (category) {
         SettingsCategory.GENERAL -> GeneralSettingsContent(
@@ -208,6 +218,8 @@ private fun RenderCategoryPage(
             onDraftChange = onDraftChange,
             bodyFontSize = bodyFontSize,
             labelFontSize = labelFontSize,
+            recordingCommand = recordingCommand,
+            onRecordingCommandChange = onRecordingCommandChange,
         )
     }
 }
@@ -613,12 +625,15 @@ private fun AutomationSettingsContent(
 /**
  * 绘制快捷键与高级分类（键盘快捷键录制、详细诊断日志开关、恢复全部默认设置）。
  */
+@Suppress("LongParameterList")
 @Composable
 private fun ShortcutsAdvancedSettingsContent(
     draft: OnyxSettings,
     onDraftChange: (OnyxSettings) -> Unit,
     bodyFontSize: TextUnit,
     labelFontSize: TextUnit,
+    recordingCommand: OnyxCommand?,
+    onRecordingCommandChange: ((OnyxCommand?) -> Unit)?,
 ) {
     SettingsGroupCard(
         title = stringResource(Res.string.label_settings_shortcuts),
@@ -629,6 +644,8 @@ private fun ShortcutsAdvancedSettingsContent(
             onDraftChange = onDraftChange,
             fontSize = bodyFontSize,
             labelFontSize = labelFontSize,
+            recordingCommand = recordingCommand,
+            onRecordingCommandChange = onRecordingCommandChange,
         )
     }
 
@@ -641,7 +658,10 @@ private fun ShortcutsAdvancedSettingsContent(
             text = stringResource(Res.string.action_restore_factory_defaults),
             destructive = true,
             fontSize = bodyFontSize,
-            onClick = { onDraftChange(draft.resetAllPreferencesToDefaults()) },
+            onClick = {
+                onRecordingCommandChange?.invoke(null)
+                onDraftChange(draft.resetAllPreferencesToDefaults())
+            },
         )
     }
 }

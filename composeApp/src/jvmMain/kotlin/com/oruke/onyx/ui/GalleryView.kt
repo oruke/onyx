@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -143,6 +144,8 @@ internal data class GalleryItemActions(
     val onFileDragEnd: (IntOffset?) -> Unit,
     /** 注册目录放置区域。 */
     val onFileDropZoneChange: (FileDropZone) -> Unit,
+    /** 注销已离屏或销毁的目录放置区域。 */
+    val onFileDropZoneRemove: (String) -> Unit = {},
     /** 显示条目右键菜单。 */
     val onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     /** 关闭右键菜单。 */
@@ -259,6 +262,18 @@ internal fun GalleryItem(
     val canInlineEdit = actions.supportsInlineEdit(state.draftName)
     val canInlineEditState = rememberUpdatedState(canInlineEdit)
     val isDropTarget = state.fileDropTarget?.directoryEntryId == state.entry?.id
+    val dropZoneKey = state.entry
+        ?.takeIf { it.isBrowsableDirectory() }
+        ?.let { entry ->
+            com.oruke.onyx.ui.theme.fileDropZoneKey(state.paneId, entry.id, entry.location)
+        }
+    DisposableEffect(dropZoneKey) {
+        onDispose {
+            if (dropZoneKey != null) {
+                currentActions.value.onFileDropZoneRemove(dropZoneKey)
+            }
+        }
+    }
     val background = galleryItemBackground(state, isDropTarget, isHovered)
     val borderColor = galleryItemBorderColor(state.selected, isHovered)
 

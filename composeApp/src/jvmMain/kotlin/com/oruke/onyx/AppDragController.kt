@@ -17,6 +17,7 @@ import com.oruke.onyx.app.platform.ExternalFileDragService
 import com.oruke.onyx.core.model.COMPUTER_LOCATION
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.PaneId
+import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.core.model.isTrashLocation
 import com.oruke.onyx.ui.PaneDragBindings
@@ -190,8 +191,8 @@ internal class AppDragController(
      * @return 命中的面板和插入索引，无目标时返回 null。
      */
     private fun resolveTabDropTarget(windowPosition: IntOffset): TabDropTarget? {
-        val target = tabDropZones.entries.firstOrNull { (_, zone) ->
-            zone.bounds.containsPoint(windowPosition)
+        val target = tabDropZones.entries.firstOrNull { (paneId, zone) ->
+            isPaneVisible(paneId) && zone.bounds.containsPoint(windowPosition)
         } ?: return null
         return TabDropTarget(target.key, target.value.dropIndex(windowPosition))
     }
@@ -248,6 +249,16 @@ internal class AppDragController(
     }
 
     /**
+     * 判断指定面板在当前布局模式下是否处于可见状态。
+     *
+     * @param paneId 待检查面板。
+     * @return 单栏模式下隐藏副面板时返回 `false`，其余返回 `true`。
+     */
+    private fun isPaneVisible(paneId: PaneId): Boolean {
+        return paneId == PaneId.PRIMARY || rootComponent.state.value.layoutMode != PaneLayoutMode.SINGLE
+    }
+
+    /**
      * 判断文件放置区域是否仍属于当前目录内容。
      *
      * @param zone 待校验的放置区域。
@@ -256,6 +267,9 @@ internal class AppDragController(
     private fun isCurrentFileDropZone(zone: FileDropZone): Boolean {
         if (zone.isSidebarTarget) {
             return isTrashLocation(zone.targetDirectoryLocation)
+        }
+        if (!isPaneVisible(zone.paneId)) {
+            return false
         }
         val paneState = rootComponent.paneState(zone.paneId)
         val ready = paneState.entriesState as? PaneEntriesState.Ready

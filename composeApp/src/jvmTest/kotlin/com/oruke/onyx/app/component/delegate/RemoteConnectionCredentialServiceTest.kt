@@ -5,6 +5,7 @@ import com.oruke.onyx.app.component.toVfsProtocol
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.RemoteConnectionSavePolicy
+import com.oruke.onyx.vfs.api.InMemoryRemoteAuthStore
 import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
 import com.oruke.onyx.vfs.api.RemoteCredentialSaveResult
 import com.oruke.onyx.vfs.api.RemoteKeyringAuthStore
@@ -12,6 +13,7 @@ import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsProtocol
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -96,6 +98,81 @@ class RemoteConnectionCredentialServiceTest {
         val authContext = service.authContextForTest(PROFILE, PROFILE.toRemoteConnectionDraft())
 
         assertEquals(STORED_AUTH, authContext)
+    }
+
+    /**
+     * 校验测试 `DO_NOT_SAVE` 连接不会提前消费一次性凭据，后续打开连接仍可拿到有效凭据。
+     */
+    @Test
+    fun testingDoNotSaveConnectionDoesNotConsumeTransientCredential() {
+        val store = InMemoryRemoteAuthStore()
+        val service = RemoteConnectionCredentialService(store)
+        val transientProfile = PROFILE.copy(savePolicy = RemoteConnectionSavePolicy.DO_NOT_SAVE)
+        store.put(
+            protocol = VfsProtocol.SMB,
+            location = transientProfile.location,
+            authContext = STORED_AUTH,
+            savePolicy = RemoteCredentialSavePolicy.DO_NOT_SAVE,
+        )
+
+        val tested = service.authContextForTest(transientProfile, transientProfile.toRemoteConnectionDraft())
+        assertEquals(STORED_AUTH, tested)
+        // 紧接着实际打开连接仍可消费到同一份一次性凭据。
+        assertEquals(STORED_AUTH, store.authContext(VfsProtocol.SMB, transientProfile.location))
+    }
+
+    /**
+     * 校验存在同作用域其他连接时，删除当前连接不得误清其余连接共享的凭据；
+     * 同时校验升级保存策略且存储中无旧密钥时必须要求重新输入密钥。
+     */
+    @Test
+    fun preservesSharedScopeCredentialsOnDeleteAndRequiresSecretWhenUpgradingEmptyPolicy() {
+        val store = InMemoryRemoteAuthStore()
+        val service = RemoteConnectionCredentialService(store)
+        val siblingProfile = PROFILE.copy(id = "remote-id-2", name = "Duplicate Bookmark")
+        store.put(VfsProtocol.SMB, PROFILE.location, STORED_AUTH, RemoteCredentialSavePolicy.SESSION)
+
+        service.delete(PROFILE, otherConnections = listOf(siblingProfile))
+        assertEquals(STORED_AUTH, store.peekAuthContext(VfsProtocol.SMB, siblingProfile.location))
+
+        service.delete(siblingProfile, otherConnections = emptyList())
+        assertEquals(VfsAuthContext.None, store.peekAuthContext(VfsProtocol.SMB, siblingProfile.location))
+
+        val noSecretSession = PROFILE.copy(savePolicy = RemoteConnectionSavePolicy.SESSION)
+        val upgradedDraft = noSecretSession.toRemoteConnectionDraft().copy(
+            savePolicy = RemoteConnectionSavePolicy.SYSTEM_KEYRING,
+        )
+        assertTrue(service.requiresSecretReentry(noSecretSession, upgradedDraft))
+        assertFalse(service.requiresSecretReentry(noSecretSession, upgradedDraft.copy(secret = "pw", secretChanged = true)))
+    }
+
+    /**
+     * 校验编辑子路径连接时不得通过父路径回退盗用根连接密码，同时删除主机上最后一个连接会顺带清理旧版仅主机凭据。
+     */
+    @Test
+    fun doesNotStealParentScopePasswordOnEditAndClearsUnreferencedLegacyHost() {
+        val store = InMemoryRemoteAuthStore()
+        val service = RemoteConnectionCredentialService(store)
+        val rootAuth = VfsAuthContext.UsernamePassword(username = "root", password = "root-password")
+        store.put(VfsProtocol.WEBDAV, "webdavs://cloud.example/", rootAuth, RemoteCredentialSavePolicy.SESSION)
+
+        val childProfile = RemoteConnectionProfile(
+            id = "alice-dav",
+            name = "Alice DAV",
+            protocol = RemoteConnectionProtocol.WEBDAV,
+            location = "webdavs://cloud.example/dav/alice/",
+            username = "alice",
+            savePolicy = RemoteConnectionSavePolicy.DO_NOT_SAVE,
+        )
+        val upgradeChildDraft = childProfile.toRemoteConnectionDraft().copy(
+            savePolicy = RemoteConnectionSavePolicy.SESSION,
+        )
+        // 子路径本身无精确凭据，必须要求重填密码而非盗用父路径 root-password。
+        assertTrue(service.requiresSecretReentry(childProfile, upgradeChildDraft))
+
+        // 当主机上最后一个连接被删除且无其他连接引用同一主机时，历史仅主机凭据也会被清理。
+        service.delete(childProfile, otherConnections = emptyList())
+        assertEquals(VfsAuthContext.None, store.peekAuthContext(VfsProtocol.WEBDAV, "webdavs://cloud.example/"))
     }
 
     /** 记录一次凭据写入调用。 */

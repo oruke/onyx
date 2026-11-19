@@ -231,6 +231,7 @@ internal fun App() {
 internal fun App(
     rootComponent: RootComponent,
     externalFileDragService: ExternalFileDragService,
+    dragController: AppDragController? = null,
 ) {
     val state by rootComponent.state.collectAsState()
     val visualSettings = state.effectiveSettings
@@ -251,6 +252,7 @@ internal fun App(
                         rootComponent = rootComponent,
                         state = state,
                         externalFileDragService = externalFileDragService,
+                        externalDragController = dragController,
                     )
                 }
             }
@@ -264,8 +266,9 @@ private fun AppContent(
     state: RootState,
     externalFileDragService: ExternalFileDragService,
     externalTooltipRequest: TooltipRequest? = null,
+    externalDragController: AppDragController? = null,
 ) {
-    val dragController = remember(rootComponent, externalFileDragService) {
+    val dragController = externalDragController ?: remember(rootComponent, externalFileDragService) {
         AppDragController(rootComponent, externalFileDragService)
     }
     var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }

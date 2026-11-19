@@ -1,5 +1,6 @@
 package com.oruke.onyx.app.filesystem
 
+import androidx.compose.ui.graphics.toAwtImage
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
@@ -18,6 +19,8 @@ import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * JVM 缩略图服务测试。
@@ -80,6 +83,41 @@ class JvmThumbnailServiceTest {
         }
     }
 
+    /**
+     * 校验及时释放原生 `SkiaImage` 后，返回的 `ImageBitmap` 像素仍完好可读且支持多步缩略图缩放；
+     * 同时校验画廊缩略图与查看器大图分池缓存并严格遵守字节预算淘汰。
+     */
+    @Test
+    fun keepsBitmapPixelsReadableAfterClosingSkiaAndSeparatesBoundedCachePools() = runBlocking {
+        val contentService = FakeThumbnailContentService("s3://")
+        contentService.seed("s3://bucket/images/large.png", testPngBytes(width = 64, height = 64))
+        val service = JvmThumbnailService(listOf(contentService))
+
+        val thumb = assertNotNull(service.loadThumbnail("s3://bucket/images/large.png", maxDimension = 16))
+        assertEquals(16, thumb.width)
+        assertEquals(16, thumb.height)
+        assertEquals(0xFFFF0000.toInt(), thumb.toAwtImage().getRGB(0, 0))
+        assertEquals(1, service.thumbnailCache.size())
+        assertEquals(0, service.viewerCache.size())
+
+        val viewer = assertNotNull(service.loadThumbnail("s3://bucket/images/large.png", maxDimension = 4096))
+        assertEquals(64, viewer.width)
+        assertEquals(64, viewer.height)
+        assertEquals(0xFFFF0000.toInt(), viewer.toAwtImage().getRGB(0, 0))
+        assertEquals(1, service.thumbnailCache.size())
+        assertEquals(1, service.viewerCache.size())
+
+        // 验证字节封顶 LRU 在超出预算时准确淘汰最久未使用位图并跳过单张超预算位图。
+        val boundedCache = ByteBoundedBitmapLruCache(maxEntries = 10, maxBytes = 16L * 16L * 4L)
+        boundedCache.put("a", thumb)
+        boundedCache.put("b", thumb)
+        assertNull(boundedCache.get("a"))
+        assertNotNull(boundedCache.get("b"))
+        assertTrue(boundedCache.currentBytes() <= 16L * 16L * 4L)
+        boundedCache.put("too-big", viewer)
+        assertNull(boundedCache.get("too-big"))
+    }
+
     private companion object {
         /**
          * 向测试压缩包写入单个图片条目。
@@ -106,12 +144,13 @@ class JvmThumbnailServiceTest {
          *
          * @return PNG 字节数组。
          */
-        fun testPngBytes(): ByteArray {
-            val image = BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB)
-            image.setRGB(0, 0, 0xFFFF0000.toInt())
-            image.setRGB(1, 0, 0xFFFF0000.toInt())
-            image.setRGB(0, 1, 0xFFFF0000.toInt())
-            image.setRGB(1, 1, 0xFFFF0000.toInt())
+        fun testPngBytes(width: Int = 2, height: Int = 2): ByteArray {
+            val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+            for (y in 0 until height) {
+                for (x in 0 until width) {
+                    image.setRGB(x, y, 0xFFFF0000.toInt())
+                }
+            }
             val output = ByteArrayOutputStream()
             ImageIO.write(image, "png", output)
             return output.toByteArray()

@@ -68,6 +68,7 @@ internal fun DialogFrame(
 /**
  * 统一使用 Jewel 默认按钮组件（[DefaultButton] / [OutlinedButton]）渲染对话框与设置操作按钮。
  */
+@Suppress("LongParameterList")
 @Composable
 internal fun DialogTextButton(
     text: String,
@@ -76,10 +77,11 @@ internal fun DialogTextButton(
     focused: Boolean = false,
     enabled: Boolean = true,
     fontSize: TextUnit = 12.sp,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
-    val modifier = Modifier
+    val buttonModifier = modifier
         .padding(start = 6.dp)
         .then(
             if (focused) {
@@ -94,7 +96,7 @@ internal fun DialogTextButton(
             onClick = onClick,
             enabled = enabled,
             style = rememberOnyxButtonStyle(JewelTheme.defaultButtonStyle, compact = compact),
-            modifier = modifier,
+            modifier = buttonModifier,
         ) {
             Text(
                 text = text,
@@ -107,7 +109,7 @@ internal fun DialogTextButton(
             onClick = onClick,
             enabled = enabled,
             style = rememberOnyxButtonStyle(JewelTheme.outlinedButtonStyle, compact = compact),
-            modifier = modifier,
+            modifier = buttonModifier,
         ) {
             Text(
                 text = text,

@@ -29,6 +29,7 @@ import com.oruke.onyx.vfs.api.VfsContentSource
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.api.VfsProvider
+import com.oruke.onyx.vfs.archive.ArchiveBoundedBytes
 import com.oruke.onyx.vfs.archive.ArchiveService
 
 internal class JvmVfsPathService : VfsPathService {
@@ -511,10 +512,20 @@ internal class JvmFileHashService(
         val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(request.entry.location)
             ?: return FileHashResult.Unavailable
         if (innerPath.isBlank()) return FileHashResult.Unavailable
-        val bytes = archiveService.extractToBytes(archivePath, innerPath).getOrNull()
-            ?: return FileHashResult.Unavailable
-        if (bytes.size.toLong() > request.maxBytes) return FileHashResult.TooLarge
-        return hashBytes(bytes)
+        return when (
+            val extracted = archiveService.extractToBytesBounded(
+                archivePath = archivePath,
+                innerPath = innerPath,
+                maxBytes = request.maxBytes,
+            ).getOrElse { failure ->
+                if (failure is CancellationException) throw failure
+                return FileHashResult.Failed(failure.toI18nMessage())
+            }
+        ) {
+            ArchiveBoundedBytes.NotFound -> FileHashResult.Unavailable
+            ArchiveBoundedBytes.TooLarge -> FileHashResult.TooLarge
+            is ArchiveBoundedBytes.Found -> hashBytes(extracted.bytes)
+        }
     }
 
     /**
@@ -683,7 +694,11 @@ internal class JvmImageMetadataService(
                 val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(entry.location)
                     ?: return@withContext null
                 if (innerPath.isBlank()) return@withContext null
-                val bytes = archiveService.extractToBytes(archivePath, innerPath).getOrNull()
+                val bytes = archiveService.extractToBytes(
+                    archivePath = archivePath,
+                    innerPath = innerPath,
+                    maxBytes = MAX_ARCHIVE_IMAGE_METADATA_BYTES,
+                ).getOrNull()
                     ?: return@withContext null
                 val image = Image.makeFromEncoded(bytes)
                 try {
@@ -709,5 +724,10 @@ internal class JvmImageMetadataService(
                 }
             }
         }.getOrNull()
+    }
+
+    private companion object {
+        /** 读取压缩包内图片尺寸时的最大允许字节数，防止超大归档图片触发 OOM。 */
+        const val MAX_ARCHIVE_IMAGE_METADATA_BYTES = 20L * 1024 * 1024
     }
 }

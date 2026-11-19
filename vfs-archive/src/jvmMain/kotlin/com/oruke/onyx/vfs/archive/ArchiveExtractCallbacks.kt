@@ -10,6 +10,82 @@ import net.sf.sevenzipjbinding.PropID
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Path
+
+/** 归档条目提取超出字节上限时用于中断流式写入的内部信号异常。 */
+internal class ArchiveExtractLimitExceededException(
+    /** 本次提取允许的最大字节数。 */
+    val maxBytes: Long,
+) : RuntimeException("Archive entry exceeds maxBytes=$maxBytes")
+
+/** Windows 盘符绝对路径匹配正则（如 `C:/...`）。 */
+private val WINDOWS_DRIVE_PREFIX = Regex("^[A-Za-z]:.*")
+
+/**
+ * 校验归档相对路径并解析为严格位于目标目录内部的安全输出文件，防止 Zip Slip 路径穿越。
+ *
+ * @param targetDirectory 解压目标目录。
+ * @param relativePath 已剥离前缀的归档内部相对路径。
+ * @return 安全落位于 [targetDirectory] 内部的目标文件；越界或非法路径返回 `null`。
+ */
+internal fun resolveSafeArchiveOutputFile(
+    targetDirectory: File,
+    relativePath: String,
+): File? {
+    val normalizedTargetPath: Path = targetDirectory.toPath().toAbsolutePath().normalize()
+    val normalizedRelative = relativePath.replace('\\', '/').trim()
+    if (
+        normalizedRelative.isEmpty() ||
+        normalizedRelative.startsWith("/") ||
+        WINDOWS_DRIVE_PREFIX.matches(normalizedRelative)
+    ) {
+        return null
+    }
+    val rawSegments = normalizedRelative.split('/').filter { segment -> segment.isNotEmpty() }
+    if (
+        rawSegments.any { segment ->
+            segment == ".." ||
+                ':' in segment ||
+                segment.any { ch -> ch.code < 0x20 }
+        }
+    ) {
+        return null
+    }
+    val segments = rawSegments.filter { segment -> segment != "." }
+    if (segments.isEmpty()) {
+        return null
+    }
+    val resolvedPath = runCatching {
+        normalizedTargetPath.resolve(segments.joinToString("/")).normalize()
+    }.getOrNull() ?: return null
+    if (!resolvedPath.startsWith(normalizedTargetPath) || resolvedPath == normalizedTargetPath) {
+        return null
+    }
+    return resolvedPath.toFile()
+}
+
+/**
+ * 校验输出文件最近已存在父目录的真实物理路径仍严格位于目标目录真实路径之内，
+ * 防止通过目标目录内预先存在的符号链接向外逃逸写入。
+ *
+ * @param targetDirectory 解压目标目录。
+ * @param outputFile 拟写入或创建的目标文件。
+ * @return 物理路径安全时返回 `true`。
+ */
+internal fun verifyArchiveOutputParentContained(
+    targetDirectory: File,
+    outputFile: File,
+): Boolean {
+    if (!targetDirectory.exists()) return true
+    val targetRealPath = runCatching { targetDirectory.toPath().toRealPath() }.getOrNull() ?: return false
+    var probe: File? = outputFile.parentFile
+    while (probe != null && !probe.exists()) {
+        probe = probe.parentFile
+    }
+    val existingAncestor = probe ?: return false
+    val ancestorRealPath = runCatching { existingAncestor.toPath().toRealPath() }.getOrNull() ?: return false
+    return ancestorRealPath.startsWith(targetRealPath)
+}
 
 /**
  * 解压到文件的回调，将归档条目写入目标目录。
@@ -62,9 +138,21 @@ internal class FileExtractCallback(
         index: Int,
         itemPath: String,
     ): ISequentialOutStream? {
+        val symLink = archive.getProperty(index, PropID.SYM_LINK) as? String
+        if (!symLink.isNullOrBlank()) {
+            errors.add("安全拦截：禁止解压符号链接条目 ($itemPath)")
+            return null
+        }
         val isDirectory = archive.getProperty(index, PropID.IS_FOLDER) as? Boolean ?: false
         val relativePath = if (prefix.isNotEmpty()) itemPath.removePrefix(prefix) else itemPath
-        val outputFile = File(targetDirectory, relativePath)
+        if (isDirectory && relativePath.trim('/', '\\', ' ').isEmpty()) {
+            return null
+        }
+        val outputFile = resolveSafeArchiveOutputFile(targetDirectory, relativePath)
+        if (outputFile == null || !verifyArchiveOutputParentContained(targetDirectory, outputFile)) {
+            errors.add("安全拦截：归档条目路径越界 ($itemPath)")
+            return null
+        }
         return if (isDirectory) {
             outputFile.mkdirs()
             null
@@ -136,17 +224,26 @@ internal class FileExtractCallback(
 }
 
 /**
- * 解压到内存的回调。
+ * 解压到内存的回调，支持在流式写入期间强制执行最大字节数上限以防 OOM。
  *
  * @param buffer 文件内容输出缓冲区。
  * @param password 可选归档密码。
+ * @param maxBytes 允许写入的最大字节数；为 `null` 时不限制。
  */
 internal class MemoryExtractCallback(
     private val buffer: ByteArrayOutputStream,
     private val password: String? = null,
+    private val maxBytes: Long? = null,
 ) : IArchiveExtractCallback, ICryptoGetTextPassword {
     /** 解压过程中收到的条目错误。 */
     val errors = mutableListOf<String>()
+
+    /** 是否在流式读取期间触发了最大字节数保护。 */
+    var limitExceeded: Boolean = false
+        private set
+
+    /** 已写入缓冲区的累计字节数。 */
+    private var writtenBytes: Long = 0L
 
     override fun getStream(
         index: Int,
@@ -154,7 +251,13 @@ internal class MemoryExtractCallback(
     ): ISequentialOutStream? {
         if (extractAskMode != ExtractAskMode.EXTRACT) return null
         return ISequentialOutStream { data ->
+            val limit = maxBytes
+            if (limit != null && writtenBytes + data.size.toLong() > limit) {
+                limitExceeded = true
+                throw ArchiveExtractLimitExceededException(limit)
+            }
             buffer.write(data)
+            writtenBytes += data.size.toLong()
             data.size
         }
     }

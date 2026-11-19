@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,6 +31,7 @@ import com.oruke.onyx.app.component.visibleEntriesIncludingExpanded
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.FileDropZone
+import com.oruke.onyx.ui.theme.fileDropZoneKey
 import com.oruke.onyx.ui.theme.windowBounds
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
@@ -82,6 +86,13 @@ private fun PaneEntriesArea(
         paneDropBackground != Color.Transparent -> paneDropBackground
         appearance.fileListBackground != null -> appearance.fileListBackground
         else -> palette.surface
+    }
+    val currentRuntime by rememberUpdatedState(runtime)
+    val paneZoneKey = fileDropZoneKey(runtime.state.paneId, directoryEntryId = null, targetDirectoryLocation = "")
+    DisposableEffect(paneZoneKey, runtime.dragBindings.fileDropZones) {
+        onDispose {
+            currentRuntime.removeFileDropZone(paneZoneKey)
+        }
     }
     Column(modifier = modifier.fillMaxHeight()) {
         PaneFilterBar(runtime)
@@ -194,6 +205,7 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
             dragBindings.onFileDragEnd(position)
         },
         onFileDropZoneChange = ::updateFileDropZone,
+        onFileDropZoneRemove = ::removeFileDropZone,
         onUpdateInlineEditDraft = { draft -> dispatch(PaneIntent.UpdateInlineEditDraft(draft)) },
         onConfirmInlineEdit = { dispatch(PaneIntent.ConfirmInlineEdit) },
         onCancelInlineEdit = { dispatch(PaneIntent.CancelInlineEdit) },
