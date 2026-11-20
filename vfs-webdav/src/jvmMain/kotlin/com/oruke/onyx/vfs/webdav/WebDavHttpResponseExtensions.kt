@@ -49,17 +49,17 @@ internal fun HttpResponse.requireSuccess(
 }
 
 /**
- * 将底层网络 I/O 异常包装为保留 cause 的 WebDAV VFS 异常。
+ * 将底层网络异常（I/O、超时、DNS 解析失败、SSL 错误等）包装为保留 cause 的 WebDAV VFS 异常。
  *
  * @param location 请求位置。
  * @return 统一 VFS 异常。
  */
-internal fun IOException.toNetworkFailure(location: String): VfsProviderException {
+internal fun Throwable.toNetworkFailure(location: String): VfsProviderException {
     return VfsProviderException(
         VfsProviderError.NetworkFailure(
             protocol = VfsProtocol.WEBDAV,
             location = location,
-            reason = message,
+            reason = message ?: this::class.simpleName,
         ),
         this,
     )

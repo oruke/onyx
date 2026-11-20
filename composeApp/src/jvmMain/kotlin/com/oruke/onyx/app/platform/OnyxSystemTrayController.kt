@@ -15,8 +15,46 @@ import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.image.AbstractMultiResolutionImage
 import java.awt.image.BufferedImage
+import java.util.concurrent.atomic.AtomicLong
 import javax.imageio.ImageIO
 import javax.swing.SwingUtilities
+
+/**
+ * 系统托盘菜单与提示本地化文案模型。
+ *
+ * @property openLabel 打开主窗口菜单项文案。
+ * @property exitLabel 退出应用菜单项文案。
+ * @property tooltip 托盘图标悬停提示文案。
+ */
+internal data class TrayMenuLabels(
+    val openLabel: String,
+    val exitLabel: String,
+    val tooltip: String = "Onyx ${BuildConfig.VERSION}",
+)
+
+/**
+ * 系统托盘安装句柄，明确暴露真实安装状态并支持运行期随语言环境刷新菜单文案。
+ */
+internal interface OnyxTrayHandle : AutoCloseable {
+    /** 托盘图标是否已在宿主桌面真实安装成功。 */
+    val installed: Boolean
+
+    /**
+     * 在切换应用语言时动态刷新托盘右键菜单与提示文案。
+     *
+     * @param labels 最新本地化文案。
+     */
+    fun updateLabels(labels: TrayMenuLabels)
+
+    companion object {
+        /** 宿主不支持托盘或安装失败时的降级空句柄。 */
+        val NotInstalled: OnyxTrayHandle = object : OnyxTrayHandle {
+            override val installed: Boolean = false
+            override fun updateLabels(labels: TrayMenuLabels) = Unit
+            override fun close() = Unit
+        }
+    }
+}
 
 /**
  * 系统托盘控制器，在主窗口关闭并隐藏驻留后台时提供托盘唤醒与完全退出入口。
@@ -37,6 +75,9 @@ internal object OnyxSystemTrayController {
     /** 渐进二分降采样倍率。 */
     private const val HALF_SCALE_DIVISOR = 2
 
+    /** 托盘左键单击/双击联合触发去重窗口（毫秒）。 */
+    internal const val OPEN_WINDOW_DEBOUNCE_MS = 300L
+
     /** 托盘多分辨率位图阶梯（覆盖 100%~300% DPI 缩放）。 */
     private val trayVariantSizes = intArrayOf(16, 20, 24, 32, 40, 48)
 
@@ -44,55 +85,98 @@ internal object OnyxSystemTrayController {
     private val fallbackPrimaryColor = Color(0x0E, 0xA5, 0xE9)
 
     /**
-     * 安装系统托盘图标；宿主环境不支持托盘时安全降级为空操作。
+     * 创建带时间窗防抖的窗口唤醒包装器，防止 Windows 下左键双击同时触发 `mouseClicked` 与 `ActionListener`。
      *
-     * @param onOpenWindow 点击托盘图标或“打开 Onyx”菜单项时的回调。
-     * @param onExitApplication 点击“退出 Onyx”菜单项时的回调。
-     * @return 用于卸载托盘图标的句柄。
+     * @param nowMillis 当前毫秒时钟。
+     * @param debounceMs 防抖窗口毫秒数。
+     * @param onOpenWindow 实际窗口激活回调。
+     * @return 去重后的唤醒回调。
+     */
+    internal fun debouncedOpenTrigger(
+        nowMillis: () -> Long = System::currentTimeMillis,
+        debounceMs: Long = OPEN_WINDOW_DEBOUNCE_MS,
+        onOpenWindow: () -> Unit,
+    ): () -> Unit {
+        val lastTriggeredAt = AtomicLong(Long.MIN_VALUE)
+        return {
+            val now = nowMillis()
+            val previous = lastTriggeredAt.get()
+            if (previous == Long.MIN_VALUE || now - previous >= debounceMs) {
+                if (lastTriggeredAt.compareAndSet(previous, now)) {
+                    onOpenWindow()
+                }
+            }
+        }
+    }
+
+    /**
+     * 安装系统托盘图标；宿主环境不支持托盘或安装失败时返回 [OnyxTrayHandle.NotInstalled]，
+     * 供窗口管理器禁用后台无托盘隐身驻留。
+     *
+     * @param labels 初始本地化菜单文案。
+     * @param onOpenWindow 点击托盘图标或打开菜单项时的回调。
+     * @param onExitApplication 点击退出菜单项时的回调。
+     * @return 带真实安装状态的托盘句柄。
      */
     @Suppress("TooGenericExceptionCaught")
     fun install(
+        labels: TrayMenuLabels,
         onOpenWindow: () -> Unit,
         onExitApplication: () -> Unit,
-    ): AutoCloseable {
+    ): OnyxTrayHandle {
         if (GraphicsEnvironment.isHeadless() || !SystemTray.isSupported()) {
-            return AutoCloseable {}
+            return OnyxTrayHandle.NotInstalled
         }
         return try {
             val systemTray = SystemTray.getSystemTray()
-            val popupMenu = PopupMenu().apply {
-                add(
-                    MenuItem("Open Onyx").apply {
-                        addActionListener { SwingUtilities.invokeLater(onOpenWindow) }
-                    },
-                )
-                addSeparator()
-                add(
-                    MenuItem("Exit Onyx").apply {
-                        addActionListener { SwingUtilities.invokeLater(onExitApplication) }
-                    },
-                )
+            val openWindowSafely = debouncedOpenTrigger {
+                SwingUtilities.invokeLater(onOpenWindow)
             }
-            val trayIcon = TrayIcon(loadTrayImage(), "Onyx ${BuildConfig.VERSION}", popupMenu).apply {
-                isImageAutoSize = true
+            val openMenuItem = MenuItem(labels.openLabel).apply {
                 addActionListener { SwingUtilities.invokeLater(onOpenWindow) }
+            }
+            val exitMenuItem = MenuItem(labels.exitLabel).apply {
+                addActionListener { SwingUtilities.invokeLater(onExitApplication) }
+            }
+            val popupMenu = PopupMenu().apply {
+                add(openMenuItem)
+                addSeparator()
+                add(exitMenuItem)
+            }
+            val trayIcon = TrayIcon(loadTrayImage(), labels.tooltip, popupMenu).apply {
+                isImageAutoSize = true
+                addActionListener { openWindowSafely() }
                 addMouseListener(
                     object : MouseAdapter() {
                         override fun mouseClicked(event: MouseEvent) {
                             if (event.button == MouseEvent.BUTTON1) {
-                                SwingUtilities.invokeLater(onOpenWindow)
+                                openWindowSafely()
                             }
                         }
                     },
                 )
             }
             systemTray.add(trayIcon)
-            AutoCloseable {
-                runCatching { systemTray.remove(trayIcon) }
+            object : OnyxTrayHandle {
+                override val installed: Boolean = true
+
+                override fun updateLabels(labels: TrayMenuLabels) {
+                    SwingUtilities.invokeLater {
+                        runCatching {
+                            openMenuItem.label = labels.openLabel
+                            exitMenuItem.label = labels.exitLabel
+                            trayIcon.toolTip = labels.tooltip
+                        }
+                    }
+                }
+
+                override fun close() {
+                    runCatching { systemTray.remove(trayIcon) }
+                }
             }
         } catch (failure: Exception) {
-            OnyxLogger.warn("Startup", "安装系统托盘图标失败，继续保持无托盘后台驻留", failure)
-            AutoCloseable {}
+            OnyxLogger.warn("Startup", "安装系统托盘图标失败，已禁用后台驻留以防窗口无法唤回", failure)
+            OnyxTrayHandle.NotInstalled
         }
     }
 

@@ -5,8 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,8 +26,10 @@ import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.RemoteConnectionDialogError
 import com.oruke.onyx.app.component.RemoteConnectionDraft
 import com.oruke.onyx.app.component.RemoteConnectionTestState
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_cancel_test
 import onyx.composeapp.generated.resources.action_delete_connection
 import onyx.composeapp.generated.resources.action_open
 import onyx.composeapp.generated.resources.action_save_connection
@@ -39,7 +41,7 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Text
 
 /**
- * 展示网络位置详情编辑器，并集中承载测试、打开、删除和保存操作。
+ * 展示网络位置详情编辑器，并集中承载测试/取消测试、规范化打开、删除和保存操作。
  *
  * @param connectionDraft 当前网络位置编辑草稿。
  * @param editingConnectionId 当前编辑连接 ID；空值表示新建模式。
@@ -105,14 +107,14 @@ internal fun RemoteConnectionEditorPane(
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(palette.outlineVariant))
         RemoteConnectionEditorFooter(
             editingConnectionId = editingConnectionId,
-            connectionDraft = connectionDraft,
             testState = testState,
             error = error,
             saving = saving,
             onSave = actions.onSave,
             onTest = actions.onTest,
+            onCancelTest = actions.onCancelTest,
             onDelete = actions.onDelete,
-            onOpen = actions.onOpen,
+            onOpenDraft = actions.onOpenDraft,
             fontSize = fontSize,
         )
     }
@@ -132,6 +134,7 @@ private fun RemoteConnectionEditorHeader(
     fontSize: TextUnit,
 ) {
     val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
     val fallbackTitle = stringResource(
         if (isEditing) Res.string.label_remote_connection_edit_title else Res.string.label_remote_connection_new_title,
     )
@@ -155,7 +158,7 @@ private fun RemoteConnectionEditorHeader(
         )
         Text(
             text = "${remoteProtocolLabel(connectionDraft.protocol)} · $location",
-            fontSize = 10.sp,
+            fontSize = appearance.feedbackFontSize,
             color = palette.mutedForeground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -164,44 +167,47 @@ private fun RemoteConnectionEditorHeader(
 }
 
 /**
- * 展示连接反馈及当前编辑器可用操作。
+ * 展示连接反馈及当前编辑器可用操作，采用 [FlowRow] 弹性排版确保 150% DPI 下按钮绝不被挤压成单字。
  *
  * @param editingConnectionId 当前编辑连接 ID。
- * @param connectionDraft 当前网络位置编辑草稿。
  * @param testState 当前连接测试状态。
  * @param error 当前表单校验错误。
  * @param saving 是否正在保存连接与凭据。
  * @param onSave 保存当前草稿回调。
  * @param onTest 测试当前草稿连接回调。
+ * @param onCancelTest 取消正在进行的连接测试回调。
  * @param onDelete 删除网络位置回调。
- * @param onOpen 打开网络位置回调。
+ * @param onOpenDraft 规范化校验并打开当前草稿回调。
  * @param fontSize 正文字号。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RemoteConnectionEditorFooter(
     editingConnectionId: String?,
-    connectionDraft: RemoteConnectionDraft,
     testState: RemoteConnectionTestState,
     error: RemoteConnectionDialogError?,
     saving: Boolean,
     onSave: () -> Unit,
     onTest: () -> Unit,
+    onCancelTest: () -> Unit,
     onDelete: (String) -> Unit,
-    onOpen: (String) -> Unit,
+    onOpenDraft: () -> Unit,
     fontSize: TextUnit,
 ) {
     val palette = LocalOnyxPalette.current
+    val isTesting = testState is RemoteConnectionTestState.Testing
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(palette.surfaceVariant.copy(alpha = 0.48f))
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         RemoteConnectionFeedback(testState = testState, error = error, saving = saving)
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             editingConnectionId?.let { connectionId ->
                 DialogTextButton(
@@ -212,21 +218,30 @@ private fun RemoteConnectionEditorFooter(
                     onClick = { onDelete(connectionId) },
                 )
             }
-            Spacer(modifier = Modifier.weight(1f))
             if (editingConnectionId != null) {
                 DialogTextButton(
                     text = stringResource(Res.string.action_open),
                     enabled = !saving,
                     fontSize = fontSize,
-                    onClick = { onOpen(connectionDraft.location) },
+                    onClick = onOpenDraft,
                 )
             }
-            DialogTextButton(
-                text = stringResource(Res.string.action_test_connection),
-                enabled = !saving && testState !is RemoteConnectionTestState.Testing,
-                fontSize = fontSize,
-                onClick = onTest,
-            )
+            if (isTesting) {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_cancel_test),
+                    destructive = true,
+                    enabled = !saving,
+                    fontSize = fontSize,
+                    onClick = onCancelTest,
+                )
+            } else {
+                DialogTextButton(
+                    text = stringResource(Res.string.action_test_connection),
+                    enabled = !saving,
+                    fontSize = fontSize,
+                    onClick = onTest,
+                )
+            }
             DialogTextButton(
                 text = stringResource(Res.string.action_save_connection),
                 emphasized = true,

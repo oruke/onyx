@@ -20,15 +20,53 @@ internal fun DefaultRootComponent.updateBatchRenameDraft(draft: BatchRenameDraft
 }
 
 /**
- * 计算当前草稿的名称预览，UI 不再计算业务名称。
- * @return 包含完整预览或本地化校验错误的对话框状态。
+ * 计算当前草稿的名称预览并执行碰撞/非法名检测，UI 不再计算业务名称。
+ * @return 包含完整预览、冲突条目集合及本地化校验错误的对话框状态。
  */
 internal fun RootDialogState.BatchRename.withBatchRenamePreview(): RootDialogState.BatchRename {
     val preview = BatchRenameDraftPlanner.preview(entries, draft)
-    return copy(
-        renameResults = preview.getOrElse { entries.map { it to it.name } },
-        validationMessage = preview.exceptionOrNull()?.toI18nMessage(),
+    val results = preview.getOrElse { entries.map { it to it.name } }
+    val patternError = preview.exceptionOrNull()?.toI18nMessage()
+    if (patternError != null) {
+        return copy(
+            renameResults = results,
+            conflictEntryIds = emptySet(),
+            validationMessage = patternError,
+        )
+    }
+    val caseInsensitive = entries.firstOrNull()?.parentLocation?.let { parent ->
+        isCaseInsensitiveVfsLocation(parent)
+    } ?: isWindowsHostPlatform()
+    val conflicts = BatchRenameDraftPlanner.findConflicts(
+        renameResults = results,
+        siblingNamesByParent = siblingNamesByParent,
+        caseInsensitive = caseInsensitive,
     )
+    return copy(
+        renameResults = results,
+        conflictEntryIds = conflicts.keys,
+        validationMessage = if (conflicts.isNotEmpty()) {
+            I18nMessage(MessageKey.MSG_BATCH_RENAME_CONFLICT, conflicts.size)
+        } else {
+            null
+        },
+    )
+}
+
+/** 判断位置所在文件系统是否按大小写不敏感规则判重（Windows 本地与 SMB 为不敏感，S3/WebDAV 为敏感）。 */
+internal fun isCaseInsensitiveVfsLocation(location: String): Boolean {
+    val lower = location.lowercase()
+    return when {
+        lower.startsWith("smb://") -> true
+        lower.startsWith("s3://") || lower.startsWith("webdav://") || lower.startsWith("webdavs://") -> false
+        lower.startsWith("archive://") -> false
+        else -> isWindowsHostPlatform()
+    }
+}
+
+/** 判断当前宿主操作系统是否为 Windows。 */
+internal fun isWindowsHostPlatform(): Boolean {
+    return System.getProperty("os.name").orEmpty().contains("Windows", ignoreCase = true)
 }
 
 /**

@@ -193,6 +193,10 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
             model.onActivate()
             dispatch(PaneIntent.ResizeDetailsColumn(column, deltaWeight))
         },
+        onResizeColumnFromEffective = { column, deltaWeight, baseWidths ->
+            model.onActivate()
+            dispatch(PaneIntent.ResizeDetailsColumn(column, deltaWeight, baseWidths))
+        },
         onToggleColumnVisibility = { column ->
             model.onActivate()
             dispatch(PaneIntent.ToggleColumnVisibility(column))

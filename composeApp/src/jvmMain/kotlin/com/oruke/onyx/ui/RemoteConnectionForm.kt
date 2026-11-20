@@ -64,6 +64,7 @@ private val RemoteFieldHintFontSize = 10.sp
  * @param labelFontSize 标签字号。
  * @param enabled 是否允许编辑。
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun RemoteConnectionDetailsSection(
     connectionDraft: RemoteConnectionDraft,
@@ -77,7 +78,10 @@ internal fun RemoteConnectionDetailsSection(
         labelFontSize = labelFontSize,
     ) {
         RemoteConnectionFieldLabel(stringResource(Res.string.label_remote_connection_protocol))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             RemoteConnectionProtocol.entries.forEach { protocol ->
                 SettingsOption(
                     selected = connectionDraft.protocol == protocol,
@@ -120,6 +124,7 @@ internal fun RemoteConnectionDetailsSection(
  * @param labelFontSize 标签字号。
  * @param enabled 是否允许编辑。
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun RemoteConnectionCredentialsSection(
     connectionDraft: RemoteConnectionDraft,
@@ -161,7 +166,10 @@ internal fun RemoteConnectionCredentialsSection(
             )
         }
         RemoteConnectionFieldLabel(stringResource(Res.string.label_remote_credentials_save_policy))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             RemoteConnectionSavePolicy.entries.forEach { policy ->
                 SettingsOption(
                     selected = connectionDraft.savePolicy == policy,

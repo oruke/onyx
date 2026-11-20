@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
@@ -70,6 +71,9 @@ import com.oruke.onyx.ui.QuickOpenPanel
 import com.oruke.onyx.ui.SettingsDialog
 import com.oruke.onyx.ui.StatusBar
 import com.oruke.onyx.ui.TitleBarContent
+import com.oruke.onyx.ui.WindowKeyboardFocusRegistry
+import com.oruke.onyx.ui.commandShortcutMapFromSettings
+import com.oruke.onyx.ui.handleWindowGlobalKeyEvent
 import com.oruke.onyx.ui.theme.FileDragState
 import com.oruke.onyx.ui.theme.FileDropTarget
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
@@ -104,6 +108,7 @@ import org.jetbrains.jewel.window.newFullscreenControls
 internal fun DecoratedWindowScope.WindowApp(
     rootComponent: RootComponent,
     externalFileDragService: ExternalFileDragService,
+    keyboardFocusRegistry: WindowKeyboardFocusRegistry = remember { WindowKeyboardFocusRegistry() },
 ) {
     // rootComponent 由 main.kt 在 application 级别创建并传入
     val state by rootComponent.state.collectAsState()
@@ -192,6 +197,7 @@ internal fun DecoratedWindowScope.WindowApp(
                     state = state,
                     externalFileDragService = externalFileDragService,
                     externalTooltipRequest = titleBarTooltipRequest,
+                    keyboardFocusRegistry = keyboardFocusRegistry,
                 )
             }
         }
@@ -267,6 +273,7 @@ private fun AppContent(
     externalFileDragService: ExternalFileDragService,
     externalTooltipRequest: TooltipRequest? = null,
     externalDragController: AppDragController? = null,
+    keyboardFocusRegistry: WindowKeyboardFocusRegistry = remember { WindowKeyboardFocusRegistry() },
 ) {
     val dragController = externalDragController ?: remember(rootComponent, externalFileDragService) {
         AppDragController(rootComponent, externalFileDragService)
@@ -297,12 +304,20 @@ private fun AppContent(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .onPreviewKeyEvent { event ->
+                    handleWindowGlobalKeyEvent(
+                        event = event,
+                        state = rootComponent.state.value,
+                        rootComponent = rootComponent,
+                        focusRegistry = keyboardFocusRegistry,
+                    )
+                }
                 .onGloballyPositioned { coordinates ->
                     appContentSize = coordinates.size
                     appWindowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
                 },
         ) {
-            AppWorkspace(state, rootComponent, dragBindings, toggleFavoriteLocation)
+            AppWorkspace(state, rootComponent, dragBindings, toggleFavoriteLocation, keyboardFocusRegistry)
 
             (tooltipRequest ?: externalTooltipRequest)?.let { request ->
                 OnyxTooltipOverlay(
@@ -331,6 +346,7 @@ private fun AppContent(
  * @param rootComponent 根组件业务接口。
  * @param dragBindings 面板共享拖放绑定。
  * @param onToggleFavoriteLocation 切换收藏位置的回调。
+ * @param keyboardFocusRegistry 面板文本输入/局部浮层键盘独占登记表。
  */
 @Composable
 private fun AppWorkspace(
@@ -338,6 +354,7 @@ private fun AppWorkspace(
     rootComponent: RootComponent,
     dragBindings: PaneDragBindings,
     onToggleFavoriteLocation: (String) -> Unit,
+    keyboardFocusRegistry: WindowKeyboardFocusRegistry,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -348,6 +365,7 @@ private fun AppWorkspace(
                 rootComponent = rootComponent,
                 dragBindings = dragBindings,
                 onToggleFavoriteLocation = onToggleFavoriteLocation,
+                keyboardFocusRegistry = keyboardFocusRegistry,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
             AppStatusBar(state, rootComponent)
@@ -364,6 +382,7 @@ private fun AppWorkspace(
  * @param rootComponent 根组件业务接口。
  * @param dragBindings 面板共享拖放绑定。
  * @param onToggleFavoriteLocation 切换收藏位置的回调。
+ * @param keyboardFocusRegistry 面板文本输入/局部浮层键盘独占登记表。
  * @param modifier 内容区布局修饰符。
  */
 @Composable
@@ -372,6 +391,7 @@ private fun AppMainArea(
     rootComponent: RootComponent,
     dragBindings: PaneDragBindings,
     onToggleFavoriteLocation: (String) -> Unit,
+    keyboardFocusRegistry: WindowKeyboardFocusRegistry,
     modifier: Modifier,
 ) {
     Row(modifier = modifier) {
@@ -380,6 +400,7 @@ private fun AppMainArea(
             state = state,
             rootComponent = rootComponent,
             dragBindings = dragBindings,
+            keyboardFocusRegistry = keyboardFocusRegistry,
             modifier = Modifier.weight(1f),
         )
         AppPreviewPanel(state, rootComponent)
@@ -445,6 +466,7 @@ private fun AppPaneLayout(
     state: RootState,
     rootComponent: RootComponent,
     dragBindings: PaneDragBindings,
+    keyboardFocusRegistry: WindowKeyboardFocusRegistry,
     modifier: Modifier,
 ) {
     when (state.layoutMode) {
@@ -454,10 +476,24 @@ private fun AppPaneLayout(
             rootComponent = rootComponent,
             modifier = modifier,
             dragBindings = dragBindings,
+            onGlobalShortcutBlockChange = { keyboardFocusRegistry.setPaneBlocking(PaneId.PRIMARY, it) },
         )
 
-        PaneLayoutMode.DUAL_VERTICAL -> VerticalPaneLayout(state, rootComponent, dragBindings, modifier)
-        PaneLayoutMode.DUAL_HORIZONTAL -> HorizontalPaneLayout(state, rootComponent, dragBindings, modifier)
+        PaneLayoutMode.DUAL_VERTICAL -> VerticalPaneLayout(
+            state = state,
+            rootComponent = rootComponent,
+            dragBindings = dragBindings,
+            keyboardFocusRegistry = keyboardFocusRegistry,
+            modifier = modifier,
+        )
+
+        PaneLayoutMode.DUAL_HORIZONTAL -> HorizontalPaneLayout(
+            state = state,
+            rootComponent = rootComponent,
+            dragBindings = dragBindings,
+            keyboardFocusRegistry = keyboardFocusRegistry,
+            modifier = modifier,
+        )
     }
 }
 
@@ -467,6 +503,7 @@ private fun AppPaneLayout(
  * @param state 根组件当前状态。
  * @param rootComponent 根组件业务接口。
  * @param dragBindings 面板共享拖放绑定。
+ * @param keyboardFocusRegistry 面板文本输入/局部浮层键盘独占登记表。
  * @param modifier 双面板区域修饰符。
  */
 @Composable
@@ -474,16 +511,18 @@ private fun VerticalPaneLayout(
     state: RootState,
     rootComponent: RootComponent,
     dragBindings: PaneDragBindings,
+    keyboardFocusRegistry: WindowKeyboardFocusRegistry,
     modifier: Modifier,
 ) {
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
     Row(modifier = modifier.fillMaxHeight().onSizeChanged { contentSize = it }) {
         BoundPaneSurface(
-            PaneId.PRIMARY,
-            state,
-            rootComponent,
-            Modifier.weight(state.paneSplitFraction),
-            dragBindings,
+            paneId = PaneId.PRIMARY,
+            state = state,
+            rootComponent = rootComponent,
+            modifier = Modifier.weight(state.paneSplitFraction),
+            dragBindings = dragBindings,
+            onGlobalShortcutBlockChange = { keyboardFocusRegistry.setPaneBlocking(PaneId.PRIMARY, it) },
         )
         ResizablePaneDivider(Orientation.Vertical) { delta ->
             val width = contentSize.width.toFloat().coerceAtLeast(1f)
@@ -492,11 +531,12 @@ private fun VerticalPaneLayout(
             )
         }
         BoundPaneSurface(
-            PaneId.SECONDARY,
-            state,
-            rootComponent,
-            Modifier.weight(1f - state.paneSplitFraction),
-            dragBindings,
+            paneId = PaneId.SECONDARY,
+            state = state,
+            rootComponent = rootComponent,
+            modifier = Modifier.weight(1f - state.paneSplitFraction),
+            dragBindings = dragBindings,
+            onGlobalShortcutBlockChange = { keyboardFocusRegistry.setPaneBlocking(PaneId.SECONDARY, it) },
         )
     }
 }
@@ -507,6 +547,7 @@ private fun VerticalPaneLayout(
  * @param state 根组件当前状态。
  * @param rootComponent 根组件业务接口。
  * @param dragBindings 面板共享拖放绑定。
+ * @param keyboardFocusRegistry 面板文本输入/局部浮层键盘独占登记表。
  * @param modifier 双面板区域修饰符。
  */
 @Composable
@@ -514,16 +555,18 @@ private fun HorizontalPaneLayout(
     state: RootState,
     rootComponent: RootComponent,
     dragBindings: PaneDragBindings,
+    keyboardFocusRegistry: WindowKeyboardFocusRegistry,
     modifier: Modifier,
 ) {
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
     Column(modifier = modifier.fillMaxHeight().onSizeChanged { contentSize = it }) {
         BoundPaneSurface(
-            PaneId.PRIMARY,
-            state,
-            rootComponent,
-            Modifier.weight(state.paneSplitFraction),
-            dragBindings,
+            paneId = PaneId.PRIMARY,
+            state = state,
+            rootComponent = rootComponent,
+            modifier = Modifier.weight(state.paneSplitFraction),
+            dragBindings = dragBindings,
+            onGlobalShortcutBlockChange = { keyboardFocusRegistry.setPaneBlocking(PaneId.PRIMARY, it) },
         )
         ResizablePaneDivider(Orientation.Horizontal) { delta ->
             val height = contentSize.height.toFloat().coerceAtLeast(1f)
@@ -532,11 +575,12 @@ private fun HorizontalPaneLayout(
             )
         }
         BoundPaneSurface(
-            PaneId.SECONDARY,
-            state,
-            rootComponent,
-            Modifier.weight(1f - state.paneSplitFraction),
-            dragBindings,
+            paneId = PaneId.SECONDARY,
+            state = state,
+            rootComponent = rootComponent,
+            modifier = Modifier.weight(1f - state.paneSplitFraction),
+            dragBindings = dragBindings,
+            onGlobalShortcutBlockChange = { keyboardFocusRegistry.setPaneBlocking(PaneId.SECONDARY, it) },
         )
     }
 }
@@ -650,6 +694,7 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             onDraftChange = { dispatch(RootIntent.UpdateCreateDirectoriesDraft(it)) },
             onConfirm = { dispatch(RootIntent.ConfirmDialog) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
+            commandShortcuts = commandShortcutMapFromSettings(state.settings.commandShortcutOverrides),
         )
 
         is RootDialogState.CreateZipArchive -> CreateZipArchiveDialog(
@@ -680,8 +725,10 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             onEdit = { dispatch(RootIntent.EditRemoteConnection(it)) },
             onSave = { dispatch(RootIntent.SaveRemoteConnectionDraft) },
             onTest = { dispatch(RootIntent.TestRemoteConnectionDraft) },
+            onCancelTest = { dispatch(RootIntent.CancelRemoteConnectionTest) },
             onDelete = { dispatch(RootIntent.DeleteRemoteConnection(it)) },
             onOpen = { dispatch(RootIntent.OpenRemoteConnection(it)) },
+            onOpenDraft = { dispatch(RootIntent.OpenRemoteConnectionDraft) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
 

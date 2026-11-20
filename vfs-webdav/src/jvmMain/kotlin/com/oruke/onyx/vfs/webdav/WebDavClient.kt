@@ -10,12 +10,14 @@ import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
 import com.oruke.onyx.vfs.api.VfsRandomAccessMode
+import java.io.Closeable
 import kotlinx.coroutines.flow.Flow
 
 /**
  * WebDAV provider 使用的底层 client。
  */
-interface WebDavClient {
+interface WebDavClient : Closeable {
+    override fun close() = Unit
     /**
      * 测试 WebDAV 连接。
      *

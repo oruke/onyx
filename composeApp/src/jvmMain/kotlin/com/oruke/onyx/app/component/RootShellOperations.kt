@@ -1,10 +1,12 @@
 package com.oruke.onyx.app.component
 
+import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.filesystem.isSystemVirtualLocation
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.SidebarSectionKey
+import com.oruke.onyx.ui.mergeEditableSettingsFrom
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 
 /**
@@ -36,9 +38,10 @@ internal fun DefaultRootComponent.setPaneSplitFraction(fraction: Float) {
     syncImmediateRootState()
 }
 
-/** 打开设置对话框。 */
+/** 打开设置对话框，同时保存打开瞬间的基准快照供脏态判断与三路字段合并。 */
 internal fun DefaultRootComponent.openSettings() {
-    dialogState.value = RootDialogState.Settings(settings.value)
+    val snapshot = settings.value
+    dialogState.value = RootDialogState.Settings(draft = snapshot, initialDraft = snapshot)
     syncImmediateRootState()
 }
 
@@ -64,11 +67,12 @@ internal fun DefaultRootComponent.activatePane(paneId: PaneId) {
     syncImmediateRootState()
 }
 
-/** @param currentSettings 待同步到排序器与新建标签默认值的设置。 */
+/** @param currentSettings 待同步到排序器、诊断日志与新建标签默认值的设置。 */
 internal fun syncGlobalSortAndTabDefaults(currentSettings: OnyxSettings) {
     com.oruke.onyx.app.component.delegate.EntrySorter.defaultNaturalSortEnabled = currentSettings.naturalSortEnabled
     com.oruke.onyx.app.component.delegate.EntrySorter.defaultDirectoriesFirst = currentSettings.directoriesFirst
     defaultShowHiddenItemsForNewTabs = currentSettings.defaultShowHiddenItems
+    OnyxLogger.verboseEnabled = currentSettings.verboseLoggingEnabled
 }
 
 /** @param nextSettings 待应用设置。 */
@@ -165,6 +169,14 @@ internal fun DefaultRootComponent.refreshActivePane() {
     paneComponent(activePane.value).refresh()
 }
 
+/** 发出窗口级聚焦当前活动面板地址栏信号，仅递增当前活动面板专属计数避免切面板误重放。 */
+internal fun DefaultRootComponent.requestFocusActivePaneAddressBar() {
+    val targetPane = activePane.value
+    val current = addressBarFocusRequests.value
+    addressBarFocusRequests.value = current + (targetPane to ((current[targetPane] ?: 0) + 1))
+    syncImmediateRootState()
+}
+
 /** 切换右侧预览面板可见性。 */
 internal fun DefaultRootComponent.togglePreviewPane() {
     showPreviewPane.value = !showPreviewPane.value
@@ -199,19 +211,52 @@ internal fun DefaultRootComponent.confirmDialog() {
         is RootDialogState.CreateZipArchive -> confirmCreateZipArchive(currentDialog)
         is RootDialogState.Settings -> {
             dialogState.value = null
-            updateSettings(currentDialog.draft)
+            val merged = settings.value.mergeEditableSettingsFrom(
+                draft = currentDialog.draft,
+                initialDraft = currentDialog.initialDraft,
+            )
+            updateSettings(merged)
         }
 
         else -> Unit
     }
+    if (dialogState.value == null) {
+        archiveActionDelegate.restorePendingPasswordDialogIfIdle()
+        syncImmediateRootState()
+    }
 }
 
-/** 关闭当前对话框并清除各委托的待处理请求。 */
+/** 按当前对话框类型精准关闭弹窗与清理对应委托状态，避免覆盖并发归档密码队列或误杀无关请求。 */
 internal fun DefaultRootComponent.dismissDialog() {
-    fileActionDelegate.clearPending()
-    fileTransferDelegate.clearPending()
-    archiveActionDelegate.clearPending()
-    dialogState.value = null
+    when (dialogState.value) {
+        is RootDialogState.ArchivePassword -> {
+            // 仅取消队首密码请求，由 ArchiveActionDelegate 推进至队列下一项或队列清空时自动置 null。
+            archiveActionDelegate.clearPending()
+        }
+
+        is RootDialogState.DeleteSelectionConfirmation -> {
+            fileActionDelegate.clearPending()
+            dialogState.value = null
+            archiveActionDelegate.restorePendingPasswordDialogIfIdle()
+        }
+
+        is RootDialogState.ConflictResolution -> {
+            fileTransferDelegate.clearPending()
+            dialogState.value = null
+            archiveActionDelegate.restorePendingPasswordDialogIfIdle()
+        }
+
+        is RootDialogState.RemoteConnections -> {
+            remoteConnectionManager.cancelConnectionTest()
+            dialogState.value = null
+            archiveActionDelegate.restorePendingPasswordDialogIfIdle()
+        }
+
+        else -> {
+            dialogState.value = null
+            archiveActionDelegate.restorePendingPasswordDialogIfIdle()
+        }
+    }
     syncImmediateRootState()
 }
 
@@ -235,21 +280,62 @@ private fun DefaultRootComponent.confirmDeleteDialog() {
 
 /** @param dialog 新建多目录对话框。 */
 private fun DefaultRootComponent.confirmCreateDirectoriesDialog(dialog: RootDialogState.CreateDirectories) {
-    val directoryPaths = parseDirectoryDraft(dialog.draft)
-    if (directoryPaths.isEmpty()) {
-        dialogState.value = dialog.copy(error = CreateDirectoriesDialogError.EMPTY_INPUT)
+    val validation = validateCreateDirectoriesDraft(dialog.draft)
+    if (validation.error != null) {
+        dialogState.value = dialog.copy(error = validation.error)
         return
     }
     dialogState.value = null
-    fileActionDelegate.executeCreateDirectories(dialog.location, directoryPaths)
+    fileActionDelegate.executeCreateDirectories(dialog.location, validation.paths)
 }
 
+/** 多行新建目录预校验结果。 */
+internal data class CreateDirectoriesValidationResult(
+    /** 校验通过且去重后的相对目录路径列表。 */
+    val paths: List<String>,
+    /** 校验失败错误类型；通过时为 `null`。 */
+    val error: CreateDirectoriesDialogError?,
+)
+
+/** 禁止出现在新目录段名中的非法字符集。 */
+private val ILLEGAL_DIRECTORY_SEGMENT_CHARS = setOf('<', '>', ':', '"', '|', '?', '*')
+
 /**
- * 解析多行目录草稿并去重。
+ * 解析并全行预校验多行新建目录草稿，拦截绝对路径、`..`/`.` 穿越段及非法文件名字符。
  *
  * @param draft 多行目录文本。
- * @return 非空目录路径。
+ * @return 包含合法路径列表或表单错误类型的校验结果。
  */
-private fun parseDirectoryDraft(draft: String): List<String> {
-    return draft.lines().map(String::trim).filter(String::isNotBlank).distinct()
+internal fun validateCreateDirectoriesDraft(draft: String): CreateDirectoriesValidationResult {
+    val rawLines = draft.lines().map(String::trim).filter(String::isNotBlank)
+    if (rawLines.isEmpty()) {
+        return CreateDirectoriesValidationResult(emptyList(), CreateDirectoriesDialogError.EMPTY_INPUT)
+    }
+    val validPaths = linkedSetOf<String>()
+    for (line in rawLines) {
+        if (!isSafeRelativeDirectoryPath(line)) {
+            return CreateDirectoriesValidationResult(emptyList(), CreateDirectoriesDialogError.INVALID_PATH)
+        }
+        val normalized = line.replace('\\', '/').trimEnd('/')
+        validPaths += normalized
+    }
+    return CreateDirectoriesValidationResult(validPaths.toList(), error = null)
+}
+
+/** 校验单行相对目录路径是否安全合法。 */
+private fun isSafeRelativeDirectoryPath(rawPath: String): Boolean {
+    if (rawPath.startsWith('/') || rawPath.startsWith('\\')) return false
+    // 拦截 Windows 盘符绝对路径（如 C:\foo 或 C:foo）与协议前缀（如 smb://）。
+    if (rawPath.length >= 2 && rawPath[0].isLetter() && rawPath[1] == ':') return false
+    if ("://" in rawPath) return false
+    val normalized = rawPath.replace('\\', '/').trimEnd('/')
+    if (normalized.isEmpty()) return false
+    val segments = normalized.split('/')
+    return segments.all { segment ->
+        segment.isNotBlank() &&
+            segment != "." &&
+            segment != ".." &&
+            !segment.endsWith('.') &&
+            segment.none { ch -> ch in ILLEGAL_DIRECTORY_SEGMENT_CHARS || ch.code < 0x20 }
+    }
 }

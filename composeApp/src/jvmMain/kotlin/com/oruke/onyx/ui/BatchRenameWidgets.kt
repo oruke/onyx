@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.contrastTextOn
 import org.jetbrains.jewel.ui.component.Text
 
 // ── 带 Hover 动画的 Tab ─────────────────────────────────────────────────
@@ -105,7 +106,7 @@ internal fun HoverButton(
 
     val restBg = if (emphasized) accent else surface
     val hoverBg = if (emphasized) accent.copy(alpha = 0.85f) else accent.copy(alpha = 0.12f)
-    val contentColor = if (emphasized) Color.White else foreground
+    val contentColor = if (emphasized) contrastTextOn(accent) else foreground
 
     val bgColor by animateColorAsState(
         targetValue = if (isHovered) hoverBg else restBg,

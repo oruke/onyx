@@ -30,6 +30,7 @@ import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.contrastTextOn
 import com.oruke.onyx.ui.theme.detailsColumnWidth
 import com.oruke.onyx.ui.theme.fileDropZoneKey
 import com.oruke.onyx.ui.theme.fileIconKey
@@ -137,7 +138,13 @@ internal fun EntryRowCells(
                 onRenameLabelCoordinates = onRenameLabelCoordinates,
             )
         } else {
-            EntryMetadataCell(column, state.entry, width)
+            EntryMetadataCell(
+                column = column,
+                entry = state.entry,
+                width = width,
+                selected = state.selected,
+                paneActive = state.paneActive,
+            )
         }
     }
 }
@@ -251,11 +258,16 @@ private fun EntryNameContent(
         )
         val originalParent = state.entry.parentLocation
         if (isTrashItemLocation(state.entry.location) && !originalParent.isNullOrBlank()) {
+            val palette = LocalOnyxPalette.current
             Text(
                 text = "· $originalParent",
                 modifier = Modifier.weight(1f, fill = false),
                 fontSize = LocalOnyxAppearance.current.listFontSize,
-                color = LocalOnyxPalette.current.mutedForeground,
+                color = if (state.selected && state.paneActive) {
+                    contrastTextOn(palette.selectionBackground).copy(alpha = 0.88f)
+                } else {
+                    palette.mutedForeground
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -281,12 +293,22 @@ internal fun VFile.displayFileName(showExtensions: Boolean): String {
 /**
  * 显示大小、修改时间或类型元数据单元格。
  *
+ * 活动选中行根据 `selectionBackground` 亮度自适应提高次要文字对比度，避免深色选中蓝底上灰字发虚。
+ *
  * @param column 当前元数据列。
  * @param entry 文件条目。
  * @param width 列宽度。
+ * @param selected 所属行当前是否被选中。
+ * @param paneActive 所属面板当前是否处于激活态。
  */
 @Composable
-internal fun EntryMetadataCell(column: DetailsColumn, entry: VFile, width: Dp) {
+internal fun EntryMetadataCell(
+    column: DetailsColumn,
+    entry: VFile,
+    width: Dp,
+    selected: Boolean = false,
+    paneActive: Boolean = true,
+) {
     val text = when (column) {
         DetailsColumn.SIZE -> formatFileSize(entry.sizeBytes)
         DetailsColumn.MODIFIED -> formatModifiedTime(entry.modifiedAtEpochMillis)
@@ -298,11 +320,17 @@ internal fun EntryMetadataCell(column: DetailsColumn, entry: VFile, width: Dp) {
 
         DetailsColumn.NAME -> return
     }
+    val palette = LocalOnyxPalette.current
+    val textColor = if (selected && paneActive) {
+        contrastTextOn(palette.selectionBackground).copy(alpha = 0.88f)
+    } else {
+        palette.mutedForeground
+    }
     Text(
         text = text,
         modifier = Modifier.width(width),
         fontSize = LocalOnyxAppearance.current.listFontSize,
-        color = LocalOnyxPalette.current.mutedForeground,
+        color = textColor,
         textAlign = TextAlign.Start,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

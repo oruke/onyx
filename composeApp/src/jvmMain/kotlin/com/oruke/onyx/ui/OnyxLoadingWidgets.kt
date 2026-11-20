@@ -506,14 +506,9 @@ private fun DetailsSkeletonCell(
         val fraction = SKELETON_META_WIDTH_FRACTIONS[
             (rowIndex + column.ordinal) % SKELETON_META_WIDTH_FRACTIONS.size
         ]
-        val contentAlignment = if (column == DetailsColumn.SIZE) {
-            Alignment.CenterEnd
-        } else {
-            Alignment.CenterStart
-        }
         Box(
             modifier = Modifier.width(width).padding(horizontal = 6.dp),
-            contentAlignment = contentAlignment,
+            contentAlignment = Alignment.CenterStart,
         ) {
             Box(
                 modifier = Modifier

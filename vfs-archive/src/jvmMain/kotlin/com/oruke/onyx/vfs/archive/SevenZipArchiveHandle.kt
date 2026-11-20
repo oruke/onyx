@@ -2,9 +2,10 @@ package com.oruke.onyx.vfs.archive
 
 import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import com.oruke.onyx.vfs.api.VfsRandomAccessMode
+import java.io.Closeable
+import net.sf.sevenzipjbinding.IArchiveOpenCallback
 import net.sf.sevenzipjbinding.IInArchive
 import net.sf.sevenzipjbinding.SevenZip
-import java.io.Closeable
 
 /**
  * 封装 7-Zip 归档与 VFS 输入流，确保两个资源统一关闭。
@@ -34,12 +35,14 @@ internal class SevenZipArchiveHandle(
  * @param path 归档 VFS 位置。
  * @param randomAccessService 随机访问服务。
  * @param password 可选归档密码。
+ * @param openCallback 可选打开回调（如用于探测 `-mhe=on` 头部加密密码请求）。
  * @return 必须通过 `use` 关闭的归档句柄。
  */
 internal suspend fun openSevenZipArchive(
     path: String,
     randomAccessService: RoutableVfsRandomAccessService,
     password: String? = null,
+    openCallback: IArchiveOpenCallback? = null,
 ): SevenZipArchiveHandle {
     val source = randomAccessService.openRandomAccess(path, VfsRandomAccessMode.READ).getOrThrow()
     var input: SevenZipVfsInStream? = null
@@ -47,10 +50,10 @@ internal suspend fun openSevenZipArchive(
         SevenZipNativeRuntime.ensureInitialized()
         val archiveInput = SevenZipVfsInStream(source, source.length())
         input = archiveInput
-        val archive = if (password != null) {
-            SevenZip.openInArchive(null, archiveInput, password)
-        } else {
-            SevenZip.openInArchive(null, archiveInput)
+        val archive = when {
+            openCallback != null -> SevenZip.openInArchive(null, archiveInput, openCallback)
+            password != null -> SevenZip.openInArchive(null, archiveInput, password)
+            else -> SevenZip.openInArchive(null, archiveInput)
         }
         SevenZipArchiveHandle(archiveInput, archive)
     }.getOrElse { failure ->

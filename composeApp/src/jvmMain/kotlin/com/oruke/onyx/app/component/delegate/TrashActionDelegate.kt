@@ -10,6 +10,7 @@ import com.oruke.onyx.core.model.LocalizedException
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.TRASH_LOCATION
+import com.oruke.onyx.core.model.TaskError
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.shared.filesystem.toI18nMessage
 import com.oruke.onyx.shared.usecase.buildTaskDetail
@@ -17,6 +18,8 @@ import com.oruke.onyx.vfs.api.TrashService
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -95,6 +98,9 @@ internal class TrashActionDelegate(
 
         taskOrchestrator.launchQueuedTask(taskId) {
             val fallbackRefresh = restorableEntries.mapNotNull { it.parentLocation }.toSet() + TRASH_LOCATION
+            val affectedParents = mutableSetOf<String>()
+            val taskErrors = mutableListOf<TaskError>()
+            var firstFailure: Throwable? = null
             try {
                 taskOrchestrator.updateTask(
                     taskId = taskId,
@@ -102,26 +108,80 @@ internal class TrashActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, buildTaskDetail(restorableEntries)),
                     progress = 0f,
                 )
-                val outcome = withContext(Dispatchers.IO) {
-                    trashService.restoreItems(targetIds)
-                }.getOrThrow()
+                restorableEntries.forEachIndexed { index, entry ->
+                    currentCoroutineContext().ensureActive()
+                    val singleResult = withContext(Dispatchers.IO) {
+                        trashService.restoreItems(setOf(entry.id))
+                    }
+                    singleResult.fold(
+                        onSuccess = { outcome ->
+                            if (outcome.restoredItems.isNotEmpty()) {
+                                removedIds += outcome.restoredItems.map { item -> item.id }
+                                affectedParents += outcome.affectedParentLocations
+                            } else {
+                                val missing = LocalizedException(
+                                    I18nMessage(MessageKey.MSG_TRASH_ITEM_UNAVAILABLE, entry.name),
+                                )
+                                if (firstFailure == null) firstFailure = missing
+                                taskErrors += missing.toTaskError(entry.name)
+                            }
+                        },
+                        onFailure = { failure ->
+                            if (failure is CancellationException) throw failure
+                            OnyxLogger.error("TrashActionDelegate", "还原单个回收站项目失败: ${entry.name}", failure)
+                            if (firstFailure == null) firstFailure = failure
+                            taskErrors += failure.toTaskError(entry.name)
+                        },
+                    )
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, entry.name),
+                        progress = (index + 1).toFloat() / restorableEntries.size.coerceAtLeast(1),
+                        processedCount = removedIds.size,
+                    )
+                }
 
-                removedIds += outcome.restoredItems.map { item -> item.id }
                 callbacks.onHistoryInvalidated()
-                callbacks.onRefreshDirectories(outcome.affectedParentLocations + TRASH_LOCATION)
+                callbacks.onRefreshDirectories(affectedParents + TRASH_LOCATION)
                 taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(MessageKey.MSG_TRASH_RESTORED_ITEMS, outcome.restoredItems.size),
-                    progress = 1f,
-                    processedCount = outcome.restoredItems.size,
-                )
-                taskOrchestrator.scheduleAutoCleanup(taskId)
+                if (taskErrors.isEmpty()) {
+                    callbacks.onRemovalFinished(context, removedIds, verify)
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.SUCCEEDED,
+                        detail = I18nMessage(MessageKey.MSG_TRASH_RESTORED_ITEMS, removedIds.size),
+                        progress = 1f,
+                        processedCount = removedIds.size,
+                    )
+                    taskOrchestrator.scheduleAutoCleanup(taskId)
+                } else {
+                    verify = true
+                    callbacks.onRemovalFinished(context, removedIds, verify)
+                    val detailMessage = if (removedIds.isNotEmpty()) {
+                        I18nMessage(MessageKey.MSG_TRASH_PARTIAL_RESTORE, removedIds.size, taskErrors.size)
+                    } else {
+                        firstFailure?.toI18nMessage(MessageKey.MSG_TRASH_RESTORE_FAILED)
+                            ?: I18nMessage(MessageKey.MSG_TRASH_RESTORE_FAILED, "")
+                    }
+                    // 先写入 errors 再切至 FAILED，确保订阅者观察到终态及任务持久化快照时包含完整失败明细。
+                    taskOrchestrator.updateTaskFields(taskId) { task ->
+                        task.copy(errors = taskErrors)
+                    }
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.FAILED,
+                        detail = detailMessage,
+                        progress = null,
+                        processedCount = removedIds.size,
+                    )
+                    firstFailure?.let { callbacks.onOperationFailure(paneId, it) }
+                }
             } catch (failure: CancellationException) {
                 verify = true
                 callbacks.onHistoryInvalidated()
                 taskOrchestrator.unregisterJob(taskId)
+                callbacks.onRemovalFinished(context, removedIds, verify)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.CANCELLED,
@@ -135,6 +195,7 @@ internal class TrashActionDelegate(
                 callbacks.onHistoryInvalidated()
                 OnyxLogger.error("TrashActionDelegate", "还原回收站项目失败", failure)
                 taskOrchestrator.unregisterJob(taskId)
+                callbacks.onRemovalFinished(context, removedIds, verify)
                 taskOrchestrator.updateTask(
                     taskId = taskId,
                     status = BackgroundTaskStatus.FAILED,
@@ -143,8 +204,6 @@ internal class TrashActionDelegate(
                 )
                 callbacks.onRefreshDirectories(fallbackRefresh)
                 callbacks.onOperationFailure(paneId, failure)
-            } finally {
-                callbacks.onRemovalFinished(context, removedIds, verify)
             }
         }
     }
@@ -184,6 +243,15 @@ internal class TrashActionDelegate(
         )
 
         taskOrchestrator.launchQueuedTask(taskId) {
+            val targetNameById = targetEntries.associate { it.id to it.name }
+            val orderedIds = if (targetEntries.isNotEmpty()) {
+                targetEntries.map { it.id }
+            } else {
+                entryIds.toList()
+            }
+            val taskErrors = mutableListOf<TaskError>()
+            var deletedCount = 0
+            var firstFailure: Throwable? = null
             try {
                 val runningDetail = if (targetEntries.isNotEmpty()) {
                     buildTaskDetail(targetEntries)
@@ -196,22 +264,74 @@ internal class TrashActionDelegate(
                     detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, runningDetail),
                     progress = 0f,
                 )
-                val deletedCount = withContext(Dispatchers.IO) {
-                    trashService.deletePermanently(entryIds)
-                }.getOrThrow()
+                orderedIds.forEachIndexed { index, id ->
+                    currentCoroutineContext().ensureActive()
+                    val displayName = targetNameById[id] ?: id
+                    val singleResult = withContext(Dispatchers.IO) {
+                        trashService.deletePermanently(setOf(id))
+                    }
+                    singleResult.fold(
+                        onSuccess = { count ->
+                            if (count > 0) {
+                                deletedCount += count
+                                removedIds += id
+                            } else {
+                                val missing = LocalizedException(
+                                    I18nMessage(MessageKey.MSG_TRASH_ITEM_UNAVAILABLE, displayName),
+                                )
+                                if (firstFailure == null) firstFailure = missing
+                                taskErrors += missing.toTaskError(displayName)
+                            }
+                        },
+                        onFailure = { failure ->
+                            if (failure is CancellationException) throw failure
+                            OnyxLogger.error("TrashActionDelegate", "永久删除单个回收站项目失败: $displayName", failure)
+                            if (firstFailure == null) firstFailure = failure
+                            taskErrors += failure.toTaskError(displayName)
+                        },
+                    )
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.RUNNING,
+                        detail = I18nMessage(MessageKey.MSG_STRING_LITERAL, displayName),
+                        progress = (index + 1).toFloat() / orderedIds.size.coerceAtLeast(1),
+                        processedCount = deletedCount,
+                    )
+                }
 
-                removedIds += entryIds
                 callbacks.onHistoryInvalidated()
                 callbacks.onRefreshDirectories(setOf(TRASH_LOCATION))
                 taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(MessageKey.MSG_DELETED_ITEMS, deletedCount),
-                    progress = 1f,
-                    processedCount = deletedCount,
-                )
-                taskOrchestrator.scheduleAutoCleanup(taskId)
+                if (taskErrors.isEmpty()) {
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.SUCCEEDED,
+                        detail = I18nMessage(MessageKey.MSG_DELETED_ITEMS, deletedCount),
+                        progress = 1f,
+                        processedCount = deletedCount,
+                    )
+                    taskOrchestrator.scheduleAutoCleanup(taskId)
+                } else {
+                    verify = true
+                    val detailMessage = if (deletedCount > 0) {
+                        I18nMessage(MessageKey.MSG_TRASH_PARTIAL_DELETE, deletedCount, taskErrors.size)
+                    } else {
+                        firstFailure?.toI18nMessage(MessageKey.MSG_DELETE_FAILED)
+                            ?: I18nMessage(MessageKey.MSG_DELETE_FAILED, "")
+                    }
+                    // 先写入 errors 再切至 FAILED，确保订阅者观察到终态及任务持久化快照时包含完整失败明细。
+                    taskOrchestrator.updateTaskFields(taskId) { task ->
+                        task.copy(errors = taskErrors)
+                    }
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.FAILED,
+                        detail = detailMessage,
+                        progress = null,
+                        processedCount = deletedCount,
+                    )
+                    firstFailure?.let { callbacks.onOperationFailure(paneId, it) }
+                }
             } catch (failure: CancellationException) {
                 verify = true
                 callbacks.onHistoryInvalidated()

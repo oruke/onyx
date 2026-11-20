@@ -68,6 +68,10 @@ internal data class PaneSurfaceModel(
     val userCommands: Map<UserCommandPlacement, List<UserCommandDefinition>> = emptyMap(),
     /** 主窗口由子窗口唤起置前聚焦时的递增编号，用于同步恢复活动面板键盘焦点。 */
     val windowActivationRequest: Long = 0L,
+    /** 来自窗口级全局快捷键的地址栏聚焦请求递增编号。 */
+    val addressBarFocusRequestId: Int = 0,
+    /** 上报当前面板是否由文本输入框或局部右键菜单独占键盘输入，避免全局快捷键劫持输入。 */
+    val onGlobalShortcutBlockChange: (Boolean) -> Unit = {},
 )
 
 /**

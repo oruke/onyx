@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -28,10 +30,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_new_connection
 import onyx.composeapp.generated.resources.label_remote_connection_empty
+import onyx.composeapp.generated.resources.label_remote_protocol_short_s3
 import onyx.composeapp.generated.resources.label_sidebar_section_connections
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Text
@@ -115,7 +119,7 @@ internal fun RemoteConnectionListPane(
                 }
                 VerticalScrollbar(
                     adapter = rememberScrollbarAdapter(listState),
-                    modifier = Modifier.align(Alignment.CenterEnd),
+                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
                 )
             }
         }
@@ -197,7 +201,7 @@ private fun RemoteConnectionListItem(
 }
 
 /**
- * 以紧凑徽标展示网络位置协议。
+ * 以紧凑自适应徽标展示网络位置协议，S3 展示简洁简称防止高 DPI 溢边。
  *
  * @param protocol 网络位置协议。
  * @param selected 是否处于选中状态。
@@ -205,9 +209,15 @@ private fun RemoteConnectionListItem(
 @Composable
 private fun RemoteConnectionProtocolBadge(protocol: RemoteConnectionProtocol, selected: Boolean) {
     val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
+    val badgeText = when (protocol) {
+        RemoteConnectionProtocol.S3 -> stringResource(Res.string.label_remote_protocol_short_s3)
+        else -> remoteProtocolLabel(protocol)
+    }
     Box(
         modifier = Modifier
-            .size(width = 48.dp, height = 26.dp)
+            .widthIn(min = 44.dp)
+            .heightIn(min = 24.dp)
             .background(
                 if (selected) palette.accent.copy(alpha = 0.15f) else palette.surfaceVariant,
                 RoundedCornerShape(4.dp),
@@ -216,15 +226,17 @@ private fun RemoteConnectionProtocolBadge(protocol: RemoteConnectionProtocol, se
                 1.dp,
                 if (selected) palette.accent.copy(alpha = 0.5f) else palette.outlineVariant,
                 RoundedCornerShape(4.dp),
-            ),
+            )
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = remoteProtocolLabel(protocol),
-            fontSize = 9.sp,
+            text = badgeText,
+            fontSize = (appearance.headerFontSize.value - 1f).coerceAtLeast(9f).sp,
             fontWeight = FontWeight.SemiBold,
             color = if (selected) palette.accent else palette.mutedForeground,
             maxLines = 1,
+            softWrap = false,
         )
     }
 }

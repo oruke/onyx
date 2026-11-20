@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -118,7 +119,21 @@ data class OnyxPalette(
 
     /** 非激活面板选择背景色。 */
     val inactiveSelectionBackground: Color,
-)
+) {
+    /** 强调色底上的高对比度前景色（按强调色亮度自动选择深色或白色文字）。 */
+    val onAccent: Color
+        get() = contrastTextOn(accent)
+}
+
+/**
+ * 根据背景色相对亮度返回可读的高对比度文字颜色（阈值与 Jewel DefaultButton 保持一致）。
+ *
+ * @param background 目标背景色。
+ * @return 深色或白色前景文字色。
+ */
+internal fun contrastTextOn(background: Color): Color {
+    return if (background.luminance() > 0.36f) Color(0xFF14171F) else Color.White
+}
 
 val LocalOnyxPalette = compositionLocalOf<OnyxPalette> {
     error("No OnyxPalette provided. Wrap your content in OnyxTheme.")
@@ -286,7 +301,7 @@ private fun defaultDarkPalette() = OnyxPalette(
     disabledForeground = Color(0xFF6E6E6E),
     error = onyxErrorColor,
     errorForeground = Color(0xFFFFB4B4),
-    success = Color(0xFF4DAA57),
+    success = Color(0xFF5BD16F),
     favorite = Color(0xFFFFC94D),
     accent = Color(0xFF4D8DFF),
     accentVariant = Color(0xFF2A5FAD),
@@ -313,11 +328,11 @@ private fun defaultLightPalette() = OnyxPalette(
     outline = Color(0xFFD0D7E2),
     outlineVariant = Color(0xFFE2E7EF),
     foreground = Color(0xFF1D2733),
-    mutedForeground = Color(0xFF5D6B7C),
-    disabledForeground = Color(0xFF94A0AE),
+    mutedForeground = Color(0xFF475569),
+    disabledForeground = Color(0xFF6B7785),
     error = onyxErrorColor,
     errorForeground = Color(0xFFA83232),
-    success = Color(0xFF318343),
+    success = Color(0xFF1E7135),
     favorite = Color(0xFFC78600),
     accent = Color(0xFF2F6FEB),
     accentVariant = Color(0xFF5B9BF0),

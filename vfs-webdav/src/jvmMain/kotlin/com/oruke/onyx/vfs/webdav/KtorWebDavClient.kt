@@ -5,16 +5,21 @@ import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
-import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
 import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.withVfsCopySuffix
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.pluginOrNull
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.header
 import io.ktor.client.request.request
 import io.ktor.client.request.setBody
@@ -24,50 +29,69 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.contentType
 import io.ktor.http.content.OutgoingContent
+import io.ktor.http.contentType
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
+import java.io.IOException
+import java.nio.channels.UnresolvedAddressException
+import javax.net.ssl.SSLException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import java.io.IOException
-import javax.net.ssl.SSLException
 
 /**
  * 基于 Ktor CIO 的 WebDAV 客户端实现。
  *
- * @param httpClient 外部注入的 HTTP 客户端；为空时按需惰性创建 CIO 客户端。
+ * @param httpClient 外部注入的 HTTP 客户端；为空时按需惰性创建带超时配置的 CIO 客户端。
  * @property parser `PROPFIND` 多状态响应解析器。
  */
 class KtorWebDavClient(
     httpClient: HttpClient? = null,
     private val parser: WebDavMultiStatusParser = WebDavMultiStatusParser(),
 ) : WebDavClient {
+    /** 外部注入的客户端；为空时由本实例自行按需创建并在 close 时关闭。 */
+    private val injectedHttpClient: HttpClient? = httpClient
+    /** 仅当由本客户端自行惰性创建底层 CIO 客户端时才在 close 时释放。 */
+    private val ownedHttpClient = lazy {
+        HttpClient(CIO) {
+            install(HttpTimeout) {
+                connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT_MS
+                socketTimeoutMillis = DEFAULT_SOCKET_TIMEOUT_MS
+            }
+        }
+    }
+
     /** 负责发起 WebDAV HTTP 请求的客户端，首次访问远程资源时才初始化。 */
-    private val httpClient: HttpClient by lazy { httpClient ?: HttpClient(CIO) }
+    private val httpClient: HttpClient
+        get() = injectedHttpClient ?: ownedHttpClient.value
+
+    override fun close() {
+        if (injectedHttpClient == null && ownedHttpClient.isInitialized()) {
+            ownedHttpClient.value.close()
+        }
+    }
+
     override suspend fun testConnection(
         location: String,
         authContext: VfsAuthContext,
     ): Unit = withContext(Dispatchers.IO) {
         val httpUrl = location.toHttpWebDavUrl()
-        try {
+        runWebDavRequest(location) {
             val response = httpClient.request(httpUrl) {
                 method = HttpMethod("PROPFIND")
                 header("Depth", "0")
                 contentType(ContentType.Application.Xml)
+                applyRequestTimeout(TEST_CONNECTION_TIMEOUT_MS)
                 applyAuth(authContext, location)
                 setBody(PROPFIND_BODY)
             }
             response.requireSuccess(location, authContext)
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            throw failure.toNetworkFailure(location)
         }
     }
 
@@ -76,11 +100,12 @@ class KtorWebDavClient(
         authContext: VfsAuthContext,
     ): List<VFile> = withContext(Dispatchers.IO) {
         val httpUrl = location.toHttpWebDavUrl()
-        try {
+        runWebDavRequest(location) {
             val response = httpClient.request(httpUrl) {
                 method = HttpMethod("PROPFIND")
                 header("Depth", "1")
                 contentType(ContentType.Application.Xml)
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 applyAuth(authContext, location)
                 setBody(PROPFIND_BODY)
             }
@@ -90,10 +115,6 @@ class KtorWebDavClient(
                 requestLocation = location,
                 requestHttpUrl = httpUrl,
             )
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            throw failure.toNetworkFailure(location)
         }
     }
 
@@ -102,18 +123,13 @@ class KtorWebDavClient(
         authContext: VfsAuthContext,
     ): Unit = withContext(Dispatchers.IO) {
         entries.forEach { entry ->
-            try {
+            runWebDavRequest(entry.location) {
                 val response = httpClient.request(entry.location.toHttpWebDavUrl()) {
                     method = HttpMethod.Delete
+                    applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                     applyAuth(authContext, entry.location)
                 }
                 response.requireSuccess(entry.location, authContext, acceptedStatuses = MutationSuccessStatuses)
-            } catch (failure: VfsProviderException) {
-                throw failure
-            } catch (failure: SSLException) {
-                throw failure.toNetworkFailure(entry.location)
-            } catch (failure: IOException) {
-                throw failure.toNetworkFailure(entry.location)
             }
         }
     }
@@ -155,11 +171,12 @@ class KtorWebDavClient(
             name = targetName.trim(),
             directory = entry.kind == VFileKind.DIRECTORY,
         )
-        try {
+        runWebDavRequest(entry.location) {
             val response = httpClient.request(entry.location.toHttpWebDavUrl()) {
                 method = HttpMethod("MOVE")
                 header(HttpHeaders.Destination, targetLocation.toHttpWebDavUrl())
                 header("Overwrite", "F")
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 applyAuth(authContext, entry.location)
             }
             response.requireSuccess(entry.location, authContext, acceptedStatuses = MutationSuccessStatuses)
@@ -169,12 +186,6 @@ class KtorWebDavClient(
                 location = targetLocation,
                 parentLocation = entry.parentLocation,
             )
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: SSLException) {
-            throw failure.toNetworkFailure(entry.location)
-        } catch (failure: IOException) {
-            throw failure.toNetworkFailure(entry.location)
         }
     }
 
@@ -185,23 +196,18 @@ class KtorWebDavClient(
     ): VFile = withContext(Dispatchers.IO) {
         validateTargetName(name)
         val targetLocation = webDavChildLocation(parentLocation, name.trim(), directory = false)
-        try {
+        runWebDavRequest(targetLocation) {
             if (resourceExists(targetLocation, authContext)) {
                 throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
             }
             val response = httpClient.request(targetLocation.toHttpWebDavUrl()) {
                 method = HttpMethod.Put
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 applyAuth(authContext, targetLocation)
                 setBody(ByteArray(0))
             }
             response.requireSuccess(targetLocation, authContext, acceptedStatuses = MutationSuccessStatuses)
             targetLocation.toWebDavVFile(name = name.trim(), parentLocation = parentLocation, directory = false)
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: SSLException) {
-            throw failure.toNetworkFailure(targetLocation)
-        } catch (failure: IOException) {
-            throw failure.toNetworkFailure(targetLocation)
         }
     }
 
@@ -212,22 +218,17 @@ class KtorWebDavClient(
     ): VFile = withContext(Dispatchers.IO) {
         validateTargetName(name)
         val targetLocation = webDavChildLocation(parentLocation, name.trim(), directory = true)
-        try {
+        runWebDavRequest(targetLocation) {
             if (resourceExists(targetLocation, authContext)) {
                 throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
             }
             val response = httpClient.request(targetLocation.toHttpWebDavUrl()) {
                 method = HttpMethod("MKCOL")
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 applyAuth(authContext, targetLocation)
             }
             response.requireSuccess(targetLocation, authContext, acceptedStatuses = MutationSuccessStatuses)
             targetLocation.toWebDavVFile(name = name.trim(), parentLocation = parentLocation, directory = true)
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: SSLException) {
-            throw failure.toNetworkFailure(targetLocation)
-        } catch (failure: IOException) {
-            throw failure.toNetworkFailure(targetLocation)
         }
     }
 
@@ -248,7 +249,7 @@ class KtorWebDavClient(
             name = entry.name,
             sizeBytes = entry.sizeBytes,
             chunks = flow {
-                try {
+                runWebDavRequest(entry.location) {
                     val response = httpClient.request(entry.location.toHttpWebDavUrl()) {
                         method = HttpMethod.Get
                         applyAuth(authContext, entry.location)
@@ -263,12 +264,6 @@ class KtorWebDavClient(
                             emit(buffer.copyOf(read))
                         }
                     }
-                } catch (failure: VfsProviderException) {
-                    throw failure
-                } catch (failure: SSLException) {
-                    throw failure.toNetworkFailure(entry.location)
-                } catch (failure: IOException) {
-                    throw failure.toNetworkFailure(entry.location)
                 }
             }.flowOn(Dispatchers.IO),
         )
@@ -296,7 +291,9 @@ class KtorWebDavClient(
                 )
             )
         }
-        return KtorWebDavRandomAccessHandle.open(httpClient, location, authContext)
+        return runWebDavRequest(location) {
+            KtorWebDavRandomAccessHandle.open(httpClient, location, authContext)
+        }
     }
 
     override suspend fun writeFile(
@@ -313,7 +310,7 @@ class KtorWebDavClient(
             conflictStrategy = conflictStrategy,
             authContext = authContext,
         ) ?: return@withContext null
-        try {
+        runWebDavRequest(targetLocation) {
             val response = httpClient.request(targetLocation.toHttpWebDavUrl()) {
                 method = HttpMethod.Put
                 applyAuth(authContext, targetLocation)
@@ -331,12 +328,6 @@ class KtorWebDavClient(
                 parentLocation = parentLocation,
                 directory = false,
             )
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: SSLException) {
-            throw failure.toNetworkFailure(targetLocation)
-        } catch (failure: IOException) {
-            throw failure.toNetworkFailure(targetLocation)
         }
     }
 
@@ -358,7 +349,7 @@ class KtorWebDavClient(
                 conflictStrategy = conflictStrategy,
                 authContext = authContext,
             ) ?: return@forEach
-            try {
+            runWebDavRequest(entry.location) {
                 val response = httpClient.request(entry.location.toHttpWebDavUrl()) {
                     this.method = method
                     header(HttpHeaders.Destination, targetLocation.toHttpWebDavUrl())
@@ -366,12 +357,6 @@ class KtorWebDavClient(
                     applyAuth(authContext, entry.location)
                 }
                 response.requireSuccess(targetLocation, authContext, acceptedStatuses = MutationSuccessStatuses)
-            } catch (failure: VfsProviderException) {
-                throw failure
-            } catch (failure: SSLException) {
-                throw failure.toNetworkFailure(entry.location)
-            } catch (failure: IOException) {
-                throw failure.toNetworkFailure(entry.location)
             }
         }
     }
@@ -401,7 +386,7 @@ class KtorWebDavClient(
                     if (!resourceExists(candidateLocation, authContext)) {
                         return candidateLocation
                     }
-                    candidateName = entry.name.withVfsCopySuffix(index + 1) + if (isDirectory) "/" else ""
+                    candidateName = entry.name.withVfsCopySuffix(index + 1)
                 }
                 throw VfsProviderException(VfsProviderError.AlreadyExists(VfsProtocol.WEBDAV, targetLocation))
             }
@@ -439,15 +424,16 @@ class KtorWebDavClient(
         location: String,
         authContext: VfsAuthContext,
     ): Boolean {
-        try {
+        return runWebDavRequest(location) {
             val response = httpClient.request(location.toHttpWebDavUrl()) {
                 method = HttpMethod("PROPFIND")
                 header("Depth", "0")
                 contentType(ContentType.Application.Xml)
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 applyAuth(authContext, location)
                 setBody(PROPFIND_BODY)
             }
-            return when (response.status) {
+            when (response.status) {
                 HttpStatusCode.OK,
                 HttpStatusCode.MultiStatus,
                 -> true
@@ -457,14 +443,40 @@ class KtorWebDavClient(
                     true
                 }
             }
+        }
+    }
+
+    /** 仅当底层 HttpClient 已安装 HttpTimeout 插件时施加单请求超时，兼容测试注入 Mock HttpClient。 */
+    private fun HttpRequestBuilder.applyRequestTimeout(timeoutMs: Long) {
+        if (httpClient.pluginOrNull(HttpTimeout) != null) {
+            timeout {
+                requestTimeoutMillis = timeoutMs
+            }
+        }
+    }
+
+    /** 统一映射 WebDAV 网络/超时/DNS/SSL/地址解析异常，保留协程取消与已结构化协议错误。 */
+    private inline fun <T> runWebDavRequest(location: String, block: () -> T): T {
+        return try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (failure: VfsProviderException) {
             throw failure
+        } catch (failure: HttpRequestTimeoutException) {
+            throw failure.toNetworkFailure(location)
+        } catch (failure: UnresolvedAddressException) {
+            throw failure.toNetworkFailure(location)
+        } catch (failure: SSLException) {
+            throw failure.toNetworkFailure(location)
         } catch (failure: IOException) {
+            throw failure.toNetworkFailure(location)
+        } catch (failure: IllegalArgumentException) {
             throw failure.toNetworkFailure(location)
         }
     }
 
-    private fun io.ktor.client.request.HttpRequestBuilder.applyAuth(
+    private fun HttpRequestBuilder.applyAuth(
         authContext: VfsAuthContext,
         location: String,
     ) {
@@ -476,6 +488,10 @@ class KtorWebDavClient(
     private companion object {
         const val CONTENT_BUFFER_SIZE = 64 * 1024
         const val MAX_KEEP_BOTH_ATTEMPTS = 10_000
+        const val DEFAULT_CONNECT_TIMEOUT_MS = 15_000L
+        const val DEFAULT_SOCKET_TIMEOUT_MS = 30_000L
+        const val TEST_CONNECTION_TIMEOUT_MS = 15_000L
+        const val METADATA_REQUEST_TIMEOUT_MS = 30_000L
         val PROPFIND_BODY = """
             <?xml version="1.0" encoding="utf-8"?>
             <d:propfind xmlns:d="DAV:">

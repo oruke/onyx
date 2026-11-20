@@ -240,6 +240,9 @@ internal class DefaultRootComponent(
     /** 子窗口请求主文件管理器窗口置前聚焦的递增信号。 */
     internal val windowActivationRequest = MutableStateFlow(0L)
 
+    /** 按面板隔离的窗口级地址栏聚焦请求递增信号。 */
+    internal val addressBarFocusRequests = MutableStateFlow<Map<PaneId, Int>>(emptyMap())
+
     /** 图片查看器状态。 */
     override val imageViewerState: StateFlow<ImageViewerState> = imageViewerController.state
 
@@ -290,6 +293,8 @@ internal class DefaultRootComponent(
         taskOrchestrator = taskOrchestrator,
         dialogState = dialogState,
         onRefreshDirectories = ::refreshDirectories,
+        fileCommandService = fileCommandService,
+        fileRepository = fileRepository,
     )
 
     /** ZIP 压缩任务委托。 */
@@ -537,16 +542,20 @@ internal class DefaultRootComponent(
     /** 观察各根状态源并生成单一 RootState。 */
     private fun observeRootState() {
         scope.launch {
-        val previewAndActivationFlow = combine(showPreviewPane, windowActivationRequest) { preview, activation ->
-            preview to activation
+        val previewAndActivationFlow = combine(
+            showPreviewPane,
+            windowActivationRequest,
+            addressBarFocusRequests,
+        ) { preview, activation, addressFocus ->
+            Triple(preview, activation, addressFocus)
         }
         val layoutFlow = combine(
             layoutMode,
             paneSplitFraction,
             activePane,
             previewAndActivationFlow,
-        ) { mode, fraction, pane, (preview, activation) ->
-            LayoutSlice(mode, fraction, pane, preview, activation)
+        ) { mode, fraction, pane, (preview, activation, addressFocus) ->
+            LayoutSlice(mode, fraction, pane, preview, activation, addressFocus)
         }
             val paneFlow = combine(primaryPane.state, secondaryPane.state) { primary, secondary ->
                 primary to secondary
@@ -671,6 +680,7 @@ internal fun DefaultRootComponent.initialRootState(): RootState {
         quickOpenState = quickOpenDelegate.searchState.value,
         operationHistoryState = fileOperationHistoryDelegate.state.value.toRootOperationHistoryState(),
         windowActivationRequest = windowActivationRequest.value,
+        addressBarFocusRequests = addressBarFocusRequests.value,
     )
 }
 
@@ -697,6 +707,8 @@ private data class LayoutSlice(
     val showPreviewPane: Boolean,
     /** 主窗口置前聚焦请求信号。 */
     val windowActivationRequest: Long,
+    /** 按面板隔离的地址栏聚焦请求递增信号。 */
+    val addressBarFocusRequests: Map<PaneId, Int>,
 )
 
 /** 侧栏平台位置、目录树与持久化上下文切片。 */
@@ -768,5 +780,6 @@ private fun ContextSlice.toRootState(layout: LayoutSlice, panes: Pair<PaneState,
         quickOpenState = runtime.quickOpenState,
         operationHistoryState = runtime.operationHistoryState,
         windowActivationRequest = layout.windowActivationRequest,
+        addressBarFocusRequests = layout.addressBarFocusRequests,
     )
 }

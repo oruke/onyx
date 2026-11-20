@@ -11,6 +11,9 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.oruke.onyx.core.model.FileTransferOperation
 import com.oruke.onyx.core.model.BackgroundTaskStatus
+import com.oruke.onyx.app.component.MIN_DETAILS_COLUMN_WIDTH
+import com.oruke.onyx.app.component.defaultDetailsColumnWeights
+import com.oruke.onyx.app.component.defaultDetailsColumnWidth as componentDefaultDetailsColumnWidth
 import com.oruke.onyx.core.model.DetailsColumn
 import com.oruke.onyx.core.model.DetailsSort
 import com.oruke.onyx.core.model.PaneId
@@ -38,20 +41,20 @@ internal val PaneDividerHitSlop = 7.dp
 /** 二进制文件大小换算基数。 */
 private const val FILE_SIZE_UNIT_BASE = 1024
 
-/** 明细列允许收缩到的最小宽度。 */
-private const val MIN_DETAILS_COLUMN_WIDTH = 40f
+/** 自适应明细列宽时名称列允许收缩的下限（保障双面板 150% DPI 下依然清晰可读）。 */
+private const val ADAPTIVE_MIN_NAME_COLUMN_WIDTH = 168f
 
-/** 文件名明细列默认宽度。 */
-private const val DEFAULT_NAME_COLUMN_WIDTH = 300f
+/** 自适应明细列宽时类型列的紧凑基准宽度。 */
+private const val ADAPTIVE_TYPE_COLUMN_WIDTH = 72f
 
-/** 文件类型明细列默认宽度。 */
-private const val DEFAULT_TYPE_COLUMN_WIDTH = 80f
+/** 自适应明细列宽时大小列的紧凑基准宽度。 */
+private const val ADAPTIVE_SIZE_COLUMN_WIDTH = 80f
 
-/** 文件大小明细列默认宽度。 */
-private const val DEFAULT_SIZE_COLUMN_WIDTH = 100f
+/** 自适应明细列宽时修改时间列的紧凑基准宽度（可完整显示 `yyyy-MM-dd HH:mm`）。 */
+private const val ADAPTIVE_MODIFIED_COLUMN_WIDTH = 132f
 
-/** 修改时间明细列默认宽度。 */
-private const val DEFAULT_MODIFIED_COLUMN_WIDTH = 180f
+/** 详情列表左右内边距之和（左 8dp + 右 8dp）。 */
+private const val DETAILS_ROW_HORIZONTAL_PADDING_DP = 16f
 
 // ── Drag & Drop models ──────────────────────────────────────────────────────
 
@@ -158,11 +161,65 @@ internal fun detailsColumnWidth(
 }
 
 internal fun defaultDetailsColumnWidth(column: DetailsColumn): Float {
-    return when (column) {
-        DetailsColumn.NAME -> DEFAULT_NAME_COLUMN_WIDTH
-        DetailsColumn.TYPE -> DEFAULT_TYPE_COLUMN_WIDTH
-        DetailsColumn.SIZE -> DEFAULT_SIZE_COLUMN_WIDTH
-        DetailsColumn.MODIFIED -> DEFAULT_MODIFIED_COLUMN_WIDTH
+    return componentDefaultDetailsColumnWidth(column)
+}
+
+/**
+ * 根据面板视口宽度计算自适应后的明细列宽。
+ *
+ * 仅当用户尚未手工拖拽修改过列宽且当前面板较窄（如双面板或 150% 高缩放）时启用自适应收缩：
+ * 优先保证类型/大小/修改时间完整可读，并给予名称列不低于 [ADAPTIVE_MIN_NAME_COLUMN_WIDTH] 的展示空间；
+ * 宽面板与用户手动拖拽后的列宽保持原样。
+ *
+ * @param columns 全部明细列顺序。
+ * @param columnWeights 当前记录的列宽映射。
+ * @param hiddenColumns 当前隐藏的明细列。
+ * @param viewportWidthDp 当前面板可用视口宽度（dp）。
+ * @return 用于表头、数据行与内联编辑行的统一有效列宽映射。
+ */
+internal fun resolveEffectiveDetailsColumnWidths(
+    columns: List<DetailsColumn>,
+    columnWeights: Map<DetailsColumn, Float>,
+    hiddenColumns: Set<DetailsColumn>,
+    viewportWidthDp: Float,
+): Map<DetailsColumn, Float> {
+    if (viewportWidthDp <= 0f) return columnWeights
+    val defaults = defaultDetailsColumnWeights()
+    val usesDefaultWidths = DetailsColumn.entries.all { col ->
+        val actual = columnWeights[col] ?: defaults.getValue(col)
+        kotlin.math.abs(actual - defaults.getValue(col)) < 0.5f
+    }
+    if (!usesDefaultWidths) return columnWeights
+
+    val visibleColumns = visibleDetailsColumns(columns, hiddenColumns)
+    if (visibleColumns.isEmpty()) return columnWeights
+    val gapWidth = DetailsColumnGap.value * (visibleColumns.size - 1).coerceAtLeast(0)
+    val defaultTotalWidth = visibleColumns.sumOf { col -> defaults.getValue(col).toDouble() }.toFloat() +
+        gapWidth +
+        DETAILS_ROW_HORIZONTAL_PADDING_DP
+    if (viewportWidthDp >= defaultTotalWidth) return columnWeights
+
+    val usableWidth = (viewportWidthDp - DETAILS_ROW_HORIZONTAL_PADDING_DP - gapWidth).coerceAtLeast(0f)
+    val compactOthers = buildMap {
+        visibleColumns.filter { it != DetailsColumn.NAME }.forEach { col ->
+            put(
+                col,
+                when (col) {
+                    DetailsColumn.TYPE -> ADAPTIVE_TYPE_COLUMN_WIDTH
+                    DetailsColumn.SIZE -> ADAPTIVE_SIZE_COLUMN_WIDTH
+                    DetailsColumn.MODIFIED -> ADAPTIVE_MODIFIED_COLUMN_WIDTH
+                    DetailsColumn.NAME -> ADAPTIVE_MIN_NAME_COLUMN_WIDTH
+                },
+            )
+        }
+    }
+    val othersSum = compactOthers.values.sum()
+    val adaptiveNameWidth = (usableWidth - othersSum)
+        .coerceIn(ADAPTIVE_MIN_NAME_COLUMN_WIDTH, defaults.getValue(DetailsColumn.NAME))
+    return buildMap {
+        putAll(defaults)
+        putAll(compactOthers)
+        put(DetailsColumn.NAME, adaptiveNameWidth)
     }
 }
 

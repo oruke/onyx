@@ -3,41 +3,45 @@ package com.oruke.onyx.vfs.webdav
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
 import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
-import com.oruke.onyx.vfs.api.VfsProtocol
-import com.oruke.onyx.vfs.api.encodeVfsSpaces
+import com.oruke.onyx.vfs.api.decodeVfsPercentEncoding
+import com.oruke.onyx.vfs.api.encodeVfsPathPreservingPercent
+import com.oruke.onyx.vfs.api.encodeVfsPathSegment
+import com.oruke.onyx.vfs.api.parseVfsUriOrNull
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
-import java.net.URI
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * 将 WebDAV VFS 位置转换为 HTTP 请求地址。
+ * 将 WebDAV VFS 位置转换为 RFC 3986 规范编码的 HTTP(S) 请求地址。
  *
- * @return HTTP 或 HTTPS 地址。
+ * 直接按结构拆解协议、主机与路径并保留合法 `%XX` 转义，避免含 `#`、`?`、`%`、`[`、`]`、`+`
+ * 的文件名被单参 `URI` 截断或抛异常。
+ *
+ * @return HTTP 或 HTTPS 请求地址。
  */
 internal fun String.toHttpWebDavUrl(): String {
-    val uri = URI(encodeVfsSpaces())
-    val httpScheme = when (uri.scheme.lowercase()) {
+    val parsed = parseVfsUriOrNull(this) ?: throw VfsProviderNotFoundException(this)
+    val httpScheme = when (parsed.scheme) {
         "webdav" -> "http"
         "webdavs" -> "https"
         else -> throw VfsProviderNotFoundException(this)
     }
-    val path = uri.path.ifBlank { "/" }
-    return URI(httpScheme, uri.userInfo, uri.host, uri.port, path, uri.query, uri.fragment).toASCIIString()
+    return parsed.toAsciiString(overrideScheme = httpScheme, includeUserInfo = true)
 }
 
 /**
- * URL 解码文本。
+ * 按 RFC 3986 规则执行路径百分号解码。
+ *
+ * 与表单解码器 `URLDecoder` 不同，字面量 `+` 保持原样不转为空格。
  *
  * @return UTF-8 解码结果。
  */
 internal fun String.urlDecode(): String {
-    return URLDecoder.decode(this, StandardCharsets.UTF_8)
+    return decodeVfsPercentEncoding(this)
 }
 
 /**
@@ -71,8 +75,10 @@ internal fun validateTargetName(targetName: String) {
 /**
  * 构建 WebDAV 子条目位置。
  *
+ * 对新子条目名称单独执行 RFC 3986 路径段百分号编码，保留父路径已有合法 `%XX` 避免二次编码。
+ *
  * @param parentLocation 父目录位置。
- * @param name 子条目名称。
+ * @param name 未编码的子条目名称。
  * @param directory 是否为目录。
  * @return 子条目 VFS 位置。
  */
@@ -81,18 +87,23 @@ internal fun webDavChildLocation(
     name: String,
     directory: Boolean,
 ): String {
-    val parentUri = URI(parentLocation.withVfsTrailingSlash().encodeVfsSpaces())
-    val childPath = parentUri.path.withVfsTrailingSlash() + name + if (directory) "/" else ""
-    return URI(parentUri.scheme, null, parentUri.host, parentUri.port, childPath, null, null).toASCIIString()
+    val parent = parseVfsUriOrNull(parentLocation.withVfsTrailingSlash())
+        ?: throw VfsProviderNotFoundException(parentLocation)
+    val encodedParentPath = encodeVfsPathPreservingPercent(parent.rawPath).withVfsTrailingSlash()
+    val encodedChildName = encodeVfsPathSegment(name)
+    val childRawPath = encodedParentPath + encodedChildName + if (directory) "/" else ""
+    return parent.copy(userInfo = null, rawPath = childRawPath).toAsciiString(includeUserInfo = false)
 }
 
 /**
- * 从 WebDAV VFS 位置提取文件名。
+ * 从 WebDAV VFS 位置提取解码后的文件名。
  *
- * @return 解码后的文件名。
+ * @return 百分号解码后的文件名（保留 `+` 等合法字符）。
  */
 internal fun String.fileNameFromWebDavLocation(): String {
-    return URI(encodeVfsSpaces()).path.trimEnd('/').substringAfterLast('/').urlDecode()
+    val parsed = parseVfsUriOrNull(this) ?: throw VfsProviderNotFoundException(this)
+    val rawName = parsed.rawPath.trimEnd('/').substringAfterLast('/')
+    return decodeVfsPercentEncoding(rawName)
 }
 
 /**
@@ -101,10 +112,11 @@ internal fun String.fileNameFromWebDavLocation(): String {
  * @return 父目录 VFS 位置。
  */
 internal fun String.parentWebDavLocation(): String {
-    val uri = URI(encodeVfsSpaces())
-    val path = uri.path.trimEnd('/').substringBeforeLast('/', missingDelimiterValue = "").ifBlank { "/" }
-    val parentPath = if (path == "/") path else path.withVfsTrailingSlash()
-    return URI(uri.scheme, null, uri.host, uri.port, parentPath, null, null).toASCIIString()
+    val parsed = parseVfsUriOrNull(this) ?: throw VfsProviderNotFoundException(this)
+    val encodedPath = encodeVfsPathPreservingPercent(parsed.rawPath).trimEnd('/')
+    val parentRaw = encodedPath.substringBeforeLast('/', missingDelimiterValue = "").ifBlank { "/" }
+    val parentPath = if (parentRaw == "/") "/" else parentRaw.withVfsTrailingSlash()
+    return parsed.copy(userInfo = null, rawPath = parentPath).toAsciiString(includeUserInfo = false)
 }
 
 /**

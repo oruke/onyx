@@ -52,8 +52,9 @@ internal fun RemoteConnectionFeedback(
     saving: Boolean,
 ) {
     val palette = LocalOnyxPalette.current
+    val appearance = com.oruke.onyx.ui.theme.LocalOnyxAppearance.current
     val feedback = when {
-        error != null -> RemoteConnectionFeedbackValue(remoteConnectionErrorText(error), REMOTE_ERROR_COLOR)
+        error != null -> RemoteConnectionFeedbackValue(remoteConnectionErrorText(error), palette.errorForeground)
         saving -> RemoteConnectionFeedbackValue(
             text = stringResource(Res.string.label_remote_connection_saving),
             color = palette.accent,
@@ -74,11 +75,11 @@ internal fun RemoteConnectionFeedback(
                         .map { capability -> vfsProviderCapabilityLabel(capability) }
                         .joinToString(", "),
                 ),
-                color = REMOTE_SUCCESS_COLOR,
+                color = palette.success,
             )
             is RemoteConnectionTestState.Failed -> RemoteConnectionFeedbackValue(
                 text = stringResource(Res.string.label_remote_connection_test_failed, testState.reason.resolve()),
-                color = REMOTE_ERROR_COLOR,
+                color = palette.errorForeground,
             )
         }
     }
@@ -91,7 +92,7 @@ internal fun RemoteConnectionFeedback(
         Text(
             text = feedback.text,
             modifier = Modifier.weight(1f),
-            fontSize = 10.sp,
+            fontSize = appearance.feedbackFontSize,
             color = feedback.color,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
@@ -136,9 +137,3 @@ private fun remoteConnectionErrorText(error: RemoteConnectionDialogError): Strin
             stringResource(Res.string.label_remote_connection_error_credential_save_failed)
     }
 }
-
-/** 连接成功状态颜色。 */
-private val REMOTE_SUCCESS_COLOR = Color(0xFF2E8B57)
-
-/** 连接失败或表单错误状态颜色。 */
-private val REMOTE_ERROR_COLOR = Color(0xFFD74E4E)

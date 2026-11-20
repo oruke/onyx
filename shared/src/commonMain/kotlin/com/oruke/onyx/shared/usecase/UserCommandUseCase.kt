@@ -38,6 +38,9 @@ class UserCommandUseCase {
     /**
      * 渲染用户命令调用计划。
      *
+     * 采用单次占位符扫描替换，防止路径或文件名中包含 `{name}` / `{parent}` / `{selection}` 时发生二次模板注入，
+     * 并自动过滤空白参数行避免向外部进程传入空字符串参数。
+     *
      * @param command 用户命令配置。
      * @param currentLocation 当前面板位置。
      * @param selection 当前选择条目。
@@ -54,12 +57,18 @@ class UserCommandUseCase {
             selection = selection,
         )
         return UserCommandInvocation(
-            executable = command.executable.render(context),
-            arguments = command.argumentTemplate.flatMap { argument ->
-                // 整参数选择变量必须展开为多个独立参数，文件名内的空格不参与 Shell 解析。
-                if (argument == "{selection}") selection.map { it.location } else listOf(argument.render(context))
-            },
-            workingDirectory = command.workingDirectoryTemplate?.render(context)
+            executable = command.executable.trim().render(context),
+            arguments = command.argumentTemplate
+                .map { raw -> raw.trim() }
+                .filter { trimmed -> trimmed.isNotEmpty() }
+                .flatMap { argument ->
+                    // 整参数选择变量必须展开为多个独立参数，文件名内的空格不参与 Shell 解析。
+                    if (argument == "{selection}") selection.map { it.location } else listOf(argument.render(context))
+                },
+            workingDirectory = command.workingDirectoryTemplate
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.render(context)
                 ?: context.primaryEntry?.parentLocation
                 ?: currentLocation,
         )
@@ -79,16 +88,25 @@ private data class UserCommandTemplateContext(
     val selection: List<VFile>,
 )
 
+/** 模板占位符单次扫描正则。 */
+private val USER_COMMAND_PLACEHOLDER_REGEX = Regex("\\{(location|parent|name|selection)\\}")
+
 /**
- * 渲染命令模板变量。
+ * 以单次扫描替换命令模板变量，杜绝多轮 `.replace()` 导致的二次变量注入。
  *
  * @param context 模板上下文。
  * @return 渲染后的字符串。
  */
 private fun String.render(context: UserCommandTemplateContext): String {
+    if ('{' !in this) return this
     val entry = context.primaryEntry
-    return replace("{location}", entry?.location ?: context.currentLocation)
-        .replace("{parent}", entry?.parentLocation ?: context.currentLocation)
-        .replace("{name}", entry?.name.orEmpty())
-        .replace("{selection}", context.selection.joinToString(" ") { item -> item.location })
+    return USER_COMMAND_PLACEHOLDER_REGEX.replace(this) { match ->
+        when (match.groupValues[1]) {
+            "location" -> entry?.location ?: context.currentLocation
+            "parent" -> entry?.parentLocation ?: context.currentLocation
+            "name" -> entry?.name.orEmpty()
+            "selection" -> context.selection.joinToString(" ") { item -> item.location }
+            else -> match.value
+        }
+    }
 }

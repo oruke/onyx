@@ -23,6 +23,7 @@ import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
 import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.toVfsConnectionTestResult
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
+import java.io.Closeable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
@@ -42,7 +43,11 @@ class S3VfsProvider(
     RoutableVfsContentService,
     RoutableVfsRandomAccessService,
     VfsConnectionTester,
-    S3TransferGateway {
+    S3TransferGateway,
+    Closeable {
+    override fun close() {
+        client.close()
+    }
     /** S3 递归复制与移动服务。 */
     private val transferService = S3TransferService(this)
 

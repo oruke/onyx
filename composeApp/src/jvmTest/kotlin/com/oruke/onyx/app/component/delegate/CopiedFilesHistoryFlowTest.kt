@@ -80,7 +80,8 @@ class CopiedFilesHistoryFlowTest {
             assertTrue(history.undoLast().isFailure)
             assertEquals("user-edited-content", Files.readString(target.resolve("note.txt")))
             assertEquals("original-content", Files.readString(source.resolve("note.txt")))
-            assertTrue(history.state.value.canUndo)
+            // OPS-007：内容校验失效的复制记录应从历史栈移除，避免永久卡死更早历史记录。
+            assertFalse(history.state.value.canUndo)
         }
     }
 

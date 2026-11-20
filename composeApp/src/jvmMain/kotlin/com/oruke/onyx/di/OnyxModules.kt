@@ -148,8 +148,8 @@ val fileModule = module {
     single { MutableS3ConnectionRepository() }
     single<S3ConnectionRepository> { get<MutableS3ConnectionRepository>() }
     single { SmbVfsProvider(authRepository = get()) } onClose { provider -> provider?.close() }
-    single { WebDavVfsProvider(authRepository = get()) }
-    single { S3VfsProvider(authRepository = get(), connectionRepository = get()) }
+    single { WebDavVfsProvider(authRepository = get()) } onClose { provider -> provider?.close() }
+    single { S3VfsProvider(authRepository = get(), connectionRepository = get()) } onClose { provider -> provider?.close() }
     single {
         ZipArchiveCreationService(
             fileRepository = get(),

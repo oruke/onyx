@@ -23,6 +23,9 @@ internal class BatchRenameEditorState(
     /** 组件计算后的整批名称。 */
     val renameResults get() = state.renameResults
 
+    /** 冲突条目 ID 集合。 */
+    val conflictEntryIds get() = state.conflictEntryIds
+
     /** 组件校验错误。 */
     val validationMessage get() = state.validationMessage
 

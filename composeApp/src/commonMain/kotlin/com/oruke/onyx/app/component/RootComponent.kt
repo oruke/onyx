@@ -78,6 +78,8 @@ internal data class RootState(
     val operationHistoryState: OperationHistoryState = OperationHistoryState(),
     /** 由子窗口（如独立搜索窗口）请求主文件管理器窗口置前聚焦的递增信号。 */
     val windowActivationRequest: Long = 0L,
+    /** 按面板隔离的窗口级地址栏聚焦请求递增信号，避免切换活动面板时误重放历史请求。 */
+    val addressBarFocusRequests: Map<PaneId, Int> = emptyMap(),
 )
 
 /**
@@ -169,6 +171,8 @@ internal sealed interface RootDialogState {
 
     data class Settings(
         val draft: OnyxSettings,
+        /** 打开设置窗口瞬间的原始快照，用于未保存脏态检测与按字段精准合并。 */
+        val initialDraft: OnyxSettings = draft,
     ) : RootDialogState
 
     /**
@@ -204,6 +208,10 @@ internal sealed interface RootDialogState {
         val draft: BatchRenameDraft = BatchRenameDraft(),
         /** 组件规划后的完整名称预览。 */
         val renameResults: List<Pair<VFile, String>> = emptyList(),
+        /** 按父目录分组的既有全部条目名快照，用于预览期检测与未选中兄弟文件的碰撞。 */
+        val siblingNamesByParent: Map<String, Set<String>> = emptyMap(),
+        /** 存在非法名称、重名或与目录既有文件碰撞的条目 ID 集合。 */
+        val conflictEntryIds: Set<String> = emptySet(),
         /** 预览校验失败，失败时禁止执行。 */
         val validationMessage: I18nMessage? = null,
         /** 当前选中的已保存预设。 */
@@ -253,6 +261,7 @@ internal sealed interface RootDialogState {
 
 internal enum class CreateDirectoriesDialogError {
     EMPTY_INPUT,
+    INVALID_PATH,
 }
 
 /** ZIP 归档名称输入对话框的校验错误。 */
@@ -396,6 +405,12 @@ internal sealed interface RootIntent {
 
     data object TestRemoteConnectionDraft : RootIntent
 
+    /** 取消正在进行的远程连接测试。 */
+    data object CancelRemoteConnectionTest : RootIntent
+
+    /** 校验并规范化当前编辑草稿地址后在活动面板打开。 */
+    data object OpenRemoteConnectionDraft : RootIntent
+
     data class DeleteRemoteConnection(
         val id: String,
     ) : RootIntent
@@ -403,6 +418,9 @@ internal sealed interface RootIntent {
     data class OpenRemoteConnection(
         val location: String,
     ) : RootIntent
+
+    /** 请求聚焦当前活动面板地址栏（由窗口级全局快捷键触发）。 */
+    data object FocusActivePaneAddressBar : RootIntent
 
     data class ActivatePane(
         val paneId: PaneId,

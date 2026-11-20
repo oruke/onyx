@@ -1,11 +1,13 @@
 package com.oruke.onyx.vfs.archive
 
 import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
-import net.sf.sevenzipjbinding.IInArchive
-import net.sf.sevenzipjbinding.PropID
 import java.io.ByteArrayOutputStream
 import java.util.zip.CRC32
 import kotlin.coroutines.cancellation.CancellationException
+import net.sf.sevenzipjbinding.IArchiveOpenCallback
+import net.sf.sevenzipjbinding.ICryptoGetTextPassword
+import net.sf.sevenzipjbinding.IInArchive
+import net.sf.sevenzipjbinding.PropID
 
 /**
  * 检查 7-Zip 归档的加密状态并验证密码。
@@ -18,26 +20,37 @@ internal class SevenZipArchiveInspector(
     private val randomAccessService: RoutableVfsRandomAccessService,
 ) {
     /**
-     * 判断归档是否包含加密条目。
+     * 判断归档是否加密（同时覆盖普通内容加密与 7z `-mhe=on` / RAR `-hp` 头部加密）。
+     *
+     * 通过实现 [IArchiveOpenCallback] + [ICryptoGetTextPassword] 探测打开阶段是否收到密码回调，
+     * 可精准识别头部加密归档而不会与损坏文件混淆。
      *
      * @param archivePath 归档物理路径。
-     * @return 包含加密条目时返回 `true`；探测失败时记录日志并返回 `false`。
+     * @return 包含加密头部或加密条目时返回 `true`；非加密或探测失败时返回 `false`。
      */
     suspend fun isEncrypted(archivePath: String): Boolean {
-        return if (archivePath.isTarZstdArchive()) {
-            false
-        } else {
-            runCatching {
-                openSevenZipArchive(archivePath, randomAccessService).use { handle ->
-                    val archive = handle.archive
-                    (0 until archive.numberOfItems).any { index ->
-                        archive.getProperty(index, PropID.ENCRYPTED) as? Boolean ?: false
-                    }
+        if (archivePath.isTarZstdArchive()) return false
+        val probeCallback = HeaderEncryptionProbeCallback()
+        return runCatching {
+            openSevenZipArchive(
+                path = archivePath,
+                randomAccessService = randomAccessService,
+                openCallback = probeCallback,
+            ).use { handle ->
+                if (probeCallback.passwordRequested) return@use true
+                val archive = handle.archive
+                (0 until archive.numberOfItems).any { index ->
+                    archive.getProperty(index, PropID.ENCRYPTED) as? Boolean ?: false
                 }
-            }.onFailure { failure ->
-                failure.throwIfCancellation()
+            }
+        }.getOrElse { failure ->
+            failure.throwIfCancellation()
+            if (probeCallback.passwordRequested) {
+                true
+            } else {
                 logger.warn("ArchiveService", "检测压缩包加密状态异常: $archivePath", failure)
-            }.getOrDefault(false)
+                false
+            }
         }
     }
 
@@ -127,6 +140,25 @@ internal class SevenZipArchiveInspector(
         val data = buffer.toByteArray()
         val computedCrc = CRC32().apply { update(data) }.value.toInt()
         return callback.errors.isEmpty() && data.isNotEmpty() && computedCrc == storedCrc
+    }
+}
+
+/**
+ * 探测归档打开阶段是否触发加密头部密码回调（如 7z `-mhe=on`、RAR `-hp`）。
+ */
+private class HeaderEncryptionProbeCallback : IArchiveOpenCallback, ICryptoGetTextPassword {
+    /** 7-Zip 引擎在解析文件头期间是否主动请求了文本密码。 */
+    @Volatile
+    var passwordRequested: Boolean = false
+        private set
+
+    override fun setTotal(files: Long?, bytes: Long?) = Unit
+
+    override fun setCompleted(files: Long?, bytes: Long?) = Unit
+
+    override fun cryptoGetTextPassword(): String {
+        passwordRequested = true
+        return ""
     }
 }
 

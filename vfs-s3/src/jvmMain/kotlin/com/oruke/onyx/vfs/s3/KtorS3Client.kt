@@ -1,21 +1,24 @@
 package com.oruke.onyx.vfs.s3
 
-import com.oruke.onyx.core.model.VFile
-import com.oruke.onyx.core.model.VFileCapability
-import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.core.model.S3ConnectionConfig
+import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.VfsAuthContext
 import com.oruke.onyx.vfs.api.VfsContentSource
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderError
 import com.oruke.onyx.vfs.api.VfsProviderException
-import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
 import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.api.withVfsCopySuffix
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.pluginOrNull
+import io.ktor.client.plugins.timeout
+import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.request
@@ -27,33 +30,22 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.writeFully
+import java.io.IOException
+import java.nio.channels.UnresolvedAddressException
+import java.util.concurrent.atomic.AtomicLong
+import javax.net.ssl.SSLException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import org.w3c.dom.Element
-import org.xml.sax.InputSource
-import java.io.IOException
-import java.io.StringReader
-import java.net.URI
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
-import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * 基于 Ktor CIO 的 S3 客户端实现。
  *
- * @param httpClient 外部注入的 HTTP 客户端；为空时按需惰性创建 CIO 客户端。
+ * @param httpClient 外部注入的 HTTP 客户端；为空时按需惰性创建带超时配置的 CIO 客户端。
  * @property signer AWS Signature V4 请求签名器。
  * @property parser S3 列表响应解析器。
  */
@@ -62,14 +54,34 @@ class KtorS3Client(
     private val signer: S3RequestSigner = S3RequestSigner(),
     private val parser: S3ListBucketResultParser = S3ListBucketResultParser(),
 ) : S3Client {
+    /** 外部注入的客户端；为空时由本实例自行按需创建并在 close 时关闭。 */
+    private val injectedHttpClient: HttpClient? = httpClient
+    /** 仅当由本客户端自行惰性创建底层 CIO 客户端时才在 close 时释放。 */
+    private val ownedHttpClient = lazy {
+        HttpClient(CIO) {
+            install(HttpTimeout) {
+                connectTimeoutMillis = DEFAULT_CONNECT_TIMEOUT_MS
+                socketTimeoutMillis = DEFAULT_SOCKET_TIMEOUT_MS
+            }
+        }
+    }
+
     /** 负责发起 S3 HTTP 请求的客户端，首次访问远程资源时才初始化。 */
-    private val httpClient: HttpClient by lazy { httpClient ?: HttpClient(CIO) }
+    private val httpClient: HttpClient
+        get() = injectedHttpClient ?: ownedHttpClient.value
+
+    override fun close() {
+        if (injectedHttpClient == null && ownedHttpClient.isInitialized()) {
+            ownedHttpClient.value.close()
+        }
+    }
+
     override suspend fun testConnection(
         location: S3Location,
         authContext: VfsAuthContext.AwsCredentials,
         connectionConfig: S3ConnectionConfig,
     ): Unit = withContext(Dispatchers.IO) {
-        try {
+        runS3Request(location.directoryLocation) {
             val request = signer.signListObjectsV2(
                 location = location,
                 authContext = authContext,
@@ -78,13 +90,10 @@ class KtorS3Client(
                 maxKeys = 0,
             )
             val response = httpClient.get(request.url) {
+                applyRequestTimeout(TEST_CONNECTION_TIMEOUT_MS)
                 request.headers.forEach { (name, value) -> header(name, value) }
             }
             response.requireSuccess(location.directoryLocation)
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -93,7 +102,7 @@ class KtorS3Client(
         authContext: VfsAuthContext.AwsCredentials,
         connectionConfig: S3ConnectionConfig,
     ): List<VFile> = withContext(Dispatchers.IO) {
-        try {
+        runS3Request(location.directoryLocation) {
             val entries = mutableListOf<VFile>()
             var continuationToken: String? = null
             do {
@@ -104,6 +113,7 @@ class KtorS3Client(
                     continuationToken = continuationToken,
                 )
                 val response = httpClient.get(request.url) {
+                    applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                     request.headers.forEach { (name, value) -> header(name, value) }
                 }
                 val body = response.requireSuccess(location.directoryLocation)
@@ -112,10 +122,6 @@ class KtorS3Client(
                 continuationToken = page.nextContinuationToken
             } while (continuationToken != null)
             entries
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -136,7 +142,7 @@ class KtorS3Client(
         authContext: VfsAuthContext.AwsCredentials,
         connectionConfig: S3ConnectionConfig,
     ): S3ListPage = withContext(Dispatchers.IO) {
-        try {
+        runS3Request(location.directoryLocation) {
             val request = signer.signListObjectsV2(
                 location = location,
                 authContext = authContext,
@@ -145,14 +151,11 @@ class KtorS3Client(
                 maxKeys = pageSize,
             )
             val response = httpClient.get(request.url) {
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 request.headers.forEach { (name, value) -> header(name, value) }
             }
             val body = response.requireSuccess(location.directoryLocation)
             parser.parse(body, location)
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -166,7 +169,7 @@ class KtorS3Client(
             name = entry.name,
             sizeBytes = entry.sizeBytes,
             chunks = flow {
-                try {
+                runS3Request(entry.location) {
                     val request = signer.signGetObject(
                         location = location,
                         authContext = authContext,
@@ -185,10 +188,6 @@ class KtorS3Client(
                             emit(buffer.copyOf(read))
                         }
                     }
-                } catch (failure: VfsProviderException) {
-                    throw failure
-                } catch (failure: IOException) {
-                    throw failure.toS3NetworkException(entry.location)
                 }
             }.flowOn(Dispatchers.IO),
         )
@@ -209,22 +208,25 @@ class KtorS3Client(
         authContext: VfsAuthContext.AwsCredentials,
         connectionConfig: S3ConnectionConfig,
     ): VfsRandomAccessHandle {
+        val objectLocation = location.toLocation(location.objectKey, directory = false)
         if (mode != VfsRandomAccessMode.READ) {
             throw VfsProviderException(
                 VfsProviderError.UnsupportedOperation(
                     protocol = VfsProtocol.S3,
-                    location = location.toLocation(location.objectKey, directory = false),
+                    location = objectLocation,
                     capability = VfsProviderCapability.WRITE_RANDOM_ACCESS,
                 )
             )
         }
-        return KtorS3RandomAccessHandle.open(
-            httpClient = httpClient,
-            signer = signer,
-            location = location,
-            authContext = authContext,
-            connectionConfig = connectionConfig,
-        )
+        return runS3Request(objectLocation) {
+            KtorS3RandomAccessHandle.open(
+                httpClient = httpClient,
+                signer = signer,
+                location = location,
+                authContext = authContext,
+                connectionConfig = connectionConfig,
+            )
+        }
     }
 
     override suspend fun writeFile(
@@ -243,8 +245,9 @@ class KtorS3Client(
             authContext = authContext,
             connectionConfig = connectionConfig,
         ) ?: return@withContext null
+        val objectLocation = targetLocation.toLocation(targetLocation.objectKey, directory = false)
         val writtenBytes = AtomicLong(0)
-        try {
+        runS3Request(objectLocation) {
             val request = signer.signPutObject(
                 location = targetLocation,
                 authContext = authContext,
@@ -264,17 +267,12 @@ class KtorS3Client(
                     }
                 )
             }
-            response.requireMutationSuccess(targetLocation.toLocation(targetLocation.objectKey, directory = false))
+            response.requireMutationSuccess(objectLocation)
             targetLocation.toObjectVFile(
                 name = targetLocation.objectKey.substringAfterLast('/'),
                 parentLocation = parentLocation.directoryLocation,
                 sizeBytes = writtenBytes.get(),
             )
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            val location = targetLocation.toLocation(targetLocation.objectKey, directory = false)
-            throw failure.toS3NetworkException(location)
         }
     }
 
@@ -284,7 +282,7 @@ class KtorS3Client(
         connectionConfig: S3ConnectionConfig,
     ): Unit = withContext(Dispatchers.IO) {
         val objectLocation = location.toLocation(location.objectKey, directory = false)
-        try {
+        runS3Request(objectLocation) {
             val request = signer.signDeleteObject(
                 location = location,
                 authContext = authContext,
@@ -292,13 +290,10 @@ class KtorS3Client(
             )
             val response = httpClient.request(request.url) {
                 method = HttpMethod.Delete
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 request.headers.forEach { (headerName, value) -> header(headerName, value) }
             }
             response.requireDeleteSuccess(objectLocation)
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            throw failure.toS3NetworkException(objectLocation)
         }
     }
 
@@ -307,7 +302,7 @@ class KtorS3Client(
         authContext: VfsAuthContext.AwsCredentials,
         connectionConfig: S3ConnectionConfig,
     ): Unit = withContext(Dispatchers.IO) {
-        try {
+        runS3Request(location.directoryLocation) {
             val request = signer.signPutObject(
                 location = location,
                 authContext = authContext,
@@ -315,14 +310,11 @@ class KtorS3Client(
             )
             val response = httpClient.request(request.url) {
                 method = HttpMethod.Put
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
                 request.headers.forEach { (headerName, value) -> header(headerName, value) }
                 setBody(ByteArray(0))
             }
             response.requireMutationSuccess(location.directoryLocation)
-        } catch (failure: VfsProviderException) {
-            throw failure
-        } catch (failure: IOException) {
-            throw failure.toS3NetworkException(location.directoryLocation)
         }
     }
 
@@ -382,24 +374,58 @@ class KtorS3Client(
         authContext: VfsAuthContext.AwsCredentials,
         connectionConfig: S3ConnectionConfig,
     ): Boolean {
-        val request = signer.signHeadObject(
-            location = location,
-            authContext = authContext,
-            connectionConfig = connectionConfig,
-        )
-        val response = httpClient.request(request.url) {
-            method = HttpMethod.Head
-            request.headers.forEach { (headerName, value) -> header(headerName, value) }
-        }
-        return when (response.status) {
-            HttpStatusCode.OK,
-            HttpStatusCode.PartialContent,
-            -> true
-            HttpStatusCode.NotFound -> false
-            else -> {
-                response.requireObjectSuccess(location.toLocation(location.objectKey, directory = false))
-                true
+        val objectLocation = location.toLocation(location.objectKey, directory = false)
+        return runS3Request(objectLocation) {
+            val request = signer.signHeadObject(
+                location = location,
+                authContext = authContext,
+                connectionConfig = connectionConfig,
+            )
+            val response = httpClient.request(request.url) {
+                method = HttpMethod.Head
+                applyRequestTimeout(METADATA_REQUEST_TIMEOUT_MS)
+                request.headers.forEach { (headerName, value) -> header(headerName, value) }
             }
+            when (response.status) {
+                HttpStatusCode.OK,
+                HttpStatusCode.PartialContent,
+                -> true
+                HttpStatusCode.NotFound -> false
+                else -> {
+                    response.requireObjectSuccess(objectLocation)
+                    true
+                }
+            }
+        }
+    }
+
+    /** 仅当底层 HttpClient 已安装 HttpTimeout 插件时施加单请求超时，兼容测试注入 Mock HttpClient。 */
+    private fun HttpRequestBuilder.applyRequestTimeout(timeoutMs: Long) {
+        if (httpClient.pluginOrNull(HttpTimeout) != null) {
+            timeout {
+                requestTimeoutMillis = timeoutMs
+            }
+        }
+    }
+
+    /** 统一映射 S3 网络/超时/DNS/SSL/端点解析异常，保留协程取消与已结构化协议错误。 */
+    private inline fun <T> runS3Request(location: String, block: () -> T): T {
+        return try {
+            block()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: VfsProviderException) {
+            throw failure
+        } catch (failure: HttpRequestTimeoutException) {
+            throw failure.toS3NetworkException(location)
+        } catch (failure: UnresolvedAddressException) {
+            throw failure.toS3NetworkException(location)
+        } catch (failure: SSLException) {
+            throw failure.toS3NetworkException(location)
+        } catch (failure: IOException) {
+            throw failure.toS3NetworkException(location)
+        } catch (failure: IllegalArgumentException) {
+            throw failure.toS3NetworkException(location)
         }
     }
 
@@ -425,5 +451,9 @@ class KtorS3Client(
     private companion object {
         const val CONTENT_BUFFER_SIZE = 64 * 1024
         const val MAX_KEEP_BOTH_ATTEMPTS = 10_000
+        const val DEFAULT_CONNECT_TIMEOUT_MS = 15_000L
+        const val DEFAULT_SOCKET_TIMEOUT_MS = 30_000L
+        const val TEST_CONNECTION_TIMEOUT_MS = 15_000L
+        const val METADATA_REQUEST_TIMEOUT_MS = 30_000L
     }
 }

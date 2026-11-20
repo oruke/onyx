@@ -194,7 +194,11 @@ private fun BatchRenameContent(
         Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth())
         Spacer(modifier = Modifier.height(4.dp))
         BatchRenamePreviewHeader()
-        BatchRenamePreview(editor.renameResults, Modifier.weight(1f).fillMaxWidth())
+        BatchRenamePreview(
+            renameResults = editor.renameResults,
+            conflictEntryIds = editor.conflictEntryIds,
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
         BatchRenameFooter(state, editor, canConfirm, onConfirm, onDismiss)
     }
 }
@@ -474,14 +478,16 @@ private fun BatchRenamePreviewHeader() {
 }
 
 /**
- * 显示全部条目的重命名预览列表。
+ * 显示全部条目的重命名预览列表，对重名/非法目标项高亮告警。
  *
  * @param renameResults 原文件及其目标名称。
+ * @param conflictEntryIds 存在冲突的条目 ID 集合。
  * @param modifier 预览区域布局修饰符。
  */
 @Composable
 private fun BatchRenamePreview(
     renameResults: List<Pair<VFile, String>>,
+    conflictEntryIds: Set<String>,
     modifier: Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -489,7 +495,12 @@ private fun BatchRenamePreview(
         SelectionContainer {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 itemsIndexed(renameResults) { index, (entry, newName) ->
-                    BatchRenamePreviewRow(index, entry, newName)
+                    BatchRenamePreviewRow(
+                        index = index,
+                        entry = entry,
+                        newName = newName,
+                        hasConflict = entry.id in conflictEntryIds,
+                    )
                 }
             }
         }
@@ -506,24 +517,38 @@ private fun BatchRenamePreview(
  * @param index 条目索引，用于斑马纹背景。
  * @param entry 原文件条目。
  * @param newName 目标文件名。
+ * @param hasConflict 是否存在命名冲突或非法名称。
  */
 @Composable
-private fun BatchRenamePreviewRow(index: Int, entry: VFile, newName: String) {
+private fun BatchRenamePreviewRow(
+    index: Int,
+    entry: VFile,
+    newName: String,
+    hasConflict: Boolean = false,
+) {
     val palette = LocalOnyxPalette.current
     val fontSize = LocalOnyxAppearance.current.listFontSize
     val changed = entry.name != newName
-    val background = if (index % 2 == 1) palette.surfaceVariant.copy(alpha = 0.5f) else Color.Transparent
+    val background = when {
+        hasConflict -> palette.error.copy(alpha = 0.14f)
+        index % 2 == 1 -> palette.surfaceVariant.copy(alpha = 0.5f)
+        else -> Color.Transparent
+    }
     Row(
         modifier = Modifier.fillMaxWidth().background(background).padding(horizontal = 4.dp, vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(entry.name, fontSize = fontSize, color = palette.foreground, maxLines = 1, modifier = Modifier.weight(1f))
-        Text("→", fontSize = fontSize, color = palette.mutedForeground, modifier = Modifier.width(24.dp))
+        Text("→", fontSize = fontSize, color = if (hasConflict) palette.errorForeground else palette.mutedForeground, modifier = Modifier.width(24.dp))
         Text(
             text = newName,
             fontSize = fontSize,
-            color = if (changed) palette.accent else palette.mutedForeground,
-            fontWeight = if (changed) FontWeight.Medium else FontWeight.Normal,
+            color = when {
+                hasConflict -> palette.errorForeground
+                changed -> palette.accent
+                else -> palette.mutedForeground
+            },
+            fontWeight = if (hasConflict || changed) FontWeight.Medium else FontWeight.Normal,
             maxLines = 1,
             modifier = Modifier.weight(1f),
         )

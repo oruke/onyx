@@ -80,6 +80,7 @@ internal fun OnyxSettings.resetCategoryToDefaults(category: SettingsCategory): O
 
         SettingsCategory.SHORTCUTS_ADVANCED -> copy(
             commandShortcutOverrides = defaults.commandShortcutOverrides,
+            verboseLoggingEnabled = defaults.verboseLoggingEnabled,
         )
     }
 }
@@ -95,3 +96,81 @@ internal fun OnyxSettings.resetAllPreferencesToDefaults(): OnyxSettings {
     }
 }
 
+/**
+ * 将设置窗口编辑后的偏好字段三路合并进当前最新的运行期 [OnyxSettings]。
+ *
+ * 仅提交设置页负责的偏好与显式变更（如自定义主题、位置清理），绝不覆写设置打开期间由主窗口、
+ * 搜索窗口或任务中心异步产生的搜索历史、最近访问、收藏、远程连接、侧栏折叠、窗口尺寸及未在设置页修改的任务窗自动关闭开关。
+ *
+ * @param draft 用户确认应用时的设置草稿。
+ * @param initialDraft 打开设置窗口瞬间记录的基准草稿。
+ * @return 保留最新运行期状态并合入全部偏好修改的新设置。
+ */
+internal fun OnyxSettings.mergeEditableSettingsFrom(
+    draft: OnyxSettings,
+    initialDraft: OnyxSettings,
+): OnyxSettings {
+    val autoCloseChangedInSettings = draft.autoCloseTaskCenterWhenFinished != initialDraft.autoCloseTaskCenterWhenFinished
+    val favoritesCleanedInSettings = draft.favoriteLocations != initialDraft.favoriteLocations
+    val recentsCleanedInSettings = draft.recentLocations != initialDraft.recentLocations
+    val removedFavorites = if (favoritesCleanedInSettings) {
+        initialDraft.favoriteLocations.toSet() - draft.favoriteLocations.toSet()
+    } else {
+        emptySet()
+    }
+    val removedRecents = if (recentsCleanedInSettings) {
+        initialDraft.recentLocations.toSet() - draft.recentLocations.toSet()
+    } else {
+        emptySet()
+    }
+    return copy(
+        preferredLocale = draft.preferredLocale,
+        closeToTray = draft.closeToTray,
+        restoreSessionOnStartup = draft.restoreSessionOnStartup,
+        themeMode = draft.themeMode,
+        themePreset = draft.themePreset,
+        themeColors = draft.themeColors,
+        customThemes = draft.customThemes,
+        activeCustomThemeId = draft.activeCustomThemeId,
+        fileListColors = draft.fileListColors,
+        uiScale = draft.uiScale,
+        listRowHeightDp = draft.listRowHeightDp,
+        listFontSizeSp = draft.listFontSizeSp,
+        zebraStripeEnabled = draft.zebraStripeEnabled,
+        useSystemFileIcons = draft.useSystemFileIcons,
+        defaultLayoutMode = draft.defaultLayoutMode,
+        defaultViewMode = draft.defaultViewMode,
+        sidebarVisible = draft.sidebarVisible,
+        sidebarTreeVisible = draft.sidebarTreeVisible,
+        statusBarVisible = draft.statusBarVisible,
+        defaultShowHiddenItems = draft.defaultShowHiddenItems,
+        showFileExtensions = draft.showFileExtensions,
+        naturalSortEnabled = draft.naturalSortEnabled,
+        directoriesFirst = draft.directoriesFirst,
+        hiddenDetailsColumns = draft.hiddenDetailsColumns,
+        singleClickToOpen = draft.singleClickToOpen,
+        doubleClickEmptySpaceToNavigateUp = draft.doubleClickEmptySpaceToNavigateUp,
+        deleteMode = draft.deleteMode,
+        confirmBeforeDelete = draft.confirmBeforeDelete,
+        autoShowTaskCenter = draft.autoShowTaskCenter,
+        autoCloseTaskCenterWhenFinished = if (autoCloseChangedInSettings) {
+            draft.autoCloseTaskCenterWhenFinished
+        } else {
+            autoCloseTaskCenterWhenFinished
+        },
+        fileLabelRules = draft.fileLabelRules,
+        userCommands = draft.userCommands,
+        commandShortcutOverrides = draft.commandShortcutOverrides,
+        verboseLoggingEnabled = draft.verboseLoggingEnabled,
+        favoriteLocations = if (removedFavorites.isEmpty()) {
+            favoriteLocations
+        } else {
+            favoriteLocations.filterNot { it in removedFavorites }
+        },
+        recentLocations = if (removedRecents.isEmpty()) {
+            recentLocations
+        } else {
+            recentLocations.filterNot { it in removedRecents }
+        },
+    )
+}

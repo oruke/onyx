@@ -322,7 +322,7 @@ private fun SearchChipOption(
         Text(
             text = label,
             fontSize = 10.sp,
-            color = if (selected) Color.White else palette.foreground,
+            color = if (selected) palette.onAccent else palette.foreground,
         )
     }
 }

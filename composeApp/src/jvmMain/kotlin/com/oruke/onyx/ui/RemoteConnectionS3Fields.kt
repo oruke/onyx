@@ -1,7 +1,8 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -48,6 +49,7 @@ import org.jetbrains.compose.resources.stringResource
  * @param fontSize 正文字号。
  * @param enabled 是否允许编辑。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun S3CredentialFields(
     connectionDraft: RemoteConnectionDraft,
@@ -58,7 +60,10 @@ internal fun S3CredentialFields(
 ) {
     val config = connectionDraft.s3Config
     RemoteConnectionFieldLabel(stringResource(Res.string.label_remote_connection_s3_provider))
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         S3ProviderPreset.entries.forEach { provider ->
             SettingsOption(
                 selected = config.provider == provider,
@@ -124,6 +129,7 @@ internal fun S3CredentialFields(
  * @param fontSize 选项字号。
  * @param enabled 是否允许编辑。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun S3AddressingStyleFields(
     connectionDraft: RemoteConnectionDraft,
@@ -134,7 +140,10 @@ private fun S3AddressingStyleFields(
     val config = connectionDraft.s3Config
     RemoteConnectionFieldLabel(stringResource(Res.string.label_remote_connection_s3_addressing_style))
     if (config.provider.allowsAddressingStyleSelection()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             S3AddressingStyle.entries.forEach { style ->
                 SettingsOption(
                     selected = config.addressingStyle == style,

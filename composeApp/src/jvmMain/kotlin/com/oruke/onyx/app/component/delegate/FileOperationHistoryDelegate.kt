@@ -190,6 +190,9 @@ internal class FileOperationHistoryDelegate(
     /**
      * 撤销最近一次可逆文件操作。
      *
+     * 当批量撤销部分失败或内容校验失效时，已成功撤销的子步骤压入重做栈，
+     * 仅保留尚未执行的剩余步骤并丢弃已失效条目，绝不将旧整批次原样压回栈顶卡死后续撤销。
+     *
      * @return 撤销执行结果。
      */
     suspend fun undoLast(): Result<Unit> {
@@ -202,12 +205,19 @@ internal class FileOperationHistoryDelegate(
             runCatching {
                 record.undo()
                 if (revision == startingRevision) redoStack += record else clear()
-            }.onFailure { failure ->
+            }.recoverCatching { failure ->
                 if (failure is CancellationException) {
                     clear()
                     throw failure
                 }
-                if (revision == startingRevision) undoStack += record else clear()
+                if (revision != startingRevision) {
+                    clear()
+                } else if (failure is PartialHistoryFailureException) {
+                    failure.completedRecord?.let { completed -> redoStack += completed }
+                    failure.remainingRecord?.let { remaining -> undoStack += remaining }
+                }
+                // 不可逆内容校验失效或条目缺失时不再原样压回栈顶，防止永久阻塞更早的历史记录。
+                throw (failure as? PartialHistoryFailureException)?.cause ?: failure
             }
         } finally {
             operationInProgress = false
@@ -217,6 +227,9 @@ internal class FileOperationHistoryDelegate(
 
     /**
      * 重做最近一次已撤销的文件操作。
+     *
+     * 当批量重做部分失败或内容校验失效时，已成功重做的子步骤压入撤销栈，
+     * 仅保留尚未执行的剩余步骤并移除已失效条目，避免卡死重做栈。
      *
      * @return 重做执行结果。
      */
@@ -230,12 +243,18 @@ internal class FileOperationHistoryDelegate(
             runCatching {
                 record.redo()
                 if (revision == startingRevision) undoStack += record else clear()
-            }.onFailure { failure ->
+            }.recoverCatching { failure ->
                 if (failure is CancellationException) {
                     clear()
                     throw failure
                 }
-                if (revision == startingRevision) redoStack += record else clear()
+                if (revision != startingRevision) {
+                    clear()
+                } else if (failure is PartialHistoryFailureException) {
+                    failure.completedRecord?.let { completed -> undoStack += completed }
+                    failure.remainingRecord?.let { remaining -> redoStack += remaining }
+                }
+                throw (failure as? PartialHistoryFailureException)?.cause ?: failure
             }
         } finally {
             operationInProgress = false
@@ -269,22 +288,66 @@ internal class FileOperationHistoryDelegate(
     }
 
     /**
-     * 执行文件操作记录的撤销逻辑。
+     * 执行文件操作记录的撤销逻辑，遇到部分失败时精确拆分已完成与剩余子批次。
      */
     private suspend fun FileOperationRecord.undo() {
         when (this) {
             is FileOperationRecord.CopyBatch -> copyRecord.undo()
-            is FileOperationRecord.RenameBatch -> steps.asReversed().forEach { step ->
-                rename(parentLocation = step.parentLocation, currentName = step.newName, targetName = step.oldName)
+            is FileOperationRecord.RenameBatch -> {
+                val reversed = steps.asReversed()
+                val completed = mutableListOf<FileRenameStep>()
+                reversed.forEachIndexed { idx, step ->
+                    try {
+                        rename(parentLocation = step.parentLocation, currentName = step.newName, targetName = step.oldName)
+                        completed += step
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (failure: Throwable) {
+                        val remainingOriginalOrder = reversed.drop(idx + 1).asReversed()
+                        throw PartialHistoryFailureException(
+                            completedRecord = completed.takeIf { it.isNotEmpty() }
+                                ?.let { FileOperationRecord.RenameBatch(it.asReversed()) },
+                            remainingRecord = remainingOriginalOrder.takeIf { it.isNotEmpty() }
+                                ?.let { FileOperationRecord.RenameBatch(it) },
+                            cause = failure,
+                        )
+                    }
+                }
             }
 
             is FileOperationRecord.MoveBatch -> {
-                steps.asReversed().forEach { step ->
-                    move(
-                        name = step.name,
-                        sourceDirectory = step.targetDirectoryLocation,
-                        targetDirectory = step.sourceParentLocation,
-                    )
+                val reversed = steps.asReversed()
+                val completed = mutableListOf<FileMoveStep>()
+                reversed.forEachIndexed { idx, step ->
+                    try {
+                        move(
+                            name = step.name,
+                            sourceDirectory = step.targetDirectoryLocation,
+                            targetDirectory = step.sourceParentLocation,
+                        )
+                        completed += step
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (failure: Throwable) {
+                        val remainingOriginalOrder = reversed.drop(idx + 1).asReversed()
+                        throw PartialHistoryFailureException(
+                            completedRecord = completed.takeIf { it.isNotEmpty() }?.let {
+                                FileOperationRecord.MoveBatch(
+                                    steps = it.asReversed(),
+                                    directorySteps = directorySteps,
+                                    createdDirectories = createdDirectories,
+                                )
+                            },
+                            remainingRecord = remainingOriginalOrder.takeIf { it.isNotEmpty() }?.let {
+                                FileOperationRecord.MoveBatch(
+                                    steps = it,
+                                    directorySteps = directorySteps,
+                                    createdDirectories = createdDirectories,
+                                )
+                            },
+                            cause = failure,
+                        )
+                    }
                 }
                 deleteEmptyCreatedDirectories(createdDirectories, fileRepository, fileCommandService)
             }
@@ -296,23 +359,65 @@ internal class FileOperationHistoryDelegate(
     }
 
     /**
-     * 执行文件操作记录的重做逻辑。
+     * 执行文件操作记录的重做逻辑，遇到部分失败时精确拆分已完成与剩余子批次。
      */
     private suspend fun FileOperationRecord.redo() {
         when (this) {
             is FileOperationRecord.CopyBatch -> copyRecord.redo()
-            is FileOperationRecord.RenameBatch -> steps.forEach { step ->
-                rename(parentLocation = step.parentLocation, currentName = step.oldName, targetName = step.newName)
+            is FileOperationRecord.RenameBatch -> {
+                val completed = mutableListOf<FileRenameStep>()
+                steps.forEachIndexed { idx, step ->
+                    try {
+                        rename(parentLocation = step.parentLocation, currentName = step.oldName, targetName = step.newName)
+                        completed += step
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (failure: Throwable) {
+                        val remaining = steps.drop(idx + 1)
+                        throw PartialHistoryFailureException(
+                            completedRecord = completed.takeIf { it.isNotEmpty() }
+                                ?.let { FileOperationRecord.RenameBatch(it) },
+                            remainingRecord = remaining.takeIf { it.isNotEmpty() }
+                                ?.let { FileOperationRecord.RenameBatch(it) },
+                            cause = failure,
+                        )
+                    }
+                }
             }
 
             is FileOperationRecord.MoveBatch -> {
                 createdDirectories = ensureHistoryDirectorySteps(directorySteps, fileRepository, fileCommandService)
-                steps.forEach { step ->
-                    move(
-                        name = step.name,
-                        sourceDirectory = step.sourceParentLocation,
-                        targetDirectory = step.targetDirectoryLocation,
-                    )
+                val completed = mutableListOf<FileMoveStep>()
+                steps.forEachIndexed { idx, step ->
+                    try {
+                        move(
+                            name = step.name,
+                            sourceDirectory = step.sourceParentLocation,
+                            targetDirectory = step.targetDirectoryLocation,
+                        )
+                        completed += step
+                    } catch (failure: CancellationException) {
+                        throw failure
+                    } catch (failure: Throwable) {
+                        val remaining = steps.drop(idx + 1)
+                        throw PartialHistoryFailureException(
+                            completedRecord = completed.takeIf { it.isNotEmpty() }?.let {
+                                FileOperationRecord.MoveBatch(
+                                    steps = it,
+                                    directorySteps = directorySteps,
+                                    createdDirectories = createdDirectories,
+                                )
+                            },
+                            remainingRecord = remaining.takeIf { it.isNotEmpty() }?.let {
+                                FileOperationRecord.MoveBatch(
+                                    steps = it,
+                                    directorySteps = directorySteps,
+                                    createdDirectories = createdDirectories,
+                                )
+                            },
+                            cause = failure,
+                        )
+                    }
                 }
             }
 
@@ -395,6 +500,13 @@ internal class FileOperationHistoryDelegate(
             "Target already contains an entry named $name"
         }
     }
+
+    /** 批量历史操作部分执行失败时用于拆分已完成与剩余子记录的内部异常。 */
+    private class PartialHistoryFailureException(
+        val completedRecord: FileOperationRecord?,
+        val remainingRecord: FileOperationRecord?,
+        override val cause: Throwable,
+    ) : RuntimeException(cause)
 
     private sealed interface FileOperationRecord {
         /** 已登记完整副本快照的复制操作。 */

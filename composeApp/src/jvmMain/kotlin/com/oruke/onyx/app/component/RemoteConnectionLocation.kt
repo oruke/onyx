@@ -2,15 +2,16 @@ package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.RemoteConnectionProtocol
 import com.oruke.onyx.core.model.S3ConnectionConfig
-import com.oruke.onyx.vfs.api.encodeVfsSpaces
-import java.net.URI
+import com.oruke.onyx.vfs.api.encodeVfsPathPreservingPercent
+import com.oruke.onyx.vfs.api.parseVfsUriOrNull
 
 /** 网络位置协议切换、地址规范化与结构校验。 */
 internal object RemoteConnectionLocation {
     /**
      * 将用户输入规范化为 Provider 可消费的目录 URI。
      *
-     * SMB 接受 Windows UNC，WebDAV 接受对应安全级别的 HTTP(S) URL；输出统一使用内部 VFS scheme。
+     * SMB 接受 Windows UNC，WebDAV 接受对应安全级别的 HTTP(S) URL；输出统一使用内部 VFS scheme，
+     * 并通过 RFC 3986 路径编码安全保留 `#`、`%`、`[`、`]`、`+` 及非 ASCII 字符。
      *
      * @param protocol 目标连接协议。
      * @param value 用户输入地址。
@@ -20,21 +21,27 @@ internal object RemoteConnectionLocation {
         protocol: RemoteConnectionProtocol,
         value: String,
     ): String {
-        val uri = URI(prepareUriText(protocol, value).encodeVfsSpaces())
-        val authority = requireNotNull(uri.rawAuthority?.takeIf { it.isNotBlank() }) {
+        val prepared = prepareUriText(protocol, value)
+        // 若输入含显式 query 字符串（如 s3://bucket/prefix?key=value），保留在尾部以便 isValid 明确拦截，
+        // 而路径中的 `#`、`%`、`[`、`]`、空格与中文则按 RFC 3986 安全编码为目录路径。
+        val queryIndex = prepared.indexOf('?')
+        val basePart = if (queryIndex >= 0) prepared.substring(0, queryIndex) else prepared
+        val rawQuery = if (queryIndex >= 0) prepared.substring(queryIndex + 1) else null
+
+        val parsed = requireNotNull(parseVfsUriOrNull(basePart)) {
             "Remote connection authority is required"
         }
-        val rawPath = uri.rawPath.orEmpty().ifBlank { "/" }
-        val directoryPath = if (rawPath.endsWith('/')) rawPath else "$rawPath/"
-        val normalized = buildString {
-            append(uri.scheme.lowercase())
+        val encodedPath = encodeVfsPathPreservingPercent(parsed.rawPath).ifBlank { "/" }
+        val directoryPath = if (encodedPath.endsWith('/')) encodedPath else "$encodedPath/"
+        return buildString {
+            append(parsed.scheme)
             append("://")
-            append(authority)
+            append(parsed.authority)
             append(directoryPath)
-            uri.rawQuery?.let { query -> append('?').append(query) }
-            uri.rawFragment?.let { fragment -> append('#').append(fragment) }
+            if (rawQuery != null) {
+                append('?').append(rawQuery)
+            }
         }
-        return URI(normalized).toASCIIString()
     }
 
     /**
@@ -48,13 +55,13 @@ internal object RemoteConnectionLocation {
         protocol: RemoteConnectionProtocol,
         value: String,
     ): Boolean = runCatching {
-        val uri = URI(normalize(protocol, value))
-        uri.scheme.equals(protocol.defaultScheme(), ignoreCase = true) &&
-            !uri.host.isNullOrBlank() &&
-            uri.userInfo == null &&
-            uri.query == null &&
-            uri.fragment == null &&
-            (protocol != RemoteConnectionProtocol.S3 || uri.port == -1)
+        val normalized = normalize(protocol, value)
+        if ('?' in normalized) return@runCatching false
+        val parsed = parseVfsUriOrNull(normalized) ?: return@runCatching false
+        parsed.scheme.equals(protocol.defaultScheme(), ignoreCase = true) &&
+            parsed.host.isNotBlank() &&
+            parsed.userInfo == null &&
+            (protocol != RemoteConnectionProtocol.S3 || parsed.port == -1)
     }.getOrDefault(false)
 
     /**
@@ -93,7 +100,7 @@ internal object RemoteConnectionLocation {
     }
 
     /**
-     * 将宽松输入转换为可交给 [URI] 的协议地址。
+     * 将宽松输入转换为可解析的协议地址文本。
      *
      * @param protocol 目标连接协议。
      * @param value 用户输入地址。

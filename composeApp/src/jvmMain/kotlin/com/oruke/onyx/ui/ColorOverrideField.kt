@@ -503,6 +503,7 @@ private fun AlphaSliderBar(
 /**
  * 精选快捷色板（含半透明色块）。
  */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun PickerQuickSwatches(
     selectedArgb: Long,
@@ -515,10 +516,10 @@ private fun PickerQuickSwatches(
             fontSize = 10.sp,
             color = palette.mutedForeground,
         )
-        Row(
+        androidx.compose.foundation.layout.FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             PICKER_PRESET_SWATCHES.forEach { swatchArgb ->
                 val hoverSrc = remember { MutableInteractionSource() }

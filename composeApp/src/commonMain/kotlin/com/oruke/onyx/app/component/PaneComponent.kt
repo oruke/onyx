@@ -248,9 +248,17 @@ internal sealed interface PaneIntent {
         val sizeDp: Int,
     ) : PaneIntent
 
+    /**
+     * 调整指定明细列宽度；窄视口自适应列宽模式下可传入当前视觉基准列宽以避免首次拖拽跳变。
+     *
+     * @property column 待调整列。
+     * @property deltaWeight 拖拽增量（dp）。
+     * @property baseWidths 可选当前视觉基准列宽映射。
+     */
     data class ResizeDetailsColumn(
         val column: DetailsColumn,
         val deltaWeight: Float,
+        val baseWidths: Map<DetailsColumn, Float>? = null,
     ) : PaneIntent
 
     data class SelectEntry(

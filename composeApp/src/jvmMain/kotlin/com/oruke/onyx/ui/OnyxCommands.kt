@@ -225,22 +225,85 @@ internal enum class OnyxShortcutKey(val composeKey: Key) {
     ENTER(Key.Enter),
     ESCAPE(Key.Escape),
     DELETE(Key.Delete),
-    F2(Key.F2),
-    F5(Key.F5),
     BACKSPACE(Key.Backspace),
+    TAB(Key.Tab),
+    SPACE(Key.Spacebar),
+    INSERT(Key.Insert),
+    HOME(Key.MoveHome),
+    END(Key.MoveEnd),
+    PAGE_UP(Key.PageUp),
+    PAGE_DOWN(Key.PageDown),
     COMMA(Key.Comma),
+    PERIOD(Key.Period),
+    SLASH(Key.Slash),
+    BACKSLASH(Key.Backslash),
+    SEMICOLON(Key.Semicolon),
+    MINUS(Key.Minus),
+    EQUALS(Key.Equals),
+    LEFT_BRACKET(Key.LeftBracket),
+    RIGHT_BRACKET(Key.RightBracket),
+    F1(Key.F1),
+    F2(Key.F2),
+    F3(Key.F3),
+    F4(Key.F4),
+    F5(Key.F5),
+    F6(Key.F6),
+    F7(Key.F7),
+    F8(Key.F8),
+    F9(Key.F9),
+    F10(Key.F10),
+    F11(Key.F11),
+    F12(Key.F12),
+    DIGIT_0(Key.Zero),
+    DIGIT_1(Key.One),
+    DIGIT_2(Key.Two),
+    DIGIT_3(Key.Three),
+    DIGIT_4(Key.Four),
+    DIGIT_5(Key.Five),
+    DIGIT_6(Key.Six),
+    DIGIT_7(Key.Seven),
+    DIGIT_8(Key.Eight),
+    DIGIT_9(Key.Nine),
     A(Key.A),
-    N(Key.N),
+    B(Key.B),
     C(Key.C),
     D(Key.D),
+    E(Key.E),
+    F(Key.F),
+    G(Key.G),
+    H(Key.H),
+    I(Key.I),
+    J(Key.J),
+    K(Key.K),
+    L(Key.L),
+    M(Key.M),
+    N(Key.N),
+    O(Key.O),
     P(Key.P),
+    Q(Key.Q),
+    R(Key.R),
+    S(Key.S),
+    T(Key.T),
+    U(Key.U),
+    V(Key.V),
+    W(Key.W),
     X(Key.X),
     Y(Key.Y),
     Z(Key.Z),
-    V(Key.V),
-    F(Key.F),
-    K(Key.K),
-    L(Key.L),
+}
+
+/**
+ * 判断按键本身是否为修饰键（Ctrl/Shift/Alt/Meta），用于快捷键录制时区分纯修饰键按下与不支持按键。
+ */
+internal fun Key.isShortcutModifierKey(): Boolean {
+    return this == Key.CtrlLeft ||
+        this == Key.CtrlRight ||
+        this == Key.ShiftLeft ||
+        this == Key.ShiftRight ||
+        this == Key.AltLeft ||
+        this == Key.AltRight ||
+        this == Key.MetaLeft ||
+        this == Key.MetaRight
 }
 
 internal fun KeyEvent.toOnyxShortcutOrNull(): OnyxShortcut? {
@@ -321,6 +384,11 @@ internal object OnyxCommandRegistry {
                 enabled = isEnabled(spec.command),
             )
         }
+    }
+
+    /** 按命令枚举查找对应的元数据定义。 */
+    fun findSpec(command: OnyxCommand): OnyxCommandSpec? {
+        return paneCommands.firstOrNull { spec -> spec.command == command }
     }
 }
 
@@ -418,22 +486,71 @@ private fun shortcutKeyLabel(key: OnyxShortcutKey): String {
         OnyxShortcutKey.ENTER -> stringResource(Res.string.shortcut_key_enter)
         OnyxShortcutKey.ESCAPE -> stringResource(Res.string.shortcut_key_escape)
         OnyxShortcutKey.DELETE -> stringResource(Res.string.shortcut_key_delete)
-        OnyxShortcutKey.F2 -> stringResource(Res.string.shortcut_key_f2)
-        OnyxShortcutKey.F5 -> stringResource(Res.string.shortcut_key_f5)
         OnyxShortcutKey.BACKSPACE -> stringResource(Res.string.shortcut_key_backspace)
+        OnyxShortcutKey.TAB -> "Tab"
+        OnyxShortcutKey.SPACE -> "Space"
+        OnyxShortcutKey.INSERT -> "Insert"
+        OnyxShortcutKey.HOME -> "Home"
+        OnyxShortcutKey.END -> "End"
+        OnyxShortcutKey.PAGE_UP -> "PgUp"
+        OnyxShortcutKey.PAGE_DOWN -> "PgDn"
         OnyxShortcutKey.COMMA -> stringResource(Res.string.shortcut_key_comma)
+        OnyxShortcutKey.PERIOD -> "."
+        OnyxShortcutKey.SLASH -> "/"
+        OnyxShortcutKey.BACKSLASH -> "\\"
+        OnyxShortcutKey.SEMICOLON -> ";"
+        OnyxShortcutKey.MINUS -> "-"
+        OnyxShortcutKey.EQUALS -> "="
+        OnyxShortcutKey.LEFT_BRACKET -> "["
+        OnyxShortcutKey.RIGHT_BRACKET -> "]"
+        OnyxShortcutKey.F1 -> "F1"
+        OnyxShortcutKey.F2 -> stringResource(Res.string.shortcut_key_f2)
+        OnyxShortcutKey.F3 -> "F3"
+        OnyxShortcutKey.F4 -> "F4"
+        OnyxShortcutKey.F5 -> stringResource(Res.string.shortcut_key_f5)
+        OnyxShortcutKey.F6 -> "F6"
+        OnyxShortcutKey.F7 -> "F7"
+        OnyxShortcutKey.F8 -> "F8"
+        OnyxShortcutKey.F9 -> "F9"
+        OnyxShortcutKey.F10 -> "F10"
+        OnyxShortcutKey.F11 -> "F11"
+        OnyxShortcutKey.F12 -> "F12"
+        OnyxShortcutKey.DIGIT_0 -> "0"
+        OnyxShortcutKey.DIGIT_1 -> "1"
+        OnyxShortcutKey.DIGIT_2 -> "2"
+        OnyxShortcutKey.DIGIT_3 -> "3"
+        OnyxShortcutKey.DIGIT_4 -> "4"
+        OnyxShortcutKey.DIGIT_5 -> "5"
+        OnyxShortcutKey.DIGIT_6 -> "6"
+        OnyxShortcutKey.DIGIT_7 -> "7"
+        OnyxShortcutKey.DIGIT_8 -> "8"
+        OnyxShortcutKey.DIGIT_9 -> "9"
         OnyxShortcutKey.A -> stringResource(Res.string.shortcut_key_a)
-        OnyxShortcutKey.N -> stringResource(Res.string.shortcut_key_n)
+        OnyxShortcutKey.B -> "B"
         OnyxShortcutKey.C -> stringResource(Res.string.shortcut_key_c)
         OnyxShortcutKey.D -> stringResource(Res.string.shortcut_key_d)
+        OnyxShortcutKey.E -> "E"
+        OnyxShortcutKey.F -> stringResource(Res.string.shortcut_key_f)
+        OnyxShortcutKey.G -> "G"
+        OnyxShortcutKey.H -> "H"
+        OnyxShortcutKey.I -> "I"
+        OnyxShortcutKey.J -> "J"
+        OnyxShortcutKey.K -> stringResource(Res.string.shortcut_key_k)
+        OnyxShortcutKey.L -> stringResource(Res.string.shortcut_key_l)
+        OnyxShortcutKey.M -> "M"
+        OnyxShortcutKey.N -> stringResource(Res.string.shortcut_key_n)
+        OnyxShortcutKey.O -> "O"
         OnyxShortcutKey.P -> stringResource(Res.string.shortcut_key_p)
+        OnyxShortcutKey.Q -> "Q"
+        OnyxShortcutKey.R -> "R"
+        OnyxShortcutKey.S -> "S"
+        OnyxShortcutKey.T -> "T"
+        OnyxShortcutKey.U -> "U"
+        OnyxShortcutKey.V -> stringResource(Res.string.shortcut_key_v)
+        OnyxShortcutKey.W -> "W"
         OnyxShortcutKey.X -> stringResource(Res.string.shortcut_key_x)
         OnyxShortcutKey.Y -> stringResource(Res.string.shortcut_key_y)
         OnyxShortcutKey.Z -> stringResource(Res.string.shortcut_key_z)
-        OnyxShortcutKey.V -> stringResource(Res.string.shortcut_key_v)
-        OnyxShortcutKey.F -> stringResource(Res.string.shortcut_key_f)
-        OnyxShortcutKey.K -> stringResource(Res.string.shortcut_key_k)
-        OnyxShortcutKey.L -> stringResource(Res.string.shortcut_key_l)
     }
 }
 

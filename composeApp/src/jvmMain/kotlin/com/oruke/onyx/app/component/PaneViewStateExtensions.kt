@@ -78,15 +78,35 @@ internal fun PaneTabState.withGalleryItemSizeState(sizeDp: Int): PaneTabState {
     }
 }
 
+/**
+ * 按拖拽增量调整明细列宽度；当当前标签仍使用默认列宽且调用方提供自适应视觉基准列宽时，
+ * 直接以该视觉基准列宽为起点叠加增量，避免双面板窄视口首次拖拽时整表列宽突跳。
+ *
+ * @param column 待调整列。
+ * @param deltaWeight 拖拽宽度增量（dp）。
+ * @param baseWidths 可选当前自适应视觉列宽映射。
+ * @return 更新列宽后的标签状态。
+ */
 internal fun PaneTabState.withResizedDetailsColumnState(
     column: DetailsColumn,
     deltaWeight: Float,
+    baseWidths: Map<DetailsColumn, Float>? = null,
 ): PaneTabState {
-    val currentWidth = detailsColumnWeights[column] ?: defaultDetailsColumnWidth(column)
+    val defaults = defaultDetailsColumnWeights()
+    val usesDefaultWidths = DetailsColumn.entries.all { col ->
+        val actual = detailsColumnWeights[col] ?: defaults.getValue(col)
+        kotlin.math.abs(actual - defaults.getValue(col)) < 0.5f
+    }
+    val effectiveBase = if (baseWidths != null && usesDefaultWidths) {
+        baseWidths
+    } else {
+        detailsColumnWeights
+    }
+    val currentWidth = effectiveBase[column] ?: defaultDetailsColumnWidth(column)
     val adjustedDelta = deltaWeight.coerceAtLeast(MIN_DETAILS_COLUMN_WIDTH - currentWidth)
     return withTabState { current ->
         current.copy(
-            detailsColumnWeights = current.detailsColumnWeights + (column to currentWidth + adjustedDelta),
+            detailsColumnWeights = effectiveBase + (column to currentWidth + adjustedDelta),
         )
     }
 }

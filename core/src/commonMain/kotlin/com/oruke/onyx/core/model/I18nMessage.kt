@@ -198,6 +198,24 @@ enum class MessageKey {
 
     /** 当前平台不支持回收站操作。 */
     MSG_TRASH_UNSUPPORTED,
+
+    /** 批量重命名存在重名或非法目标名称冲突。 */
+    MSG_BATCH_RENAME_CONFLICT,
+
+    /** 批量重命名部分成功部分失败。 */
+    MSG_BATCH_RENAME_PARTIAL_FAILURE,
+
+    /** 回收站批量还原部分成功部分失败。 */
+    MSG_TRASH_PARTIAL_RESTORE,
+
+    /** 回收站批量永久删除部分成功部分失败。 */
+    MSG_TRASH_PARTIAL_DELETE,
+
+    /** 回收站中的目标条目已不存在或已被外部移除。 */
+    MSG_TRASH_ITEM_UNAVAILABLE,
+
+    /** 部分历史操作因文件状态变化无法撤销并已从历史栈移除。 */
+    MSG_HISTORY_PARTIAL_UNDO,
 }
 
 /**

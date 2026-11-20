@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -75,12 +76,12 @@ internal fun ActiveTasksPill(
     Row(
         modifier = Modifier
             .testTag("status-bar-task-indicator")
-            .height(18.dp)
+            .heightIn(min = 18.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(tint.copy(alpha = INDICATOR_BG_ALPHA))
             .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -120,25 +121,25 @@ internal fun FailedTasksPill(
     Row(
         modifier = Modifier
             .testTag("status-bar-task-indicator")
-            .height(18.dp)
+            .heightIn(min = 18.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(palette.error.copy(alpha = INDICATOR_BG_ALPHA))
             .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Icon(
             key = AllIconsKeys.General.Error,
             contentDescription = null,
-            tint = palette.error,
+            tint = palette.errorForeground,
             modifier = Modifier.size(12.dp),
         )
         Text(
             text = stringResource(Res.string.label_task_failed_summary, failedCount),
             fontSize = appearance.headerFontSize,
-            color = palette.error,
+            color = palette.errorForeground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -158,12 +159,12 @@ internal fun SucceededTaskPill(
     Row(
         modifier = Modifier
             .testTag("status-bar-task-indicator")
-            .height(18.dp)
+            .heightIn(min = 18.dp)
             .clip(RoundedCornerShape(4.dp))
             .background(palette.success.copy(alpha = INDICATOR_BG_ALPHA))
             .pointerHoverIcon(PointerIcon.Hand)
             .clickable(onClick = onClick)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {

@@ -33,6 +33,7 @@ internal fun BoundPaneSurface(
     rootComponent: RootComponent,
     modifier: Modifier = Modifier,
     dragBindings: PaneDragBindings,
+    onGlobalShortcutBlockChange: (Boolean) -> Unit = {},
 ) {
     val paneState: PaneState = when (paneId) {
         PaneId.PRIMARY -> state.primaryPane
@@ -115,6 +116,8 @@ internal fun BoundPaneSurface(
             modalOverlayVisible = state.quickOpenState.visible || state.dialogState != null,
             onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
             windowActivationRequest = state.windowActivationRequest,
+            addressBarFocusRequestId = state.addressBarFocusRequests[paneId] ?: 0,
+            onGlobalShortcutBlockChange = onGlobalShortcutBlockChange,
             fileLabels = remember(
                 paneState.entriesState,
                 paneState.inlineExpandedEntries,

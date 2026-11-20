@@ -10,8 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.core.model.AppLocale
 import com.oruke.onyx.core.model.DeleteMode
 import com.oruke.onyx.core.model.DetailsColumn
@@ -19,6 +17,7 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.OnyxThemeMode
 import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.ViewMode
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_cleanup_invalid_locations
@@ -123,6 +122,8 @@ internal fun SettingsCategoryContent(
     searchQuery: String = "",
     recordingCommand: OnyxCommand? = null,
     onRecordingCommandChange: ((OnyxCommand?) -> Unit)? = null,
+    shortcutFeedback: ShortcutRecordingFeedback? = null,
+    onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -> Unit)? = null,
 ) {
     val trimmedQuery = searchQuery.trim()
     if (trimmedQuery.isEmpty()) {
@@ -135,6 +136,8 @@ internal fun SettingsCategoryContent(
             labelFontSize = labelFontSize,
             recordingCommand = recordingCommand,
             onRecordingCommandChange = onRecordingCommandChange,
+            shortcutFeedback = shortcutFeedback,
+            onShortcutFeedbackChange = onShortcutFeedbackChange,
         )
         return
     }
@@ -160,6 +163,8 @@ internal fun SettingsCategoryContent(
             labelFontSize = labelFontSize,
             recordingCommand = recordingCommand,
             onRecordingCommandChange = onRecordingCommandChange,
+            shortcutFeedback = shortcutFeedback,
+            onShortcutFeedbackChange = onShortcutFeedbackChange,
         )
     }
 }
@@ -178,6 +183,8 @@ private fun RenderCategoryPage(
     labelFontSize: TextUnit,
     recordingCommand: OnyxCommand?,
     onRecordingCommandChange: ((OnyxCommand?) -> Unit)?,
+    shortcutFeedback: ShortcutRecordingFeedback?,
+    onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -> Unit)?,
 ) {
     when (category) {
         SettingsCategory.GENERAL -> GeneralSettingsContent(
@@ -220,6 +227,8 @@ private fun RenderCategoryPage(
             labelFontSize = labelFontSize,
             recordingCommand = recordingCommand,
             onRecordingCommandChange = onRecordingCommandChange,
+            shortcutFeedback = shortcutFeedback,
+            onShortcutFeedbackChange = onShortcutFeedbackChange,
         )
     }
 }
@@ -634,6 +643,8 @@ private fun ShortcutsAdvancedSettingsContent(
     labelFontSize: TextUnit,
     recordingCommand: OnyxCommand?,
     onRecordingCommandChange: ((OnyxCommand?) -> Unit)?,
+    shortcutFeedback: ShortcutRecordingFeedback?,
+    onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -> Unit)?,
 ) {
     SettingsGroupCard(
         title = stringResource(Res.string.label_settings_shortcuts),
@@ -646,6 +657,8 @@ private fun ShortcutsAdvancedSettingsContent(
             labelFontSize = labelFontSize,
             recordingCommand = recordingCommand,
             onRecordingCommandChange = onRecordingCommandChange,
+            feedback = shortcutFeedback,
+            onFeedbackChange = onShortcutFeedbackChange,
         )
     }
 
@@ -653,13 +666,18 @@ private fun ShortcutsAdvancedSettingsContent(
         title = stringResource(Res.string.label_section_diagnostics_maintenance),
         fontSize = labelFontSize,
     ) {
-        VerboseLoggingSettings(labelFontSize = labelFontSize)
+        VerboseLoggingSettings(
+            draft = draft,
+            onDraftChange = onDraftChange,
+            labelFontSize = labelFontSize,
+        )
         DialogTextButton(
             text = stringResource(Res.string.action_restore_factory_defaults),
             destructive = true,
             fontSize = bodyFontSize,
             onClick = {
                 onRecordingCommandChange?.invoke(null)
+                onShortcutFeedbackChange?.invoke(null)
                 onDraftChange(draft.resetAllPreferencesToDefaults())
             },
         )
@@ -667,27 +685,33 @@ private fun ShortcutsAdvancedSettingsContent(
 }
 
 /**
- * 绘制仅在当前进程生效的详细日志开关。
+ * 绘制纳入设置草稿生命周期的详细诊断日志开关，支持取消回滚与恢复默认。
+ *
+ * @param draft 当前设置草稿。
+ * @param onDraftChange 草稿更新回调。
+ * @param labelFontSize 标签字号。
  */
 @Composable
-private fun VerboseLoggingSettings(labelFontSize: TextUnit) {
+private fun VerboseLoggingSettings(
+    draft: OnyxSettings,
+    onDraftChange: (OnyxSettings) -> Unit,
+    labelFontSize: TextUnit,
+) {
     val palette = LocalOnyxPalette.current
-    var verboseOn by remember { mutableStateOf(OnyxLogger.verboseEnabled) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SettingsToggleRow(
             title = stringResource(Res.string.label_verbose_logging),
-            value = verboseOn,
+            value = draft.verboseLoggingEnabled,
             enabledText = stringResource(Res.string.label_setting_enabled),
             disabledText = stringResource(Res.string.label_setting_disabled),
             labelFontSize = labelFontSize,
             onValueChange = { enabled ->
-                OnyxLogger.verboseEnabled = enabled
-                verboseOn = enabled
+                onDraftChange(draft.copy(verboseLoggingEnabled = enabled))
             },
         )
         Text(
             text = stringResource(Res.string.label_verbose_logging_hint),
-            fontSize = 10.sp,
+            fontSize = LocalOnyxAppearance.current.feedbackFontSize,
             color = palette.mutedForeground,
         )
     }

@@ -21,9 +21,10 @@ import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.vfs.api.VfsRandomAccessHandle
 import com.oruke.onyx.vfs.api.VfsRandomAccessMode
-import com.oruke.onyx.vfs.api.encodeVfsSpaces
+import com.oruke.onyx.vfs.api.parseVfsUriOrNull
 import com.oruke.onyx.vfs.api.toVfsConnectionTestResult
 import com.oruke.onyx.vfs.api.withVfsTrailingSlash
+import java.io.Closeable
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.header
@@ -73,7 +74,11 @@ class WebDavVfsProvider(
     RoutableFileCommandService,
     RoutableVfsContentService,
     RoutableVfsRandomAccessService,
-    VfsConnectionTester {
+    VfsConnectionTester,
+    Closeable {
+    override fun close() {
+        client.close()
+    }
     override val protocol: VfsProtocol = VfsProtocol.WEBDAV
 
     override val capabilities: Set<VfsProviderCapability> = setOf(
@@ -312,17 +317,15 @@ class WebDavVfsProvider(
     }
 
     private fun webDavEndpointKey(location: String): String? {
-        return runCatching {
-            val uri = URI(location.encodeVfsSpaces())
-            val scheme = uri.scheme?.lowercase() ?: return@runCatching null
-            val host = uri.host?.lowercase() ?: return@runCatching null
-            val port = when {
-                uri.port >= 0 -> uri.port
-                scheme == WEBDAVS_SCHEME -> 443
-                else -> 80
-            }
-            "$scheme://$host:$port"
-        }.getOrNull()
+        val parsed = parseVfsUriOrNull(location) ?: return null
+        val scheme = parsed.scheme.lowercase()
+        val host = parsed.host.lowercase()
+        val port = when {
+            parsed.port >= 0 -> parsed.port
+            scheme == WEBDAVS_SCHEME -> 443
+            else -> 80
+        }
+        return "$scheme://$host:$port"
     }
 
     private fun unsupported(

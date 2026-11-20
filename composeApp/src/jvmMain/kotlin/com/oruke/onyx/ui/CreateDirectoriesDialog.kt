@@ -47,6 +47,7 @@ import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.label_create_directories_description
 import onyx.composeapp.generated.resources.label_create_directories_error_empty
+import onyx.composeapp.generated.resources.label_create_directories_error_invalid_path
 import onyx.composeapp.generated.resources.label_create_directories_placeholder
 import onyx.composeapp.generated.resources.label_create_directories_shortcuts
 import onyx.composeapp.generated.resources.label_create_directories_title
@@ -57,6 +58,7 @@ internal fun CreateDirectoriesDialog(
     onDraftChange: (String) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    commandShortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
 ) {
     val focusRequester = remember { FocusRequester() }
     val inputScrollState = rememberScrollState()
@@ -118,14 +120,15 @@ internal fun CreateDirectoriesDialog(
                         focusRequester = focusRequester,
                         inputScrollState = inputScrollState,
                         textStyle = inputTextStyle,
+                        commandShortcuts = commandShortcuts,
                         onConfirm = onConfirm,
                         onDismiss = onDismiss,
                     )
                     Text(
                         text = stringResource(
                             Res.string.label_create_directories_shortcuts,
-                            onyxCommandShortcutHint(OnyxCommand.CreateDirectories).orEmpty(),
-                            onyxCommandShortcutHint(OnyxCommand.CloseMenu).orEmpty(),
+                            onyxCommandShortcutHint(OnyxCommand.CreateDirectories, commandShortcuts).orEmpty(),
+                            onyxCommandShortcutHint(OnyxCommand.CloseMenu, commandShortcuts).orEmpty(),
                         ),
                         fontSize = 11.sp,
                         color = LocalOnyxPalette.current.mutedForeground,
@@ -135,9 +138,12 @@ internal fun CreateDirectoriesDialog(
                             text = when (error) {
                                 CreateDirectoriesDialogError.EMPTY_INPUT ->
                                     stringResource(Res.string.label_create_directories_error_empty)
+
+                                CreateDirectoriesDialogError.INVALID_PATH ->
+                                    stringResource(Res.string.label_create_directories_error_invalid_path)
                             },
                             fontSize = 11.sp,
-                            color = LocalOnyxPalette.current.error,
+                            color = LocalOnyxPalette.current.errorForeground,
                         )
                     }
                 }
@@ -175,6 +181,7 @@ private fun CreateDirectoriesInput(
     focusRequester: FocusRequester,
     inputScrollState: androidx.compose.foundation.ScrollState,
     textStyle: TextStyle,
+    commandShortcuts: OnyxCommandShortcutMap,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -188,7 +195,7 @@ private fun CreateDirectoriesInput(
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when {
-                        event.matchesCommand(OnyxCommand.CreateDirectories) -> {
+                        event.matchesCommand(OnyxCommand.CreateDirectories, commandShortcuts) -> {
                             onConfirm()
                             true
                         }

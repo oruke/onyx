@@ -125,11 +125,13 @@ internal object TransferStructurePlanner {
         plan: PlannedTransferStructure,
         fileRepository: FileRepository,
     ): List<VFile> {
+        val caseInsensitive = com.oruke.onyx.app.component.isCaseInsensitiveVfsLocation(plan.targetDirectoryLocation)
+        val normalizeName: (String) -> String = { name -> if (caseInsensitive) name.lowercase() else name }
         val listingCache = mutableMapOf<String, List<VFile>>()
         listingCache[plan.targetDirectoryLocation] = fileRepository.list(plan.targetDirectoryLocation).getOrThrow()
         return plan.entries.filter { entry ->
-            val existingNames = resolveExistingTargetNames(entry, plan, fileRepository, listingCache)
-            existingNames?.contains(entry.name) == true
+            val existingNames = resolveExistingTargetNames(entry, plan, fileRepository, listingCache, caseInsensitive)
+            existingNames?.any { existing -> normalizeName(existing) == normalizeName(entry.name) } == true
         }
     }
 
@@ -157,12 +159,13 @@ internal object TransferStructurePlanner {
         plan: PlannedTransferStructure,
         fileRepository: FileRepository,
         listingCache: MutableMap<String, List<VFile>>,
+        caseInsensitive: Boolean,
     ): Set<String>? {
         val chain = plan.entryDirectoryChains[entry.id].orEmpty()
         var currentEntries: List<VFile>? = listingCache[plan.targetDirectoryLocation]
         for (step in chain) {
             val siblings = currentEntries ?: break
-            val matched = findMatchingTargetChild(siblings, step)
+            val matched = findMatchingTargetChild(siblings, step, caseInsensitive)
             currentEntries = when {
                 matched == null -> null
                 matched.kind != VFileKind.DIRECTORY -> throw FileAlreadyExistsException(matched.location)
@@ -177,12 +180,12 @@ internal object TransferStructurePlanner {
     private fun findMatchingTargetChild(
         siblings: List<VFile>,
         step: TransferDirectoryStep,
+        caseInsensitive: Boolean,
     ): VFile? {
         return siblings.firstOrNull { candidate ->
             val exactMatch = candidate.location == step.directoryLocation || candidate.name == step.directoryName
-            val ignoreCaseDir = candidate.kind == VFileKind.DIRECTORY &&
-                candidate.name.equals(step.directoryName, ignoreCase = true)
-            exactMatch || ignoreCaseDir
+            val caseInsensitiveMatch = caseInsensitive && candidate.name.equals(step.directoryName, ignoreCase = true)
+            exactMatch || caseInsensitiveMatch
         }
     }
 }

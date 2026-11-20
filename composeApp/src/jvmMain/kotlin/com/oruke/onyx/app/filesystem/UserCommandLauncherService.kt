@@ -5,6 +5,7 @@ import com.oruke.onyx.core.model.LocalizedException
 import com.oruke.onyx.core.model.MessageKey
 import com.oruke.onyx.shared.usecase.UserCommandInvocation
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -34,10 +35,7 @@ internal class JvmUserCommandLauncherService : UserCommandLauncherService {
             if (invocation.executable.isBlank()) {
                 throw LocalizedException(I18nMessage(MessageKey.MSG_USER_COMMAND_INVALID))
             }
-            val directory = invocation.workingDirectory?.takeIf { it.isNotBlank() }?.let { Path.of(it) }
-            if (directory != null && !Files.isDirectory(directory)) {
-                throw LocalizedException(I18nMessage(MessageKey.MSG_USER_COMMAND_LOCAL_DIRECTORY_REQUIRED))
-            }
+            val directory = resolveLocalWorkingDirectory(invocation.workingDirectory)
             val builder = ProcessBuilder(listOf(invocation.executable) + invocation.arguments)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.DISCARD)
@@ -52,5 +50,27 @@ internal class JvmUserCommandLauncherService : UserCommandLauncherService {
         } catch (failure: Exception) {
             Result.failure(LocalizedException(I18nMessage(MessageKey.MSG_USER_COMMAND_LAUNCH_FAILED), failure))
         }
+    }
+
+    /**
+     * 校验并解析本地工作目录，对远程 VFS URI（如 `smb://`、`s3://`、`webdav://`）或非法路径给出明确本地目录提示。
+     *
+     * @param rawDirectory 渲染后的工作目录文本。
+     * @return 存在的本地目录路径；未配置工作目录时返回 `null`。
+     */
+    private fun resolveLocalWorkingDirectory(rawDirectory: String?): Path? {
+        val trimmed = rawDirectory?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if ("://" in trimmed) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_USER_COMMAND_LOCAL_DIRECTORY_REQUIRED))
+        }
+        val path = try {
+            Path.of(trimmed)
+        } catch (failure: InvalidPathException) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_USER_COMMAND_LOCAL_DIRECTORY_REQUIRED), failure)
+        }
+        if (!Files.isDirectory(path)) {
+            throw LocalizedException(I18nMessage(MessageKey.MSG_USER_COMMAND_LOCAL_DIRECTORY_REQUIRED))
+        }
+        return path
     }
 }

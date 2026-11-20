@@ -113,6 +113,14 @@ private fun DefaultRootComponent.dispatchRootRemoteIntent(intent: RootIntent): B
             remoteConnectionManager.testRemoteConnectionDraft(); true
         }
 
+        RootIntent.CancelRemoteConnectionTest -> {
+            remoteConnectionManager.cancelConnectionTestAndResetState(); true
+        }
+
+        RootIntent.OpenRemoteConnectionDraft -> {
+            remoteConnectionManager.openRemoteConnectionDraft(); true
+        }
+
         is RootIntent.DeleteRemoteConnection -> {
             remoteConnectionManager.deleteRemoteConnection(intent.id); true
         }
@@ -163,6 +171,10 @@ private fun DefaultRootComponent.dispatchRootPaneIntent(intent: RootIntent): Boo
 
         RootIntent.RefreshActivePane -> {
             refreshActivePane(); true
+        }
+
+        RootIntent.FocusActivePaneAddressBar -> {
+            requestFocusActivePaneAddressBar(); true
         }
 
         else -> false

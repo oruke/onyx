@@ -118,6 +118,7 @@ import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
 import com.oruke.onyx.ui.theme.horizontalResizePointerIcon
 import com.oruke.onyx.ui.theme.orEmpty
+import com.oruke.onyx.ui.theme.resolveEffectiveDetailsColumnWidths
 import com.oruke.onyx.ui.theme.sortHint
 import com.oruke.onyx.ui.theme.toIntOffset
 import com.oruke.onyx.ui.theme.visibleDetailsColumns
@@ -201,6 +202,8 @@ internal data class PaneEntriesActions(
     val onToggleSort: (DetailsColumn) -> Unit,
     /** 调整列宽。 */
     val onResizeColumn: (DetailsColumn, Float) -> Unit,
+    /** 窄视口自适应列宽下的调整回调，携带当前视觉基准列宽避免首次拖拽跳变。 */
+    val onResizeColumnFromEffective: ((DetailsColumn, Float, Map<DetailsColumn, Float>) -> Unit)? = null,
     /** 切换列可见性。 */
     val onToggleColumnVisibility: (DetailsColumn) -> Unit,
     /** 选择单个条目。 */
@@ -446,8 +449,9 @@ internal fun InlineEditEntryRow(
             val colWidth = detailsColumnWidth(columnWidths, column).dp
             when (column) {
                 DetailsColumn.NAME -> {
+                    val appearance = LocalOnyxAppearance.current
                     Row(
-                        modifier = Modifier.width(colWidth).height(22.dp),
+                        modifier = Modifier.width(colWidth).height(appearance.listRowHeight),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -471,7 +475,7 @@ internal fun InlineEditEntryRow(
                                     }
                                 },
                             textStyle = TextStyle(
-                                fontSize = 12.sp,
+                                fontSize = appearance.listFontSize,
                                 color = LocalOnyxPalette.current.foreground,
                             ),
                             singleLine = true,
@@ -560,43 +564,48 @@ internal fun DetailsHeader(
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            visibleColumns.forEach { column ->
+            visibleColumns.forEachIndexed { index, column ->
                 val colWidth = detailsColumnWidth(columnWidths, column).dp
-                when (column) {
-                    DetailsColumn.NAME -> SortHeaderCell(
-                        text = stringResource(Res.string.label_column_name),
+                val isLastColumn = index == visibleColumns.lastIndex
+                val label = when (column) {
+                    DetailsColumn.NAME -> stringResource(Res.string.label_column_name)
+                    DetailsColumn.SIZE -> stringResource(Res.string.label_column_size)
+                    DetailsColumn.MODIFIED -> stringResource(Res.string.label_column_modified)
+                    DetailsColumn.TYPE -> stringResource(Res.string.label_column_type)
+                }
+                if (isLastColumn) {
+                    Box(modifier = Modifier.width(colWidth).fillMaxHeight()) {
+                        SortHeaderCell(
+                            text = label,
+                            sortHint = sortHint(column, sort),
+                            modifier = Modifier.fillMaxSize(),
+                            onClick = { onToggleSort(column) },
+                        )
+                        DetailsColumnResizeGap(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .testTag("details-resize-gap-${column.name}"),
+                            onResize = { deltaPx ->
+                                val deltaDp = with(density) { deltaPx / this.density }
+                                onResizeColumn(column, deltaDp)
+                            },
+                        )
+                    }
+                } else {
+                    SortHeaderCell(
+                        text = label,
                         sortHint = sortHint(column, sort),
                         modifier = Modifier.width(colWidth),
                         onClick = { onToggleSort(column) },
                     )
-
-                    DetailsColumn.SIZE -> SortHeaderCell(
-                        text = stringResource(Res.string.label_column_size),
-                        sortHint = sortHint(column, sort),
-                        modifier = Modifier.width(colWidth),
-                        onClick = { onToggleSort(column) },
-                    )
-
-                    DetailsColumn.MODIFIED -> SortHeaderCell(
-                        text = stringResource(Res.string.label_column_modified),
-                        sortHint = sortHint(column, sort),
-                        modifier = Modifier.width(colWidth),
-                        onClick = { onToggleSort(column) },
-                    )
-
-                    DetailsColumn.TYPE -> SortHeaderCell(
-                        text = stringResource(Res.string.label_column_type),
-                        sortHint = sortHint(column, sort),
-                        modifier = Modifier.width(colWidth),
-                        onClick = { onToggleSort(column) },
+                    DetailsColumnResizeGap(
+                        modifier = Modifier.testTag("details-resize-gap-${column.name}"),
+                        onResize = { deltaPx ->
+                            val deltaDp = with(density) { deltaPx / this.density }
+                            onResizeColumn(column, deltaDp)
+                        },
                     )
                 }
-                DetailsColumnResizeGap(
-                    onResize = { deltaPx ->
-                        val deltaDp = with(density) { deltaPx / this.density }
-                        onResizeColumn(column, deltaDp)
-                    },
-                )
             }
         }
 
@@ -634,11 +643,11 @@ private fun DetailsColumnVisibilityMenu(
                     .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(4.dp))
                     .border(1.dp, LocalOnyxPalette.current.outline, RoundedCornerShape(4.dp))
                     .padding(4.dp)
-                    .width(160.dp),
+                    .widthIn(min = 160.dp),
             ) {
                 Text(
                     text = stringResource(Res.string.label_column_visibility),
-                    fontSize = 11.sp,
+                    fontSize = LocalOnyxAppearance.current.headerFontSize,
                     fontWeight = FontWeight.SemiBold,
                     color = LocalOnyxPalette.current.mutedForeground,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
@@ -697,14 +706,15 @@ private fun DetailsColumnVisibilityRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        val itemFontSize = LocalOnyxAppearance.current.listFontSize
         Text(
             text = if (visible) "✓" else " ",
-            fontSize = 12.sp,
+            fontSize = itemFontSize,
             color = if (isName) palette.disabledForeground else palette.accent,
         )
         Text(
             text = label,
-            fontSize = 12.sp,
+            fontSize = itemFontSize,
             color = if (isName) palette.disabledForeground else palette.foreground,
         )
     }
@@ -764,15 +774,18 @@ internal fun SortHeaderCell(
 @Composable
 internal fun DetailsColumnResizeGap(
     onResize: (Float) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    // 始终通过 rememberUpdatedState 读取最新回调，避免 pointerInput(Unit) 捕获窗口缩窄前的过期自适应列宽闭包。
+    val currentOnResize by rememberUpdatedState(onResize)
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxHeight()
             .width(DetailsColumnGap)
             .pointerHoverIcon(horizontalResizePointerIcon())
             .pointerInput(Unit) {
                 detectDragGestures { _, dragAmount ->
-                    onResize(dragAmount.x)
+                    currentOnResize(dragAmount.x)
                 }
             },
         contentAlignment = Alignment.Center,
@@ -964,15 +977,42 @@ private fun ReadyPaneEntries(
     val horizontalScrollState = rememberPaneHorizontalScroll(model)
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val viewportWidth = maxWidth
+        val effectiveColumnWeights = remember(
+            model.columns,
+            model.columnWeights,
+            model.hiddenColumns,
+            viewportWidth,
+        ) {
+            resolveEffectiveDetailsColumnWidths(
+                columns = model.columns,
+                columnWeights = model.columnWeights,
+                hiddenColumns = model.hiddenColumns,
+                viewportWidthDp = viewportWidth.value,
+            )
+        }
+        val effectiveModel = remember(model, effectiveColumnWeights) {
+            if (effectiveColumnWeights === model.columnWeights) {
+                model
+            } else {
+                model.copy(columnWeights = effectiveColumnWeights)
+            }
+        }
         Column(modifier = Modifier.fillMaxSize()) {
-            if (model.viewMode == ViewMode.DETAILS) {
+            if (effectiveModel.viewMode == ViewMode.DETAILS) {
                 DetailsHeader(
-                    columns = model.columns,
-                    columnWidths = model.columnWeights,
-                    hiddenColumns = model.hiddenColumns,
-                    sort = model.sort,
+                    columns = effectiveModel.columns,
+                    columnWidths = effectiveModel.columnWeights,
+                    hiddenColumns = effectiveModel.hiddenColumns,
+                    sort = effectiveModel.sort,
                     onToggleSort = actions.onToggleSort,
-                    onResizeColumn = actions.onResizeColumn,
+                    onResizeColumn = { column, deltaDp ->
+                        val resizeFromEffective = actions.onResizeColumnFromEffective
+                        if (effectiveColumnWeights !== model.columnWeights && resizeFromEffective != null) {
+                            resizeFromEffective(column, deltaDp, effectiveColumnWeights)
+                        } else {
+                            actions.onResizeColumn(column, deltaDp)
+                        }
+                    },
                     onToggleColumnVisibility = actions.onToggleColumnVisibility,
                     onActivate = actions.onActivate,
                     scrollState = horizontalScrollState,
@@ -984,11 +1024,17 @@ private fun ReadyPaneEntries(
                     .weight(1f)
                     .fillMaxWidth()
                     .clipToBounds()
-                    .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp, doubleClickSlopPx),
+                    .paneSelectionInteractions(
+                        effectiveModel,
+                        actions,
+                        selection,
+                        doubleClickBlankNavigateUp,
+                        doubleClickSlopPx,
+                    ),
             ) {
                 Box(modifier = Modifier.fillMaxSize().paneRubberBandTracker(actions, selection))
                 PaneEntriesViewport(
-                    model = model,
+                    model = effectiveModel,
                     actions = actions,
                     thumbnails = thumbnails,
                     ready = ready,
@@ -997,7 +1043,7 @@ private fun ReadyPaneEntries(
                     dragActions = childDragActions,
                     minRowWidth = viewportWidth,
                 )
-                PaneRubberBandOverlay(selection, model.paneId)
+                PaneRubberBandOverlay(selection, effectiveModel.paneId)
             }
         }
     }

@@ -167,60 +167,65 @@ internal class RootRemoteConnectionManager(
                 dialogState.value = currentDialog.copy(saving = true, remoteConnectionError = null)
                 connectionSaveJob = scope.launch {
                     try {
-                        val otherConnections = remoteConnections().filterNot { connection -> connection.id == profile.id }
-                        val outcome = operationService.synchronizeCredentials(
-                            existing = existing,
-                            draft = draft,
-                            normalizedLocation = location,
-                            otherConnections = otherConnections,
-                        )
-                        if (connectionSaveRunId == runId) {
-                            val failure = outcome.exceptionOrNull()
-                            val syncResult = outcome.getOrNull()
-                            when {
-                                failure != null -> {
-                                    OnyxLogger.error(
-                                        "RootRemoteConnectionManager",
-                                        "保存远程连接凭据失败",
-                                        failure,
-                                    )
-                                    updateConnectionSaveError(
-                                        runId,
-                                        RemoteConnectionDialogError.CREDENTIAL_SAVE_FAILED,
-                                    )
-                                }
+                        deleteMutex.withLock {
+                            val otherConnections = remoteConnections().filterNot { connection -> connection.id == profile.id }
+                            val outcome = operationService.synchronizeCredentials(
+                                existing = existing,
+                                draft = draft,
+                                normalizedLocation = location,
+                                otherConnections = otherConnections,
+                            )
+                            if (connectionSaveRunId == runId) {
+                                val failure = outcome.exceptionOrNull()
+                                val syncResult = outcome.getOrNull()
+                                when {
+                                    failure != null -> {
+                                        OnyxLogger.error(
+                                            "RootRemoteConnectionManager",
+                                            "保存远程连接凭据失败",
+                                            failure,
+                                        )
+                                        updateConnectionSaveError(
+                                            runId,
+                                            RemoteConnectionDialogError.CREDENTIAL_SAVE_FAILED,
+                                        )
+                                    }
 
-                                syncResult == RemoteCredentialSyncOutcome.SecretRequired -> {
-                                    updateConnectionSaveError(
-                                        runId,
-                                        RemoteConnectionDialogError.SECRET_EMPTY,
-                                    )
-                                }
+                                    syncResult == RemoteCredentialSyncOutcome.SecretRequired -> {
+                                        updateConnectionSaveError(
+                                            runId,
+                                            RemoteConnectionDialogError.SECRET_EMPTY,
+                                        )
+                                    }
 
-                                syncResult is RemoteCredentialSyncOutcome.Completed &&
-                                    syncResult.saveResult == RemoteCredentialSaveResult.UNSUPPORTED -> {
-                                    updateConnectionSaveError(
-                                        runId,
-                                        RemoteConnectionDialogError.SYSTEM_KEYRING_UNAVAILABLE,
-                                    )
-                                }
+                                    syncResult is RemoteCredentialSyncOutcome.Completed &&
+                                        syncResult.saveResult == RemoteCredentialSaveResult.UNSUPPORTED -> {
+                                        updateConnectionSaveError(
+                                            runId,
+                                            RemoteConnectionDialogError.SYSTEM_KEYRING_UNAVAILABLE,
+                                        )
+                                    }
 
-                                else -> {
-                                    val nextConnections = remoteConnections()
-                                        .filterNot { connection -> connection.id == profile.id } + profile
-                                    replaceRemoteConnections(nextConnections)
-                                    onConnectionChanged(profile.location)
-                                    val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
-                                    if (latestDialog != null) {
-                                        dialogState.value = if (
-                                            latestDialog.matchesSaveOrigin(
-                                                currentDialog.editingRemoteConnectionId,
-                                                draft,
-                                            )
-                                        ) {
-                                            RootDialogState.RemoteConnections()
-                                        } else {
-                                            latestDialog.copy(saving = false)
+                                    else -> {
+                                        val nextConnections = remoteConnections()
+                                            .filterNot { connection -> connection.id == profile.id } + profile
+                                        replaceRemoteConnections(nextConnections)
+                                        if (existing != null && existing.location != profile.location) {
+                                            onConnectionChanged(existing.location)
+                                        }
+                                        onConnectionChanged(profile.location)
+                                        val latestDialog = dialogState.value as? RootDialogState.RemoteConnections
+                                        if (latestDialog != null) {
+                                            dialogState.value = if (
+                                                latestDialog.matchesSaveOrigin(
+                                                    currentDialog.editingRemoteConnectionId,
+                                                    draft,
+                                                )
+                                            ) {
+                                                RootDialogState.RemoteConnections()
+                                            } else {
+                                                latestDialog.copy(saving = false)
+                                            }
                                         }
                                     }
                                 }
@@ -352,6 +357,39 @@ internal class RootRemoteConnectionManager(
     }
 
     /**
+     * 校验并规范化当前编辑草稿地址后在活动面板中打开。
+     *
+     * 防止用户输入 Windows UNC 或 `https://...` 未保存直接点击“打开”时绕过规范化导致协议失败。
+     */
+    fun openRemoteConnectionDraft() {
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return
+        val draft = currentDialog.remoteConnectionDraft
+        val trimmedLocation = draft.location.trim()
+        val error = when {
+            trimmedLocation.isEmpty() -> RemoteConnectionDialogError.LOCATION_EMPTY
+            !com.oruke.onyx.app.component.RemoteConnectionLocation.isValid(draft.protocol, trimmedLocation) ->
+                RemoteConnectionDialogError.LOCATION_INVALID
+            else -> null
+        }
+        if (error != null) {
+            dialogState.value = currentDialog.copy(remoteConnectionError = error)
+            return
+        }
+        openRemoteConnection(draft.normalizedLocation())
+    }
+
+    /**
+     * 取消正在进行的连接测试并将测试状态重置为空闲。
+     */
+    fun cancelConnectionTestAndResetState() {
+        cancelConnectionTest()
+        val currentDialog = dialogState.value as? RootDialogState.RemoteConnections ?: return
+        if (currentDialog.remoteConnectionTestState == RemoteConnectionTestState.Testing) {
+            dialogState.value = currentDialog.copy(remoteConnectionTestState = RemoteConnectionTestState.Idle)
+        }
+    }
+
+    /**
      * 更新即时认证对话框草稿。
      *
      * @param draft 用户当前输入的凭据草稿。
@@ -457,7 +495,7 @@ internal class RootRemoteConnectionManager(
     /**
      * 取消当前连接测试并立即使其结果失效。
      */
-    private fun cancelConnectionTest() {
+    fun cancelConnectionTest() {
         connectionTestRunId = null
         connectionTestJob?.cancel()
         connectionTestJob = null

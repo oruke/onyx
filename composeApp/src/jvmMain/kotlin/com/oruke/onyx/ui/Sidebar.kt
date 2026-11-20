@@ -1,20 +1,24 @@
 package com.oruke.onyx.ui
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -23,16 +27,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.SidebarTreeState
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.RemoteConnectionProfile
 import com.oruke.onyx.core.model.SidebarSectionKey
 import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.isTrashLocation
+import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_edit_connection
@@ -109,26 +114,38 @@ internal fun PaneSidebar(
     dragBindings: PaneDragBindings? = null,
 ) {
     val scrollState = rememberScrollState()
-    Column(
+    Box(
         modifier = Modifier
             .width(184.dp)
             .fillMaxHeight()
-            .background(LocalOnyxPalette.current.surfaceVariant)
-            .verticalScroll(scrollState)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .background(LocalOnyxPalette.current.surfaceVariant),
     ) {
-        SidebarSystemLocations(
-            state = state,
-            actions = actions,
-            activePane = activePane,
-            dragBindings = dragBindings,
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(start = 8.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SidebarSystemLocations(
+                state = state,
+                actions = actions,
+                activePane = activePane,
+                dragBindings = dragBindings,
+            )
+            SidebarQuickAccess(state, actions)
+            SidebarFavorites(state, actions)
+            SidebarConnections(state, actions)
+            SidebarRecentLocations(state, actions)
+            if (state.showTree) SidebarDirectoryTree(state, actions)
+        }
+        VerticalScrollbar(
+            adapter = rememberScrollbarAdapter(scrollState),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .testTag("sidebar-scrollbar"),
         )
-        SidebarQuickAccess(state, actions)
-        SidebarFavorites(state, actions)
-        SidebarConnections(state, actions)
-        SidebarRecentLocations(state, actions)
-        if (state.showTree) SidebarDirectoryTree(state, actions)
     }
 }
 
@@ -297,7 +314,7 @@ internal fun SidebarSection(
             Text(
                 text = title,
                 modifier = Modifier.weight(1f),
-                fontSize = 11.sp,
+                fontSize = LocalOnyxAppearance.current.headerFontSize,
                 color = if (headerHovered) {
                     LocalOnyxPalette.current.foreground
                 } else {
@@ -328,7 +345,7 @@ internal fun SidebarEmptyState(
 ) {
     Text(
         text = text,
-        fontSize = 11.sp,
+        fontSize = LocalOnyxAppearance.current.headerFontSize,
         color = LocalOnyxPalette.current.disabledForeground,
         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
     )
@@ -387,17 +404,18 @@ internal fun SidebarLocationItem(
                 modifier = Modifier.size(14.dp),
             )
         }
+        val itemFontSize = LocalOnyxAppearance.current.headerFontSize
         Text(
             text = label,
             modifier = Modifier.weight(1f),
-            fontSize = 11.sp,
+            fontSize = itemFontSize,
             color = LocalOnyxPalette.current.foreground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = if (favorite) "★" else "☆",
-            fontSize = 11.sp,
+            fontSize = itemFontSize,
             color = if (favorite) {
                 LocalOnyxPalette.current.favorite
             } else {

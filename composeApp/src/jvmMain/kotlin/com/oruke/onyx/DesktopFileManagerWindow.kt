@@ -33,6 +33,8 @@ import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.ui.ImageViewerContent
 import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.TitleBarBrandTitle
+import com.oruke.onyx.ui.WindowKeyboardFocusRegistry
+import com.oruke.onyx.ui.handleWindowGlobalKeyEvent
 import com.oruke.onyx.ui.searchWindowActions
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
@@ -111,6 +113,7 @@ internal fun DesktopFileManagerWindow(
         },
     )
     val windowIcon = rememberOnyxWindowIconPainter()
+    val keyboardFocusRegistry = remember(request.id) { WindowKeyboardFocusRegistry() }
 
     OnyxDecoratedWindowTheme(visualSettings) {
         DecoratedWindow(
@@ -119,6 +122,14 @@ internal fun DesktopFileManagerWindow(
             title = "Onyx ${BuildConfig.VERSION}",
             icon = windowIcon,
             state = windowStates.main,
+            onPreviewKeyEvent = { event ->
+                handleWindowGlobalKeyEvent(
+                    event = event,
+                    state = rootComponent.state.value,
+                    rootComponent = rootComponent,
+                    focusRegistry = keyboardFocusRegistry,
+                )
+            },
         ) {
             BindWindowsTaskbarIdentity(window)
             window.minimumSize = Dimension(FILE_MANAGER_WINDOW_MIN_WIDTH, FILE_MANAGER_WINDOW_MIN_HEIGHT)
@@ -144,7 +155,7 @@ internal fun DesktopFileManagerWindow(
                 onDispose(externalFileDragService::uninstall)
             }
             OnyxLocaleEnvironment(applicationRuntime.resourceLocale) {
-                WindowApp(rootComponent, externalFileDragService)
+                WindowApp(rootComponent, externalFileDragService, keyboardFocusRegistry)
             }
         }
 
@@ -254,6 +265,9 @@ private fun ObserveResidentWindowLifecycle(
                 )
             }
         } else {
+            if (rootComponent.state.value.dialogState != null) {
+                rootComponent.dispatch(RootIntent.DismissDialog)
+            }
             if (rootComponent.state.value.searchState.visible) {
                 rootComponent.dispatch(RootIntent.CloseSearchPanel)
             }

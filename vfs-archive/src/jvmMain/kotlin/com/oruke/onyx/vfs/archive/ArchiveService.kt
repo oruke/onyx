@@ -196,22 +196,28 @@ class ArchiveService(
     }
 
     /**
-     * 列出压缩包内指定路径下的直接子条目。
+     * 列出压缩包指定内部路径下的直接子条目。
      *
      * @param archivePath 归档在统一 VFS 中的原始位置。
      * @param innerPath 归档内待列出的目录路径；空字符串表示根目录。
+     * @param password 可选显式密码；为空时回退至会话密码缓存。
      * @return 直接子条目列表。
      */
-    suspend fun list(archivePath: String, innerPath: String = ""): Result<List<VFile>> =
+    suspend fun list(
+        archivePath: String,
+        innerPath: String = "",
+        password: String? = null,
+    ): Result<List<VFile>> =
         withContext(Dispatchers.IO) {
             runCatching {
                 if (archivePath.isTarZstdArchive()) {
                     return@runCatching tarZstdArchiveService.list(archivePath, innerPath)
                 }
+                val resolvedPassword = password ?: archivePasswordSession.passwordFor(archivePath)
                 openSevenZipArchive(
                     archivePath,
                     randomAccessService,
-                    archivePasswordSession.passwordFor(archivePath),
+                    resolvedPassword,
                 ).use { handle ->
                     val archive = handle.archive
                     val prefix = if (innerPath.isBlank()) "" else innerPath.trimEnd('/') + "/"
@@ -327,8 +333,8 @@ class ArchiveService(
         progressSink: ArchiveProgressSink = ArchiveProgressSink.NoOp,
     ): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            // 先检查根目录结构
-            val rootEntries = list(archivePath).getOrThrow()
+            // 先检查根目录结构（透传外层密码以兼容 -mhe=on 头部加密归档）
+            val rootEntries = list(archivePath, password = password).getOrThrow()
             val hasSingleRootDir = rootEntries.size == 1 && rootEntries[0].kind == VFileKind.DIRECTORY
             if (hasSingleRootDir) {
                 // 单一根目录 → 直接解压到 targetDirectory，保持原有目录名
@@ -406,6 +412,16 @@ class ArchiveService(
      */
     fun hasRememberedPassword(archivePath: String): Boolean {
         return archivePasswordSession.hasPassword(archivePath)
+    }
+
+    /**
+     * 读取当前会话中已记住的归档访问密码；未记住时返回 `null`。
+     *
+     * @param archivePath 归档在统一 VFS 中的原始位置。
+     * @return 会话缓存中的归档密码。
+     */
+    fun rememberedPasswordOrNull(archivePath: String): String? {
+        return archivePasswordSession.passwordFor(archivePath)
     }
 
     /**

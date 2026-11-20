@@ -309,10 +309,16 @@ internal class FileActionDelegate(
         )
 
         taskOrchestrator.launchQueuedTask(taskId) {
+            val caseInsensitive = renameMap.firstOrNull()?.first?.parentLocation?.let { parent ->
+                com.oruke.onyx.app.component.isCaseInsensitiveVfsLocation(parent)
+            } ?: com.oruke.onyx.app.component.isWindowsHostPlatform()
             try {
-                batchRenameUseCase.execute(
-                    BatchRenameUseCase.BatchRenameRequest(renameMap = renameMap)
-                ).collect { progress ->
+                val summary = batchRenameUseCase.executeCollecting(
+                    request = BatchRenameUseCase.BatchRenameRequest(
+                        renameMap = renameMap,
+                        caseInsensitivePaths = caseInsensitive,
+                    ),
+                ) { progress ->
                     progress.directoryChange?.let(callbacks.onDirectoryChange)
                     applyTaskProgress(taskId, progress)
                     // 同步更新对话框进度
@@ -325,28 +331,77 @@ internal class FileActionDelegate(
                     }
                 }
 
-                taskOrchestrator.unregisterJob(taskId)
-                taskOrchestrator.updateTask(
-                    taskId = taskId,
-                    status = BackgroundTaskStatus.SUCCEEDED,
-                    detail = I18nMessage(MessageKey.MSG_BATCH_RENAMED_FILES, renameMap.size),
-                    progress = 1f,
-                    processedCount = renameMap.size,
-                )
-                // 标记对话框完成
-                (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
-                    dialogState.value = ds.copy(
-                        executing = false,
-                        completed = true,
-                        progress = 1f,
-                        processedCount = renameMap.size,
-                    )
+                // 只要有成功完成的重命名条目，即写入撤销历史，确保部分失败后也能撤销已改名项。
+                if (summary.succeededPairs.isNotEmpty()) {
+                    callbacks.onBatchRenameSucceeded(summary.succeededPairs)
                 }
-                callbacks.onBatchRenameSucceeded(renameMap)
-                taskOrchestrator.scheduleAutoCleanup(taskId)
-                // 短暂展示完成状态后自动重置为编辑模式
-                delay(BATCH_RENAME_COMPLETION_RESET_DELAY_MS)
-                resetBatchRenameForContinue(paneId)
+
+                taskOrchestrator.unregisterJob(taskId)
+                if (summary.failures.isEmpty()) {
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.SUCCEEDED,
+                        detail = I18nMessage(MessageKey.MSG_BATCH_RENAMED_FILES, summary.succeededPairs.size),
+                        progress = 1f,
+                        processedCount = summary.succeededPairs.size,
+                    )
+                    (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
+                        dialogState.value = ds.copy(
+                            executing = false,
+                            completed = true,
+                            progress = 1f,
+                            processedCount = summary.succeededPairs.size,
+                        )
+                    }
+                    taskOrchestrator.scheduleAutoCleanup(taskId)
+                    // 短暂展示完成状态后仅在弹窗仍处于打开状态时重置为新一轮编辑模式，防止幽灵重开。
+                    delay(BATCH_RENAME_COMPLETION_RESET_DELAY_MS)
+                    if (dialogState.value is RootDialogState.BatchRename) {
+                        resetBatchRenameForContinue(paneId)
+                    }
+                } else {
+                    val taskErrors = summary.failures.map { itemFailure ->
+                        itemFailure.cause.toTaskError(itemFailure.entry.name)
+                    }
+                    val detailMessage = if (summary.succeededPairs.isNotEmpty()) {
+                        I18nMessage(
+                            MessageKey.MSG_BATCH_RENAME_PARTIAL_FAILURE,
+                            summary.succeededPairs.size,
+                            summary.failures.size,
+                        )
+                    } else {
+                        summary.failures.first().cause.toI18nMessage()
+                    }
+                    // 先写入 errors 再切至 FAILED，确保终态快照和持久化记录包含完整单条目失败明细。
+                    taskOrchestrator.updateTaskFields(taskId) { task ->
+                        task.copy(errors = taskErrors)
+                    }
+                    taskOrchestrator.updateTask(
+                        taskId = taskId,
+                        status = BackgroundTaskStatus.FAILED,
+                        detail = detailMessage,
+                        processedCount = summary.succeededPairs.size,
+                    )
+                    val failedEntries = summary.failures.map { it.entry }
+                    val updatedSiblings = callbacks.getPaneState(paneId)
+                        .visibleEntries()
+                        .groupBy(
+                            keySelector = { it.parentLocation.orEmpty() },
+                            valueTransform = { it.name },
+                        )
+                        .mapValues { (_, names) -> names.toSet() }
+                    (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
+                        dialogState.value = ds.copy(
+                            entries = failedEntries,
+                            siblingNamesByParent = updatedSiblings,
+                            executing = false,
+                            completed = false,
+                            processedCount = summary.succeededPairs.size,
+                            errorMessage = detailMessage,
+                        ).withBatchRenamePreview()
+                    }
+                    callbacks.onRefreshDirectories(renameMap.mapNotNull { it.first.parentLocation }.toSet())
+                }
             } catch (failure: CancellationException) {
                 taskOrchestrator.unregisterJob(taskId)
                 taskOrchestrator.updateTask(
@@ -392,9 +447,16 @@ internal class FileActionDelegate(
             return
         }
         val previous = dialogState.value as? RootDialogState.BatchRename
+        val siblingNamesByParent = allEntries
+            .groupBy(
+                keySelector = { entry -> entry.parentLocation.orEmpty() },
+                valueTransform = { entry -> entry.name },
+            )
+            .mapValues { (_, names) -> names.toSet() }
         dialogState.value = RootDialogState.BatchRename(
             paneId = paneId,
             entries = allEntries,
+            siblingNamesByParent = siblingNamesByParent,
             draft = previous?.draft ?: BatchRenameDraft(),
             selectedPresetId = previous?.selectedPresetId,
             presetName = previous?.presetName.orEmpty(),

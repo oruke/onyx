@@ -6,7 +6,9 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.application
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.cache.OnyxStartupPreloader
@@ -18,10 +20,17 @@ import com.oruke.onyx.app.platform.OnyxSingleInstanceManager
 import com.oruke.onyx.app.platform.OnyxSingleInstanceRelay
 import com.oruke.onyx.app.platform.OnyxStartupSplash
 import com.oruke.onyx.app.platform.OnyxSystemTrayController
+import com.oruke.onyx.app.platform.OnyxTrayHandle
 import com.oruke.onyx.app.platform.StartupSplashStage
+import com.oruke.onyx.app.platform.TrayMenuLabels
 import com.oruke.onyx.app.platform.WindowsShortcutAppIdReconciler
 import com.oruke.onyx.app.platform.WindowsTaskbarGroupingService
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
+import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.tray_exit_app
+import onyx.composeapp.generated.resources.tray_open_app
+import org.jetbrains.compose.resources.stringResource
 import org.koin.compose.KoinIsolatedContext
 import org.koin.compose.getKoin
 import kotlin.system.exitProcess
@@ -102,17 +111,39 @@ private object OnyxDesktopRuntime {
             val koin = getKoin()
             val applicationRuntime = rememberRootApplicationRuntime()
             val appSettings by applicationRuntime.settings.collectAsState()
+            var trayLabels by remember {
+                mutableStateOf(
+                    TrayMenuLabels(
+                        openLabel = "Open Onyx",
+                        exitLabel = "Exit Onyx",
+                    ),
+                )
+            }
+            // 仅用极小独立局部子树解析托盘菜单本地化文案，避免语言切换销毁重建 windowManager 与 singleInstanceRelay。
+            OnyxLocaleEnvironment(applicationRuntime.resourceLocale) {
+                val localizedOpen = stringResource(Res.string.tray_open_app)
+                val localizedExit = stringResource(Res.string.tray_exit_app)
+                val nextLabels = TrayMenuLabels(openLabel = localizedOpen, exitLabel = localizedExit)
+                SideEffect {
+                    if (trayLabels != nextLabels) {
+                        trayLabels = nextLabels
+                    }
+                }
+            }
+            var trayHandle by remember { mutableStateOf<OnyxTrayHandle?>(null) }
 
             OnyxDecoratedWindowTheme(appSettings) {
                 val windowManager = remember {
                     DesktopWindowManager(
-                        keepPrimaryWindowResident = appSettings.closeToTray,
+                        keepPrimaryWindowResident = false,
                         primaryWindowInitiallyVisible = !OnyxSingleInstanceManager.isBackgroundLaunch(args),
                         initialPrimaryLocation = OnyxSingleInstanceManager.extractInitialLocation(args),
                     )
                 }
+                // 仅当系统托盘真实安装成功且用户开启关闭到托盘时才允许后台驻留，防止无托盘环境下关窗后永远无法唤回。
                 SideEffect {
-                    windowManager.keepPrimaryWindowResident = appSettings.closeToTray
+                    windowManager.keepPrimaryWindowResident =
+                        appSettings.closeToTray && (trayHandle?.installed == true)
                 }
                 DisposableEffect(windowManager) {
                     singleInstanceRelay.bindWindowCallbacks(
@@ -121,14 +152,24 @@ private object OnyxDesktopRuntime {
                         },
                         onShutdown = ::exitApplication,
                     )
-                    val trayHandle = OnyxSystemTrayController.install(
+                    val installedHandle = OnyxSystemTrayController.install(
+                        labels = trayLabels,
                         onOpenWindow = { windowManager.activatePrimaryWindow() },
                         onExitApplication = ::exitApplication,
                     )
+                    trayHandle = installedHandle
+                    windowManager.keepPrimaryWindowResident = appSettings.closeToTray && installedHandle.installed
+                    if (!installedHandle.installed) {
+                        windowManager.activatePrimaryWindow()
+                    }
                     onDispose {
-                        trayHandle.close()
+                        trayHandle = null
+                        installedHandle.close()
                         singleInstanceRelay.close()
                     }
+                }
+                LaunchedEffect(trayHandle, trayLabels) {
+                    trayHandle?.updateLabels(trayLabels)
                 }
                 val openDirectoryInNewWindow = remember(windowManager) {
                     { location: String ->

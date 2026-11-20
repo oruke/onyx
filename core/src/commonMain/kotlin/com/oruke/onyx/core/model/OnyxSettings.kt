@@ -117,6 +117,8 @@ data class OnyxSettings(
     val autoShowTaskCenter: Boolean = true,
     /** 自动弹出的任务窗口在所有活动任务成功完成后是否自动收起。 */
     val autoCloseTaskCenterWhenFinished: Boolean = true,
+    /** 是否开启详细诊断日志记录（纳入设置草稿与重置生命周期统一管理）。 */
+    val verboseLoggingEnabled: Boolean = false,
 )
 
 @Serializable

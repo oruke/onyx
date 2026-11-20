@@ -1,7 +1,9 @@
 package com.oruke.onyx.ui
 
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -48,7 +52,16 @@ import org.jetbrains.jewel.ui.component.Divider
 import org.jetbrains.jewel.ui.component.Text
 
 /**
- * 绘制可调整大小的设置窗口，支持实时主题预览、6 大高内聚分类、搜索过滤与当前页恢复默认。
+ * 绘制可调整大小的设置窗口，支持实时主题预览、6 大高内聚分类、搜索过滤、未保存关闭确认与当前页恢复默认。
+ *
+ * @param state 设置窗口草稿与初始快照状态。
+ * @param onDraftChange 设置草稿更新回调。
+ * @param onCleanupInvalidLocations 清理失效位置回调。
+ * @param onConfirm 应用并持久化设置回调。
+ * @param onDismiss 关闭设置窗口回调。
+ * @param initialWidth 窗口初始宽度。
+ * @param initialHeight 窗口初始高度。
+ * @param onWindowSizeChanged 窗口尺寸变化持久化回调。
  */
 @Composable
 internal fun SettingsDialog(
@@ -65,7 +78,23 @@ internal fun SettingsDialog(
     var category by remember { mutableStateOf(SettingsCategory.GENERAL) }
     var searchQuery by remember { mutableStateOf("") }
     var recordingCommand by remember { mutableStateOf<OnyxCommand?>(null) }
-    val dialogState = rememberDialogState(width = initialWidth.dp, height = initialHeight.dp)
+    var shortcutFeedback by remember { mutableStateOf<ShortcutRecordingFeedback?>(null) }
+    var confirmDiscardVisible by remember { mutableStateOf(false) }
+
+    val hasUnsavedChanges = state.draft != state.initialDraft
+    val scaleFactor = (state.draft.uiScale.coerceIn(75, 200) / 100f)
+    val effectiveInitialWidth = maxOf(initialWidth, (SETTINGS_MIN_WIDTH_PX * scaleFactor).toInt())
+    val effectiveInitialHeight = maxOf(initialHeight, (SETTINGS_MIN_HEIGHT_PX * scaleFactor).toInt())
+    val dialogState = rememberDialogState(width = effectiveInitialWidth.dp, height = effectiveInitialHeight.dp)
+
+    fun requestClose() {
+        recordingCommand = null
+        if (hasUnsavedChanges) {
+            confirmDiscardVisible = true
+        } else {
+            onDismiss()
+        }
+    }
 
     LaunchedEffect(dialogState) {
         snapshotFlow { dialogState.size }.collect { size ->
@@ -78,7 +107,7 @@ internal fun SettingsDialog(
     }
 
     OnyxDialogWindow(
-        onCloseRequest = onDismiss,
+        onCloseRequest = ::requestClose,
         title = title,
         state = dialogState,
         resizable = true,
@@ -92,8 +121,12 @@ internal fun SettingsDialog(
                 event = event,
                 recordingCommand = recordingCommand,
                 settings = state.draft,
-                onDraftChange = onDraftChange,
+                onDraftChange = { next ->
+                    confirmDiscardVisible = false
+                    onDraftChange(next)
+                },
                 onRecordingCommandChange = { next -> recordingCommand = next },
+                onFeedback = { feedback -> shortcutFeedback = feedback },
             )
         },
     ) {
@@ -104,18 +137,23 @@ internal fun SettingsDialog(
             category = category,
             onCategoryChange = { nextCategory ->
                 recordingCommand = null
+                shortcutFeedback = null
                 category = nextCategory
                 if (searchQuery.isNotBlank()) {
                     searchQuery = ""
                 }
             },
-            onDraftChange = onDraftChange,
+            onDraftChange = { next ->
+                confirmDiscardVisible = false
+                onDraftChange(next)
+            },
             onCleanupInvalidLocations = onCleanupInvalidLocations,
             onConfirm = {
                 recordingCommand = null
+                confirmDiscardVisible = false
                 onConfirm()
             },
-            onDismiss = onDismiss,
+            onDismiss = ::requestClose,
             bodyFontSize = appearance.listFontSize,
             labelFontSize = appearance.headerFontSize,
             searchQuery = searchQuery,
@@ -125,14 +163,25 @@ internal fun SettingsDialog(
             },
             showTitlePrefix = false,
             recordingCommand = recordingCommand,
-            onRecordingCommandChange = { next -> recordingCommand = next },
+            onRecordingCommandChange = { next ->
+                recordingCommand = next
+                if (next != null) shortcutFeedback = null
+            },
+            shortcutFeedback = shortcutFeedback,
+            onShortcutFeedbackChange = { feedback -> shortcutFeedback = feedback },
+            confirmDiscardVisible = confirmDiscardVisible,
+            onConfirmDiscard = {
+                confirmDiscardVisible = false
+                onDismiss()
+            },
+            onCancelDiscard = { confirmDiscardVisible = false },
         )
     }
 }
 
 /**
  * 采用与主窗口、任务中心、搜索窗口完全一致的扁平紧凑分栏风格：
- * 顶栏、左导航栏、右内容区、底动作栏均通过 1px [Divider] 扁平分割，无外圈悬浮套框。
+ * 顶栏、左导航栏（含可见垂直滚动条）、右内容区（含可见垂直滚动条与底部留白）、底动作栏均通过 1px [Divider] 分割。
  */
 @Suppress("LongParameterList")
 @Composable
@@ -152,6 +201,11 @@ internal fun SettingsDialogLayout(
     showTitlePrefix: Boolean = true,
     recordingCommand: OnyxCommand? = null,
     onRecordingCommandChange: ((OnyxCommand?) -> Unit)? = null,
+    shortcutFeedback: ShortcutRecordingFeedback? = null,
+    onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -> Unit)? = null,
+    confirmDiscardVisible: Boolean = false,
+    onConfirmDiscard: () -> Unit = onDismiss,
+    onCancelDiscard: () -> Unit = {},
 ) {
     val palette = LocalOnyxPalette.current
     val navScrollState = rememberScrollState()
@@ -185,38 +239,74 @@ internal fun SettingsDialogLayout(
             )
         }
         Divider(Orientation.Horizontal, color = palette.outlineVariant)
+        if (confirmDiscardVisible) {
+            Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                UnsavedChangesBanner(
+                    onDiscard = onConfirmDiscard,
+                    onKeepEditing = onCancelDiscard,
+                )
+            }
+            Divider(Orientation.Horizontal, color = palette.outlineVariant)
+        }
         Row(
             modifier = Modifier.weight(1f).fillMaxWidth(),
         ) {
-            SettingsNavigation(
-                category = category,
-                onCategoryChange = onCategoryChange,
-                fontSize = bodyFontSize,
+            Box(
                 modifier = Modifier
                     .width(SETTINGS_SIDEBAR_WIDTH_DP.dp)
                     .fillMaxHeight()
-                    .verticalScroll(navScrollState),
-            )
+                    .background(palette.surfaceVariant),
+            ) {
+                SettingsNavigation(
+                    category = category,
+                    onCategoryChange = onCategoryChange,
+                    fontSize = bodyFontSize,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(navScrollState),
+                )
+                VerticalScrollbar(
+                    adapter = rememberScrollbarAdapter(navScrollState),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .testTag("settings-nav-scrollbar"),
+                )
+            }
             Divider(Orientation.Vertical, color = palette.outlineVariant, modifier = Modifier.fillMaxHeight())
-            Column(
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .background(palette.appBackground)
-                    .verticalScroll(contentScrollState)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                    .background(palette.appBackground),
             ) {
-                SettingsCategoryContent(
-                    category = category,
-                    draft = draft,
-                    onDraftChange = onDraftChange,
-                    onCleanupInvalidLocations = onCleanupInvalidLocations,
-                    bodyFontSize = bodyFontSize,
-                    labelFontSize = labelFontSize,
-                    searchQuery = searchQuery,
-                    recordingCommand = recordingCommand,
-                    onRecordingCommandChange = onRecordingCommandChange,
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(contentScrollState)
+                        .padding(start = 16.dp, top = 12.dp, end = 22.dp, bottom = 28.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    SettingsCategoryContent(
+                        category = category,
+                        draft = draft,
+                        onDraftChange = onDraftChange,
+                        onCleanupInvalidLocations = onCleanupInvalidLocations,
+                        bodyFontSize = bodyFontSize,
+                        labelFontSize = labelFontSize,
+                        searchQuery = searchQuery,
+                        recordingCommand = recordingCommand,
+                        onRecordingCommandChange = onRecordingCommandChange,
+                        shortcutFeedback = shortcutFeedback,
+                        onShortcutFeedbackChange = onShortcutFeedbackChange,
+                    )
+                }
+                VerticalScrollbar(
+                    adapter = rememberScrollbarAdapter(contentScrollState),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .testTag("settings-content-scrollbar"),
                 )
             }
         }
@@ -225,6 +315,7 @@ internal fun SettingsDialogLayout(
             bodyFontSize = bodyFontSize,
             onResetCurrentPage = {
                 onRecordingCommandChange?.invoke(null)
+                onShortcutFeedbackChange?.invoke(null)
                 onDraftChange(draft.resetCategoryToDefaults(category))
             },
             onDismiss = onDismiss,
@@ -319,7 +410,7 @@ private fun SettingsNavigation(
     Column(
         modifier = modifier
             .background(palette.surfaceVariant)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(start = 8.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         SettingsCategory.entries.forEach { candidate ->
@@ -352,4 +443,4 @@ private const val DEFAULT_SETTINGS_WIDTH = 860
 private const val DEFAULT_SETTINGS_HEIGHT = 640
 private const val SETTINGS_MIN_WIDTH_PX = 680
 private const val SETTINGS_MIN_HEIGHT_PX = 480
-private const val SETTINGS_SIDEBAR_WIDTH_DP = 168
+private const val SETTINGS_SIDEBAR_WIDTH_DP = 176

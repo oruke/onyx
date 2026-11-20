@@ -22,8 +22,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -202,6 +204,26 @@ private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
     val addressBarEditing = runtime.ui.addressBarEditing
     val modalOverlayVisible = runtime.model.modalOverlayVisible
     val textInputOwnsKeyboard = runtime.isTextInputOwningKeyboard()
+    val blocksGlobalShortcuts = textInputOwnsKeyboard || inlineEditActive || contextMenuVisible
+    val currentOnGlobalShortcutBlockChange = rememberUpdatedState(runtime.model.onGlobalShortcutBlockChange)
+    DisposableEffect(blocksGlobalShortcuts) {
+        currentOnGlobalShortcutBlockChange.value(blocksGlobalShortcuts)
+        onDispose {
+            currentOnGlobalShortcutBlockChange.value(false)
+        }
+    }
+    var lastHandledAddressBarFocusRequestId by remember {
+        mutableIntStateOf(runtime.model.addressBarFocusRequestId)
+    }
+    LaunchedEffect(runtime.model.addressBarFocusRequestId) {
+        val requestId = runtime.model.addressBarFocusRequestId
+        if (requestId > lastHandledAddressBarFocusRequestId) {
+            lastHandledAddressBarFocusRequestId = requestId
+            if (runtime.model.active) {
+                runtime.focusAddressBar()
+            }
+        }
+    }
     val overlayBlocksPaneFocus = textInputOwnsKeyboard || contextMenuVisible || modalOverlayVisible
     LaunchedEffect(
         runtime.model.active,

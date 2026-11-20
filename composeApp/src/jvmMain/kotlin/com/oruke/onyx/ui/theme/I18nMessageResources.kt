@@ -23,6 +23,11 @@ import onyx.composeapp.generated.resources.msg_device_operation_timeout
 import onyx.composeapp.generated.resources.msg_device_metadata_timeout
 import onyx.composeapp.generated.resources.msg_batch_rename_invalid_counter
 import onyx.composeapp.generated.resources.msg_batch_rename_invalid_pattern
+import onyx.composeapp.generated.resources.msg_batch_rename_conflict
+import onyx.composeapp.generated.resources.msg_batch_rename_partial_failure
+import onyx.composeapp.generated.resources.msg_trash_partial_restore
+import onyx.composeapp.generated.resources.msg_trash_partial_delete
+import onyx.composeapp.generated.resources.msg_history_partial_undo
 import onyx.composeapp.generated.resources.msg_rename_preset_name_required
 import onyx.composeapp.generated.resources.msg_user_command_invalid
 import onyx.composeapp.generated.resources.msg_user_command_local_directory_required
@@ -97,6 +102,7 @@ import onyx.composeapp.generated.resources.msg_trash_emptied
 import onyx.composeapp.generated.resources.msg_trash_empty_failed
 import onyx.composeapp.generated.resources.msg_trash_empty_running
 import onyx.composeapp.generated.resources.msg_trash_item_open_unsupported
+import onyx.composeapp.generated.resources.msg_trash_item_unavailable
 import onyx.composeapp.generated.resources.msg_trash_original_location_unavailable
 import onyx.composeapp.generated.resources.msg_trash_original_path_unknown
 import onyx.composeapp.generated.resources.msg_trash_restore_failed
@@ -227,5 +233,11 @@ private fun MessageKey.toStringResource(): StringResource {
         MessageKey.MSG_TRASH_ORIGINAL_LOCATION_UNAVAILABLE -> Res.string.msg_trash_original_location_unavailable
         MessageKey.MSG_TRASH_ORIGINAL_PATH_UNKNOWN -> Res.string.msg_trash_original_path_unknown
         MessageKey.MSG_TRASH_UNSUPPORTED -> Res.string.msg_trash_unsupported
+        MessageKey.MSG_BATCH_RENAME_CONFLICT -> Res.string.msg_batch_rename_conflict
+        MessageKey.MSG_BATCH_RENAME_PARTIAL_FAILURE -> Res.string.msg_batch_rename_partial_failure
+        MessageKey.MSG_TRASH_PARTIAL_RESTORE -> Res.string.msg_trash_partial_restore
+        MessageKey.MSG_TRASH_PARTIAL_DELETE -> Res.string.msg_trash_partial_delete
+        MessageKey.MSG_TRASH_ITEM_UNAVAILABLE -> Res.string.msg_trash_item_unavailable
+        MessageKey.MSG_HISTORY_PARTIAL_UNDO -> Res.string.msg_history_partial_undo
     }
 }

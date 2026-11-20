@@ -19,11 +19,23 @@ private val STAGING_ARROW_PREFIX_REGEX = Regex("""^.*?[/\\]\.onyx-transfer-[^/\\
 internal fun Throwable.toTaskError(
     entry: VFile,
     targetDirectoryLocation: String? = null,
+): TaskError = toTaskError(entry.name, targetDirectoryLocation)
+
+/**
+ * 将单个文件名的异常映射为可重新本地化的任务错误，用于仅有文件名/条目 ID 的回收站或清理场景。
+ *
+ * @param fileName 失败文件名。
+ * @param targetDirectoryLocation 可选的目标父目录位置。
+ * @return 精确关联到该文件名的错误记录。
+ */
+internal fun Throwable.toTaskError(
+    fileName: String,
+    targetDirectoryLocation: String? = null,
 ): TaskError {
     val diagnostic = sanitizeDiagnosticMessage(message)
-    val detail = toI18nMessage().stripRedundantPathPrefix(entry.name, targetDirectoryLocation)
+    val detail = toI18nMessage().stripRedundantPathPrefix(fileName, targetDirectoryLocation)
     return TaskError(
-        fileName = entry.name,
+        fileName = fileName,
         message = diagnostic,
         detail = detail,
     )

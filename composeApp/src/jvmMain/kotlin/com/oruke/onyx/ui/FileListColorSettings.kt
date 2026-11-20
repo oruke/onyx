@@ -50,6 +50,7 @@ import onyx.composeapp.generated.resources.action_delete
 import onyx.composeapp.generated.resources.action_reset
 import onyx.composeapp.generated.resources.action_save_custom_theme
 import onyx.composeapp.generated.resources.action_update_custom_theme
+import onyx.composeapp.generated.resources.label_custom_theme_default_name
 import onyx.composeapp.generated.resources.label_custom_theme_name_placeholder
 import onyx.composeapp.generated.resources.label_custom_themes_section
 import onyx.composeapp.generated.resources.label_file_list_background
@@ -125,6 +126,10 @@ internal fun CustomThemeManagerSection(draft: OnyxSettings, onChange: (OnyxSetti
     val activeCustomTheme = draft.customThemes.firstOrNull { it.id == draft.activeCustomThemeId }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val defaultCustomThemeName = stringResource(
+            onyx.composeapp.generated.resources.Res.string.label_custom_theme_default_name,
+            draft.customThemes.size + 1,
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -142,7 +147,7 @@ internal fun CustomThemeManagerSection(draft: OnyxSettings, onChange: (OnyxSetti
                 fontSize = 11.sp,
                 onClick = {
                     val trimmed = customNameInput.trim()
-                    val finalName = trimmed.ifEmpty { "自定义主题 ${draft.customThemes.size + 1}" }
+                    val finalName = trimmed.ifEmpty { defaultCustomThemeName }
                     val newPreset = CustomThemePreset(
                         id = "custom-theme-${System.currentTimeMillis()}",
                         name = finalName,
