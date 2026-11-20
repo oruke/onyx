@@ -194,7 +194,7 @@ internal fun handleSearchQueryKeyEvent(
             true
         }
 
-        Key.Enter -> {
+        Key.Enter, Key.NumPadEnter -> {
             val selected = state.results.getOrNull(selectedIndex)
             when {
                 selected == null && canSearch -> actions.onSearch()

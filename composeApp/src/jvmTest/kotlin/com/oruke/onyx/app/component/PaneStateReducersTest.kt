@@ -79,7 +79,7 @@ class PaneStateReducersTest {
     }
 
     /**
-     * 校验过滤、排序和视图设置只更新面板展示状态。
+     * 校验过滤、排序和视图设置只更新面板展示状态；过滤词保留用户输入空格以便键入多词文件名。
      *
      * @return 无返回值。
      */
@@ -92,7 +92,7 @@ class PaneStateReducersTest {
             .withGalleryItemSizeState(999)
             .withViewModeState(ViewMode.GALLERY)
 
-        assertEquals("report", updated.filterQuery)
+        assertEquals("  report  ", updated.filterQuery)
         assertEquals(DetailsColumn.SIZE, updated.detailsSort.column)
         assertEquals(setOf(DetailsColumn.TYPE), updated.hiddenColumns)
         assertEquals(320, updated.galleryItemSizeDp)

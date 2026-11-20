@@ -22,11 +22,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
+import com.oruke.onyx.app.component.ComputerEntriesState
 import com.oruke.onyx.app.component.PaneCommand
 import com.oruke.onyx.app.component.PaneContextMenuBuildInput
 import com.oruke.onyx.app.component.PaneContextMenuModelBuilder
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
+import com.oruke.onyx.app.component.selectableIds
 import com.oruke.onyx.app.component.visibleEntriesIncludingExpanded
 import com.oruke.onyx.core.model.VFile
 import com.oruke.onyx.core.model.VFileKind
@@ -241,6 +243,10 @@ private fun PaneSurfaceRuntime.toPaneEntriesActions(readyEntries: List<VFile>): 
         onViewportChanged = { anchor, scrolling ->
             dispatch(PaneIntent.ViewportChanged(tabId, visitId, mode, anchor, scrolling))
         },
+        onViewportMetricsChanged = { columns, pageStep ->
+            ui.gridColumnCount = columns.coerceAtLeast(1)
+            ui.viewportPageSize = pageStep.coerceAtLeast(1)
+        },
     )
 }
 
@@ -294,14 +300,7 @@ private fun PaneFilterBar(runtime: PaneSurfaceRuntime) {
                     runtime.dispatch(PaneIntent.MoveSelection(offset, extend))
                 },
                 onConfirmSelection = {
-                    if (state.selectedEntryIds.isNotEmpty()) {
-                        runtime.commands.execute(PaneCommand.OPEN_SELECTION)
-                    } else {
-                        val firstMatch = readyEntries?.firstOrNull()
-                        if (firstMatch != null) {
-                            runtime.dispatch(PaneIntent.OpenEntry(firstMatch))
-                        }
-                    }
+                    confirmFilterSelection(runtime)
                 },
                 onClose = runtime::closeFilterInput,
                 modifier = Modifier.fillMaxWidth(),
@@ -309,6 +308,34 @@ private fun PaneFilterBar(runtime: PaneSurfaceRuntime) {
         }
         Divider(Orientation.Horizontal, modifier = Modifier.fillMaxWidth().height(1.dp))
     }
+}
+
+/**
+ * 在面板快速筛选框内按回车时打开当前焦点匹配项；若无选中、多选或旧选区已被滤除，自动回退打开首个可见匹配项。
+ *
+ * @param runtime 面板运行时控制器。
+ */
+private fun confirmFilterSelection(runtime: PaneSurfaceRuntime) {
+    val state = runtime.state
+    val computer = state.entriesState as? ComputerEntriesState
+    if (computer != null) {
+        val visibleIds = computer.selectableIds()
+        if (visibleIds.isEmpty()) return
+        val targetId = state.selectionFocusId?.takeIf { it in visibleIds && it in state.selectedEntryIds }
+            ?: visibleIds.firstOrNull { it in state.selectedEntryIds }
+            ?: visibleIds.first()
+        runtime.dispatch(PaneIntent.SelectEntry(targetId))
+        runtime.dispatch(PaneIntent.OpenSelectedEntry)
+        return
+    }
+    val visibleEntries = state.visibleEntriesIncludingExpanded()
+    if (visibleEntries.isEmpty()) return
+    val targetEntry = visibleEntries.firstOrNull { entry ->
+        entry.id == state.selectionFocusId && entry.id in state.selectedEntryIds
+    } ?: visibleEntries.firstOrNull { entry ->
+        entry.id in state.selectedEntryIds
+    } ?: visibleEntries.first()
+    runtime.dispatch(PaneIntent.OpenEntry(targetEntry))
 }
 
 /**

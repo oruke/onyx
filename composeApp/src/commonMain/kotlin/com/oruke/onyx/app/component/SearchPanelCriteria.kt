@@ -11,6 +11,7 @@ package com.oruke.onyx.app.component
 internal fun SearchPanelState.hasExecutableSearchCriteria(): Boolean {
     return query.isNotBlank() ||
         filters.types.size == 1 ||
+        filters.modifiedPreset != null ||
         filters.modifiedSinceEpochMillis != null ||
         filters.minSizeBytes != null ||
         filters.maxSizeBytes != null

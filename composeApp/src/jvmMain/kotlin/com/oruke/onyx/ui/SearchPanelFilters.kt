@@ -19,9 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.SearchFilterFileType
 import com.oruke.onyx.app.component.SearchFilters
+import com.oruke.onyx.app.component.SearchModifiedPreset
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import java.time.Instant
-import java.time.temporal.ChronoUnit
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_reset
 import onyx.composeapp.generated.resources.search_filter_content
@@ -62,8 +61,11 @@ internal fun SearchAdvancedFilters(
     ) {
         SearchFilterPill(stringResource(Res.string.search_filter_type), filters.types.isNotEmpty(),
             activeFilterMenu == SearchFilterMenu.TYPE) { onToggleFilterMenu(SearchFilterMenu.TYPE) }
-        SearchFilterPill(stringResource(Res.string.search_filter_modified), filters.modifiedSinceEpochMillis != null,
-            activeFilterMenu == SearchFilterMenu.MODIFIED) { onToggleFilterMenu(SearchFilterMenu.MODIFIED) }
+        SearchFilterPill(
+            stringResource(Res.string.search_filter_modified),
+            filters.modifiedPreset != null || filters.modifiedSinceEpochMillis != null,
+            activeFilterMenu == SearchFilterMenu.MODIFIED,
+        ) { onToggleFilterMenu(SearchFilterMenu.MODIFIED) }
         SearchFilterPill(stringResource(Res.string.search_filter_size),
             filters.minSizeBytes != null || filters.maxSizeBytes != null,
             activeFilterMenu == SearchFilterMenu.SIZE) { onToggleFilterMenu(SearchFilterMenu.SIZE) }
@@ -216,10 +218,11 @@ private fun SearchModifiedFilterOptions(
     onUpdateFilters: (SearchFilters) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
-    val now = Instant.now()
-    val todayStart = now.truncatedTo(ChronoUnit.DAYS).toEpochMilli()
-    val weekStart = now.minus(7, ChronoUnit.DAYS).toEpochMilli()
-    val monthStart = now.minus(30, ChronoUnit.DAYS).toEpochMilli()
+    val hasModifiedFilter = filters.modifiedPreset != null || filters.modifiedSinceEpochMillis != null
+    fun selectPreset(preset: SearchModifiedPreset) {
+        val nextPreset = if (filters.modifiedPreset == preset) null else preset
+        onUpdateFilters(filters.copy(modifiedPreset = nextPreset, modifiedSinceEpochMillis = null))
+    }
     Text(
         text = stringResource(Res.string.search_filter_modified) + ":",
         fontSize = 11.sp,
@@ -227,24 +230,24 @@ private fun SearchModifiedFilterOptions(
     )
     SearchChipOption(
         label = stringResource(Res.string.search_filter_today),
-        selected = filters.modifiedSinceEpochMillis == todayStart,
-        onClick = { onUpdateFilters(filters.copy(modifiedSinceEpochMillis = todayStart)) },
+        selected = filters.modifiedPreset == SearchModifiedPreset.TODAY,
+        onClick = { selectPreset(SearchModifiedPreset.TODAY) },
     )
     SearchChipOption(
         label = stringResource(Res.string.search_filter_week),
-        selected = filters.modifiedSinceEpochMillis == weekStart,
-        onClick = { onUpdateFilters(filters.copy(modifiedSinceEpochMillis = weekStart)) },
+        selected = filters.modifiedPreset == SearchModifiedPreset.LAST_7_DAYS,
+        onClick = { selectPreset(SearchModifiedPreset.LAST_7_DAYS) },
     )
     SearchChipOption(
         label = stringResource(Res.string.search_filter_month),
-        selected = filters.modifiedSinceEpochMillis == monthStart,
-        onClick = { onUpdateFilters(filters.copy(modifiedSinceEpochMillis = monthStart)) },
+        selected = filters.modifiedPreset == SearchModifiedPreset.LAST_30_DAYS,
+        onClick = { selectPreset(SearchModifiedPreset.LAST_30_DAYS) },
     )
-    if (filters.modifiedSinceEpochMillis != null) {
+    if (hasModifiedFilter) {
         SearchChipOption(
             label = stringResource(Res.string.action_reset),
             selected = false,
-            onClick = { onUpdateFilters(filters.copy(modifiedSinceEpochMillis = null)) },
+            onClick = { onUpdateFilters(filters.copy(modifiedPreset = null, modifiedSinceEpochMillis = null)) },
         )
     }
 }

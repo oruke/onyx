@@ -20,7 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -92,30 +94,13 @@ private fun DestructiveConfirmationDialog(
                 .focusRequester(focusRequester)
                 .focusable()
                 .onPreviewKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    when (event.key) {
-                        Key.Escape -> {
-                            onDismiss()
-                            true
-                        }
-
-                        Key.Enter -> {
-                            if (focusedButton == 1) onConfirm() else onDismiss()
-                            true
-                        }
-
-                        Key.DirectionLeft, Key.Tab -> {
-                            focusedButton = (focusedButton - 1).coerceAtLeast(0)
-                            true
-                        }
-
-                        Key.DirectionRight -> {
-                            focusedButton = (focusedButton + 1).coerceAtMost(1)
-                            true
-                        }
-
-                        else -> false
-                    }
+                    handleDestructiveDialogKeyEvent(
+                        event = event,
+                        focusedButton = focusedButton,
+                        onFocusChange = { focusedButton = it },
+                        onConfirm = onConfirm,
+                        onDismiss = onDismiss,
+                    )
                 },
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -271,37 +256,14 @@ internal fun ConflictResolutionDialog(
                 .focusRequester(focusRequester)
                 .focusable()
                 .onPreviewKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    when (event.key) {
-                        Key.Escape -> {
-                            onDismiss()
-                            true
-                        }
-
-                        Key.Enter -> {
-                            when (focusedButton) {
-                                0 -> onDismiss()
-                                1 -> onResolve(TransferConflictStrategy.SKIP, applyToAll)
-                                2 -> onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll)
-                                LAST_CONFLICT_ACTION_INDEX -> {
-                                    onResolve(TransferConflictStrategy.OVERWRITE, applyToAll)
-                                }
-                            }
-                            true
-                        }
-
-                        Key.DirectionLeft -> {
-                            focusedButton = (focusedButton - 1).coerceAtLeast(0)
-                            true
-                        }
-
-                        Key.DirectionRight, Key.Tab -> {
-                            focusedButton = (focusedButton + 1).coerceAtMost(LAST_CONFLICT_ACTION_INDEX)
-                            true
-                        }
-
-                        else -> false
-                    }
+                    handleConflictDialogKeyEvent(
+                        event = event,
+                        focusedButton = focusedButton,
+                        applyToAll = applyToAll,
+                        onFocusChange = { focusedButton = it },
+                        onResolve = onResolve,
+                        onDismiss = onDismiss,
+                    )
                 },
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -383,4 +345,95 @@ private fun ConflictResolutionActions(
     }
 }
 
+/**
+ * 处理破坏性确认对话框的键盘事件：`Tab` 在取消（0）与确认（1）之间循环切换，支持主/小键盘回车与 Esc。
+ */
+internal fun handleDestructiveDialogKeyEvent(
+    event: KeyEvent,
+    focusedButton: Int,
+    onFocusChange: (Int) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    return when (event.key) {
+        Key.Escape -> {
+            onDismiss()
+            true
+        }
+
+        Key.Enter, Key.NumPadEnter -> {
+            if (focusedButton == 1) onConfirm() else onDismiss()
+            true
+        }
+
+        Key.Tab -> {
+            onFocusChange((focusedButton + 1) % DESTRUCTIVE_ACTION_COUNT)
+            true
+        }
+
+        Key.DirectionLeft -> {
+            onFocusChange((focusedButton - 1).coerceAtLeast(0))
+            true
+        }
+
+        Key.DirectionRight -> {
+            onFocusChange((focusedButton + 1).coerceAtMost(DESTRUCTIVE_ACTION_COUNT - 1))
+            true
+        }
+
+        else -> false
+    }
+}
+
+/**
+ * 处理文件冲突解决对话框的键盘事件：`Tab` / `Shift+Tab` 在四个动作间循环切换，支持主/小键盘回车与 Esc。
+ */
+internal fun handleConflictDialogKeyEvent(
+    event: KeyEvent,
+    focusedButton: Int,
+    applyToAll: Boolean,
+    onFocusChange: (Int) -> Unit,
+    onResolve: (TransferConflictStrategy, Boolean) -> Unit,
+    onDismiss: () -> Unit,
+): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    return when (event.key) {
+        Key.Escape -> {
+            onDismiss()
+            true
+        }
+
+        Key.Enter, Key.NumPadEnter -> {
+            when (focusedButton) {
+                0 -> onDismiss()
+                1 -> onResolve(TransferConflictStrategy.SKIP, applyToAll)
+                2 -> onResolve(TransferConflictStrategy.KEEP_BOTH, applyToAll)
+                LAST_CONFLICT_ACTION_INDEX -> onResolve(TransferConflictStrategy.OVERWRITE, applyToAll)
+            }
+            true
+        }
+
+        Key.Tab -> {
+            val total = LAST_CONFLICT_ACTION_INDEX + 1
+            val step = if (event.isShiftPressed) total - 1 else 1
+            onFocusChange((focusedButton + step) % total)
+            true
+        }
+
+        Key.DirectionLeft -> {
+            onFocusChange((focusedButton - 1).coerceAtLeast(0))
+            true
+        }
+
+        Key.DirectionRight -> {
+            onFocusChange((focusedButton + 1).coerceAtMost(LAST_CONFLICT_ACTION_INDEX))
+            true
+        }
+
+        else -> false
+    }
+}
+
+private const val DESTRUCTIVE_ACTION_COUNT = 2
 private const val LAST_CONFLICT_ACTION_INDEX = 3

@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -24,6 +26,7 @@ import com.oruke.onyx.app.component.ComputerEntriesState
 import com.oruke.onyx.app.component.deviceSections
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import kotlinx.coroutines.flow.distinctUntilChanged
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.label_column_name
 import onyx.composeapp.generated.resources.label_computer_places
@@ -50,6 +53,17 @@ internal fun ComputerDetails(
     val layoutModel = model.forComputerLayout(state)
     val horizontal = rememberPaneHorizontalScroll(layoutModel)
     val scroll = rememberPaneListViewport(layoutModel, actions, computerLayoutKeys(state, true), false, horizontal)
+    LaunchedEffect(scroll) {
+        snapshotFlow {
+            val layout = scroll.layoutInfo
+            layout.visibleItemsInfo.count { info ->
+                info.offset >= layout.viewportStartOffset &&
+                    info.offset + info.size <= layout.viewportEndOffset
+            }.coerceAtLeast(1)
+        }.distinctUntilChanged().collect { pageStep ->
+            actions.onViewportMetricsChanged(1, pageStep)
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val columns = ComputerDetailsColumns(
             totalVisible = maxWidth >= appearance.storageCompactWidth + appearance.computer.totalColumnWidth,

@@ -102,6 +102,9 @@ private fun DefaultPaneComponent.dispatchSelectionIntent(intent: PaneIntent): Bo
         is PaneIntent.SelectEntry -> true.also { selectEntry(intent.entryId, intent.additive, intent.range) }
         is PaneIntent.SelectEntries -> true.also { selectEntries(intent.entryIds) }
         is PaneIntent.MoveSelection -> true.also { moveSelection(intent.offset, intent.extendSelection) }
+        is PaneIntent.MoveSelectionToBoundary -> true.also {
+            moveSelectionToBoundary(intent.toEnd, intent.extendSelection)
+        }
         PaneIntent.OpenSelectedEntry -> true.also { openSelectedEntry() }
         PaneIntent.SelectAll -> true.also { selectAll() }
         PaneIntent.ClearSelection -> true.also { clearSelection() }

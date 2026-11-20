@@ -30,16 +30,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +61,7 @@ import org.jetbrains.jewel.ui.component.Text
 
 /**
  * 渲染可筛选的统一命令面板，用户命令与内置命令共用执行入口。
+ *
  * @param items 当前可用的命令及启用状态。
  * @param onExecute 执行当前选中的统一命令目标。
  * @param onClose 关闭命令面板的事件。
@@ -88,11 +93,30 @@ internal fun CommandPalettePopup(
         }
     }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
     LaunchedEffect(filteredItems.size, query) {
         selectedIndex = selectedIndex.coerceIn(0, (filteredItems.size - 1).coerceAtLeast(0))
+    }
+    LaunchedEffect(selectedIndex, filteredItems.size) {
+        if (filteredItems.isEmpty() || selectedIndex !in filteredItems.indices) return@LaunchedEffect
+        val layout = listState.layoutInfo
+        val visibleItems = layout.visibleItemsInfo
+        val isFullyVisible = visibleItems.any { info ->
+            info.index == selectedIndex &&
+                info.offset >= layout.viewportStartOffset &&
+                info.offset + info.size <= layout.viewportEndOffset
+        }
+        if (!isFullyVisible) {
+            val firstVisibleIndex = visibleItems.firstOrNull()?.index ?: 0
+            if (visibleItems.isEmpty() || selectedIndex <= firstVisibleIndex) {
+                listState.scrollToItem(selectedIndex)
+            } else {
+                val fullyVisibleCount = visibleItems.count { info ->
+                    info.offset >= layout.viewportStartOffset &&
+                        info.offset + info.size <= layout.viewportEndOffset
+                }.coerceAtLeast(1)
+                listState.scrollToItem((selectedIndex - fullyVisibleCount + 1).coerceAtLeast(0))
+            }
+        }
     }
 
     Popup(
@@ -100,6 +124,9 @@ internal fun CommandPalettePopup(
         onDismissRequest = onClose,
         properties = PopupProperties(focusable = true),
     ) {
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+        }
         Column(
             modifier = Modifier
                 .width(430.dp)
@@ -116,7 +143,7 @@ internal fun CommandPalettePopup(
                             true
                         }
 
-                        Key.Enter -> {
+                        Key.Enter, Key.NumPadEnter -> {
                             executeSelected()
                             true
                         }
@@ -129,6 +156,45 @@ internal fun CommandPalettePopup(
                         Key.DirectionUp -> {
                             selectedIndex = (selectedIndex - 1).coerceAtLeast(0)
                             true
+                        }
+
+                        Key.PageDown -> {
+                            selectedIndex = (selectedIndex + COMMAND_PALETTE_PAGE_STEP)
+                                .coerceAtMost((filteredItems.size - 1).coerceAtLeast(0))
+                            true
+                        }
+
+                        Key.PageUp -> {
+                            selectedIndex = (selectedIndex - COMMAND_PALETTE_PAGE_STEP).coerceAtLeast(0)
+                            true
+                        }
+
+                        Key.MoveHome -> {
+                            val primaryOnly = (event.isCtrlPressed || event.isMetaPressed) &&
+                                !event.isShiftPressed && !event.isAltPressed
+                            val unmodifiedOnEmptyQuery = query.isEmpty() &&
+                                !event.isCtrlPressed && !event.isMetaPressed &&
+                                !event.isShiftPressed && !event.isAltPressed
+                            if (primaryOnly || unmodifiedOnEmptyQuery) {
+                                selectedIndex = 0
+                                true
+                            } else {
+                                false
+                            }
+                        }
+
+                        Key.MoveEnd -> {
+                            val primaryOnly = (event.isCtrlPressed || event.isMetaPressed) &&
+                                !event.isShiftPressed && !event.isAltPressed
+                            val unmodifiedOnEmptyQuery = query.isEmpty() &&
+                                !event.isCtrlPressed && !event.isMetaPressed &&
+                                !event.isShiftPressed && !event.isAltPressed
+                            if (primaryOnly || unmodifiedOnEmptyQuery) {
+                                selectedIndex = (filteredItems.size - 1).coerceAtLeast(0)
+                                true
+                            } else {
+                                false
+                            }
                         }
 
                         else -> false
@@ -232,7 +298,7 @@ private fun CommandPaletteResults(
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                modifier = Modifier.fillMaxWidth().fillMaxHeight().testTag("command-palette-list"),
             ) {
                 itemsIndexed(items) { index, item ->
                     CommandPaletteRow(
@@ -318,3 +384,6 @@ private fun CommandPaletteRow(
         }
     }
 }
+
+/** 命令面板 PageUp / PageDown 单次翻页步长。 */
+private const val COMMAND_PALETTE_PAGE_STEP = 8

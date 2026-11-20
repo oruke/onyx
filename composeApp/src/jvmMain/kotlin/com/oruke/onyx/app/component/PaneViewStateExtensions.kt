@@ -24,8 +24,14 @@ internal fun PaneTabState.withViewModeState(mode: ViewMode): PaneTabState {
     }
 }
 
+/**
+ * 更新快速筛选文本，保留用户正在输入的中间/尾随空格（匹配阶段再按需忽略首尾空白）。
+ *
+ * @param query 用户输入的最新筛选文本。
+ * @return 更新过滤词后的标签状态。
+ */
 internal fun PaneTabState.withFilterQueryState(query: String): PaneTabState {
-    return withTabState { current -> current.copy(filterQuery = query.trim()) }
+    return withTabState { current -> current.copy(filterQuery = query) }
 }
 
 internal fun PaneTabState.withToggledSortState(column: DetailsColumn): PaneTabState {

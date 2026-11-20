@@ -3,6 +3,7 @@ package com.oruke.onyx.ui
 import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,13 +16,17 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.core.model.PaneInlineEditMode
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /**
  * 显示画廊网格、滚动条和一次性滚动定位。
@@ -48,7 +53,24 @@ internal fun GalleryEntriesGrid(
     val entryIds = remember(ready.entries) { ready.entries.map { it.id } }
     val gridState = rememberPaneGridViewport(model, actions, entryIds, createInlineEntry)
     val canScrollVertically = gridState.canScrollForward || gridState.canScrollBackward
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val fallbackColumns = ((maxWidth - 8.dp) / model.galleryItemSizeDp.dp).toInt().coerceAtLeast(1)
+        LaunchedEffect(gridState, fallbackColumns) {
+            snapshotFlow {
+                val layout = gridState.layoutInfo
+                val measuredColumns = layout.visibleItemsInfo
+                    .maxOfOrNull { info -> info.column + 1 }
+                    ?.coerceAtLeast(1)
+                    ?: fallbackColumns
+                val fullyVisible = layout.visibleItemsInfo.count { info ->
+                    info.offset.y >= layout.viewportStartOffset &&
+                        info.offset.y + info.size.height <= layout.viewportEndOffset
+                }
+                measuredColumns to fullyVisible.coerceAtLeast(measuredColumns)
+            }.distinctUntilChanged().collect { (columns, pageStep) ->
+                actions.onViewportMetricsChanged(columns, pageStep)
+            }
+        }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(model.galleryItemSizeDp.dp),
             state = gridState,
@@ -90,6 +112,7 @@ internal fun GalleryEntriesGrid(
  * @param selection 框选状态。
  * @param horizontalScrollState 横向滚动状态。
  * @param dragActions 子条目拖拽回调。
+ * @param minRowWidth 行内容需要撑满的最小视口宽度。
  */
 @Composable
 internal fun DetailsEntriesList(
@@ -99,6 +122,7 @@ internal fun DetailsEntriesList(
     selection: PaneRubberBandState,
     horizontalScrollState: androidx.compose.foundation.ScrollState,
     dragActions: PaneEntriesChildDragActions,
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     val flattenedEntries = remember(
         ready.entries,
@@ -113,6 +137,18 @@ internal fun DetailsEntriesList(
     val listState = rememberPaneListViewport(model, actions, entryIds, createInlineEntry, horizontalScrollState)
     val canScrollHorizontally = horizontalScrollState.canScrollForward || horizontalScrollState.canScrollBackward
     val canScrollVertically = listState.canScrollForward || listState.canScrollBackward
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val layout = listState.layoutInfo
+            val fullyVisible = layout.visibleItemsInfo.count { info ->
+                info.offset >= layout.viewportStartOffset &&
+                    info.offset + info.size <= layout.viewportEndOffset
+            }
+            fullyVisible.coerceAtLeast(1)
+        }.distinctUntilChanged().collect { pageStep ->
+            actions.onViewportMetricsChanged(1, pageStep)
+        }
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
@@ -124,10 +160,10 @@ internal fun DetailsEntriesList(
             userScrollEnabled = !model.contextMenuVisible,
         ) {
             if (createInlineEntry) {
-                item(key = "inline-create") { DetailsCreateEntry(model, actions, horizontalScrollState) }
+                item(key = "inline-create") { DetailsCreateEntry(model, actions, horizontalScrollState, minRowWidth) }
             }
             itemsIndexed(flattenedEntries, key = { _, item -> item.entry.id }) { index, item ->
-                DetailsFileEntry(model, actions, dragActions, selection, horizontalScrollState, index, item)
+                DetailsFileEntry(model, actions, dragActions, selection, horizontalScrollState, index, item, minRowWidth)
             }
         }
         if (canScrollHorizontally) {

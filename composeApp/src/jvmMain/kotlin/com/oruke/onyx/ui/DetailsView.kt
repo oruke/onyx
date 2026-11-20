@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -237,6 +239,8 @@ internal data class PaneEntriesActions(
     val onNavigateUp: () -> Unit = {},
     /** 上报视口锚点及是否正在用户滚动。 */
     val onViewportChanged: (com.oruke.onyx.app.component.PaneViewportAnchor, Boolean) -> Unit = { _, _ -> },
+    /** 上报当前视口网格列数及单页步长，用于 2D 方向键与 PageUp/PageDown 导航。 */
+    val onViewportMetricsChanged: (columns: Int, pageStep: Int) -> Unit = { _, _ -> },
     /** 打开设备概览中的真实目录入口。 */
     val onOpenLocation: (String) -> Unit = {},
     /** 通过面板组件执行设备打开、挂载或系统动作。 */
@@ -251,8 +255,13 @@ internal data class PaneEntriesChildDragActions(
     val onStartFileDrag: (PaneId, FileTransferOperation) -> Unit,
     /** 结束文件拖拽。 */
     val onFileDragEnd: (IntOffset?) -> Unit,
-    /** 从未选中条目开始框选。 */
-    val onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit,
+    /** 从条目或行右侧空白区开始框选（同步传入起点和当前点的窗口坐标，确保首帧即显示框选矩形）。 */
+    val onStartRubberBand: (
+        String,
+        androidx.compose.ui.geometry.Offset,
+        androidx.compose.ui.geometry.Offset,
+        Boolean,
+    ) -> Unit,
 )
 
 /** 保存文件内容区域框选、条目坐标与文件拖拽互斥状态。 */
@@ -381,6 +390,8 @@ internal fun InlineEditEntryRow(
     onDismissContextMenu: () -> Unit,
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
     selectNameWithoutExtension: Boolean = true,
+    hiddenColumns: Set<DetailsColumn> = emptySet(),
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     val focusRequester = remember { FocusRequester() }
     var hasFocused by remember { mutableStateOf(false) }
@@ -401,7 +412,9 @@ internal fun InlineEditEntryRow(
 
     Row(
         modifier = Modifier
+            .fillMaxWidth()
             .horizontalScroll(scrollState)
+            .let { base -> if (minRowWidth != Dp.Unspecified) base.widthIn(min = minRowWidth) else base }
             .background(rowBackground)
             .padding(horizontal = 8.dp, vertical = 1.dp)
             .height(IntrinsicSize.Min)
@@ -413,7 +426,7 @@ internal fun InlineEditEntryRow(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
-                    Key.Enter -> {
+                    Key.Enter, Key.NumPadEnter -> {
                         onConfirmInlineEdit()
                         true
                     }
@@ -429,7 +442,7 @@ internal fun InlineEditEntryRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(DetailsColumnGap),
     ) {
-        visibleDetailsColumns(columns).forEach { column ->
+        visibleDetailsColumns(columns, hiddenColumns).forEach { column ->
             val colWidth = detailsColumnWidth(columnWidths, column).dp
             when (column) {
                 DetailsColumn.NAME -> {
@@ -495,6 +508,7 @@ internal fun DetailsHeader(
     onToggleColumnVisibility: (DetailsColumn) -> Unit,
     onActivate: () -> Unit = {},
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     val density = LocalDensity.current
     val palette = LocalOnyxPalette.current
@@ -539,8 +553,10 @@ internal fun DetailsHeader(
     ) {
         Row(
             modifier = Modifier
+                .fillMaxWidth()
                 .fillMaxHeight()
                 .horizontalScroll(scrollState)
+                .let { base -> if (minRowWidth != Dp.Unspecified) base.widthIn(min = minRowWidth) else base }
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -780,6 +796,8 @@ internal data class EntryRowState(
     val columns: List<DetailsColumn>,
     /** 各列宽度。 */
     val columnWidths: Map<DetailsColumn, Float>,
+    /** 当前隐藏的详情列集合，确保行单元格与表头严格同步。 */
+    val hiddenColumns: Set<DetailsColumn> = emptySet(),
     /** 当前文件条目。 */
     val entry: VFile,
     /** 是否显示斑马纹。 */
@@ -832,8 +850,13 @@ internal data class EntryRowActions(
     val onShowContextMenu: (String, Boolean, IntOffset) -> Unit,
     /** 关闭右键菜单。 */
     val onDismissContextMenu: () -> Unit,
-    /** 从条目区域开始框选。 */
-    val onStartRubberBand: (String, androidx.compose.ui.geometry.Offset, Boolean) -> Unit = { _, _, _ -> },
+    /** 从条目区域或行右侧延伸空白区开始框选。 */
+    val onStartRubberBand: (
+        String,
+        androidx.compose.ui.geometry.Offset,
+        androidx.compose.ui.geometry.Offset,
+        Boolean,
+    ) -> Unit = { _, _, _, _ -> },
     /** 切换目录树形展开状态。 */
     val onToggleInlineExpand: (() -> Unit)? = null,
 )
@@ -939,30 +962,43 @@ private fun ReadyPaneEntries(
     val doubleClickSlopPx = with(LocalDensity.current) { ENTRY_DOUBLE_CLICK_SLOP_DP.dp.toPx() }
     val childDragActions = paneChildDragActions(model, actions, selection)
     val horizontalScrollState = rememberPaneHorizontalScroll(model)
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (model.viewMode == ViewMode.DETAILS) {
-            DetailsHeader(
-                columns = model.columns,
-                columnWidths = model.columnWeights,
-                hiddenColumns = model.hiddenColumns,
-                sort = model.sort,
-                onToggleSort = actions.onToggleSort,
-                onResizeColumn = actions.onResizeColumn,
-                onToggleColumnVisibility = actions.onToggleColumnVisibility,
-                onActivate = actions.onActivate,
-                scrollState = horizontalScrollState,
-            )
-        }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clipToBounds()
-                .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp, doubleClickSlopPx),
-        ) {
-            Box(modifier = Modifier.fillMaxSize().paneRubberBandTracker(actions, selection))
-            PaneEntriesViewport(model, actions, thumbnails, ready, selection, horizontalScrollState, childDragActions)
-            PaneRubberBandOverlay(selection, model.paneId)
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val viewportWidth = maxWidth
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (model.viewMode == ViewMode.DETAILS) {
+                DetailsHeader(
+                    columns = model.columns,
+                    columnWidths = model.columnWeights,
+                    hiddenColumns = model.hiddenColumns,
+                    sort = model.sort,
+                    onToggleSort = actions.onToggleSort,
+                    onResizeColumn = actions.onResizeColumn,
+                    onToggleColumnVisibility = actions.onToggleColumnVisibility,
+                    onActivate = actions.onActivate,
+                    scrollState = horizontalScrollState,
+                    minRowWidth = viewportWidth,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clipToBounds()
+                    .paneSelectionInteractions(model, actions, selection, doubleClickBlankNavigateUp, doubleClickSlopPx),
+            ) {
+                Box(modifier = Modifier.fillMaxSize().paneRubberBandTracker(actions, selection))
+                PaneEntriesViewport(
+                    model = model,
+                    actions = actions,
+                    thumbnails = thumbnails,
+                    ready = ready,
+                    selection = selection,
+                    horizontalScrollState = horizontalScrollState,
+                    dragActions = childDragActions,
+                    minRowWidth = viewportWidth,
+                )
+                PaneRubberBandOverlay(selection, model.paneId)
+            }
         }
     }
 }
@@ -990,20 +1026,21 @@ private fun paneChildDragActions(
         selection.fileDragging = false
         actions.onFileDragEnd(position)
     },
-    onStartRubberBand = { _, windowPosition, additive ->
+    onStartRubberBand = { _, startWindowPosition, currentWindowPosition, additive ->
         val container = selection.containerCoordinates
         if (container != null) {
-            val start = container.windowToLocal(windowPosition)
+            val start = container.windowToLocal(startWindowPosition)
+            val current = container.windowToLocal(currentWindowPosition)
             selection.pendingOrigin = null
             selection.blankClickController.reset()
             selection.active = true
             selection.start = start
-            selection.end = start
+            selection.end = current
             selection.additive = additive
             selection.baseSelection = if (additive) model.selectedEntryIds else emptySet()
             actions.onActivate()
             actions.onDismissContextMenu()
-            if (!additive) actions.onSelectEntries(emptySet())
+            actions.onSelectEntries(selection.baseSelection + selection.hitEntryIds(current))
         }
     },
 )
@@ -1028,9 +1065,10 @@ private fun PaneEntriesViewport(
     selection: PaneRubberBandState,
     horizontalScrollState: androidx.compose.foundation.ScrollState,
     dragActions: PaneEntriesChildDragActions,
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     if (model.viewMode == ViewMode.DETAILS) {
-        DetailsEntriesList(model, actions, ready, selection, horizontalScrollState, dragActions)
+        DetailsEntriesList(model, actions, ready, selection, horizontalScrollState, dragActions, minRowWidth)
     } else {
         GalleryEntriesGrid(model, actions, thumbnails, ready, selection, dragActions)
     }
@@ -1153,6 +1191,7 @@ internal fun DetailsCreateEntry(
     model: PaneEntriesViewModel,
     actions: PaneEntriesActions,
     scrollState: androidx.compose.foundation.ScrollState,
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     InlineEditEntryRow(
         columns = model.columns,
@@ -1166,6 +1205,8 @@ internal fun DetailsCreateEntry(
         selected = false,
         zebra = false,
         selectNameWithoutExtension = model.inlineEditState?.mode != PaneInlineEditMode.CREATE_DIRECTORY,
+        hiddenColumns = model.hiddenColumns,
+        minRowWidth = minRowWidth,
         onUpdateInlineEditDraft = actions.onUpdateInlineEditDraft,
         onConfirmInlineEdit = actions.onConfirmInlineEdit,
         onCancelInlineEdit = actions.onCancelInlineEdit,
@@ -1184,6 +1225,7 @@ internal fun DetailsCreateEntry(
  * @param scrollState 横向滚动状态。
  * @param index 扁平列表索引。
  * @param item 当前扁平树节点。
+ * @param minRowWidth 行内容需要撑满的最小视口宽度。
  */
 @Composable
 internal fun DetailsFileEntry(
@@ -1194,11 +1236,12 @@ internal fun DetailsFileEntry(
     scrollState: androidx.compose.foundation.ScrollState,
     index: Int,
     item: FlattenedEntry,
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     val entry = item.entry
     val editing = model.inlineEditState?.mode == PaneInlineEditMode.RENAME &&
             model.inlineEditState.targetEntryId == entry.id
-    Box(modifier = Modifier.onGloballyPositioned { selection.itemCoordinates[entry.id] = it }) {
+    Box(modifier = Modifier.fillMaxWidth().onGloballyPositioned { selection.itemCoordinates[entry.id] = it }) {
         if (editing) {
             InlineEditEntryRow(
                 columns = model.columns,
@@ -1212,6 +1255,8 @@ internal fun DetailsFileEntry(
                 selected = entry.id in model.selectedEntryIds,
                 zebra = index % 2 == 1,
                 selectNameWithoutExtension = entry.kind != VFileKind.DIRECTORY,
+                hiddenColumns = model.hiddenColumns,
+                minRowWidth = minRowWidth,
                 onUpdateInlineEditDraft = actions.onUpdateInlineEditDraft,
                 onConfirmInlineEdit = actions.onConfirmInlineEdit,
                 onCancelInlineEdit = actions.onCancelInlineEdit,
@@ -1219,7 +1264,7 @@ internal fun DetailsFileEntry(
                 scrollState = scrollState,
             )
         } else {
-            DetailsReadyEntryRow(model, actions, dragActions, scrollState, index, item)
+            DetailsReadyEntryRow(model, actions, dragActions, scrollState, index, item, minRowWidth)
         }
     }
 }
@@ -1233,6 +1278,7 @@ internal fun DetailsFileEntry(
  * @param scrollState 横向滚动状态。
  * @param index 扁平列表索引。
  * @param item 当前扁平树节点。
+ * @param minRowWidth 行内容需要撑满的最小视口宽度。
  */
 @Composable
 private fun DetailsReadyEntryRow(
@@ -1242,12 +1288,14 @@ private fun DetailsReadyEntryRow(
     scrollState: androidx.compose.foundation.ScrollState,
     index: Int,
     item: FlattenedEntry,
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     val entry = item.entry
     EntryRow(
         state = EntryRowState(
             columns = model.columns,
             columnWidths = model.columnWeights,
+            hiddenColumns = model.hiddenColumns,
             entry = entry,
             zebra = index % 2 == 1,
             selected = entry.id in model.selectedEntryIds,
@@ -1277,6 +1325,7 @@ private fun DetailsReadyEntryRow(
             onToggleInlineExpand = { actions.onToggleInlineExpand(entry.location) }.takeIf { item.isExpandable },
         ),
         scrollState = scrollState,
+        minRowWidth = minRowWidth,
     )
 }
 
@@ -1507,6 +1556,7 @@ internal fun EntryRow(
     state: EntryRowState,
     actions: EntryRowActions,
     scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(),
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     val density = LocalDensity.current
     val interaction = remember(state.entry.id) { EntryRowInteractionState() }
@@ -1521,6 +1571,14 @@ internal fun EntryRow(
     val doubleClickSlopPxState = rememberUpdatedState(
         with(density) { ENTRY_DOUBLE_CLICK_SLOP_DP.dp.toPx() },
     )
+    val contentEndPxState = rememberUpdatedState(
+        with(density) {
+            val visibleColumns = visibleDetailsColumns(state.columns, state.hiddenColumns)
+            val columnsWidth = visibleColumns.sumOf { col -> detailsColumnWidth(state.columnWidths, col).toDouble() }.dp
+            val gapsWidth = DetailsColumnGap * (visibleColumns.size - 1).coerceAtLeast(0)
+            (8.dp + columnsWidth + gapsWidth).toPx()
+        },
+    )
     val coroutineScope = rememberCoroutineScope()
     val rowBackground = entryRowBackground(state, isHovered)
 
@@ -1532,7 +1590,9 @@ internal fun EntryRow(
 
     Row(
         modifier = Modifier
+            .fillMaxWidth()
             .horizontalScroll(scrollState)
+            .let { base -> if (minRowWidth != Dp.Unspecified) base.widthIn(min = minRowWidth) else base }
             .hoverable(hoverInteractionSource)
             .onGloballyPositioned { interaction.rowCoordinates = it }
             .entryRowPointerInteractions(
@@ -1544,6 +1604,7 @@ internal fun EntryRow(
                 singleClickToOpenState = singleClickToOpenState,
                 dragSlopSquaredState = dragSlopSquaredState,
                 doubleClickSlopPxState = doubleClickSlopPxState,
+                contentEndPxState = contentEndPxState,
                 coroutineScope = coroutineScope,
             )
             .background(rowBackground)
@@ -1589,6 +1650,7 @@ private fun Modifier.entryRowPointerInteractions(
     singleClickToOpenState: State<Boolean>,
     dragSlopSquaredState: State<Float>,
     doubleClickSlopPxState: State<Float>,
+    contentEndPxState: State<Float>,
     coroutineScope: CoroutineScope,
 ): Modifier = pointerInput(stateKey, paneId) {
     awaitPointerEventScope {
@@ -1612,6 +1674,7 @@ private fun Modifier.entryRowPointerInteractions(
                     selectedAtPress = currentState.value.selected,
                     singleClickToOpenState = singleClickToOpenState,
                     dragSlopSquaredState = dragSlopSquaredState,
+                    contentEndPxState = contentEndPxState,
                     coroutineScope = coroutineScope,
                 )
             }
@@ -1715,11 +1778,13 @@ private suspend fun AwaitPointerEventScope.trackEntryRowPointer(
     selectedAtPress: Boolean,
     singleClickToOpenState: State<Boolean>,
     dragSlopSquaredState: State<Float>,
+    contentEndPxState: State<Float>,
     coroutineScope: CoroutineScope,
 ) {
     var fileDragStarted = false
     var tracking = true
     val inNameArea = interaction.isInNameArea(startPosition)
+    val inTrailingBlank = startPosition.x > contentEndPxState.value
     while (tracking) {
         val event = awaitPointerEvent()
         if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
@@ -1752,6 +1817,7 @@ private suspend fun AwaitPointerEventScope.trackEntryRowPointer(
                 interaction = interaction,
                 selectedAtPress = selectedAtPress,
                 inNameArea = inNameArea,
+                inTrailingBlank = inTrailingBlank,
                 fileDragStarted = fileDragStarted,
                 dragSlopSquared = dragSlopSquaredState.value,
             )
@@ -1781,6 +1847,7 @@ private fun updateEntryRowPointer(
     interaction: EntryRowInteractionState,
     selectedAtPress: Boolean,
     inNameArea: Boolean,
+    inTrailingBlank: Boolean,
     fileDragStarted: Boolean,
     dragSlopSquared: Float,
 ): EntryPointerProgress {
@@ -1800,7 +1867,7 @@ private fun updateEntryRowPointer(
         }
 
         !crossedThreshold -> EntryPointerProgress(fileDragStarted = false, continueTracking = true)
-        selectedAtPress || inNameArea -> {
+        !inTrailingBlank && (selectedAtPress || inNameArea) -> {
             prepareEntryRowDrag(interaction, change)
             if (!selectedAtPress) actions.onSelectEntry(state.entry.id, false, false)
             startEntryRowFileDrag(state, actions, interaction, change.position)
@@ -1811,7 +1878,8 @@ private fun updateEntryRowPointer(
             prepareEntryRowDrag(interaction, change)
             val modified = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
             val windowStart = interaction.rowCoordinates?.localToWindow(startPosition) ?: startPosition
-            actions.onStartRubberBand(state.entry.id, windowStart, modified)
+            val windowCurrent = interaction.rowCoordinates?.localToWindow(change.position) ?: change.position
+            actions.onStartRubberBand(state.entry.id, windowStart, windowCurrent, modified)
             EntryPointerProgress(fileDragStarted = false, continueTracking = false)
         }
     }

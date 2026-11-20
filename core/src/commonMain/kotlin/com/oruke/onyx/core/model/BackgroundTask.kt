@@ -14,6 +14,8 @@ data class BackgroundTask(
     val status: BackgroundTaskStatus,
     /** 当前执行器是否支持暂停与恢复。 */
     val canPause: Boolean = false,
+    /** 当前失败任务在本次运行期内是否注册了可执行的重试处理器。 */
+    val canRetry: Boolean = false,
     /** 当前阶段详情。 */
     val detail: I18nMessage,
     /** 0 到 1 的可选进度。 */

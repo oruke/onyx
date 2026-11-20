@@ -18,10 +18,10 @@ internal fun trashCommandEnabled(
         PaneCommand.DELETE_SELECTION -> state.selectedEntryIds.isNotEmpty()
         PaneCommand.UNDO_LAST_OPERATION -> executionContext.canUndo
         PaneCommand.REDO_LAST_OPERATION -> executionContext.canRedo
+        PaneCommand.GO_UP -> executionContext.canGoUp
         PaneCommand.REFRESH,
         PaneCommand.FILTER,
         PaneCommand.SELECT_ALL,
-        PaneCommand.GO_UP,
         PaneCommand.TOGGLE_FAVORITE,
         PaneCommand.OPEN_SETTINGS,
         PaneCommand.COMMAND_PALETTE -> true

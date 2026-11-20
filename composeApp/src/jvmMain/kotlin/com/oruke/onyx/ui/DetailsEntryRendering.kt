@@ -125,7 +125,7 @@ internal fun EntryRowCells(
     onExpandCoordinates: (LayoutCoordinates) -> Unit,
     onRenameLabelCoordinates: (LayoutCoordinates) -> Unit = {},
 ) {
-    visibleDetailsColumns(state.columns).forEach { column ->
+    visibleDetailsColumns(state.columns, state.hiddenColumns).forEach { column ->
         val width = detailsColumnWidth(state.columnWidths, column).dp
         if (column == DetailsColumn.NAME) {
             EntryNameCell(

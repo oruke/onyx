@@ -791,6 +791,34 @@ internal interface RootPresentationServices {
 
     fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>
 
+    /**
+     * 判断指定位置是否存在可导航的上级目录。
+     *
+     * @param location 当前面板浏览位置。
+     * @return 存在上级位置时返回 `true`。
+     */
+    fun canGoUp(location: String): Boolean = true
+
+    /**
+     * 判断指定位置是否允许新建文件或目录（排除虚拟位置、只读压缩包及文件集合）。
+     *
+     * @param location 当前面板浏览位置。
+     * @return 允许创建条目时返回 `true`。
+     */
+    fun canCreateEntries(location: String): Boolean = true
+
+    /**
+     * 为地址栏自动补全返回匹配的路径候选列表。
+     *
+     * @param input 用户当前输入的路径草稿。
+     * @param knownLocations 收藏、最近访问和当前面板已知目录位置。
+     * @return 匹配建议路径列表。
+     */
+    suspend fun suggestAddressLocations(
+        input: String,
+        knownLocations: List<String>,
+    ): List<String> = emptyList()
+
     fun resolveTransferOperation(sourceLocation: String, targetLocation: String): FileTransferOperation
 
     suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult

@@ -124,6 +124,22 @@ internal fun rememberPaneListViewport(
         state.requestScrollToItem(index + extra, offset)
         horizontal.scrollTo(horizontalOffset)
         withFrameNanos { }
+    }, scrollIntoView = { index ->
+        val layout = state.layoutInfo
+        val visibleItems = layout.visibleItemsInfo
+        val firstVisible = (state.firstVisibleItemIndex - extra).coerceAtLeast(0)
+        val targetIndex = if (visibleItems.isEmpty() || index <= firstVisible) {
+            index
+        } else {
+            val fullCount = visibleItems.count { info ->
+                info.index >= extra &&
+                    info.offset >= layout.viewportStartOffset &&
+                    info.offset + info.size <= layout.viewportEndOffset
+            }.coerceAtLeast(1)
+            (index - fullCount + 1).coerceAtLeast(0)
+        }
+        state.requestScrollToItem(targetIndex + extra, 0)
+        withFrameNanos { }
     })
     return state
 }
@@ -159,6 +175,43 @@ internal fun rememberPaneGridViewport(
     }, scroll = { index, offset, _ ->
         state.requestScrollToItem(index + extra, offset)
         withFrameNanos { }
+    }, scrollIntoView = { index ->
+        val layout = state.layoutInfo
+        val visibleItems = layout.visibleItemsInfo
+        val firstVisible = (state.firstVisibleItemIndex - extra).coerceAtLeast(0)
+        val targetIndex = if (visibleItems.isEmpty() || index <= firstVisible) {
+            index
+        } else {
+            val fullyVisible = visibleItems.filter { info ->
+                info.index >= extra &&
+                    info.offset.y >= layout.viewportStartOffset &&
+                    info.offset.y + info.size.height <= layout.viewportEndOffset
+            }
+            val fullRowCount = fullyVisible.map { it.row }.distinct().size.coerceAtLeast(1)
+            val columnCount = visibleItems
+                .filter { info -> info.index >= extra }
+                .maxOfOrNull { info -> info.column + 1 }
+                ?.coerceAtLeast(1)
+                ?: 1
+            if (fullRowCount <= 1) {
+                index
+            } else {
+                (index - (fullRowCount - 1) * columnCount).coerceAtLeast(0)
+            }
+        }
+        state.requestScrollToItem(targetIndex + extra, 0)
+        withFrameNanos { }
+        // 混合 full-span 分组头或不等高网格中若一次按行估算后目标仍未完整露全，直接定位目标项保底可见。
+        val afterLayout = state.layoutInfo
+        val targetVisible = afterLayout.visibleItemsInfo.any { info ->
+            info.index == index + extra &&
+                info.offset.y >= afterLayout.viewportStartOffset &&
+                info.offset.y + info.size.height <= afterLayout.viewportEndOffset
+        }
+        if (!targetVisible) {
+            state.requestScrollToItem(index + extra, 0)
+            withFrameNanos { }
+        }
     })
     return state
 }
@@ -171,6 +224,7 @@ internal fun rememberPaneGridViewport(
  * @param density 当前逻辑到物理像素比例。
  * @param sample 读取当前布局，调用方不能执行 I/O。
  * @param scroll 请求下一次布局恢复指定条目索引及双向偏移，并等待恢复帧。
+ * @param scrollIntoView 将指定条目按最小步长滚动进当前可见视口，不重置水平滚动。
  */
 @Composable
 private fun BindPaneViewport(
@@ -180,6 +234,7 @@ private fun BindPaneViewport(
     density: Float,
     sample: () -> ViewportSample,
     scroll: suspend (Int, Int, Int) -> Unit,
+    scrollIntoView: suspend (Int) -> Unit,
 ) {
     val binding = remember(model.tabId, model.browserState.visitId, model.viewMode) {
         ViewportBinding(ids, model.browserState.viewports[model.viewMode], density).also {
@@ -224,7 +279,7 @@ private fun BindPaneViewport(
         val index = ids.indexOf(id)
         if (index >= 0 && id !in sample().visibleIds) {
             binding.restoring = true
-            try { scroll(index, 0, sample().horizontalOffset) } finally { binding.restoring = false }
+            try { scrollIntoView(index) } finally { binding.restoring = false }
         }
         actions.onConsumeScroll()
     }

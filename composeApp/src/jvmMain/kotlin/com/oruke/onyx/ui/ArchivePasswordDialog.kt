@@ -89,7 +89,7 @@ internal fun ArchivePasswordDialog(
                                     return@onPreviewKeyEvent false
                                 }
                                 when (event.key) {
-                                    Key.Enter -> {
+                                    Key.Enter, Key.NumPadEnter -> {
                                         if (password.isNotEmpty()) {
                                             onConfirm(password)
                                         }

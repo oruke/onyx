@@ -25,6 +25,9 @@ import com.oruke.onyx.app.filesystem.FileHashResult
 import com.oruke.onyx.app.filesystem.PreviewTextRequest
 import com.oruke.onyx.app.filesystem.PreviewTextResult
 import com.oruke.onyx.app.filesystem.VfsBreadcrumb
+import com.oruke.onyx.app.filesystem.isSystemVirtualLocation
+import com.oruke.onyx.app.filesystem.suggestAddressBarLocations
+import com.oruke.onyx.shared.usecase.isFileCollectionLocation
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
@@ -467,6 +470,22 @@ internal class DefaultRootComponent(
 
     /** @param location VFS 位置。 @return VFS 位置的面包屑。 */
     override fun buildBreadcrumbs(location: String): List<VfsBreadcrumb> = pathService.buildBreadcrumbs(location)
+
+    /** @param location 当前面板位置。 @return 存在可导航父位置时返回 `true`。 */
+    override fun canGoUp(location: String): Boolean = pathService.navigationParent(location) != null
+
+    /** @param location 当前面板位置。 @return 当前位置允许新建文件或目录时返回 `true`。 */
+    override fun canCreateEntries(location: String): Boolean {
+        return !isSystemVirtualLocation(location) &&
+            !ArchiveService.isArchiveLocation(location) &&
+            !location.isFileCollectionLocation()
+    }
+
+    /** @param input 地址栏草稿文本。 @param knownLocations 已知位置候选。 @return 自动补全建议路径。 */
+    override suspend fun suggestAddressLocations(
+        input: String,
+        knownLocations: List<String>,
+    ): List<String> = suggestAddressBarLocations(input, knownLocations)
 
     /**
      * @param sourceLocation 来源位置。

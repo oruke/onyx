@@ -372,7 +372,7 @@ private fun CredentialInputField(
                             return@onPreviewKeyEvent false
                         }
                         when (event.key) {
-                            Key.Enter -> {
+                            Key.Enter, Key.NumPadEnter -> {
                                 onConfirm()
                                 true
                             }

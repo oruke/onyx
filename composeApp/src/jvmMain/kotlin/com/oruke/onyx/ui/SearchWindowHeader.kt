@@ -58,7 +58,7 @@ internal fun SearchWindowHeader(
     val buttonStyle = rememberOnyxButtonStyle(JewelTheme.outlinedButtonStyle)
     val filterCount = listOf(
         state.filters.types.isNotEmpty(),
-        state.filters.modifiedSinceEpochMillis != null,
+        state.filters.modifiedPreset != null || state.filters.modifiedSinceEpochMillis != null,
         state.filters.minSizeBytes != null || state.filters.maxSizeBytes != null,
         state.filters.searchInContent,
     ).count { it }

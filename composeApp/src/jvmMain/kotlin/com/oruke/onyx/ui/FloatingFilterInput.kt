@@ -169,7 +169,7 @@ private fun handleFilterKeyEvent(
             onMoveSelection(-1, event.isShiftPressed)
             true
         }
-        Key.Enter -> {
+        Key.Enter, Key.NumPadEnter -> {
             onConfirmSelection()
             true
         }

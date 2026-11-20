@@ -35,6 +35,13 @@ internal fun DefaultPaneComponent.dispatchComputerSelectionIntent(
                     it.moveComputerSelection(intent.offset, intent.extendSelection)
                 }
             }
+        is PaneIntent.MoveSelectionToBoundary ->
+            true.also {
+                pendingFocusEntryName.remove(current.id)
+                updateTab(current.id) {
+                    it.moveComputerSelectionToBoundary(intent.toEnd, intent.extendSelection)
+                }
+            }
         PaneIntent.SelectAll ->
             true.also {
                 pendingFocusEntryName.remove(current.id)

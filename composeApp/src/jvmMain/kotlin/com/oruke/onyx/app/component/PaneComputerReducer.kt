@@ -126,5 +126,29 @@ internal fun PaneTabState.moveComputerSelection(
         if (oldIndex < 0) {
             if (offset < 0) ids.lastIndex else 0
         } else (oldIndex + offset).coerceIn(0, (ids.size - 1).coerceAtLeast(0))
-    return ids.getOrNull(index)?.let { selectComputerEntry(it, false, extendSelection) } ?: this
+    return ids.getOrNull(index)?.let { targetId ->
+        selectComputerEntry(targetId, false, extendSelection).withTabState { state ->
+            state.copy(pendingScrollToEntryId = targetId)
+        }
+    } ?: this
+}
+
+/**
+ * 将设备概览焦点直接跳至首项或末项，并触发视口自动滚动。
+ *
+ * @param toEnd 为 `true` 时跳至末项，否则跳至首项。
+ * @param extendSelection 是否保持锚点扩展选择。
+ * @return 更新焦点、选择与待滚动目标后的标签。
+ */
+internal fun PaneTabState.moveComputerSelectionToBoundary(
+    toEnd: Boolean,
+    extendSelection: Boolean,
+): PaneTabState {
+    val ids = (entriesState as? ComputerEntriesState)?.selectableIds().orEmpty()
+    val targetId = if (toEnd) ids.lastOrNull() else ids.firstOrNull()
+    return targetId?.let { id ->
+        selectComputerEntry(id, false, extendSelection).withTabState { state ->
+            state.copy(pendingScrollToEntryId = id)
+        }
+    } ?: this
 }

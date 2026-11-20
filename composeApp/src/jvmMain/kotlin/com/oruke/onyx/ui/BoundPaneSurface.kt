@@ -108,6 +108,11 @@ internal fun BoundPaneSurface(
             commandShortcuts = commandShortcuts,
             canPaste = state.canPaste,
             favoriteLocations = state.settings.favoriteLocations,
+            recentLocations = state.settings.recentLocations,
+            canGoUp = rootComponent.canGoUp(paneState.location),
+            canCreateEntries = rootComponent.canCreateEntries(paneState.location) &&
+                paneState.entriesState !is PaneEntriesState.Failure,
+            modalOverlayVisible = state.quickOpenState.visible || state.dialogState != null,
             onActivate = { dispatch(RootIntent.ActivatePane(paneId)) },
             windowActivationRequest = state.windowActivationRequest,
             fileLabels = remember(
@@ -128,6 +133,7 @@ internal fun BoundPaneSurface(
             readFileHash = rootComponent::readFileHash,
             readArchiveInfo = rootComponent::readArchiveInfo,
             buildBreadcrumbs = rootComponent::buildBreadcrumbs,
+            suggestAddressLocations = rootComponent::suggestAddressLocations,
         ),
         modifier = modifier,
     )

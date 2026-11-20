@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -26,6 +27,7 @@ import com.oruke.onyx.app.component.ComputerEntriesState
 import com.oruke.onyx.app.component.PaneCommand
 import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
+import com.oruke.onyx.core.model.VFileKind
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_filter
@@ -98,6 +100,21 @@ private val COMPACT_NAVIGATION_WIDTH = 420.dp
  */
 @Composable
 private fun PaneAddressBar(runtime: PaneSurfaceRuntime, modifier: Modifier) {
+    val entriesState = runtime.state.entriesState
+    val knownLocations = remember(
+        runtime.model.favoriteLocations,
+        runtime.model.recentLocations,
+        entriesState,
+    ) {
+        val childDirs = (entriesState as? PaneEntriesState.Ready)
+            ?.entries
+            ?.asSequence()
+            ?.filter { it.kind == VFileKind.DIRECTORY }
+            ?.map { it.location }
+            ?.toList()
+            .orEmpty()
+        (childDirs + runtime.model.favoriteLocations + runtime.model.recentLocations).distinct()
+    }
     Box(modifier) {
         HybridAddressBar(
             location = runtime.state.location,
@@ -105,6 +122,10 @@ private fun PaneAddressBar(runtime: PaneSurfaceRuntime, modifier: Modifier) {
             onOpenLocation = { location -> runtime.dispatch(PaneIntent.OpenDirectory(location)) },
             buildBreadcrumbs = runtime.services.buildBreadcrumbs,
             onEditingChange = { editing -> runtime.ui.addressBarEditing = editing },
+            tabId = runtime.state.activeTabId,
+            focusRequestId = runtime.ui.addressBarFocusRequestId,
+            knownLocations = knownLocations,
+            suggestLocations = runtime.services.suggestAddressLocations,
         )
     }
 }
@@ -141,7 +162,7 @@ private fun PaneHistoryButtons(runtime: PaneSurfaceRuntime) {
 private fun PaneLocationButtons(runtime: PaneSurfaceRuntime) {
     val favorite = runtime.state.location in runtime.model.favoriteLocations
     ToolbarIconButton(
-        enabled = true,
+        enabled = runtime.commands.isEnabled(PaneCommand.GO_UP),
         onClick = { runtime.model.onActivate(); runtime.commands.execute(PaneCommand.GO_UP) },
         tooltip = stringResource(Res.string.action_go_up),
     ) {

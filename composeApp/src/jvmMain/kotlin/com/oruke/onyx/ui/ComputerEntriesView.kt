@@ -2,7 +2,7 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -13,14 +13,18 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import com.oruke.onyx.app.component.ComputerEntriesState
 import com.oruke.onyx.app.component.deviceSections
 import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.resolve
+import kotlinx.coroutines.flow.distinctUntilChanged
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_refresh_active
 import onyx.composeapp.generated.resources.label_computer_places
@@ -78,7 +82,30 @@ private fun ComputerOverview(
     val appearance = LocalOnyxAppearance.current
     val layoutModel = model.forComputerLayout(state)
     val scroll = rememberPaneGridViewport(layoutModel, actions, computerLayoutKeys(state, false), false)
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val horizontalPadding = appearance.entryHorizontalPadding * 2
+        val availableWidth = (maxWidth - horizontalPadding).coerceAtLeast(0.dp)
+        val spacing = appearance.computer.itemSpacing
+        // 与 GridCells.Adaptive 源码公式严格一致：maxOf(1, (available + spacing) / (minSize + spacing))。
+        val fallbackColumns = ((availableWidth + spacing) / (appearance.computer.deviceMinWidth + spacing))
+            .toInt()
+            .coerceAtLeast(1)
+        LaunchedEffect(scroll, fallbackColumns) {
+            snapshotFlow {
+                val layout = scroll.layoutInfo
+                val measuredColumns = layout.visibleItemsInfo
+                    .maxOfOrNull { info -> info.column + 1 }
+                    ?.takeIf { it > 1 }
+                    ?: fallbackColumns
+                val fullyVisible = layout.visibleItemsInfo.count { info ->
+                    info.offset.y >= layout.viewportStartOffset &&
+                        info.offset.y + info.size.height <= layout.viewportEndOffset
+                }
+                measuredColumns to fullyVisible.coerceAtLeast(measuredColumns)
+            }.distinctUntilChanged().collect { (columns, pageStep) ->
+                actions.onViewportMetricsChanged(columns, pageStep)
+            }
+        }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(appearance.computer.deviceMinWidth),
             state = scroll,

@@ -176,8 +176,7 @@ private class SearchCriteriaParser {
      * @return 结构化搜索条件。
      */
     fun parse(rawQuery: String): FileSearchCriteria {
-        rawQuery.trim()
-            .split(TOKEN_SEPARATOR)
+        tokenizeSearchQuery(rawQuery.trim())
             .filter(String::isNotBlank)
             .forEach(::consume)
         return build()
@@ -186,14 +185,14 @@ private class SearchCriteriaParser {
     /**
      * 消费单个查询 token，并更新对应条件。
      *
-     * @param token 保留原始大小写的查询 token。
+     * @param token 保留原始大小写与引号信息的查询 token。
      */
     private fun consume(token: String) {
         val normalized = token.lowercase()
         when {
             normalized.startsWith(".") && normalized.length > 1 -> extensionQuery = normalized
             normalized.startsWith("type:") || normalized.startsWith("kind:") -> {
-                kind = parseKind(normalized.substringAfter(':'))
+                kind = parseKind(unquoteSearchValue(normalized.substringAfter(':')))
             }
 
             normalized.startsWith("size") -> applySizeFilter(parseSizeFilter(normalized))
@@ -202,13 +201,16 @@ private class SearchCriteriaParser {
             }
 
             normalized.startsWith("content:") || normalized.startsWith("contains:") -> {
-                contentQuery = token.substringAfter(':')
+                contentQuery = unquoteSearchValue(token.substringAfter(':'))
                     .trim()
                     .takeIf(String::isNotBlank)
                     ?.lowercase()
             }
 
-            else -> nameTokens += normalized
+            else -> {
+                val plainName = unquoteSearchValue(normalized).trim()
+                if (plainName.isNotEmpty()) nameTokens += plainName
+            }
         }
     }
 
@@ -263,9 +265,97 @@ private class SearchCriteriaParser {
     )
 
     private companion object {
-        /** 查询 token 之间的空白分隔符。 */
-        val TOKEN_SEPARATOR = Regex("\\s+")
+        /**
+         * 将查询表达式按空白切分为 token，同时完整保留双引号包裹的多词短语（例如 `content:"hello world"`）。
+         *
+         * @param raw 已去除首尾空白的原始查询串。
+         * @return 拆分后的查询 token 列表。
+         */
+        fun tokenizeSearchQuery(raw: String): List<String> {
+            if (raw.isEmpty()) return emptyList()
+            val tokens = mutableListOf<String>()
+            val current = StringBuilder()
+            var inQuotes = false
+            var escaping = false
+            for (ch in raw) {
+                when {
+                    escaping -> {
+                        current.append(ch)
+                        escaping = false
+                    }
 
+                    inQuotes && ch == '\\' -> {
+                        current.append(ch)
+                        escaping = true
+                    }
+
+                    ch == '"' -> {
+                        inQuotes = !inQuotes
+                        current.append(ch)
+                    }
+
+                    !inQuotes && ch.isWhitespace() -> {
+                        if (current.isNotEmpty()) {
+                            tokens += current.toString()
+                            current.clear()
+                        }
+                    }
+
+                    else -> current.append(ch)
+                }
+            }
+            if (current.isNotEmpty()) tokens += current.toString()
+            return tokens
+        }
+
+        /**
+         * 剥离成对双引号并反转义其中的 `\"` 与 `\\`。
+         *
+         * @param raw 可能带有外层双引号的片段值。
+         * @return 还原后的字面量文本。
+         */
+        fun unquoteSearchValue(raw: String): String {
+            val trimmed = raw.trim()
+            val hasUnescapedClosingQuote = trimmed.length >= 2 &&
+                trimmed.startsWith('"') &&
+                trimmed.endsWith('"') &&
+                countPrecedingBackslashes(trimmed, trimmed.lastIndex) % 2 == 0
+            val inner = when {
+                hasUnescapedClosingQuote -> trimmed.substring(1, trimmed.length - 1)
+                trimmed.startsWith('"') -> trimmed.substring(1)
+                else -> return trimmed
+            }
+            val result = StringBuilder(inner.length)
+            var index = 0
+            while (index < inner.length) {
+                val ch = inner[index]
+                if (ch == '\\' && index + 1 < inner.length && (inner[index + 1] == '"' || inner[index + 1] == '\\')) {
+                    result.append(inner[index + 1])
+                    index += 2
+                } else {
+                    result.append(ch)
+                    index += 1
+                }
+            }
+            return result.toString()
+        }
+
+        /**
+         * 统计字符串指定下标之前连续出现的反斜杠数量，用于区分闭合引号与转义引号（如 `\"`）。
+         *
+         * @param text 待检查字符串。
+         * @param quoteIndex 目标双引号下标。
+         * @return 紧邻该引号之前的连续反斜杠个数。
+         */
+        private fun countPrecedingBackslashes(text: String, quoteIndex: Int): Int {
+            var count = 0
+            var cursor = quoteIndex - 1
+            while (cursor >= 0 && text[cursor] == '\\') {
+                count += 1
+                cursor -= 1
+            }
+            return count
+        }
     }
 }
 
@@ -303,17 +393,65 @@ private fun parseSizeFilter(token: String): NumericFilter? =
 private fun parseDateFilter(token: String): NumericFilter? {
     val prefix = if (token.startsWith("modified")) "modified" else "mtime"
     return parseFilterExpression(token.removePrefix(prefix))?.let { expression ->
-        parseDateEpochMillis(expression.value)?.let { epochMillis ->
-            val adjusted = when (expression.operator) {
-                FilterOperator.LESS_THAN,
-                FilterOperator.LESS_THAN_OR_EQUALS -> epochMillis + MILLIS_PER_DAY - 1
+        val exactTimestamp = parseIsoOffsetDateTimeEpochMillis(expression.value)
+        if (exactTimestamp != null) {
+            NumericFilter(expression.operator, exactTimestamp)
+        } else {
+            parseDateEpochMillis(expression.value)?.let { epochMillis ->
+                val adjusted = when (expression.operator) {
+                    FilterOperator.LESS_THAN,
+                    FilterOperator.LESS_THAN_OR_EQUALS -> epochMillis + MILLIS_PER_DAY - 1
 
-                FilterOperator.GREATER_THAN,
-                FilterOperator.GREATER_THAN_OR_EQUALS -> epochMillis
+                    FilterOperator.GREATER_THAN,
+                    FilterOperator.GREATER_THAN_OR_EQUALS -> epochMillis
+                }
+                NumericFilter(expression.operator, adjusted)
             }
-            NumericFilter(expression.operator, adjusted)
         }
     }
+}
+
+/**
+ * 解析带时区偏移的 ISO-8601 时间戳（如 `2026-11-19t00:00:00+08:00` 或 `2026-11-19t00:00:00z`）为绝对 UTC epoch millis。
+ *
+ * @param value 已转小写的日期时间操作数。
+ * @return 对应绝对 epoch millis；不符合格式时返回空。
+ */
+private fun parseIsoOffsetDateTimeEpochMillis(value: String): Long? {
+    val tIndex = value.indexOf('t')
+    if (tIndex != ISO_DATE_LENGTH || value.length < ISO_MIN_DATETIME_LENGTH) return null
+    val civilDate = parseCivilDate(value.substring(0, ISO_DATE_LENGTH)) ?: return null
+    val timeAndZone = value.substring(ISO_DATE_LENGTH + 1)
+    if (timeAndZone.length < ISO_TIME_LENGTH + 1) return null
+    val timeParts = timeAndZone.substring(0, ISO_TIME_LENGTH).split(':')
+    if (timeParts.size != TIME_PART_COUNT) return null
+    val hour = timeParts[0].toIntOrNull()?.takeIf { it in 0..MAX_HOUR } ?: return null
+    val minute = timeParts[1].toIntOrNull()?.takeIf { it in 0..MAX_MINUTE_OR_SECOND } ?: return null
+    val second = timeParts[2].toIntOrNull()?.takeIf { it in 0..MAX_MINUTE_OR_SECOND } ?: return null
+    val zonePart = timeAndZone.substring(ISO_TIME_LENGTH)
+    val offsetMillis = parseZoneOffsetMillis(zonePart) ?: return null
+    val timeOfDayMillis = (hour * SECONDS_PER_HOUR + minute * SECONDS_PER_MINUTE + second) * MILLIS_PER_SECOND
+    return civilDate.toEpochMillis() + timeOfDayMillis - offsetMillis
+}
+
+/**
+ * 解析 ISO-8601 时区偏移片段（`z`、`+hh:mm`、`-hh:mm`）为毫秒偏移量。
+ *
+ * @param zonePart 已转小写的时区后缀。
+ * @return 相对 UTC 的毫秒偏移；格式无效时返回空。
+ */
+private fun parseZoneOffsetMillis(zonePart: String): Long? {
+    if (zonePart == "z") return 0L
+    if (zonePart.length != ISO_OFFSET_LENGTH) return null
+    val sign = when (zonePart[0]) {
+        '+' -> 1L
+        '-' -> -1L
+        else -> return null
+    }
+    if (zonePart[3] != ':') return null
+    val offsetHour = zonePart.substring(1, 3).toIntOrNull()?.takeIf { it in 0..MAX_OFFSET_HOUR } ?: return null
+    val offsetMinute = zonePart.substring(4, 6).toIntOrNull()?.takeIf { it in 0..MAX_MINUTE_OR_SECOND } ?: return null
+    return sign * (offsetHour * SECONDS_PER_HOUR + offsetMinute * SECONDS_PER_MINUTE) * MILLIS_PER_SECOND
 }
 
 /**
@@ -459,6 +597,17 @@ private val SIZE_MULTIPLIERS = mapOf(
     "tb" to 1_099_511_627_776L,
 )
 private const val DATE_PART_COUNT = 3
+private const val TIME_PART_COUNT = 3
+private const val ISO_DATE_LENGTH = 10
+private const val ISO_TIME_LENGTH = 8
+private const val ISO_MIN_DATETIME_LENGTH = 20
+private const val ISO_OFFSET_LENGTH = 6
+private const val MAX_HOUR = 23
+private const val MAX_MINUTE_OR_SECOND = 59
+private const val MAX_OFFSET_HOUR = 18
+private const val SECONDS_PER_MINUTE = 60L
+private const val SECONDS_PER_HOUR = 3_600L
+private const val MILLIS_PER_SECOND = 1_000L
 private const val MIN_MONTH = 1
 private const val MAX_MONTH = 12
 private const val MIN_DAY = 1

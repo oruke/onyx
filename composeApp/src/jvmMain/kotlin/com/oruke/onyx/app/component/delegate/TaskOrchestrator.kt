@@ -67,8 +67,13 @@ class TaskOrchestrator(
      * @param task 新后台任务。
      */
     fun appendTask(task: BackgroundTask) {
-        replaceTasks(listOf(task) + _tasks.value)
-        taskAppendedListeners.toList().forEach { listener -> listener(task) }
+        val resolvedTask = if (!task.canRetry && task.id in taskRetryHandlers) {
+            task.copy(canRetry = true)
+        } else {
+            task
+        }
+        replaceTasks(listOf(resolvedTask) + _tasks.value)
+        taskAppendedListeners.toList().forEach { listener -> listener(resolvedTask) }
     }
 
     /**
@@ -187,6 +192,7 @@ class TaskOrchestrator(
      */
     fun registerRetryHandler(taskId: String, retry: () -> Unit) {
         taskRetryHandlers[taskId] = retry
+        updateTaskFields(taskId) { task -> if (task.canRetry) task else task.copy(canRetry = true) }
     }
 
     /**
@@ -322,13 +328,14 @@ class TaskOrchestrator(
             BackgroundTaskStatus.RUNNING,
             BackgroundTaskStatus.PAUSED -> copy(
                 status = BackgroundTaskStatus.CANCELLED,
+                canRetry = false,
                 detail = I18nMessage(MessageKey.MSG_CANCELLED),
                 progress = null,
                 bytesPerSecond = null,
                 estimatedRemainingSeconds = null,
             )
 
-            else -> this
+            else -> if (canRetry) copy(canRetry = false) else this
         }
     }
 
@@ -336,11 +343,14 @@ class TaskOrchestrator(
         return if (status.isActive()) {
             copy(
                 status = BackgroundTaskStatus.CANCELLED,
+                canRetry = false,
                 detail = I18nMessage(MessageKey.MSG_CANCELLED),
                 progress = null,
                 bytesPerSecond = null,
                 estimatedRemainingSeconds = null,
             )
+        } else if (canRetry) {
+            copy(canRetry = false)
         } else {
             this
         }

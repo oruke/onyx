@@ -77,7 +77,9 @@ internal enum class SearchPanelMode {
 internal data class SearchFilters(
     /** 允许的条目类型，空集合表示不限。 */
     val types: Set<SearchFilterFileType> = emptySet(),
-    /** 最早修改时间，单位 epoch millis。 */
+    /** 修改时间预设范围（与系统本地时区对齐，避免重组时因毫秒抖动丢失选中态）。 */
+    val modifiedPreset: SearchModifiedPreset? = null,
+    /** 自定义最早修改时间，单位 epoch millis；与 [modifiedPreset] 互斥。 */
     val modifiedSinceEpochMillis: Long? = null,
     /** 最小文件大小，单位字节。 */
     val minSizeBytes: Long? = null,
@@ -86,6 +88,16 @@ internal data class SearchFilters(
     /** 是否检索文件内容。 */
     val searchInContent: Boolean = false,
 )
+
+/** 结构化搜索支持的修改时间预设范围。 */
+internal enum class SearchModifiedPreset {
+    /** 今天（本地日历当日零点起）。 */
+    TODAY,
+    /** 最近 7 天（本地日历 7 天前零点起）。 */
+    LAST_7_DAYS,
+    /** 最近 30 天（本地日历 30 天前零点起）。 */
+    LAST_30_DAYS,
+}
 
 /** 结构化搜索允许的条目类型。 */
 internal enum class SearchFilterFileType { FILE, DIRECTORY }

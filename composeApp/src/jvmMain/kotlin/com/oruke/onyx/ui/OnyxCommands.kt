@@ -19,6 +19,7 @@ import onyx.composeapp.generated.resources.action_copy
 import onyx.composeapp.generated.resources.action_cut
 import onyx.composeapp.generated.resources.action_delete_selected
 import onyx.composeapp.generated.resources.action_filter
+import onyx.composeapp.generated.resources.action_focus_address_bar
 import onyx.composeapp.generated.resources.action_go_up
 import onyx.composeapp.generated.resources.action_new_directory
 import onyx.composeapp.generated.resources.action_new_file
@@ -44,8 +45,9 @@ import onyx.composeapp.generated.resources.shortcut_key_enter
 import onyx.composeapp.generated.resources.shortcut_key_escape
 import onyx.composeapp.generated.resources.shortcut_key_f
 import onyx.composeapp.generated.resources.shortcut_key_f2
-import onyx.composeapp.generated.resources.shortcut_key_k
 import onyx.composeapp.generated.resources.shortcut_key_f5
+import onyx.composeapp.generated.resources.shortcut_key_k
+import onyx.composeapp.generated.resources.shortcut_key_l
 import onyx.composeapp.generated.resources.shortcut_key_n
 import onyx.composeapp.generated.resources.shortcut_key_p
 import onyx.composeapp.generated.resources.shortcut_key_v
@@ -84,7 +86,14 @@ internal enum class OnyxCommand(val defaultShortcut: OnyxShortcut? = null) {
     CommandPalette(OnyxShortcut(OnyxShortcutKey.P, setOf(OnyxShortcutModifier.PRIMARY, OnyxShortcutModifier.SHIFT))),
     QuickOpen(OnyxShortcut(OnyxShortcutKey.K, setOf(OnyxShortcutModifier.PRIMARY))),
     ShowSearchPanel(OnyxShortcut(OnyxShortcutKey.F, setOf(OnyxShortcutModifier.PRIMARY, OnyxShortcutModifier.SHIFT))),
+    FocusAddressBar(OnyxShortcut(OnyxShortcutKey.L, setOf(OnyxShortcutModifier.PRIMARY))),
 }
+
+/**
+ * 判断键位是否为主回车键或数字小键盘回车键。
+ */
+internal val Key.isConfirmEnterKey: Boolean
+    get() = this == Key.Enter || this == Key.NumPadEnter
 
 /**
  * 将 UI 命令映射为组件层面板命令。
@@ -114,7 +123,8 @@ internal fun OnyxCommand.toPaneCommand(): PaneCommand? {
         OnyxCommand.OpenSettings -> PaneCommand.OPEN_SETTINGS
         OnyxCommand.CommandPalette -> PaneCommand.COMMAND_PALETTE
         OnyxCommand.QuickOpen,
-        OnyxCommand.ShowSearchPanel -> null
+        OnyxCommand.ShowSearchPanel,
+        OnyxCommand.FocusAddressBar -> null
     }
 }
 
@@ -230,11 +240,12 @@ internal enum class OnyxShortcutKey(val composeKey: Key) {
     V(Key.V),
     F(Key.F),
     K(Key.K),
+    L(Key.L),
 }
 
 internal fun KeyEvent.toOnyxShortcutOrNull(): OnyxShortcut? {
     if (type != KeyEventType.KeyDown) return null
-    val pressedKey = key
+    val pressedKey = if (key == Key.NumPadEnter) Key.Enter else key
     val shortcutKey = OnyxShortcutKey.entries.firstOrNull { candidate -> candidate.composeKey == pressedKey }
         ?: return null
     return OnyxShortcut(
@@ -296,6 +307,7 @@ internal object OnyxCommandRegistry {
         OnyxCommandSpec(OnyxCommand.CommandPalette, Res.string.action_command_palette, AllIconsKeys.Actions.Find),
         OnyxCommandSpec(OnyxCommand.QuickOpen, Res.string.action_quick_open, AllIconsKeys.Actions.Find),
         OnyxCommandSpec(OnyxCommand.ShowSearchPanel, Res.string.action_show_search_panel, AllIconsKeys.Actions.Find),
+        OnyxCommandSpec(OnyxCommand.FocusAddressBar, Res.string.action_focus_address_bar, AllIconsKeys.Actions.Edit),
     )
 
     fun paneCommandStates(
@@ -317,7 +329,9 @@ internal fun KeyEvent.matchesCommand(
     shortcuts: OnyxCommandShortcutMap = OnyxCommandShortcutMap.Default,
 ): Boolean {
     val shortcut = shortcuts.shortcutFor(command) ?: return false
-    if (type != KeyEventType.KeyDown || key != shortcut.key.composeKey) return false
+    val keyMatches = key == shortcut.key.composeKey ||
+        (shortcut.key == OnyxShortcutKey.ENTER && key.isConfirmEnterKey)
+    if (type != KeyEventType.KeyDown || !keyMatches) return false
     val expectsPrimary = OnyxShortcutModifier.PRIMARY in shortcut.modifiers
     val expectsShift = OnyxShortcutModifier.SHIFT in shortcut.modifiers
     val expectsAlt = OnyxShortcutModifier.ALT in shortcut.modifiers
@@ -419,6 +433,7 @@ private fun shortcutKeyLabel(key: OnyxShortcutKey): String {
         OnyxShortcutKey.V -> stringResource(Res.string.shortcut_key_v)
         OnyxShortcutKey.F -> stringResource(Res.string.shortcut_key_f)
         OnyxShortcutKey.K -> stringResource(Res.string.shortcut_key_k)
+        OnyxShortcutKey.L -> stringResource(Res.string.shortcut_key_l)
     }
 }
 

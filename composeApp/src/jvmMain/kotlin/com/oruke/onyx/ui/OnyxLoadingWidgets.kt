@@ -14,6 +14,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -267,35 +269,39 @@ internal fun PaneEntriesLoading(
     actions: PaneEntriesActions,
 ) {
     val horizontalScrollState = rememberPaneHorizontalScroll(model)
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .testTag("pane-entries-loading-${model.paneId}"),
     ) {
-        if (model.viewMode == ViewMode.DETAILS) {
-            DetailsHeader(
-                columns = model.columns,
-                columnWidths = model.columnWeights,
-                hiddenColumns = model.hiddenColumns,
-                sort = model.sort,
-                onToggleSort = actions.onToggleSort,
-                onResizeColumn = actions.onResizeColumn,
-                onToggleColumnVisibility = actions.onToggleColumnVisibility,
-                onActivate = actions.onActivate,
-                scrollState = horizontalScrollState,
-            )
-        }
-        Box(modifier = Modifier.fillMaxSize()) {
+        val viewportWidth = maxWidth
+        Column(modifier = Modifier.fillMaxSize()) {
             if (model.viewMode == ViewMode.DETAILS) {
-                DetailsLoadingSkeleton(model, horizontalScrollState)
-            } else {
-                GalleryLoadingSkeleton(model.galleryItemSizeDp)
+                DetailsHeader(
+                    columns = model.columns,
+                    columnWidths = model.columnWeights,
+                    hiddenColumns = model.hiddenColumns,
+                    sort = model.sort,
+                    onToggleSort = actions.onToggleSort,
+                    onResizeColumn = actions.onResizeColumn,
+                    onToggleColumnVisibility = actions.onToggleColumnVisibility,
+                    onActivate = actions.onActivate,
+                    scrollState = horizontalScrollState,
+                    minRowWidth = viewportWidth,
+                )
             }
-            OnyxIndeterminateProgressBar(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .testTag("pane-entries-loading-bar-${model.paneId}"),
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (model.viewMode == ViewMode.DETAILS) {
+                    DetailsLoadingSkeleton(model, horizontalScrollState, viewportWidth)
+                } else {
+                    GalleryLoadingSkeleton(model.galleryItemSizeDp)
+                }
+                OnyxIndeterminateProgressBar(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .testTag("pane-entries-loading-bar-${model.paneId}"),
+                )
+            }
         }
     }
 }
@@ -372,39 +378,43 @@ internal fun PaneEntriesFailure(
         append(' ')
         append(state.error.detail?.resolve().orEmpty())
     }.trim()
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (model.viewMode == ViewMode.DETAILS) {
-            DetailsHeader(
-                columns = model.columns,
-                columnWidths = model.columnWeights,
-                hiddenColumns = model.hiddenColumns,
-                sort = model.sort,
-                onToggleSort = actions.onToggleSort,
-                onResizeColumn = actions.onResizeColumn,
-                onToggleColumnVisibility = actions.onToggleColumnVisibility,
-                onActivate = actions.onActivate,
-                scrollState = horizontalScrollState,
-            )
-        }
-        Box(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val viewportWidth = maxWidth
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (model.viewMode == ViewMode.DETAILS) {
+                DetailsHeader(
+                    columns = model.columns,
+                    columnWidths = model.columnWeights,
+                    hiddenColumns = model.hiddenColumns,
+                    sort = model.sort,
+                    onToggleSort = actions.onToggleSort,
+                    onResizeColumn = actions.onResizeColumn,
+                    onToggleColumnVisibility = actions.onToggleColumnVisibility,
+                    onActivate = actions.onActivate,
+                    scrollState = horizontalScrollState,
+                    minRowWidth = viewportWidth,
+                )
+            }
+            Box(
+                modifier = Modifier.fillMaxSize().padding(24.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    key = AllIconsKeys.General.Warning,
-                    contentDescription = null,
-                    modifier = Modifier.alpha(FAILURE_ICON_ALPHA),
-                )
-                Text(
-                    text = message,
-                    color = palette.foreground,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        key = AllIconsKeys.General.Warning,
+                        contentDescription = null,
+                        modifier = Modifier.alpha(FAILURE_ICON_ALPHA),
+                    )
+                    Text(
+                        text = message,
+                        color = palette.foreground,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         }
     }
@@ -420,11 +430,12 @@ internal fun PaneEntriesFailure(
 private fun DetailsLoadingSkeleton(
     model: PaneEntriesViewModel,
     scrollState: ScrollState,
+    minRowWidth: Dp = Dp.Unspecified,
 ) {
     val palette = LocalOnyxPalette.current
     val appearance = LocalOnyxAppearance.current
     val shimmerAlpha = rememberShimmerAlpha()
-    val visibleColumns = visibleDetailsColumns(model.columns)
+    val visibleColumns = visibleDetailsColumns(model.columns, model.hiddenColumns)
     val placeholderColor = palette.mutedForeground.copy(alpha = shimmerAlpha)
     Column(modifier = Modifier.fillMaxSize()) {
         repeat(SKELETON_ROW_COUNT) { rowIndex ->
@@ -438,9 +449,11 @@ private fun DetailsLoadingSkeleton(
                     .fillMaxWidth()
                     .height(appearance.listRowHeight)
                     .horizontalScroll(scrollState)
+                    .let { base -> if (minRowWidth != Dp.Unspecified) base.widthIn(min = minRowWidth) else base }
                     .background(rowBackground)
                     .padding(horizontal = appearance.entryHorizontalPadding),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(com.oruke.onyx.ui.theme.DetailsColumnGap),
             ) {
                 visibleColumns.forEach { column ->
                     val colWidth = detailsColumnWidth(model.columnWeights, column).dp

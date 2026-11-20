@@ -54,6 +54,14 @@ internal data class PaneSurfaceModel(
     val favoriteLocations: List<String>,
     /** 激活当前面板的回调。 */
     val onActivate: () -> Unit,
+    /** 最近访问位置列表，供地址栏自动补全。 */
+    val recentLocations: List<String> = emptyList(),
+    /** 当前面板位置是否存在上级目录。 */
+    val canGoUp: Boolean = true,
+    /** 当前面板位置是否允许新建文件或目录。 */
+    val canCreateEntries: Boolean = true,
+    /** 全局模态浮层（Quick Open 或对话框）是否正在显示，关闭后自动归还面板焦点。 */
+    val modalOverlayVisible: Boolean = false,
     /** 组件计算的文件着色，包含已展开子项。 */
     val fileLabels: Map<String, FileLabelStyle> = emptyMap(),
     /** 组件按展示入口筛选的用户命令。 */
@@ -76,6 +84,8 @@ internal data class PaneSurfaceServices(
     val readArchiveInfo: suspend (ArchiveInfoRequest) -> ArchiveInfoResult,
     /** 将位置解析为面包屑。 */
     val buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
+    /** 地址栏路径自动补全建议服务。 */
+    val suggestAddressLocations: suspend (String, List<String>) -> List<String> = { _, _ -> emptyList() },
 )
 
 /**
@@ -90,6 +100,9 @@ internal class PaneSurfaceUiState(inlineEditActive: Boolean) {
     /** 地址栏是否正在文本编辑。 */
     var addressBarEditing by mutableStateOf(false)
 
+    /** 递增触发地址栏进入编辑并全选的外部请求编号（如 `Ctrl+L` / `Alt+D`）。 */
+    var addressBarFocusRequestId by mutableStateOf(0)
+
     /** 过滤输入框是否持有焦点。 */
     var filterFocused by mutableStateOf(false)
 
@@ -98,6 +111,24 @@ internal class PaneSurfaceUiState(inlineEditActive: Boolean) {
 
     /** 上一次效应同步时筛选框是否处于可见且持有焦点的状态。 */
     var filterWasFocused by mutableStateOf(false)
+
+    /** 上一次效应同步时命令面板是否可见。 */
+    var commandPaletteWasVisible by mutableStateOf(false)
+
+    /** 上一次效应同步时右键菜单是否可见。 */
+    var contextMenuWasVisible by mutableStateOf(false)
+
+    /** 上一次效应同步时地址栏是否正在编辑。 */
+    var addressBarWasEditing by mutableStateOf(false)
+
+    /** 上一次效应同步时全局浮层（Quick Open 或对话框）是否可见。 */
+    var modalOverlayWasVisible by mutableStateOf(false)
+
+    /** 当前可见网格视图的列数（用于画廊/此电脑 2D 方向键步长）。 */
+    var gridColumnCount by mutableStateOf(1)
+
+    /** 当前视口完整可见的条目数量（用于 PageUp / PageDown 翻页步长）。 */
+    var viewportPageSize by mutableStateOf(DEFAULT_VIEWPORT_PAGE_STEP)
 
     /** 右键菜单在面板内的锚点。 */
     var contextMenuOffset by mutableStateOf(IntOffset.Zero)
@@ -176,8 +207,21 @@ internal class PaneSurfaceRuntime(
                 true
             }
 
+            OnyxCommand.FocusAddressBar -> {
+                focusAddressBar()
+                true
+            }
+
             else -> false
         }
+    }
+
+    /** 请求地址栏进入文本编辑态并全选路径，同步标记编辑中以防浮层关闭效应抢回焦点。 */
+    fun focusAddressBar() {
+        model.onActivate()
+        ui.contextMenuVisible = false
+        ui.addressBarEditing = true
+        ui.addressBarFocusRequestId += 1
     }
 
     /**
@@ -193,7 +237,8 @@ internal class PaneSurfaceRuntime(
         }
         return when (command) {
             OnyxCommand.QuickOpen,
-            OnyxCommand.ShowSearchPanel -> true
+            OnyxCommand.ShowSearchPanel,
+            OnyxCommand.FocusAddressBar -> true
 
             else -> false
         }
@@ -321,7 +366,13 @@ internal fun rememberPaneSurfaceRuntime(
     val commands = PaneCommandController(
         state = model.state,
         component = model.component,
-        executionContext = PaneCommandExecutionContext(model.canPaste, model.actions.canUndo, model.actions.canRedo),
+        executionContext = PaneCommandExecutionContext(
+            canPaste = model.canPaste,
+            canUndo = model.actions.canUndo,
+            canRedo = model.actions.canRedo,
+            canCreateEntries = model.canCreateEntries,
+            canGoUp = model.canGoUp,
+        ),
         externalActions = PaneCommandExternalActions(
             onBeginCreateDirectory = model.actions.onBeginCreateDirectory,
             onCopySelection = model.actions.onCopySelection,
@@ -367,3 +418,6 @@ internal fun rememberPaneSurfaceRuntime(
         platformActionLoader,
     )
 }
+
+/** 视口布局尚未完成测量时的默认 PageUp/PageDown 翻页步长。 */
+private const val DEFAULT_VIEWPORT_PAGE_STEP = 10

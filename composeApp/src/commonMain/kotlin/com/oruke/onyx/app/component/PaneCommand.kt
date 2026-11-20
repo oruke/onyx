@@ -60,11 +60,15 @@ internal data class PaneCommandExternalActions(
  * @property canPaste 当前是否允许粘贴。
  * @property canUndo 当前是否允许撤销。
  * @property canRedo 当前是否允许重做。
+ * @property canCreateEntries 当前位置是否允许新建文件或目录（排除只读归档、虚拟集合及加载失败目录）。
+ * @property canGoUp 当前位置是否存在可导航的父级目录。
  */
 internal data class PaneCommandExecutionContext(
     val canPaste: Boolean,
     val canUndo: Boolean,
     val canRedo: Boolean,
+    val canCreateEntries: Boolean = true,
+    val canGoUp: Boolean = true,
 )
 
 /**
@@ -132,11 +136,13 @@ internal class PaneCommandController(
             PaneCommand.CREATE_DIRECTORIES -> false
 
             PaneCommand.NEW_FILE,
-            PaneCommand.NEW_DIRECTORY,
+            PaneCommand.NEW_DIRECTORY -> executionContext.canCreateEntries
+
+            PaneCommand.GO_UP -> executionContext.canGoUp
+
             PaneCommand.REFRESH,
             PaneCommand.FILTER,
             PaneCommand.SELECT_ALL,
-            PaneCommand.GO_UP,
             PaneCommand.TOGGLE_FAVORITE,
             PaneCommand.OPEN_SETTINGS,
             PaneCommand.COMMAND_PALETTE -> true
@@ -221,9 +227,8 @@ internal class PaneCommandController(
                 true
             }
 
-            PaneCommand.GO_UP -> {
+            PaneCommand.GO_UP -> executeIfEnabled(command) {
                 dispatch(PaneIntent.GoUp)
-                true
             }
 
             PaneCommand.TOGGLE_FAVORITE -> {

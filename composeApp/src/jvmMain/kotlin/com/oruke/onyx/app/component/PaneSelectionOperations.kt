@@ -41,6 +41,21 @@ internal fun DefaultPaneComponent.moveSelection(offset: Int, extendSelection: Bo
     }
 }
 
+/**
+ * 将选择焦点跳转至首项或末项并请求视口滚动可见。
+ *
+ * @param toEnd 为 `true` 时跳转到末项，否则跳转到首项。
+ * @param extendSelection 是否从当前锚点扩展范围选择。
+ */
+internal fun DefaultPaneComponent.moveSelectionToBoundary(toEnd: Boolean, extendSelection: Boolean) {
+    val tab = activeTab() ?: return
+    clearInlineEdit(tab.id)
+    val entries = currentVisibleEntries()
+    updateTab(tab.id) { currentTab ->
+        currentTab.moveSelectionToBoundaryState(entries, toEnd, extendSelection)
+    }
+}
+
 /** 打开当前选择焦点条目。 */
 internal fun DefaultPaneComponent.openSelectedEntry() {
     val tab = activeTab() ?: return

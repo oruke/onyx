@@ -97,6 +97,7 @@ internal fun QuickOpenDialogSurface(
                     selectedIndex = selectedIndex,
                     actions = actions,
                     onSelectedIndexChange = onSelectedIndexChange,
+                    query = state.query,
                 )
             },
     ) {

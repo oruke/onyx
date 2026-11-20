@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -20,6 +21,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.oruke.onyx.app.component.SearchPanelState
+import com.oruke.onyx.app.component.SearchStatus
 import com.oruke.onyx.core.model.VFile
 import kotlinx.coroutines.delay
 
@@ -101,9 +103,17 @@ internal fun QuickOpenPanel(
     val listState = rememberLazyListState()
     val selectedIndex = state.selectedIndex
     var contextMenuRequest by remember { mutableStateOf<QuickOpenContextMenuRequest?>(null) }
+    var lastTriggeredQuery by remember { mutableStateOf<String?>(null) }
+    val executeSearchOnce = {
+        lastTriggeredQuery = state.query
+        onExecuteSearch()
+    }
     val actions = QuickOpenPanelActions(
-        onQueryChange = onQueryChange,
-        onExecuteSearch = onExecuteSearch,
+        onQueryChange = { nextQuery ->
+            if (nextQuery != state.query) lastTriggeredQuery = null
+            onQueryChange(nextQuery)
+        },
+        onExecuteSearch = executeSearchOnce,
         onClose = onClose,
         onOpenResult = onOpenResult,
         onOpenResultInFolder = onOpenResultInFolder,
@@ -111,7 +121,12 @@ internal fun QuickOpenPanel(
 
     RequestQuickOpenInputFocus(focusRequester)
     KeepQuickOpenSelectionVisible(selectedIndex, state.results, listState)
-    ExecuteQuickOpenSearchAfterQuerySettles(state.query, actions)
+    ExecuteQuickOpenSearchAfterQuerySettles(
+        query = state.query,
+        isRunning = state.status == SearchStatus.RUNNING,
+        alreadyTriggeredForQuery = lastTriggeredQuery == state.query,
+        actions = actions,
+    )
 
     Box(
         modifier = modifier
@@ -164,12 +179,18 @@ private fun RequestQuickOpenInputFocus(focusRequester: FocusRequester) {
 @Composable
 private fun ExecuteQuickOpenSearchAfterQuerySettles(
     query: String,
+    isRunning: Boolean,
+    alreadyTriggeredForQuery: Boolean,
     actions: QuickOpenPanelActions,
 ) {
+    val latestSkip by rememberUpdatedState(isRunning || alreadyTriggeredForQuery)
+    val latestActions by rememberUpdatedState(actions)
     LaunchedEffect(query) {
-        if (query.isNotBlank()) {
+        if (query.isNotBlank() && !latestSkip) {
             delay(QuickOpenPanelDefaults.SEARCH_DEBOUNCE_MILLIS)
-            actions.onExecuteSearch()
+            if (!latestSkip) {
+                latestActions.onExecuteSearch()
+            }
         }
     }
 }

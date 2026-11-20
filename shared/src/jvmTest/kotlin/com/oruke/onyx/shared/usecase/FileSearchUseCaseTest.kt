@@ -18,6 +18,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -220,6 +221,69 @@ class FileSearchUseCaseTest {
         } finally {
             deleteRecursively(tempRoot)
         }
+    }
+
+    /**
+     * 验证双引号包裹的多词内容查询（如 `content:"hello world"`）不会被空白拆分为文件名条件，
+     * 能够完整透传多词短语给内容检索服务并命中不含这些词的文件名。
+     */
+    @Test
+    fun quotedMultiWordContentQueryMatchesFileContentWithoutSplittingIntoNameTokens(): Unit = runBlocking {
+        val root = "mock://quoted-content"
+        val noteFile = file("$root/notes.txt", "notes.txt", root)
+        val otherFile = file("$root/other.txt", "other.txt", root)
+        val repo = FakeSearchFileRepository(
+            listings = mapOf(root to Result.success(listOf(noteFile, otherFile))),
+        )
+        val seenQueries = mutableListOf<String>()
+        val contentService = object : FileContentSearchService {
+            override fun supports(entry: VFile): Boolean = entry.kind == VFileKind.FILE
+            override suspend fun contains(entry: VFile, query: String, maxBytes: Long): Result<Boolean> {
+                seenQueries += query
+                return Result.success(entry.name == "notes.txt" && query == "hello world")
+            }
+        }
+
+        val criteria = FileSearchCriteria.parse("""content:"hello world" type:file""")
+        assertEquals("", criteria.nameQuery)
+        assertEquals("hello world", criteria.contentQuery)
+        assertEquals(VFileKind.FILE, criteria.kind)
+
+        val escapedCriteria = FileSearchCriteria.parse("""contains:"say \"hi\" now"""")
+        assertEquals("", escapedCriteria.nameQuery)
+        assertEquals("""say "hi" now""", escapedCriteria.contentQuery)
+
+        // 未闭合且以转义引号结尾时，不能把 \" 误当作闭合引号剥离。
+        val danglingEscaped = FileSearchCriteria.parse("""content:"hello\"""")
+        assertEquals("", danglingEscaped.nameQuery)
+        assertEquals("""hello"""", danglingEscaped.contentQuery)
+
+        val events = FileSearchUseCase(repo, contentService).search(
+            FileSearchRequest(rootLocation = root, query = """content:"hello world" type:file"""),
+        ).toList()
+        assertIs<FileSearchEvent.Completed>(events.last())
+        assertEquals(listOf("notes.txt"), events.filterIsInstance<FileSearchEvent.Results>().last().entries.map { it.name })
+        assertTrue(seenQueries.all { it == "hello world" })
+    }
+
+    /**
+     * 验证带本地时区偏移的 ISO-8601 时间边界（如东八区 `2026-11-19T00:00:00+08:00`）能精确命中凌晨文件并排除前一日文件。
+     */
+    @Test
+    fun isoOffsetModifiedFilterMatchesLocalMidnightAccurately() {
+        val criteria = FileSearchCriteria.parse("modified>=2026-11-19T00:00:00+08:00")
+        // 北京时间 2026-11-19 00:25:00+08:00 == UTC 2026-11-18T16:25:00Z
+        val todayEarlyMorning = java.time.Instant.parse("2026-11-18T16:25:00Z").toEpochMilli()
+        // 北京时间 2026-11-18 23:59:00+08:00 == UTC 2026-11-18T15:59:00Z
+        val yesterdayLateNight = java.time.Instant.parse("2026-11-18T15:59:00Z").toEpochMilli()
+
+        val earlyFile = file("mock://tz/early.txt", "early.txt", "mock://tz")
+            .copy(modifiedAtEpochMillis = todayEarlyMorning)
+        val lateFile = file("mock://tz/late.txt", "late.txt", "mock://tz")
+            .copy(modifiedAtEpochMillis = yesterdayLateNight)
+
+        assertTrue(criteria.matchesMetadata(earlyFile), "东八区当天 00:25 修改的文件必须命中 TODAY")
+        assertFalse(criteria.matchesMetadata(lateFile), "东八区前一日 23:59 修改的文件必须被 TODAY 排除")
     }
 
     private fun deleteRecursively(root: Path) {

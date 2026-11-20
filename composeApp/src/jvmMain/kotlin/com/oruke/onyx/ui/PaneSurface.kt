@@ -24,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -32,6 +33,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -40,7 +44,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.oruke.onyx.app.component.PaneCommand
+import com.oruke.onyx.app.component.PaneEntriesState
 import com.oruke.onyx.app.component.PaneIntent
+import com.oruke.onyx.app.component.isBrowsableDirectory
+import com.oruke.onyx.app.component.visibleEntriesIncludingExpanded
+import com.oruke.onyx.core.model.ViewMode
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.windowBounds
 import kotlinx.coroutines.delay
@@ -70,6 +78,7 @@ private val PANE_SHORTCUT_COMMANDS = listOf(
     OnyxCommand.CommandPalette,
     OnyxCommand.QuickOpen,
     OnyxCommand.ShowSearchPanel,
+    OnyxCommand.FocusAddressBar,
     OnyxCommand.OpenSelection,
     OnyxCommand.RenameSelection,
     OnyxCommand.NewDirectory,
@@ -180,7 +189,7 @@ private fun PaneSurfaceRuntime.isTextInputOwningKeyboard(): Boolean {
 }
 
 /**
- * 在活动面板、目录跳转、筛选收起与内联编辑切换时恢复正确的键盘焦点。
+ * 在活动面板、目录跳转、筛选收起、浮层关闭与内联编辑结束时恢复正确的键盘焦点。
  *
  * @param runtime 面板运行时控制器。
  */
@@ -188,7 +197,12 @@ private fun PaneSurfaceRuntime.isTextInputOwningKeyboard(): Boolean {
 private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
     val inlineEditActive = runtime.state.inlineEditState != null
     val filterEffectiveFocused = runtime.isFilterEffectiveFocused()
+    val commandPaletteVisible = runtime.state.commandPaletteVisible
+    val contextMenuVisible = runtime.ui.contextMenuVisible
+    val addressBarEditing = runtime.ui.addressBarEditing
+    val modalOverlayVisible = runtime.model.modalOverlayVisible
     val textInputOwnsKeyboard = runtime.isTextInputOwningKeyboard()
+    val overlayBlocksPaneFocus = textInputOwnsKeyboard || contextMenuVisible || modalOverlayVisible
     LaunchedEffect(
         runtime.model.active,
         runtime.state.activeTabId,
@@ -196,16 +210,46 @@ private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
         runtime.model.windowActivationRequest,
     ) {
         // 侧栏、工具栏导航、筛选回车进入子目录及子窗口跳转唤醒均会触发此效应；活动面板必须在就绪后恢复文件快捷键焦点。
-        if (runtime.model.active && !textInputOwnsKeyboard) runtime.focusRequester.requestFocus()
+        if (runtime.model.active && !overlayBlocksPaneFocus) runtime.focusRequester.requestFocus()
     }
-    LaunchedEffect(runtime.model.active, inlineEditActive, filterEffectiveFocused, textInputOwnsKeyboard) {
+    LaunchedEffect(
+        runtime.model.active,
+        inlineEditActive,
+        filterEffectiveFocused,
+        commandPaletteVisible,
+        contextMenuVisible,
+        addressBarEditing,
+        modalOverlayVisible,
+        textInputOwnsKeyboard,
+    ) {
         val inlineEditFinished = runtime.ui.inlineEditWasActive && !inlineEditActive
         val filterFinished = runtime.ui.filterWasFocused && !filterEffectiveFocused
-        val overlayInputFinished = inlineEditFinished || filterFinished
+        val commandPaletteFinished = runtime.ui.commandPaletteWasVisible && !commandPaletteVisible
+        val contextMenuFinished = runtime.ui.contextMenuWasVisible && !contextMenuVisible
+        val addressBarFinished = runtime.ui.addressBarWasEditing && !addressBarEditing
+        val modalOverlayFinished = runtime.ui.modalOverlayWasVisible && !modalOverlayVisible
+        val anyOverlayFinished = inlineEditFinished ||
+            filterFinished ||
+            commandPaletteFinished ||
+            contextMenuFinished ||
+            addressBarFinished ||
+            modalOverlayFinished
         runtime.ui.inlineEditWasActive = inlineEditActive
         runtime.ui.filterWasFocused = filterEffectiveFocused
-        if (runtime.model.active && overlayInputFinished && !textInputOwnsKeyboard) {
-            runtime.focusRequester.requestFocus()
+        runtime.ui.commandPaletteWasVisible = commandPaletteVisible
+        runtime.ui.contextMenuWasVisible = contextMenuVisible
+        runtime.ui.addressBarWasEditing = addressBarEditing
+        runtime.ui.modalOverlayWasVisible = modalOverlayVisible
+        if (runtime.model.active && anyOverlayFinished && !overlayBlocksPaneFocus) {
+            // 等待浮层（如可聚焦 Popup 或 Quick Open 遮罩）完成卸载帧后，再次确认实时状态未被地址栏等输入框接管，再取回主面板键盘焦点。
+            withFrameNanos { }
+            val stillClearForPaneFocus = runtime.model.active &&
+                !runtime.isTextInputOwningKeyboard() &&
+                !runtime.ui.contextMenuVisible &&
+                !runtime.model.modalOverlayVisible
+            if (stillClearForPaneFocus) {
+                runtime.focusRequester.requestFocus()
+            }
         }
     }
 }
@@ -219,6 +263,13 @@ private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime) {
  */
 private fun handlePaneKeyEvent(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
     if (!runtime.model.active || event.type != KeyEventType.KeyDown) return false
+    if (runtime.ui.contextMenuVisible) {
+        if (event.key == Key.Escape) {
+            runtime.ui.contextMenuVisible = false
+        }
+        // 右键菜单开启期间阻断所有面板快捷键与导航，防止误触 Delete / Enter 等破坏性操作。
+        return true
+    }
     val textInputOwnsKeyboard = runtime.isTextInputOwningKeyboard()
     return when {
         textInputOwnsKeyboard -> false
@@ -235,6 +286,14 @@ private fun handlePaneKeyEvent(event: KeyEvent, runtime: PaneSurfaceRuntime): Bo
  * @return 事件已消费时返回 `true`。
  */
 private fun handleRegularPaneKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
+    val isAltDFocusAddressBar = event.isAltPressed &&
+        !event.isCtrlPressed &&
+        !event.isMetaPressed &&
+        !event.isShiftPressed &&
+        event.key == Key.D
+    if (isAltDFocusAddressBar) {
+        return runtime.executeCommand(OnyxCommand.FocusAddressBar)
+    }
     val shortcutCommand = PANE_SHORTCUT_COMMANDS.firstOrNull { command ->
         event.matchesCommand(command, runtime.model.commandShortcuts)
     }
@@ -251,7 +310,7 @@ private fun handleRegularPaneKey(event: KeyEvent, runtime: PaneSurfaceRuntime): 
  */
 private fun handleInlineEditKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
     return when (event.key) {
-        Key.Enter -> {
+        Key.Enter, Key.NumPadEnter -> {
             runtime.dispatch(PaneIntent.ConfirmInlineEdit)
             true
         }
@@ -266,21 +325,66 @@ private fun handleInlineEditKey(event: KeyEvent, runtime: PaneSurfaceRuntime): B
 }
 
 /**
- * 处理方向键与 Escape 等不属于可配置命令的导航按键。
+ * 处理方向键、首尾/翻页键、树形展开折叠与 Escape 等不属于可配置命令的导航按键。
  *
  * @param event 键盘事件。
  * @param runtime 面板运行时控制器。
  * @return 事件已消费时返回 `true`。
  */
 private fun handlePaneNavigationKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean {
+    val isGridMode = runtime.state.viewMode == ViewMode.GALLERY
+    val rowStride = if (isGridMode) runtime.ui.gridColumnCount.coerceAtLeast(1) else 1
+    val pageStep = runtime.ui.viewportPageSize.coerceAtLeast(1)
+    val extendSelection = event.isShiftPressed
+    val hasNonShiftModifier = event.isCtrlPressed || event.isMetaPressed || event.isAltPressed
     return when (event.key) {
         Key.DirectionDown -> {
-            runtime.dispatch(PaneIntent.MoveSelection(1, event.isShiftPressed))
+            runtime.dispatch(PaneIntent.MoveSelection(rowStride, extendSelection))
             true
         }
 
         Key.DirectionUp -> {
-            runtime.dispatch(PaneIntent.MoveSelection(-1, event.isShiftPressed))
+            runtime.dispatch(PaneIntent.MoveSelection(-rowStride, extendSelection))
+            true
+        }
+
+        Key.DirectionRight -> when {
+            isGridMode -> {
+                runtime.dispatch(PaneIntent.MoveSelection(1, extendSelection))
+                true
+            }
+
+            !extendSelection && !hasNonShiftModifier -> handleDetailsTreeHorizontalKey(expand = true, runtime = runtime)
+            else -> false
+        }
+
+        Key.DirectionLeft -> when {
+            isGridMode -> {
+                runtime.dispatch(PaneIntent.MoveSelection(-1, extendSelection))
+                true
+            }
+
+            !extendSelection && !hasNonShiftModifier -> handleDetailsTreeHorizontalKey(expand = false, runtime = runtime)
+            else -> false
+        }
+
+        Key.MoveHome -> {
+            runtime.dispatch(PaneIntent.MoveSelectionToBoundary(toEnd = false, extendSelection = extendSelection))
+            true
+        }
+
+        Key.MoveEnd -> {
+            runtime.dispatch(PaneIntent.MoveSelectionToBoundary(toEnd = true, extendSelection = extendSelection))
+            true
+        }
+
+        Key.PageDown -> {
+            runtime.dispatch(PaneIntent.MoveSelection(pageStep, extendSelection))
+            true
+        }
+
+        Key.PageUp -> {
+            runtime.dispatch(PaneIntent.MoveSelection(-pageStep, extendSelection))
             true
         }
 
@@ -291,6 +395,47 @@ private fun handlePaneNavigationKey(event: KeyEvent, runtime: PaneSurfaceRuntime
 
         else -> false
     }
+}
+
+/**
+ * 处理详情树视图下的左/右方向键：右箭头展开折叠目录或进入首个子项，左箭头折叠已展开目录或跳回父目录条目。
+ *
+ * @param expand 为 `true` 表示按右键展开，为 `false` 表示按左键折叠/回跳父项。
+ * @param runtime 面板运行时控制器。
+ * @return 已消费按键时返回 `true`。
+ */
+private fun handleDetailsTreeHorizontalKey(expand: Boolean, runtime: PaneSurfaceRuntime): Boolean {
+    val state = runtime.state
+    if (state.entriesState !is PaneEntriesState.Ready || isTrashLocation(state.location)) return false
+    val visibleEntries = state.visibleEntriesIncludingExpanded()
+    if (visibleEntries.isEmpty()) return false
+    val focusId = state.selectionFocusId ?: state.selectedEntryIds.singleOrNull() ?: return false
+    val currentIndex = visibleEntries.indexOfFirst { it.id == focusId }
+    val focusEntry = visibleEntries.getOrNull(currentIndex) ?: return false
+    if (expand) {
+        if (!focusEntry.isBrowsableDirectory()) return false
+        if (focusEntry.location !in state.inlineExpandedLocations) {
+            runtime.dispatch(PaneIntent.ToggleInlineExpand(focusEntry.location))
+            return true
+        }
+        val nextEntry = visibleEntries.getOrNull(currentIndex + 1)
+        if (nextEntry != null && nextEntry.parentLocation == focusEntry.location) {
+            runtime.dispatch(PaneIntent.MoveSelection(1, false))
+            return true
+        }
+        return false
+    }
+    if (focusEntry.location in state.inlineExpandedLocations) {
+        runtime.dispatch(PaneIntent.ToggleInlineExpand(focusEntry.location))
+        return true
+    }
+    val parentLocation = focusEntry.parentLocation ?: return false
+    val parentIndex = visibleEntries.indexOfFirst { it.location == parentLocation }
+    if (parentIndex >= 0 && parentIndex != currentIndex) {
+        runtime.dispatch(PaneIntent.MoveSelection(parentIndex - currentIndex, false))
+        return true
+    }
+    return false
 }
 
 /**

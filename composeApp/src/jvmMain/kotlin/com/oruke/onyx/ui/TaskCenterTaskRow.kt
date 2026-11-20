@@ -236,7 +236,7 @@ private fun TaskRowActions(
                 else -> Unit
             }
         }
-        if (task.status == BackgroundTaskStatus.FAILED) {
+        if (task.status == BackgroundTaskStatus.FAILED && task.canRetry) {
             key("retry") {
                 TaskActionIcon(
                     onClick = onRetry,

@@ -157,7 +157,7 @@ internal data class GalleryItemActions(
     /** 取消内联编辑。 */
     val onCancelInlineEdit: (() -> Unit)? = null,
     /** 从未选中项开始框选。 */
-    val onStartRubberBand: (String, Offset, Boolean) -> Unit = { _, _, _ -> },
+    val onStartRubberBand: (String, Offset, Offset, Boolean) -> Unit = { _, _, _, _ -> },
     /** 开始重命名当前条目。 */
     val onBeginRename: () -> Unit = {},
 )
@@ -637,7 +637,8 @@ private fun updateGalleryPointer(
             interaction.clickController.onPointerDraggedOrCancelled()
             change.consume()
             val start = interaction.coordinates?.localToWindow(startPosition) ?: startPosition
-            actions.onStartRubberBand(entry.id, start, interaction.additiveSelection)
+            val current = interaction.coordinates?.localToWindow(change.position) ?: change.position
+            actions.onStartRubberBand(entry.id, start, current, interaction.additiveSelection)
             GalleryPointerProgress(fileDragStarted = false, continueTracking = false)
         }
     }
@@ -925,7 +926,7 @@ private fun GalleryInlineEditor(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
-                    Key.Enter -> true.also { confirm() }
+                    Key.Enter, Key.NumPadEnter -> true.also { confirm() }
                     Key.Escape -> true.also { cancel() }
                     else -> false
                 }

@@ -102,7 +102,7 @@ object EntrySorter {
         val filteredEntries = if (filterQuery.isBlank()) {
             visibleEntries
         } else {
-            val normalizedQuery = filterQuery.lowercase()
+            val normalizedQuery = filterQuery.trim().lowercase()
             visibleEntries.filter { entry ->
                 entry.name.lowercase().contains(normalizedQuery) ||
                     (entry.name.containsSfmMappedChars() &&

@@ -3,8 +3,10 @@ package com.oruke.onyx.ui
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import com.oruke.onyx.core.model.VFile
@@ -15,10 +17,14 @@ private const val QUICK_OPEN_NEXT_SELECTION_DELTA = 1
 /** 键盘向上移动结果选中的增量。 */
 private const val QUICK_OPEN_PREVIOUS_SELECTION_DELTA = -1
 
+/** PageUp / PageDown 单次翻页的默认步长。 */
+private const val QUICK_OPEN_PAGE_SELECTION_DELTA = 8
+
 /**
  * 处理快速打开浮层的键盘导航和打开快捷键。
  *
  * @param event 当前键盘事件。
+ * @param query 当前搜索输入框关键词；防抖窗口内尚无结果时按回车可立即触发搜索。
  * @param results 当前搜索结果。
  * @param selectedIndex 当前选中结果下标。
  * @param actions 快速打开面板可发出的组件层动作。
@@ -31,6 +37,7 @@ internal fun handleQuickOpenKeyboardEvent(
     selectedIndex: Int,
     actions: QuickOpenPanelActions,
     onSelectedIndexChange: (Int) -> Unit,
+    query: String = "",
 ): Boolean = if (event.type != KeyEventType.KeyDown) {
     false
 } else {
@@ -55,12 +62,63 @@ internal fun handleQuickOpenKeyboardEvent(
             true
         }
 
-        Key.Enter -> {
-            openQuickOpenSelectedResult(
-                selectedFile = results.getOrNull(selectedIndex),
-                shouldOpenInFolder = event.isCtrlPressed || event.isMetaPressed,
-                actions = actions,
+        Key.PageDown -> {
+            moveQuickOpenSelection(
+                selectedIndex = selectedIndex,
+                results = results,
+                delta = QUICK_OPEN_PAGE_SELECTION_DELTA,
+                onSelectedIndexChange = onSelectedIndexChange,
             )
+            true
+        }
+
+        Key.PageUp -> {
+            moveQuickOpenSelection(
+                selectedIndex = selectedIndex,
+                results = results,
+                delta = -QUICK_OPEN_PAGE_SELECTION_DELTA,
+                onSelectedIndexChange = onSelectedIndexChange,
+            )
+            true
+        }
+
+        Key.MoveHome -> {
+            val primaryOnly = (event.isCtrlPressed || event.isMetaPressed) &&
+                !event.isShiftPressed && !event.isAltPressed
+            val unmodifiedOnEmptyQuery = query.isEmpty() &&
+                !event.isCtrlPressed && !event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed
+            if (primaryOnly || unmodifiedOnEmptyQuery) {
+                if (results.isNotEmpty()) onSelectedIndexChange(QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX)
+                true
+            } else {
+                false
+            }
+        }
+
+        Key.MoveEnd -> {
+            val primaryOnly = (event.isCtrlPressed || event.isMetaPressed) &&
+                !event.isShiftPressed && !event.isAltPressed
+            val unmodifiedOnEmptyQuery = query.isEmpty() &&
+                !event.isCtrlPressed && !event.isMetaPressed && !event.isShiftPressed && !event.isAltPressed
+            if (primaryOnly || unmodifiedOnEmptyQuery) {
+                if (results.isNotEmpty()) onSelectedIndexChange(results.lastIndex)
+                true
+            } else {
+                false
+            }
+        }
+
+        Key.Enter, Key.NumPadEnter -> {
+            val selectedFile = results.getOrNull(selectedIndex)
+            if (selectedFile != null) {
+                openQuickOpenSelectedResult(
+                    selectedFile = selectedFile,
+                    shouldOpenInFolder = event.isCtrlPressed || event.isMetaPressed,
+                    actions = actions,
+                )
+            } else if (query.isNotBlank()) {
+                actions.onExecuteSearch()
+            }
             true
         }
 

@@ -268,6 +268,14 @@ internal sealed interface PaneIntent {
         val extendSelection: Boolean = false,
     ) : PaneIntent
 
+    /** 将选择焦点移动到首项或末项，并支持按住 Shift 扩展范围选择。 */
+    data class MoveSelectionToBoundary(
+        /** 为 `true` 时跳至末项，否则跳至首项。 */
+        val toEnd: Boolean,
+        /** 是否保持当前锚点扩展范围选择。 */
+        val extendSelection: Boolean = false,
+    ) : PaneIntent
+
     data object OpenSelectedEntry : PaneIntent
 
     data object BeginRename : PaneIntent

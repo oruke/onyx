@@ -91,6 +91,7 @@
     <string name="shortcut_key_v">V</string>
     <string name="shortcut_key_f">F</string>
     <string name="shortcut_key_k">K</string>
+    <string name="shortcut_key_l">L</string>
     <string name="label_with_shortcut">%1$s (%2$s)</string>
     <string name="label_archive_password">Archive Password</string>
     <string name="label_archive_password_hint">Enter password for encrypted archive</string>
@@ -418,6 +419,7 @@
     <string name="action_image_rotate_ccw">↺</string>
 
     <string name="action_filter">Filter</string>
+    <string name="action_focus_address_bar">Focus Address Bar</string>
     <string name="action_search">Search</string>
     <string name="action_close_search_panel">Close Search</string>
     <string name="label_search_title">Search</string>

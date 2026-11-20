@@ -80,11 +80,49 @@ internal fun PaneTabState.moveSelectionState(
         selectedEntryIds = selectedEntryIds,
     )
     val currentIndex = entries.indexOfFirst { it.id == currentFocusId }
-    val fallbackIndex = if (offset >= 0) 0 else entries.lastIndex
-    val baseIndex = if (currentIndex == -1) fallbackIndex else currentIndex
-    val nextIndex = (baseIndex + offset).coerceIn(0, entries.lastIndex)
+    val nextIndex = if (currentIndex == -1) {
+        if (offset >= 0) 0 else entries.lastIndex
+    } else {
+        (currentIndex + offset).coerceIn(0, entries.lastIndex)
+    }
     val nextEntryId = entries[nextIndex].id
 
+    return applyKeyboardSelectionTarget(entries, currentFocusId, nextEntryId, extendSelection)
+}
+
+/**
+ * 将键盘选择直接移动到首项或末项，并触发视口滚动。
+ *
+ * @param entries 当前可见条目列表。
+ * @param toEnd 为 `true` 时选择末项，否则选择首项。
+ * @param extendSelection 是否保持锚点扩展选择。
+ * @return 更新选择与待滚动目标后的标签状态。
+ */
+internal fun PaneTabState.moveSelectionToBoundaryState(
+    entries: List<VFile>,
+    toEnd: Boolean,
+    extendSelection: Boolean,
+): PaneTabState {
+    if (entries.isEmpty()) return this
+    val currentFocusId = SelectionReducer.resolveSelectionFocusId(
+        entries = entries,
+        focusId = selectionFocusId,
+        anchorId = selectionAnchorId,
+        selectedEntryIds = selectedEntryIds,
+    )
+    val targetEntryId = if (toEnd) entries.last().id else entries.first().id
+    return applyKeyboardSelectionTarget(entries, currentFocusId, targetEntryId, extendSelection)
+}
+
+/**
+ * 应用键盘选择目标并设置 [TabState.pendingScrollToEntryId] 驱动视口自动滚动可见。
+ */
+private fun PaneTabState.applyKeyboardSelectionTarget(
+    entries: List<VFile>,
+    currentFocusId: String?,
+    nextEntryId: String,
+    extendSelection: Boolean,
+): PaneTabState {
     return if (extendSelection) {
         val anchorId = SelectionReducer.validEntryId(selectionAnchorId, entries)
             ?: currentFocusId
@@ -100,6 +138,7 @@ internal fun PaneTabState.moveSelectionState(
                 ),
                 selectionAnchorId = anchorId,
                 selectionFocusId = nextEntryId,
+                pendingScrollToEntryId = nextEntryId,
             )
         }
     } else {
@@ -108,6 +147,7 @@ internal fun PaneTabState.moveSelectionState(
                 selectedEntryIds = setOf(nextEntryId),
                 selectionAnchorId = nextEntryId,
                 selectionFocusId = nextEntryId,
+                pendingScrollToEntryId = nextEntryId,
             )
         }
     }

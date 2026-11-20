@@ -91,6 +91,7 @@
     <string name="shortcut_key_v">V</string>
     <string name="shortcut_key_f">F</string>
     <string name="shortcut_key_k">K</string>
+    <string name="shortcut_key_l">L</string>
     <string name="label_with_shortcut">%1$s（%2$s）</string>
     <string name="label_archive_password">压缩包密码</string>
     <string name="label_archive_password_hint">请输入加密压缩包的密码</string>
@@ -416,6 +417,7 @@
     <string name="action_image_rotate_ccw">↺</string>
 
     <string name="action_filter">筛选</string>
+    <string name="action_focus_address_bar">聚焦地址栏</string>
     <string name="action_search">搜索</string>
     <string name="action_close_search_panel">关闭搜索</string>
     <string name="label_search_title">搜索</string>

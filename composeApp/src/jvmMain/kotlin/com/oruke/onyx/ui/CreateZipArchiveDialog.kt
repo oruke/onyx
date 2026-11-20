@@ -166,7 +166,7 @@ private fun ZipArchiveNameInput(
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
-                    Key.Enter -> {
+                    Key.Enter, Key.NumPadEnter -> {
                         onConfirm()
                         true
                     }
