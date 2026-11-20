@@ -87,15 +87,32 @@ internal interface TerminalLauncherService {
     suspend fun openTerminal(location: String): Result<Unit>
 }
 
+/** 文本预览解码所使用的字符编码选项。 */
+internal enum class PreviewTextEncoding(
+    /** 面向用户展示的编码名称。 */
+    val displayLabel: String,
+) {
+    AUTO("Auto"),
+    UTF_8("UTF-8"),
+    UTF_16("UTF-16"),
+    GBK("GBK"),
+    SHIFT_JIS("Shift-JIS"),
+}
+
 internal data class PreviewTextRequest(
     val entry: VFile,
     val maxBytes: Long,
     val maxLines: Int,
+    val encoding: PreviewTextEncoding = PreviewTextEncoding.AUTO,
 )
 
 internal sealed interface PreviewTextResult {
     data class Text(
         val value: String,
+        val detectedEncoding: PreviewTextEncoding = PreviewTextEncoding.UTF_8,
+        val truncated: Boolean = false,
+        val lineCount: Int = 0,
+        val totalBytes: Long? = null,
     ) : PreviewTextResult
 
     data object TooLarge : PreviewTextResult
@@ -145,6 +162,7 @@ internal sealed interface ArchiveInfoResult {
         val canBrowse: Boolean,
         val canExtract: Boolean,
         val canWrite: Boolean,
+        val entryCount: Int? = null,
     ) : ArchiveInfoResult
 
     data object Unavailable : ArchiveInfoResult
@@ -164,6 +182,12 @@ internal interface FileTypeService {
     fun isArchiveFileName(fileName: String): Boolean
 
     fun isTextPreviewFileName(fileName: String): Boolean
+
+    /** 判断文件名是否为受支持的音频文件。 */
+    fun isAudioFileName(fileName: String): Boolean = false
+
+    /** 判断文件名是否为受支持的视频文件。 */
+    fun isVideoFileName(fileName: String): Boolean = false
 }
 
 internal interface ArchiveEntryOpenService {

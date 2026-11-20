@@ -265,8 +265,10 @@ class Batch4UiAndVisualVerificationTest {
                 "02-preview-inspector-panel-dark-100-after.png",
             )
 
-            // 切换到「检查器」页签，验证哈希值与一键复制路径/哈希按钮
+            // 切换到「元数据」模式，验证按需点击「计算 SHA-256」后展示哈希值
             onNodeWithTag("preview-sidebar-tab-inspector").performClick()
+            waitForIdle()
+            onNodeWithTag("metadata-compute-sha256-button").assertIsDisplayed().performClick()
             waitForIdle()
             onNodeWithText("a1b2c3d4e5f678901234567890abcdef1234567890abcdef1234567890abcdef").assertIsDisplayed()
         }

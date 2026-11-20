@@ -170,6 +170,7 @@ internal fun LayoutIconButton(
 internal fun TitleBarIconButton(
     onClick: () -> Unit,
     tooltip: String,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -178,7 +179,7 @@ internal fun TitleBarIconButton(
 
     OnyxTooltip(text = tooltip) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .hoverable(interactionSource)
                 .background(
                     when {
@@ -202,6 +203,7 @@ internal fun ResizablePaneDivider(
     orientation: Orientation,
     onDragDelta: (Float) -> Unit,
 ) {
+    val latestOnDragDelta by androidx.compose.runtime.rememberUpdatedState(onDragDelta)
     val modifier = when (orientation) {
         Orientation.Vertical -> Modifier
             .fillMaxHeight()
@@ -209,7 +211,7 @@ internal fun ResizablePaneDivider(
             .pointerHoverIcon(horizontalResizePointerIcon())
             .pointerInput(Unit) {
                 detectDragGestures { _, dragAmount ->
-                    onDragDelta(dragAmount.x)
+                    latestOnDragDelta(dragAmount.x)
                 }
             }
 
@@ -219,7 +221,7 @@ internal fun ResizablePaneDivider(
             .pointerHoverIcon(verticalResizePointerIcon())
             .pointerInput(Unit) {
                 detectDragGestures { _, dragAmount ->
-                    onDragDelta(dragAmount.y)
+                    latestOnDragDelta(dragAmount.y)
                 }
             }
     }

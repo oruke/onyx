@@ -42,6 +42,7 @@ import com.oruke.onyx.app.component.RootState
 import com.oruke.onyx.app.component.RootLaunchConfiguration
 import com.oruke.onyx.app.component.effectiveSettings
 import com.oruke.onyx.app.component.findVisibleEntry
+import com.oruke.onyx.app.component.visibleEntriesIncludingExpanded
 import com.oruke.onyx.app.component.rememberRootApplicationRuntime
 import com.oruke.onyx.app.component.rememberRootComponent
 import com.oruke.onyx.core.model.PaneId
@@ -627,7 +628,7 @@ private fun HorizontalPaneLayout(
 }
 
 /**
- * 在启用时显示活动面板选中项的预览。
+ * 在启用时显示活动面板选中项的预览与元数据侧栏，支持左边界拖拽调宽与模式持久化。
  *
  * @param state 根组件当前状态。
  * @param rootComponent 根组件业务接口。
@@ -635,24 +636,63 @@ private fun HorizontalPaneLayout(
 @Composable
 private fun AppPreviewPanel(state: RootState, rootComponent: RootComponent) {
     if (!state.showPreviewPane) return
+    // 面板宽度与模式属于运行期实时布局状态，直接读取 state.settings 避免非模态设置窗打开时被旧草稿覆盖
+    val liveSettings = state.settings
+    val density = androidx.compose.ui.platform.LocalDensity.current
     val paneState = state.paneState(state.activePane)
     val focusEntryId = paneState.selectionFocusId
         ?.takeIf { focusId -> focusId in paneState.selectedEntryIds }
         ?: paneState.selectedEntryIds.firstOrNull()
     val selectedEntry = paneState.findVisibleEntry(focusEntryId)
-    Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
+    var liveWidthDp by remember { mutableStateOf(liveSettings.previewPaneWidthDp.toFloat()) }
+    LaunchedEffect(liveSettings.previewPaneWidthDp) {
+        if (kotlin.math.abs(liveWidthDp - liveSettings.previewPaneWidthDp) >= 1f) {
+            liveWidthDp = liveSettings.previewPaneWidthDp.toFloat()
+        }
+    }
+    ResizablePaneDivider(Orientation.Vertical) { deltaPx ->
+        val nextWidth = (liveWidthDp - deltaPx / density.density)
+            .coerceIn(
+                com.oruke.onyx.app.component.MIN_PREVIEW_PANE_WIDTH_DP.toFloat(),
+                com.oruke.onyx.app.component.MAX_PREVIEW_PANE_WIDTH_DP.toFloat(),
+            )
+        liveWidthDp = nextWidth
+        val roundedDp = kotlin.math.round(nextWidth).toInt()
+        if (roundedDp != liveSettings.previewPaneWidthDp) {
+            rootComponent.dispatch(RootIntent.SetPreviewPaneWidth(roundedDp))
+        }
+    }
     PreviewPane(
         selectedEntry = selectedEntry,
-        modifier = Modifier.width(300.dp).fillMaxHeight(),
+        modifier = Modifier.width(liveWidthDp.dp).fillMaxHeight(),
+        activeMode = liveSettings.previewPaneMode,
+        onSelectMode = { mode -> rootComponent.dispatch(RootIntent.SetPreviewPaneMode(mode)) },
+        onClose = { rootComponent.dispatch(RootIntent.ClosePreviewPane) },
         loadThumbnail = rootComponent::loadThumbnail,
         loadTextPreview = rootComponent::loadTextPreview,
         isImageFileName = rootComponent::isImageFileName,
         isTextPreviewFileName = rootComponent::isTextPreviewFileName,
+        isAudioFileName = rootComponent::isAudioFileName,
+        isVideoFileName = rootComponent::isVideoFileName,
         peekCachedThumbnail = rootComponent::peekCachedThumbnail,
         loadVersionedThumbnail = rootComponent::loadThumbnail,
+        peekCachedArchiveThumbnail = rootComponent::peekCachedArchiveThumbnail,
+        loadArchiveThumbnail = rootComponent::loadArchiveThumbnail,
+        readImageSize = rootComponent::readImageSize,
         readFileHash = rootComponent::readFileHash,
         readArchiveInfo = rootComponent::readArchiveInfo,
         isArchiveFileName = rootComponent::isArchiveFileName,
+        readMediaMetadata = rootComponent::readMediaMetadata,
+        loadVideoFrame = rootComponent::loadVideoFrame,
+        loadAudioCover = rootComponent::loadAudioCover,
+        audioPreviewPlayer = rootComponent.audioPreviewPlayer,
+        onOpenImageViewer = { imageEntry ->
+            val visibleImages = paneState.visibleEntriesIncludingExpanded()
+                .filter { candidate -> candidate.kind == VFileKind.FILE && rootComponent.isImageFileName(candidate.name) }
+                .ifEmpty { listOf(imageEntry) }
+            rootComponent.dispatch(RootIntent.OpenImageViewer(imageEntry, visibleImages))
+        },
+        onOpenExternal = { entry -> rootComponent.dispatch(RootIntent.OpenExternalFile(entry)) },
     )
 }
 

@@ -72,6 +72,7 @@ private fun OnyxSettings.sanitizeWindowSizes(): OnyxSettings {
             ?: defaults.taskCenterWindowWidth,
         taskCenterWindowHeight = taskCenterWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT }
             ?: defaults.taskCenterWindowHeight,
+        previewPaneWidthDp = previewPaneWidthDp.coerceIn(MIN_PREVIEW_PANE_WIDTH_DP, MAX_PREVIEW_PANE_WIDTH_DP),
     )
 }
 
@@ -146,3 +147,9 @@ internal const val MIN_UI_SCALE_PERCENT = 75
 
 /** UI 缩放允许的最大百分比。 */
 internal const val MAX_UI_SCALE_PERCENT = 200
+
+/** 右侧预览与元数据面板最小宽度（dp）。 */
+internal const val MIN_PREVIEW_PANE_WIDTH_DP = 220
+
+/** 右侧预览与元数据面板最大宽度（dp）。 */
+internal const val MAX_PREVIEW_PANE_WIDTH_DP = 600

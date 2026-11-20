@@ -73,6 +73,18 @@ private fun DefaultRootComponent.dispatchRootSettingsIntent(intent: RootIntent):
             togglePreviewPane(); true
         }
 
+        RootIntent.ClosePreviewPane -> {
+            closePreviewPane(); true
+        }
+
+        is RootIntent.SetPreviewPaneWidth -> {
+            setPreviewPaneWidth(intent.widthDp); true
+        }
+
+        is RootIntent.SetPreviewPaneMode -> {
+            setPreviewPaneMode(intent.mode); true
+        }
+
         RootIntent.FlushPersistedState -> {
             flushPersistedStateNow(); true
         }

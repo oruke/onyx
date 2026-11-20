@@ -213,10 +213,38 @@ internal fun DefaultRootComponent.requestFocusActivePaneAddressBar() {
     syncImmediateRootState()
 }
 
-/** 切换右侧预览面板可见性。 */
+/** 切换右侧预览面板可见性；关闭时立即停止可能正在运行的音频试听。 */
 internal fun DefaultRootComponent.togglePreviewPane() {
-    showPreviewPane.value = !showPreviewPane.value
+    val nextVisible = !showPreviewPane.value
+    showPreviewPane.value = nextVisible
+    if (!nextVisible) {
+        audioPreviewPlayer.stop()
+    }
     syncImmediateRootState()
+}
+
+/** 显式关闭右侧预览面板并停止音频试听。 */
+internal fun DefaultRootComponent.closePreviewPane() {
+    if (!showPreviewPane.value) return
+    showPreviewPane.value = false
+    audioPreviewPlayer.stop()
+    syncImmediateRootState()
+}
+
+/** 调整并持久化右侧预览面板宽度（自动约束在允许范围内）。 */
+internal fun DefaultRootComponent.setPreviewPaneWidth(widthDp: Int) {
+    val clamped = widthDp.coerceIn(MIN_PREVIEW_PANE_WIDTH_DP, MAX_PREVIEW_PANE_WIDTH_DP)
+    if (settings.value.previewPaneWidthDp == clamped) return
+    updateSettings(settings.value.copy(previewPaneWidthDp = clamped))
+}
+
+/** 切换并持久化右侧面板模式（预览 / 元数据）；切离预览时停止音频试听。 */
+internal fun DefaultRootComponent.setPreviewPaneMode(mode: com.oruke.onyx.core.model.PreviewPaneMode) {
+    if (mode != com.oruke.onyx.core.model.PreviewPaneMode.PREVIEW) {
+        audioPreviewPlayer.stop()
+    }
+    if (settings.value.previewPaneMode == mode) return
+    updateSettings(settings.value.copy(previewPaneMode = mode))
 }
 
 /** @param paneId 新建目录目标面板。 */

@@ -163,6 +163,12 @@ internal class DefaultRootComponent(
     /** 图片元数据服务。 */
     internal val imageMetadataService = dependencies.inspection.imageMetadataService
 
+    /** 音视频媒体预览与元数据服务。 */
+    internal val mediaPreviewService = dependencies.inspection.mediaPreviewService
+
+    /** 右侧预览面板内置音频试听播放器。 */
+    override val audioPreviewPlayer = dependencies.inspection.audioPreviewPlayer
+
     /** 远程连接测试服务。 */
     internal val connectionTestService = dependencies.inspection.connectionTestService
 
@@ -199,6 +205,7 @@ internal class DefaultRootComponent(
     /** 与组件生命周期绑定的主线程协程作用域。 */
     internal val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { value ->
         lifecycle.doOnDestroy {
+            audioPreviewPlayer.dispose()
             flushPersistedStateOnDestroy()
             value.cancel()
         }
@@ -470,6 +477,12 @@ internal class DefaultRootComponent(
     /** @param fileName 文件名。 @return 文件名是否支持文本预览。 */
     override fun isTextPreviewFileName(fileName: String): Boolean = fileTypeService.isTextPreviewFileName(fileName)
 
+    /** @param fileName 文件名。 @return 文件名是否为音频文件。 */
+    override fun isAudioFileName(fileName: String): Boolean = fileTypeService.isAudioFileName(fileName)
+
+    /** @param fileName 文件名。 @return 文件名是否为视频文件。 */
+    override fun isVideoFileName(fileName: String): Boolean = fileTypeService.isVideoFileName(fileName)
+
     /** @param location VFS 位置。 @return VFS 位置的短显示标签。 */
     override fun locationLabel(location: String): String = pathService.label(location)
 
@@ -597,6 +610,24 @@ internal class DefaultRootComponent(
 
     /** @param entry 图片条目。 @return 图片像素尺寸。 */
     override suspend fun readImageSize(entry: VFile): IntSize? = imageMetadataService.readImageSize(entry)
+
+    /** @param entry 音视频条目。 @return 结构化媒体元数据结果。 */
+    override suspend fun readMediaMetadata(entry: VFile): com.oruke.onyx.app.filesystem.MediaMetadataResult =
+        mediaPreviewService.readMediaMetadata(entry)
+
+    /** @param entry 视频条目。 @param positionRatio 时长比例。 @param durationMillis 已知时长。 @param maxDimension 最大边长。 */
+    override suspend fun loadVideoFrame(
+        entry: VFile,
+        positionRatio: Float,
+        durationMillis: Long?,
+        maxDimension: Int,
+    ): ImageBitmap? = mediaPreviewService.loadVideoFrame(entry, positionRatio, durationMillis, maxDimension)
+
+    /** @param entry 音频条目。 @param maxDimension 最大边长。 */
+    override suspend fun loadAudioCover(
+        entry: VFile,
+        maxDimension: Int,
+    ): ImageBitmap? = mediaPreviewService.loadAudioCover(entry, maxDimension)
 
     /** 观察各根状态源并生成单一 RootState。 */
     private fun observeRootState() {

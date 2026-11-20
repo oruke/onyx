@@ -119,7 +119,20 @@ data class OnyxSettings(
     val autoCloseTaskCenterWhenFinished: Boolean = true,
     /** 是否开启详细诊断日志记录（纳入设置草稿与重置生命周期统一管理）。 */
     val verboseLoggingEnabled: Boolean = false,
+    /** 右侧预览与元数据面板宽度，单位 dp。 */
+    val previewPaneWidthDp: Int = 320,
+    /** 右侧预览与元数据面板上次打开的模式。 */
+    val previewPaneMode: PreviewPaneMode = PreviewPaneMode.PREVIEW,
 )
+
+@Serializable
+/** 右侧预览与元数据面板当前展示模式。 */
+enum class PreviewPaneMode {
+    /** 专注展示文件正文、图片、音视频与压缩包封面预览。 */
+    PREVIEW,
+    /** 专注展示基础属性、媒体流参数、归档信息与按需 SHA-256 校验。 */
+    METADATA,
+}
 
 @Serializable
 /** 单个命令的快捷键覆盖配置。 */

@@ -98,6 +98,8 @@ internal fun rememberRootComponent(
                     connectionTestService = koin.get<VfsConnectionTestService>(),
                     remoteAuthStore = koin.get<RemoteAuthStore>(),
                     s3ConnectionRepository = koin.get<MutableS3ConnectionRepository>(),
+                    mediaPreviewService = koin.get<com.oruke.onyx.app.filesystem.MediaPreviewService>(),
+                    audioPreviewPlayer = koin.get<com.oruke.onyx.app.filesystem.AudioPreviewPlayer>(),
                 ),
                 search = RootSearchDependencies(
                     fileCollectionUseCase = koin.get<FileCollectionUseCase>(),

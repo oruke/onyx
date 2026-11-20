@@ -513,6 +513,19 @@ internal sealed interface RootIntent {
 
     data object TogglePreviewPane : RootIntent
 
+    /** 显式关闭右侧预览与元数据面板。 */
+    data object ClosePreviewPane : RootIntent
+
+    /** 调整并持久化右侧预览与元数据面板宽度（单位 dp）。 */
+    data class SetPreviewPaneWidth(
+        val widthDp: Int,
+    ) : RootIntent
+
+    /** 切换并持久化右侧面板模式（预览 / 元数据）。 */
+    data class SetPreviewPaneMode(
+        val mode: com.oruke.onyx.core.model.PreviewPaneMode,
+    ) : RootIntent
+
     data object ShowSearchPanel : RootIntent
 
     data object CloseSearchPanel : RootIntent
@@ -828,6 +841,12 @@ internal interface RootPresentationServices {
 
     fun isTextPreviewFileName(fileName: String): Boolean
 
+    /** 判断文件名是否为受支持的音频文件。 */
+    fun isAudioFileName(fileName: String): Boolean = false
+
+    /** 判断文件名是否为受支持的视频文件。 */
+    fun isVideoFileName(fileName: String): Boolean = false
+
     fun locationLabel(location: String): String
 
     fun buildBreadcrumbs(location: String): List<VfsBreadcrumb>
@@ -923,6 +942,28 @@ internal interface RootPresentationServices {
     }
 
     suspend fun readImageSize(entry: VFile): IntSize?
+
+    /** 读取音视频文件的结构化媒体元数据。 */
+    suspend fun readMediaMetadata(entry: VFile): com.oruke.onyx.app.filesystem.MediaMetadataResult =
+        com.oruke.onyx.app.filesystem.MediaMetadataResult.ToolUnavailable
+
+    /** 按时长比例抽取视频关键帧作为预览位图。 */
+    suspend fun loadVideoFrame(
+        entry: VFile,
+        positionRatio: Float,
+        durationMillis: Long?,
+        maxDimension: Int,
+    ): ImageBitmap? = null
+
+    /** 读取音频内嵌专辑封面图。 */
+    suspend fun loadAudioCover(
+        entry: VFile,
+        maxDimension: Int,
+    ): ImageBitmap? = null
+
+    /** 右侧预览面板内置轻量音频试听播放器。 */
+    val audioPreviewPlayer: com.oruke.onyx.app.filesystem.AudioPreviewPlayer
+        get() = com.oruke.onyx.app.filesystem.NoOpAudioPreviewPlayer
 }
 
 /** 根组件状态、子面板和统一意图入口。 */

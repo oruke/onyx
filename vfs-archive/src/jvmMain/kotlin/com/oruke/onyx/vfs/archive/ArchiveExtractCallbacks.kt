@@ -276,6 +276,80 @@ internal class MemoryExtractCallback(
 }
 
 /**
+ * 支持协程取消检查、流式分块消费与前缀截断中止的 7-Zip 单条目提取回调。
+ *
+ * @param onChunk 收到一段有效字节时的同步流式回调（`data`, `length`）。
+ * @param password 可选归档密码。
+ * @param maxBytes 允许接收的最大字节数；为空时不限制。
+ * @param stopAtLimitAsPrefix 为 `true` 时在达到 [maxBytes] 后仍保留已写入前缀并标记截断，不视为错误。
+ * @param isCancelled 协程取消状态探针，返回 `true` 时立即抛出 [CancellationException] 终止原生解压。
+ */
+internal class StreamingExtractCallback(
+    private val onChunk: (ByteArray, Int) -> Unit,
+    private val password: String? = null,
+    private val maxBytes: Long? = null,
+    private val stopAtLimitAsPrefix: Boolean = false,
+    private val isCancelled: () -> Boolean = { false },
+) : IArchiveExtractCallback, ICryptoGetTextPassword {
+    /** 解压过程中收到的条目错误。 */
+    val errors = mutableListOf<String>()
+
+    /** 是否触发最大字节数截断/超限保护。 */
+    var limitExceeded: Boolean = false
+        private set
+
+    /** 已交付给消费方的累计字节数。 */
+    var deliveredBytes: Long = 0L
+        private set
+
+    override fun getStream(
+        index: Int,
+        extractAskMode: ExtractAskMode,
+    ): ISequentialOutStream? {
+        if (extractAskMode != ExtractAskMode.EXTRACT) return null
+        return ISequentialOutStream { data ->
+            if (isCancelled()) {
+                throw kotlinx.coroutines.CancellationException("Archive extraction cancelled")
+            }
+            val limit = maxBytes
+            if (limit != null) {
+                val remaining = limit - deliveredBytes
+                if (remaining <= 0L) {
+                    limitExceeded = true
+                    throw ArchiveExtractLimitExceededException(limit)
+                }
+                if (data.size.toLong() > remaining) {
+                    if (stopAtLimitAsPrefix) {
+                        val take = remaining.toInt()
+                        if (take > 0) {
+                            onChunk(data, take)
+                            deliveredBytes += take.toLong()
+                        }
+                    }
+                    limitExceeded = true
+                    throw ArchiveExtractLimitExceededException(limit)
+                }
+            }
+            onChunk(data, data.size)
+            deliveredBytes += data.size.toLong()
+            data.size
+        }
+    }
+
+    override fun prepareOperation(extractAskMode: ExtractAskMode) = Unit
+
+    override fun setOperationResult(extractOperationResult: ExtractOperationResult) {
+        if (extractOperationResult != ExtractOperationResult.OK) {
+            errors.add(formatExtractError(extractOperationResult))
+        }
+    }
+
+    override fun setTotal(total: Long) = Unit
+    override fun setCompleted(complete: Long) = Unit
+    override fun cryptoGetTextPassword(): String = password ?: ""
+}
+
+/**
  * 仅验证归档数据的测试回调，不写入任何内容。
  *
  * @param password 可选归档密码。

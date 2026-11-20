@@ -7,6 +7,8 @@ import com.oruke.onyx.vfs.api.TransferConflictStrategy
 import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import net.sf.sevenzipjbinding.ExtractAskMode
 import net.sf.sevenzipjbinding.ExtractOperationResult
@@ -38,6 +40,40 @@ sealed interface ArchiveBoundedBytes {
 
     /** 目标条目实际或声明大小超过允许上限。 */
     data object TooLarge : ArchiveBoundedBytes
+}
+
+/** 受最大字节上限保护的归档单条目头部前缀读取结果（用于文本预览防整包解压 OOM）。 */
+sealed interface ArchivePrefixBytes {
+    /**
+     * 成功读取头部字节前缀。
+     *
+     * @property bytes 已读取的前缀字节数组。
+     * @property truncated 归档条目总长是否超出上限而被截断。
+     * @property totalSizeBytes 归档头声明的条目总字节数；未知时为 `null`。
+     */
+    class Found(
+        val bytes: ByteArray,
+        val truncated: Boolean,
+        val totalSizeBytes: Long? = null,
+    ) : ArchivePrefixBytes
+
+    /** 归档中未找到目标条目。 */
+    data object NotFound : ArchivePrefixBytes
+
+    /** 暂不支持前缀流式截断的格式超限。 */
+    data object TooLarge : ArchivePrefixBytes
+}
+
+/** 归档单条目流式读取状态（用于零整包堆缓冲的流式 SHA-256 等场景）。 */
+sealed interface ArchiveStreamOutcome {
+    /** 完整流式读取完成。 */
+    data class Completed(val totalBytes: Long) : ArchiveStreamOutcome
+
+    /** 归档中未找到目标条目。 */
+    data object NotFound : ArchiveStreamOutcome
+
+    /** 条目大小超过允许上限。 */
+    data object TooLarge : ArchiveStreamOutcome
 }
 
 /**
@@ -518,6 +554,167 @@ class ArchiveService(
                     error("解压失败: ${callback.errors.joinToString(", ")}")
                 }
                 ArchiveBoundedBytes.Found(buffer.toByteArray())
+            }
+        }
+        val failure = result.exceptionOrNull()
+        if (failure is CancellationException) throw failure
+        result
+    }
+
+    /**
+     * 仅提取压缩包内单个条目的前 [maxBytes] 字节用于文本预览，达到上限立刻中止 7-Zip 解压以防止整包解压 OOM。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param innerPath 压缩包内条目路径。
+     * @param maxBytes 允许读取的最大前缀字节数。
+     * @param password 可选归档密码；为空时复用当前会话已验证密码。
+     * @return 前缀字节与截断标记结果。
+     */
+    suspend fun extractPrefixBytes(
+        archivePath: String,
+        innerPath: String,
+        maxBytes: Long,
+        password: String? = null,
+    ): Result<ArchivePrefixBytes> = withContext(Dispatchers.IO) {
+        val safeMax = maxBytes.coerceIn(1L, MAX_INITIAL_EXTRACT_BUFFER_BYTES)
+        val taskContext = currentCoroutineContext()
+        val result = runCatching {
+            if (archivePath.isTarZstdArchive()) {
+                return@runCatching try {
+                    val bytes = tarZstdArchiveService.extractEntryToBytes(
+                        archivePath = archivePath,
+                        innerPath = innerPath,
+                        maxBytes = safeMax,
+                    )
+                    if (bytes == null) {
+                        ArchivePrefixBytes.NotFound
+                    } else {
+                        ArchivePrefixBytes.Found(bytes = bytes, truncated = false, totalSizeBytes = bytes.size.toLong())
+                    }
+                } catch (_: ArchiveExtractLimitExceededException) {
+                    ArchivePrefixBytes.TooLarge
+                }
+            }
+            val resolvedPassword = password ?: archivePasswordSession.passwordFor(archivePath)
+            openSevenZipArchive(archivePath, randomAccessService, resolvedPassword).use { handle ->
+                val archive = handle.archive
+                val numItems = archive.numberOfItems
+                val targetIndex = (0 until numItems).firstOrNull { index ->
+                    archive.itemPath(index) == innerPath
+                } ?: -1
+                if (targetIndex < 0) return@runCatching ArchivePrefixBytes.NotFound
+
+                val declaredSize = (archive.getProperty(targetIndex, PropID.SIZE) as? Long)?.takeIf { it >= 0L }
+                val initialCapacity = (declaredSize ?: safeMax).coerceIn(1024L, safeMax).toInt()
+                val buffer = ByteArrayOutputStream(initialCapacity)
+                val callback = StreamingExtractCallback(
+                    onChunk = { chunk, len -> buffer.write(chunk, 0, len) },
+                    password = resolvedPassword,
+                    maxBytes = safeMax,
+                    stopAtLimitAsPrefix = true,
+                    isCancelled = { !taskContext.isActive },
+                )
+                try {
+                    archive.extract(intArrayOf(targetIndex), false, callback)
+                } catch (failure: Throwable) {
+                    if (failure is CancellationException || failure.hasCause<CancellationException>()) {
+                        throw CancellationException("Archive prefix extraction cancelled")
+                    }
+                    if (!callback.limitExceeded && !failure.hasCause<ArchiveExtractLimitExceededException>()) {
+                        throw failure
+                    }
+                }
+                if (!callback.limitExceeded && callback.errors.isNotEmpty()) {
+                    error("解压失败: ${callback.errors.joinToString(", ")}")
+                }
+                val bytes = buffer.toByteArray()
+                val truncated = callback.limitExceeded || (declaredSize != null && declaredSize > bytes.size.toLong())
+                ArchivePrefixBytes.Found(
+                    bytes = bytes,
+                    truncated = truncated,
+                    totalSizeBytes = declaredSize,
+                )
+            }
+        }
+        val failure = result.exceptionOrNull()
+        if (failure is CancellationException) throw failure
+        result
+    }
+
+    /**
+     * 以恒定内存分块流式读取归档单条目内容，并在每个分块检查协程取消（用于流式 SHA-256 等场景）。
+     *
+     * @param archivePath 压缩包物理路径。
+     * @param innerPath 压缩包内条目路径。
+     * @param maxBytes 允许读取的最大字节上限；为空时不限制。
+     * @param password 可选归档密码；为空时复用当前会话已验证密码。
+     * @param onChunk 每批解压数据的同步消费回调（`data`, `length`）。
+     * @return 流式读取完成、未找到或超限状态。
+     */
+    suspend fun streamEntryBytes(
+        archivePath: String,
+        innerPath: String,
+        maxBytes: Long?,
+        password: String? = null,
+        onChunk: (ByteArray, Int) -> Unit,
+    ): Result<ArchiveStreamOutcome> = withContext(Dispatchers.IO) {
+        val taskContext = currentCoroutineContext()
+        val result = runCatching {
+            if (archivePath.isTarZstdArchive()) {
+                return@runCatching try {
+                    val bytes = tarZstdArchiveService.extractEntryToBytes(
+                        archivePath = archivePath,
+                        innerPath = innerPath,
+                        maxBytes = maxBytes,
+                    )
+                    if (bytes == null) {
+                        ArchiveStreamOutcome.NotFound
+                    } else {
+                        onChunk(bytes, bytes.size)
+                        ArchiveStreamOutcome.Completed(bytes.size.toLong())
+                    }
+                } catch (_: ArchiveExtractLimitExceededException) {
+                    ArchiveStreamOutcome.TooLarge
+                }
+            }
+            val resolvedPassword = password ?: archivePasswordSession.passwordFor(archivePath)
+            openSevenZipArchive(archivePath, randomAccessService, resolvedPassword).use { handle ->
+                val archive = handle.archive
+                val numItems = archive.numberOfItems
+                val targetIndex = (0 until numItems).firstOrNull { index ->
+                    archive.itemPath(index) == innerPath
+                } ?: -1
+                if (targetIndex < 0) return@runCatching ArchiveStreamOutcome.NotFound
+
+                val declaredSize = (archive.getProperty(targetIndex, PropID.SIZE) as? Long) ?: 0L
+                if (maxBytes != null && declaredSize > maxBytes) {
+                    return@runCatching ArchiveStreamOutcome.TooLarge
+                }
+                val callback = StreamingExtractCallback(
+                    onChunk = onChunk,
+                    password = resolvedPassword,
+                    maxBytes = maxBytes,
+                    stopAtLimitAsPrefix = false,
+                    isCancelled = { !taskContext.isActive },
+                )
+                try {
+                    archive.extract(intArrayOf(targetIndex), false, callback)
+                } catch (failure: Throwable) {
+                    if (failure is CancellationException || failure.hasCause<CancellationException>()) {
+                        throw CancellationException("Archive streaming cancelled")
+                    }
+                    if (callback.limitExceeded || failure.hasCause<ArchiveExtractLimitExceededException>()) {
+                        return@runCatching ArchiveStreamOutcome.TooLarge
+                    }
+                    throw failure
+                }
+                if (callback.limitExceeded) {
+                    return@runCatching ArchiveStreamOutcome.TooLarge
+                }
+                if (callback.errors.isNotEmpty()) {
+                    error("解压失败: ${callback.errors.joinToString(", ")}")
+                }
+                ArchiveStreamOutcome.Completed(callback.deliveredBytes)
             }
         }
         val failure = result.exceptionOrNull()

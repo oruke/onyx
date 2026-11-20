@@ -25,12 +25,16 @@ import kotlin.io.path.pathString
 import kotlin.coroutines.cancellation.CancellationException
 import com.oruke.onyx.vfs.api.ExternalOpenService
 import com.oruke.onyx.vfs.api.RoutableVfsContentService
+import com.oruke.onyx.vfs.api.RoutableVfsRandomAccessService
 import com.oruke.onyx.vfs.api.VfsContentSource
 import com.oruke.onyx.vfs.api.VfsProviderCapability
 import com.oruke.onyx.vfs.api.VfsProviderNotFoundException
 import com.oruke.onyx.vfs.api.VfsProvider
+import com.oruke.onyx.vfs.api.VfsRandomAccessMode
 import com.oruke.onyx.vfs.archive.ArchiveBoundedBytes
+import com.oruke.onyx.vfs.archive.ArchivePrefixBytes
 import com.oruke.onyx.vfs.archive.ArchiveService
+import com.oruke.onyx.vfs.archive.ArchiveStreamOutcome
 
 internal class JvmVfsPathService : VfsPathService {
     override fun normalizeLocation(location: String): String {
@@ -381,12 +385,20 @@ internal class JvmTerminalLauncherService : TerminalLauncherService {
 }
 
 /**
- * JVM 文本预览服务，优先通过统一 VFS 内容服务读取文件内容。
+ * JVM 文本预览服务：
+ * - 压缩包内条目优先使用 [ArchiveService.extractPrefixBytes] 仅解压头部前缀，杜绝超大归档文件整包解压 OOM；
+ * - 远程协议优先使用 [RoutableVfsRandomAccessService] 按 Range 仅读前 `maxBytes + 1` 字节；
+ * - 无随机访问能力的远程内容服务前置校验大小上限，避免整包缓冲打满内存与带宽；
+ * - 本地文件通过流式前缀读取，O(maxBytes) 恒定内存。
  *
- * @param contentServices 可按 location 路由的内容服务列表。
+ * @param contentServices 可按 location 路由的兜底内容服务列表。
+ * @param archiveService 压缩包前缀流式提取服务。
+ * @param randomAccessService 支持 Range 前缀读取的统一随机访问服务。
  */
 internal class JvmPreviewService(
     private val contentServices: List<RoutableVfsContentService> = emptyList(),
+    private val archiveService: ArchiveService? = null,
+    private val randomAccessService: RoutableVfsRandomAccessService? = null,
 ) : PreviewService {
     /**
      * 加载指定文件的文本预览。
@@ -398,21 +410,28 @@ internal class JvmPreviewService(
     override suspend fun loadTextPreview(request: PreviewTextRequest): PreviewTextResult = withContext(Dispatchers.IO) {
         try {
             if (request.entry.kind != VFileKind.FILE) return@withContext PreviewTextResult.Unavailable
-            val routedPreview = loadTextPreviewFromContentService(request)
-            if (routedPreview != null) return@withContext routedPreview
+            val maxBytes = request.maxBytes.coerceIn(1L, MAX_BOUNDED_TEXT_READ_BYTES).toInt()
+            if (ArchiveService.isArchiveLocation(request.entry.location)) {
+                return@withContext loadArchivePrefixPreview(request, maxBytes)
+            }
+            loadRandomAccessPrefixPreview(request, maxBytes)?.let { return@withContext it }
+            loadTextPreviewFromContentService(request, maxBytes)?.let { return@withContext it }
             if (request.entry.location.contains("://")) {
                 return@withContext PreviewTextResult.Unavailable
             }
             val path = Path.of(request.entry.location)
-            if (!Files.exists(path)) {
+            if (!Files.exists(path) || Files.isDirectory(path)) {
                 return@withContext PreviewTextResult.Unavailable
             }
-            if (Files.size(path) >= request.maxBytes) {
-                return@withContext PreviewTextResult.TooLarge
-            }
-            Files.newBufferedReader(path).useLines { lines ->
-                PreviewTextResult.Text(lines.take(request.maxLines).joinToString("\n"))
-            }
+            val totalBytes = Files.size(path)
+            val (prefixBytes, bytesTruncated) = readLocalPrefixBytes(path, maxBytes)
+            TextPreviewDecoder.decode(
+                bytes = prefixBytes,
+                requestedEncoding = request.encoding,
+                maxLines = request.maxLines,
+                bytesTruncated = bytesTruncated,
+                totalBytes = totalBytes,
+            )
         } catch (failure: CancellationException) {
             throw failure
         } catch (failure: Exception) {
@@ -420,62 +439,172 @@ internal class JvmPreviewService(
         }
     }
 
+    /** 通过 [ArchiveService.extractPrefixBytes] 仅提取压缩包条目头部字节，达到上限立刻中止原生解压。 */
+    private suspend fun loadArchivePrefixPreview(
+        request: PreviewTextRequest,
+        maxBytes: Int,
+    ): PreviewTextResult {
+        val service = archiveService
+        if (service != null) {
+            val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(request.entry.location)
+                ?: return PreviewTextResult.Unavailable
+            if (innerPath.isBlank()) return PreviewTextResult.Unavailable
+            return when (
+                val prefix = service.extractPrefixBytes(archivePath, innerPath, maxBytes.toLong()).getOrElse { failure ->
+                    if (failure is CancellationException) throw failure
+                    return PreviewTextResult.Failed(failure.toI18nMessage())
+                }
+            ) {
+                ArchivePrefixBytes.NotFound -> PreviewTextResult.Unavailable
+                ArchivePrefixBytes.TooLarge -> PreviewTextResult.TooLarge
+                is ArchivePrefixBytes.Found -> TextPreviewDecoder.decode(
+                    bytes = prefix.bytes,
+                    requestedEncoding = request.encoding,
+                    maxLines = request.maxLines,
+                    bytesTruncated = prefix.truncated,
+                    totalBytes = prefix.totalSizeBytes ?: request.entry.sizeBytes,
+                )
+            }
+        }
+        // 仅用于未注入 ArchiveService 的兼容单测路径：必须先校验大小上限防止整包解压
+        return loadTextPreviewFromContentService(request, maxBytes) ?: PreviewTextResult.Unavailable
+    }
+
+    /** 优先通过统一随机访问接口按 Range 仅读取前 `maxBytes + 1` 字节，适配 SMB / WebDAV / S3 大文件。 */
+    private suspend fun loadRandomAccessPrefixPreview(
+        request: PreviewTextRequest,
+        maxBytes: Int,
+    ): PreviewTextResult? {
+        val randomAccess = randomAccessService ?: return null
+        if (!randomAccess.supports(request.entry.location)) return null
+        val handle = randomAccess.openRandomAccess(request.entry.location, VfsRandomAccessMode.READ)
+            .getOrElse { failure ->
+                if (failure is CancellationException) throw failure
+                return null
+            }
+        return try {
+            val totalLength = runCatching { handle.length() }.getOrNull()?.takeIf { it >= 0L }
+                ?: request.entry.sizeBytes
+            val output = ByteArrayOutputStream(maxBytes.coerceAtMost(64 * 1024))
+            val chunk = ByteArray(8192)
+            var position = 0L
+            var remaining = maxBytes
+            while (remaining > 0) {
+                val read = handle.readAt(position, chunk, 0, minOf(chunk.size, remaining))
+                if (read <= 0) break
+                output.write(chunk, 0, read)
+                position += read.toLong()
+                remaining -= read
+            }
+            var truncated = totalLength != null && totalLength > position
+            if (!truncated && remaining == 0) {
+                val probe = ByteArray(1)
+                if (handle.readAt(position, probe, 0, 1) > 0) {
+                    truncated = true
+                }
+            }
+            TextPreviewDecoder.decode(
+                bytes = output.toByteArray(),
+                requestedEncoding = request.encoding,
+                maxLines = request.maxLines,
+                bytesTruncated = truncated,
+                totalBytes = totalLength,
+            )
+        } finally {
+            handle.close()
+        }
+    }
+
     /**
-     * 通过统一内容服务加载文本预览。
+     * 读取本地文件前 [maxBytes] 字节用于头部截断预览，避免超大文件整包载入内存。
+     *
+     * @param path 目标本地文件路径。
+     * @param maxBytes 允许读取的最大字节数。
+     * @return 已读取的前缀字节数组及是否发生字节截断的标记。
+     */
+    private fun readLocalPrefixBytes(path: Path, maxBytes: Int): Pair<ByteArray, Boolean> {
+        val output = ByteArrayOutputStream(maxBytes.coerceAtMost(64 * 1024))
+        var truncated = false
+        Files.newInputStream(path).use { input ->
+            val buffer = ByteArray(8192)
+            var remaining = maxBytes
+            while (remaining > 0) {
+                val read = input.read(buffer, 0, minOf(buffer.size, remaining))
+                if (read < 0) break
+                output.write(buffer, 0, read)
+                remaining -= read
+            }
+            if (remaining == 0 && input.read() >= 0) {
+                truncated = true
+            }
+        }
+        return output.toByteArray() to truncated
+    }
+
+    /**
+     * 通过兜底内容服务加载文本预览（不支持 Range 时先拦截超限大小防止整包载入内存）。
      *
      * @param request 文本预览请求。
+     * @param maxBytes 最大允许前缀字节数。
      * @return 内容服务可处理时返回预览结果，否则返回 `null`。
      */
-    private suspend fun loadTextPreviewFromContentService(request: PreviewTextRequest): PreviewTextResult? {
-        val contentService = contentServices.firstOrNull { service -> service.supports(request.entry.location) }
-        return contentService?.let { service -> loadTextPreviewFromService(service, request) }
-    }
-
-    /**
-     * 从已匹配的内容服务读取受大小和行数约束的文本。
-     *
-     * @param contentService 可以处理目标位置的统一内容服务。
-     * @param request 文本预览请求。
-     * @return 文本、超限状态或读取失败异常。
-     */
-    private suspend fun loadTextPreviewFromService(
-        contentService: RoutableVfsContentService,
+    private suspend fun loadTextPreviewFromContentService(
         request: PreviewTextRequest,
-    ): PreviewTextResult {
-        val source = contentService.readFile(request.entry).getOrThrow()
-        val sourceSizeBytes = source.sizeBytes
-        if (sourceSizeBytes != null && sourceSizeBytes >= request.maxBytes) {
+        maxBytes: Int,
+    ): PreviewTextResult? {
+        val contentService = contentServices.firstOrNull { service -> service.supports(request.entry.location) }
+            ?: return null
+        val declaredSize = request.entry.sizeBytes
+        if (declaredSize != null && declaredSize > maxBytes.toLong()) {
             return PreviewTextResult.TooLarge
         }
-        val output = ByteArrayOutputStream()
-        var readBytes = 0L
-        val tooLarge = try {
+        val source = contentService.readFile(request.entry).getOrThrow()
+        val sourceSizeBytes = source.sizeBytes
+        if (sourceSizeBytes != null && sourceSizeBytes > maxBytes.toLong()) {
+            return PreviewTextResult.TooLarge
+        }
+        val output = ByteArrayOutputStream(maxBytes.coerceAtMost(64 * 1024))
+        var readBytes = 0
+        var bytesTruncated = false
+        try {
             source.chunks.collect { chunk ->
-                if (readBytes + chunk.size >= request.maxBytes) {
-                    throw PreviewLimitExceededException()
+                val remaining = maxBytes - readBytes
+                if (remaining <= 0) {
+                    bytesTruncated = true
+                    throw PreviewPrefixReachedException()
                 }
-                readBytes += chunk.size
+                if (chunk.size > remaining) {
+                    output.write(chunk, 0, remaining)
+                    readBytes += remaining
+                    bytesTruncated = true
+                    throw PreviewPrefixReachedException()
+                }
                 output.write(chunk)
+                readBytes += chunk.size
             }
-            false
-        } catch (_: PreviewLimitExceededException) {
-            true
+        } catch (_: PreviewPrefixReachedException) {
+            bytesTruncated = true
         }
-        return if (tooLarge) {
-            PreviewTextResult.TooLarge
-        } else {
-            val text = output.toString(Charsets.UTF_8)
-                .lineSequence()
-                .take(request.maxLines)
-                .joinToString("\n")
-            PreviewTextResult.Text(text)
+        val knownTotalBytes = sourceSizeBytes ?: declaredSize
+        if (knownTotalBytes != null && knownTotalBytes > readBytes.toLong()) {
+            bytesTruncated = true
         }
+        return TextPreviewDecoder.decode(
+            bytes = output.toByteArray(),
+            requestedEncoding = request.encoding,
+            maxLines = request.maxLines,
+            bytesTruncated = bytesTruncated,
+            totalBytes = knownTotalBytes,
+        )
     }
 
-    /**
-     * 预览读取超过单文件上限时使用的内部中断信号。
-     */
-    private class PreviewLimitExceededException : RuntimeException()
+    /** 预览前缀读取达到字节上限时用于提前中止流的内部控制异常。 */
+    private class PreviewPrefixReachedException : RuntimeException()
+
+    private companion object {
+        /** 单次文本预览允许载入内存的最大字节数上限。 */
+        const val MAX_BOUNDED_TEXT_READ_BYTES = 2L * 1024 * 1024
+    }
 }
 
 internal class JvmFileHashService(
@@ -503,7 +632,7 @@ internal class JvmFileHashService(
     }
 
     /**
-     * 读取压缩包内部文件并计算哈希。
+     * 以恒定内存分块流式读取压缩包内部文件并增量计算 SHA-256，支持协程取消且绝不整包缓冲到堆内存。
      *
      * @param request 哈希读取请求。
      * @return 哈希值、大小超限或不可读取结果。
@@ -512,19 +641,22 @@ internal class JvmFileHashService(
         val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(request.entry.location)
             ?: return FileHashResult.Unavailable
         if (innerPath.isBlank()) return FileHashResult.Unavailable
+        val digest = MessageDigest.getInstance(SHA_256)
         return when (
-            val extracted = archiveService.extractToBytesBounded(
+            archiveService.streamEntryBytes(
                 archivePath = archivePath,
                 innerPath = innerPath,
                 maxBytes = request.maxBytes,
-            ).getOrElse { failure ->
+            ) { chunk, length ->
+                digest.update(chunk, 0, length)
+            }.getOrElse { failure ->
                 if (failure is CancellationException) throw failure
                 return FileHashResult.Failed(failure.toI18nMessage())
             }
         ) {
-            ArchiveBoundedBytes.NotFound -> FileHashResult.Unavailable
-            ArchiveBoundedBytes.TooLarge -> FileHashResult.TooLarge
-            is ArchiveBoundedBytes.Found -> hashBytes(extracted.bytes)
+            ArchiveStreamOutcome.NotFound -> FileHashResult.Unavailable
+            ArchiveStreamOutcome.TooLarge -> FileHashResult.TooLarge
+            is ArchiveStreamOutcome.Completed -> digest.toHashResult()
         }
     }
 
@@ -566,16 +698,6 @@ internal class JvmFileHashService(
     }
 
     /**
-     * 计算内存字节数据的 SHA-256。
-     *
-     * @param bytes 待计算的文件内容。
-     * @return 格式化后的哈希结果。
-     */
-    private fun hashBytes(bytes: ByteArray): FileHashResult {
-        return MessageDigest.getInstance(SHA_256).apply { update(bytes) }.toHashResult()
-    }
-
-    /**
      * 将已完成输入的摘要转换为统一哈希结果。
      *
      * @return 小写十六进制哈希结果。
@@ -610,11 +732,18 @@ internal class JvmArchiveInfoService(
             if (!Files.exists(path) || Files.isDirectory(path)) {
                 return@withContext ArchiveInfoResult.Unavailable
             }
+            val encrypted = archiveService.isEncrypted(path.toString())
+            val entryCount = if (!encrypted) {
+                archiveService.list(path.toString(), "").getOrNull()?.size
+            } else {
+                null
+            }
             ArchiveInfoResult.Info(
-                encrypted = archiveService.isEncrypted(path.toString()),
+                encrypted = encrypted,
                 canBrowse = true,
                 canExtract = true,
                 canWrite = false,
+                entryCount = entryCount,
             )
         } catch (failure: CancellationException) {
             throw failure
@@ -633,13 +762,50 @@ internal class JvmFileTypeService : FileTypeService {
     override fun isArchiveFileName(fileName: String): Boolean = ArchiveService.isArchive(fileName)
 
     override fun isTextPreviewFileName(fileName: String): Boolean {
-        val ext = fileName.substringAfterLast('.', "").lowercase()
+        val normalized = fileName.trim().lowercase()
+        if (normalized in ExtensionlessTextFileNames) return true
+        val ext = normalized.substringAfterLast('.', "")
+        if (ext == normalized) return false
         return ext in TextPreviewExtensions
     }
 
+    override fun isAudioFileName(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in AudioExtensions
+    }
+
+    override fun isVideoFileName(fileName: String): Boolean {
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext in VideoExtensions
+    }
+
     private companion object {
-        val ImageExtensions = setOf("png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico", "tiff", "tif")
-        val TextPreviewExtensions = setOf("txt", "md", "log", "xml", "json", "java", "kt", "js", "css", "csv", "html")
+        val ImageExtensions = setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "tif")
+        val TextPreviewExtensions = setOf(
+            "txt", "md", "markdown", "rst", "adoc", "log", "nfo", "diz",
+            "xml", "xhtml", "htm", "html", "opf", "ncx", "svg", "rss", "atom",
+            "json", "jsonc", "jsonl", "ndjson", "yaml", "yml", "toml", "ini", "cfg", "conf",
+            "properties", "env", "csv", "tsv", "sql", "graphql", "gql", "proto",
+            "java", "kt", "kts", "gradle", "groovy", "scala",
+            "js", "mjs", "cjs", "jsx", "ts", "tsx", "css", "scss", "sass", "less", "vue", "svelte",
+            "py", "pyi", "rb", "php", "go", "rs", "c", "h", "cpp", "cc", "cxx", "hpp", "hxx", "cs", "swift", "dart", "lua", "r",
+            "sh", "bash", "zsh", "fish", "bat", "cmd", "ps1", "psm1", "psd1",
+            "srt", "ass", "ssa", "vtt", "lrc", "cue", "m3u", "m3u8",
+            "gitignore", "gitattributes", "gitmodules", "editorconfig", "dockerignore", "npmrc", "lock",
+        )
+        val ExtensionlessTextFileNames = setOf(
+            "readme", "license", "licence", "notice", "changelog", "authors", "contributors",
+            "makefile", "dockerfile", "jenkinsfile", "procfile", "gemfile", "rakefile", "vagrantfile",
+            ".gitignore", ".gitattributes", ".editorconfig", ".dockerignore", ".env",
+        )
+        val AudioExtensions = setOf(
+            "mp3", "flac", "wav", "m4a", "aac", "ogg", "opus", "wma",
+            "aiff", "aif", "au", "ape", "wv", "mka", "alac", "caf",
+        )
+        val VideoExtensions = setOf(
+            "mp4", "mkv", "mov", "avi", "webm", "wmv", "flv", "m4v",
+            "mpg", "mpeg", "m2ts", "mts", "vob", "rmvb", "3gp", "ogv",
+        )
     }
 }
 

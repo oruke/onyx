@@ -251,13 +251,15 @@ val fileModule = module {
     single<SystemQuickAccessService> { JvmSystemQuickAccessService() }
     single<PreviewService> {
         JvmPreviewService(
-            listOf(
+            contentServices = listOf(
                 get<ArchiveVfsProvider>(),
                 get<JvmLocalFileProvider>(),
                 get<SmbVfsProvider>(),
                 get<WebDavVfsProvider>(),
                 get<S3VfsProvider>(),
-            )
+            ),
+            archiveService = get(),
+            randomAccessService = get(),
         )
     }
     single<FileContentSearchService> {
@@ -295,6 +297,12 @@ val fileModule = module {
         )
     }
     single<ImageMetadataService> { JvmImageMetadataService(get()) }
+    single<com.oruke.onyx.app.filesystem.MediaPreviewService> {
+        com.oruke.onyx.app.filesystem.JvmMediaPreviewService(get())
+    }
+    factory<com.oruke.onyx.app.filesystem.AudioPreviewPlayer> {
+        com.oruke.onyx.app.filesystem.JvmAudioPreviewPlayer()
+    }
     single<SettingsRepository> { SqliteSettingsRepository(get(), get(), useStartupPreload = true) }
     single<SessionRepository> { JsonSessionRepository(useStartupPreload = true) }
     single<TaskPersistenceRepository> { JsonTaskPersistenceRepository() }

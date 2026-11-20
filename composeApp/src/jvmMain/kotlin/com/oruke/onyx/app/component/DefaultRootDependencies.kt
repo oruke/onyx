@@ -110,6 +110,12 @@ internal data class RootInspectionDependencies(
     val remoteAuthStore: RemoteAuthStore,
     /** 运行期 S3 Endpoint 配置仓库。 */
     val s3ConnectionRepository: MutableS3ConnectionRepository,
+    /** 音视频媒体元数据与抽帧服务。 */
+    val mediaPreviewService: com.oruke.onyx.app.filesystem.MediaPreviewService =
+        com.oruke.onyx.app.filesystem.NoOpMediaPreviewService,
+    /** 右侧预览面板内置音频试听播放器。 */
+    val audioPreviewPlayer: com.oruke.onyx.app.filesystem.AudioPreviewPlayer =
+        com.oruke.onyx.app.filesystem.NoOpAudioPreviewPlayer,
 )
 
 /** 根组件的搜索依赖。 */
