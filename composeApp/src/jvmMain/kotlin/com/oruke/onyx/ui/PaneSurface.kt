@@ -81,6 +81,7 @@ private val PANE_SHORTCUT_COMMANDS = listOf(
     OnyxCommand.QuickOpen,
     OnyxCommand.ShowSearchPanel,
     OnyxCommand.FocusAddressBar,
+    OnyxCommand.TogglePreviewPane,
     OnyxCommand.OpenSelection,
     OnyxCommand.RenameSelection,
     OnyxCommand.NewDirectory,
@@ -552,7 +553,7 @@ private fun PaneSurfaceTabBar(runtime: PaneSurfaceRuntime) {
     val orderedTabs by runtime.model.component.tabStates.collectAsState()
     val state = PaneTabBarState(
         activeTabId = runtime.state.activeTabId,
-        tabs = orderedTabs.map { tab -> PaneTabItemState(tab.id, tab.title) },
+        tabs = orderedTabs.map { tab -> PaneTabItemState(tab.id, tab.title, tab.location) },
     )
     PaneTabBar(
         state = state,
@@ -573,6 +574,9 @@ private fun PaneSurfaceTabBar(runtime: PaneSurfaceRuntime) {
         dropIndicatorIndex = runtime.dragBindings.tabDropTarget
             ?.takeIf { target -> target.paneId == runtime.state.paneId }
             ?.index,
+        onCloseOtherTabs = { tabId -> runtime.dispatch(PaneIntent.CloseOtherTabs(tabId)) },
+        onCloseTabsToRight = { tabId -> runtime.dispatch(PaneIntent.CloseTabsToRight(tabId)) },
+        onCopyTabPath = { tabId -> runtime.dispatch(PaneIntent.CopyTabPath(tabId)) },
     )
 }
 

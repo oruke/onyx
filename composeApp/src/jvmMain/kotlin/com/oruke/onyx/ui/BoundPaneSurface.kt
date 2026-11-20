@@ -68,6 +68,7 @@ internal fun BoundPaneSurface(
         onOpenSettings = { dispatch(RootIntent.OpenSettings) },
         onShowQuickOpen = { dispatch(RootIntent.ShowQuickOpen) },
         onShowSearchPanel = { dispatch(RootIntent.ShowSearchPanel) },
+        onTogglePreviewPane = { dispatch(RootIntent.TogglePreviewPane) },
         supportsContextMenuOpenWith = rootComponent::supportsContextMenuOpenWith,
         onFileContextMenuCommand = { command, entries ->
             dispatch(RootIntent.ExecuteFileContextMenuCommand(command, entries))
@@ -137,6 +138,10 @@ internal fun BoundPaneSurface(
             readArchiveInfo = rootComponent::readArchiveInfo,
             buildBreadcrumbs = rootComponent::buildBreadcrumbs,
             suggestAddressLocations = rootComponent::suggestAddressLocations,
+            peekCachedThumbnail = rootComponent::peekCachedThumbnail,
+            peekCachedArchiveThumbnail = rootComponent::peekCachedArchiveThumbnail,
+            loadVersionedThumbnail = rootComponent::loadThumbnail,
+            loadVersionedArchiveThumbnail = rootComponent::loadArchiveThumbnail,
         ),
         modifier = modifier,
     )

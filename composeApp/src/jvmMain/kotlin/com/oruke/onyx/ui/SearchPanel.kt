@@ -27,6 +27,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,6 +107,7 @@ internal data class SearchResultContextMenuTarget(
  * @param presentation 搜索历史与路径显示配置。
  * @param actions 发送到所属根组件的语义动作。
  * @param listState 隐藏窗口期间保留的结果滚动状态。
+ * @param focusRequestNonce 来自独立搜索窗口层的重新聚焦请求计数（如窗口级 Ctrl+F/Cmd+F）。
  * @param modifier 搜索内容的布局修饰。
  * @return 无返回值。
  */
@@ -106,13 +117,27 @@ internal fun SearchPanel(
     presentation: SearchPanelPresentation,
     actions: SearchPanelActions,
     listState: LazyListState,
+    focusRequestNonce: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
     var contextMenuTarget by remember { mutableStateOf<SearchResultContextMenuTarget?>(null) }
     var activeFilterMenu by remember { mutableStateOf(SearchFilterMenu.NONE) }
-    LaunchedEffect(state.activationRequest) { focusRequester.requestFocus() }
-    Box(modifier.fillMaxSize().background(LocalOnyxPalette.current.appBackground).testTag("search-window-content")) {
+    LaunchedEffect(state.activationRequest, focusRequestNonce) { focusRequester.requestFocus() }
+    Box(
+        modifier
+            .fillMaxSize()
+            .background(LocalOnyxPalette.current.appBackground)
+            .onPreviewKeyEvent { event ->
+                if (isSearchFocusInputShortcut(event)) {
+                    focusRequester.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
+            .testTag("search-window-content"),
+    ) {
         Column(Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)
@@ -288,4 +313,18 @@ private fun SearchNavigationFeedbackBanner(
                 .testTag("search-focus-main-window"),
         )
     }
+}
+
+/**
+ * 判断键盘事件是否为“重新聚焦搜索输入框”快捷键（Ctrl+F / Cmd+F，且未同时按下 Alt 或 Shift）。
+ *
+ * @param event 待检测的键盘事件。
+ * @return 若匹配聚焦快捷键则返回 true。
+ */
+internal fun isSearchFocusInputShortcut(event: KeyEvent): Boolean {
+    return event.type == KeyEventType.KeyDown &&
+        event.key == Key.F &&
+        (event.isCtrlPressed || event.isMetaPressed) &&
+        !event.isAltPressed &&
+        !event.isShiftPressed
 }

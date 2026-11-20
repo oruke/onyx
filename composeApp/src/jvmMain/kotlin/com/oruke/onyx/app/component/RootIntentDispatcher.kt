@@ -157,6 +157,18 @@ private fun DefaultRootComponent.dispatchRootPaneIntent(intent: RootIntent): Boo
             openLocationInActivePane(intent.location); true
         }
 
+        is RootIntent.OpenLocationInNewTab -> {
+            openLocationInNewTab(intent.location); true
+        }
+
+        is RootIntent.CopyLocationPath -> {
+            copyLocationPath(intent.location); true
+        }
+
+        is RootIntent.OpenExternalFile -> {
+            openExternalFile(intent.entry); true
+        }
+
         is RootIntent.ToggleSidebarTreeNode -> {
             toggleSidebarTreeNode(intent.location); true
         }

@@ -1,6 +1,7 @@
 package com.oruke.onyx.app.component
 
 import com.oruke.onyx.core.model.PaneSessionSnapshot
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
@@ -44,6 +45,68 @@ internal fun DefaultPaneComponent.closeTab(tabId: String) {
     restoreExpansions(tabExpansions[update.activeTab.id].orEmpty())
     applyTabStackUpdate(update)
     loadTab(update.activeTab.id, update.activeTab.location)
+}
+
+/**
+ * 关闭除指定标签外的其余全部标签，并清理已关闭标签的导航与展开缓存。
+ *
+ * @param tabId 保留的目标标签 ID。
+ */
+internal fun DefaultPaneComponent.closeOtherTabs(tabId: String) {
+    captureActiveVisit()
+    val currentTabs = tabs()
+    val previousActiveId = mutableState.value.activeTabId
+    val update = currentTabs.withClosedOtherTabs(tabId) ?: return
+    val keptIds = update.tabs.mapTo(mutableSetOf()) { it.id }
+    currentTabs.asSequence()
+        .map { it.id }
+        .filterNot { it in keptIds }
+        .forEach { removedId ->
+            navigationController.forget(removedId)
+            tabExpansions.remove(removedId)
+        }
+    restoreExpansions(tabExpansions[update.activeTab.id].orEmpty())
+    applyTabStackUpdate(update)
+    if (update.activeTab.id != previousActiveId) {
+        loadTab(update.activeTab.id, update.activeTab.location)
+    }
+}
+
+/**
+ * 关闭指定标签右侧的全部标签，并清理已关闭标签的导航与展开缓存。
+ *
+ * @param tabId 基准标签 ID。
+ */
+internal fun DefaultPaneComponent.closeTabsToRight(tabId: String) {
+    captureActiveVisit()
+    val currentTabs = tabs()
+    val previousActiveId = mutableState.value.activeTabId
+    val update = currentTabs.withClosedTabsToRight(previousActiveId, tabId) ?: return
+    val keptIds = update.tabs.mapTo(mutableSetOf()) { it.id }
+    currentTabs.asSequence()
+        .map { it.id }
+        .filterNot { it in keptIds }
+        .forEach { removedId ->
+            navigationController.forget(removedId)
+            tabExpansions.remove(removedId)
+        }
+    restoreExpansions(tabExpansions[update.activeTab.id].orEmpty())
+    applyTabStackUpdate(update)
+    if (update.activeTab.id != previousActiveId) {
+        loadTab(update.activeTab.id, update.activeTab.location)
+    }
+}
+
+/**
+ * 复制指定标签的目录路径至剪贴板并给出轻量反馈。
+ *
+ * @param tabId 标签 ID。
+ */
+internal fun DefaultPaneComponent.copyTabPath(tabId: String) {
+    val tab = tabs().firstOrNull { it.id == tabId } ?: return
+    scope.launch {
+        textClipboardService.copyText(tab.location)
+    }
 }
 
 /**

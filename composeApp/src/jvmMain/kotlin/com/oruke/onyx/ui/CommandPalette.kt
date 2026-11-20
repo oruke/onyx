@@ -285,8 +285,9 @@ private fun CommandPaletteResults(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(260.dp)
-            .background(palette.surface),
+            .background(palette.surface)
+            .padding(vertical = 4.dp)
+            .height(270.dp),
     ) {
         if (items.isEmpty()) {
             Text(
@@ -298,6 +299,7 @@ private fun CommandPaletteResults(
         } else {
             LazyColumn(
                 state = listState,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 6.dp),
                 modifier = Modifier.fillMaxWidth().fillMaxHeight().testTag("command-palette-list"),
             ) {
                 itemsIndexed(items) { index, item ->

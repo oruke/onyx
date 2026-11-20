@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -33,6 +34,12 @@ class TaskOrchestrator(
 
     /** 每个任务的暂停标志 — 任务协程应周期性检查此标志来实现暂停功能。 */
     private val taskPauseFlags = mutableMapOf<String, MutableStateFlow<Boolean>>()
+
+    /** 仍在并发队列等待许可的任务集合，用于区分排队中恢复与运行中恢复。 */
+    private val queuedTaskIds = mutableSetOf<String>()
+
+    /** 在排队阶段被主动暂停的任务集合；这些任务不得占用全局并发许可，防止饿死后续正常任务。 */
+    private val pausedWhileQueuedIds = mutableSetOf<String>()
 
     /** 失败任务的重试入口。重试会清理旧任务并重新发起同一业务请求。 */
     private val taskRetryHandlers = mutableMapOf<String, () -> Unit>()
@@ -100,17 +107,27 @@ class TaskOrchestrator(
         bytesPerSecond: Long? = null,
         estimatedRemainingSeconds: Long? = null,
     ) {
+        val paused = taskPauseFlags[taskId]?.value == true
+        val effectiveStatus = if (status == BackgroundTaskStatus.RUNNING && paused) {
+            BackgroundTaskStatus.PAUSED
+        } else {
+            status
+        }
         replaceTasks(_tasks.value.map { task ->
             if (task.id == taskId) {
                 task.copy(
-                    status = status,
+                    status = effectiveStatus,
                     detail = detail,
                     progress = progress,
                     processedCount = processedCount ?: task.processedCount,
                     processedBytes = processedBytes ?: task.processedBytes,
                     totalBytes = totalBytes ?: task.totalBytes,
-                    bytesPerSecond = bytesPerSecond,
-                    estimatedRemainingSeconds = estimatedRemainingSeconds,
+                    bytesPerSecond = if (effectiveStatus == BackgroundTaskStatus.PAUSED) null else bytesPerSecond,
+                    estimatedRemainingSeconds = if (effectiveStatus == BackgroundTaskStatus.PAUSED) {
+                        null
+                    } else {
+                        estimatedRemainingSeconds
+                    },
                 )
             } else {
                 task
@@ -152,13 +169,37 @@ class TaskOrchestrator(
         block: suspend CoroutineScope.() -> Unit,
     ): Job {
         var enteredExecution = false
+        queuedTaskIds.add(taskId)
         val job = scope.launch {
             try {
-                taskConcurrency.withPermit {
-                    enteredExecution = true
-                    block()
+                while (true) {
+                    if (taskId in pausedWhileQueuedIds) {
+                        val pauseFlag = taskPauseFlags[taskId]
+                        if (pauseFlag != null && pauseFlag.value) {
+                            pauseFlag.first { paused -> !paused }
+                        }
+                    }
+                    var executed = false
+                    taskConcurrency.withPermit {
+                        val pauseFlag = taskPauseFlags[taskId]
+                        // 若在等待并发许可期间被排队暂停，立即释放许可回到外层等待恢复，避免饿死后续未暂停任务。
+                        if (taskId in pausedWhileQueuedIds && pauseFlag?.value == true) {
+                            return@withPermit
+                        }
+                        queuedTaskIds.remove(taskId)
+                        pausedWhileQueuedIds.remove(taskId)
+                        if (pauseFlag != null && pauseFlag.value) {
+                            pauseFlag.first { paused -> !paused }
+                        }
+                        enteredExecution = true
+                        block()
+                        executed = true
+                    }
+                    if (executed) break
                 }
             } finally {
+                queuedTaskIds.remove(taskId)
+                pausedWhileQueuedIds.remove(taskId)
                 if (!enteredExecution) {
                     unregisterJob(taskId)
                     updateTask(
@@ -180,6 +221,8 @@ class TaskOrchestrator(
      * @param taskId 任务 id。
      */
     fun unregisterJob(taskId: String) {
+        queuedTaskIds.remove(taskId)
+        pausedWhileQueuedIds.remove(taskId)
         taskJobs.remove(taskId)
         taskPauseFlags.remove(taskId)
     }
@@ -212,6 +255,8 @@ class TaskOrchestrator(
      */
     fun dismissTask(taskId: String) {
         val removedTask = _tasks.value.firstOrNull { task -> task.id == taskId }?.withArchivedStatus()
+        queuedTaskIds.remove(taskId)
+        pausedWhileQueuedIds.remove(taskId)
         taskJobs.remove(taskId)?.cancel()
         taskPauseFlags.remove(taskId)
         taskRetryHandlers.remove(taskId)
@@ -229,12 +274,20 @@ class TaskOrchestrator(
     }
 
     /**
-     * 将任务标记为暂停。
+     * 将处于运行中或排队中的可暂停任务标记为暂停；终态任务不会复活，排队期暂停不占并发许可。
      *
      * @param taskId 任务 id。
      */
     fun pauseTask(taskId: String) {
-        val pauseFlag = taskPauseFlags[taskId] ?: return
+        val existingTask = _tasks.value.firstOrNull { task -> task.id == taskId } ?: return
+        if (existingTask.status != BackgroundTaskStatus.RUNNING && existingTask.status != BackgroundTaskStatus.QUEUED) {
+            return
+        }
+        val pauseFlag = taskPauseFlags[taskId]
+            ?: if (existingTask.canPause) getOrCreatePauseFlag(taskId) else return
+        if (taskId in queuedTaskIds) {
+            pausedWhileQueuedIds.add(taskId)
+        }
         pauseFlag.value = true
         updateTaskFields(taskId) { task ->
             task.copy(
@@ -246,16 +299,24 @@ class TaskOrchestrator(
     }
 
     /**
-     * 恢复暂停任务。
+     * 恢复已暂停任务；非暂停状态忽略，若任务仍在并发排队等待许可，则恢复为 QUEUED，否则恢复为 RUNNING。
      *
      * @param taskId 任务 id。
      */
     fun resumeTask(taskId: String) {
+        val existingTask = _tasks.value.firstOrNull { task -> task.id == taskId } ?: return
+        if (existingTask.status != BackgroundTaskStatus.PAUSED) return
         val pauseFlag = taskPauseFlags[taskId] ?: return
+        pausedWhileQueuedIds.remove(taskId)
         pauseFlag.value = false
+        val nextStatus = if (taskId in queuedTaskIds) {
+            BackgroundTaskStatus.QUEUED
+        } else {
+            BackgroundTaskStatus.RUNNING
+        }
         updateTaskFields(taskId) { task ->
             task.copy(
-                status = BackgroundTaskStatus.RUNNING,
+                status = nextStatus,
                 bytesPerSecond = null,
                 estimatedRemainingSeconds = null,
             )
@@ -278,6 +339,8 @@ class TaskOrchestrator(
      */
     fun clearAllTasks() {
         val removedTasks = _tasks.value.map { task -> task.withArchivedStatus() }
+        queuedTaskIds.clear()
+        pausedWhileQueuedIds.clear()
         taskJobs.values.forEach { job -> job.cancel() }
         taskJobs.clear()
         taskPauseFlags.clear()

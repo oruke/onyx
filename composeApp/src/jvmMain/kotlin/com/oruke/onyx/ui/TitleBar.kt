@@ -189,7 +189,7 @@ internal fun TitleBarScope.TitleBarContent(
         ZoomSlider(
             value = uiScale,
             onValueChange = onUiScaleChange,
-            minValue = 50,
+            minValue = 75,
             maxValue = 200,
         )
     }

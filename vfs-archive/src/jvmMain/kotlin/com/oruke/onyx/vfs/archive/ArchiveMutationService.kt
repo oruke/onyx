@@ -191,7 +191,7 @@ class ZipArchiveMutationService {
         output: ZipOutputStream,
         transform: (ZipEntry) -> String? = { entry -> entry.name },
     ) {
-        ZipInputStream(Files.newInputStream(source.archive)).use { input ->
+        ZipInputStream(Files.newInputStream(source.archive), source.charset).use { input ->
             while (true) {
                 val entry = input.nextEntry ?: break
                 val targetName = transform(entry)
@@ -257,23 +257,65 @@ class ZipArchiveMutationService {
 }
 
 /**
- * ZIP 压缩包源信息。
+ * ZIP 压缩包源信息，优先按 UTF-8 解析条目名并在遇到旧中文 GBK 编码时自动回退至 GBK。
  *
  * @property archive 压缩包路径。
  */
 private class ZipArchiveSource(
     val archive: Path,
 ) : AutoCloseable {
-    private val zipFile = ZipFile(archive.toFile())
+    /** 实际成功解码源 ZIP 条目名的字符集。 */
+    val charset: java.nio.charset.Charset
+
+    private val zipFile: ZipFile
 
     /** 压缩包内所有条目名。 */
-    val entryNames: Set<String> = zipFile.entries().asSequence().map { entry -> entry.name }.toSet()
+    val entryNames: Set<String>
+
+    init {
+        val opened = openZipWithFallback(archive)
+        charset = opened.first
+        zipFile = opened.second
+        entryNames = opened.third
+    }
 
     /**
      * 关闭底层 ZIP 文件。
      */
     override fun close() {
         zipFile.close()
+    }
+
+    private companion object {
+        private val GBK_CHARSET: java.nio.charset.Charset = java.nio.charset.Charset.forName("GBK")
+
+        /**
+         * 优先使用 UTF-8 打开并扫描全部条目名，若遇到非 UTF-8 字节编码异常则回退到 GBK。
+         */
+        private fun openZipWithFallback(
+            archive: Path,
+        ): Triple<java.nio.charset.Charset, ZipFile, Set<String>> {
+            val utf8 = java.nio.charset.StandardCharsets.UTF_8
+            var utf8File: ZipFile? = null
+            try {
+                utf8File = ZipFile(archive.toFile(), utf8)
+                val names = utf8File.entries().asSequence().map { entry -> entry.name }.toSet()
+                return Triple(utf8, utf8File, names)
+            } catch (failure: Exception) {
+                runCatching { utf8File?.close() }
+                if (failure !is IllegalArgumentException && failure !is java.util.zip.ZipException) {
+                    throw failure
+                }
+            }
+            val gbkFile = ZipFile(archive.toFile(), GBK_CHARSET)
+            return try {
+                val names = gbkFile.entries().asSequence().map { entry -> entry.name }.toSet()
+                Triple(GBK_CHARSET, gbkFile, names)
+            } catch (failure: Throwable) {
+                runCatching { gbkFile.close() }
+                throw failure
+            }
+        }
     }
 }
 

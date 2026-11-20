@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.oruke.onyx.core.model.BackgroundTask
 import com.oruke.onyx.core.model.TaskError
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
@@ -43,6 +44,7 @@ import onyx.composeapp.generated.resources.action_task_expand_errors
 import onyx.composeapp.generated.resources.label_task_copied_feedback
 import onyx.composeapp.generated.resources.label_task_error_reason
 import onyx.composeapp.generated.resources.label_task_errors_count
+import onyx.composeapp.generated.resources.label_task_errors_truncated_footer
 import onyx.composeapp.generated.resources.label_task_more_errors_expand
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Icon
@@ -94,6 +96,7 @@ internal fun TaskErrorSection(
     } else {
         resolvedErrors.take(COLLAPSED_VISIBLE_ERRORS)
     }
+    val expandedTruncated = expanded && task.errors.size > MAX_EXPANDED_RENDERED_ERRORS
     val copyAllKey = "all:${task.id}"
 
     Spacer(modifier = Modifier.height(2.dp))
@@ -132,7 +135,7 @@ internal fun TaskErrorSection(
                     copied = copiedFeedbackKey == itemCopyKey,
                     onCopyFileName = { onCopyErrorText(itemCopyKey, item.fileName) },
                 )
-                if (index < visibleItems.lastIndex || (canExpand && !expanded)) {
+                if (index < visibleItems.lastIndex || (canExpand && !expanded) || expandedTruncated) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -149,6 +152,23 @@ internal fun TaskErrorSection(
                     hiddenCount = hiddenCount,
                     onClick = onToggleExpand,
                 )
+            } else if (expandedTruncated) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("task-errors-truncated-footer-${task.id}")
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            Res.string.label_task_errors_truncated_footer,
+                            visibleItems.size,
+                            task.errors.size,
+                        ),
+                        fontSize = 11.sp,
+                        color = palette.mutedForeground,
+                    )
+                }
             }
         }
     }

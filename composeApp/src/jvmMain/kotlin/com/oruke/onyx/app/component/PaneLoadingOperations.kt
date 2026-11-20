@@ -64,7 +64,7 @@ internal fun DefaultPaneComponent.loadTab(tabId: String, location: String, force
 }
 
 /**
- * 从 SMB/WebDAV 认证错误中触发根组件凭据流程。
+ * 从 SMB/WebDAV/S3 认证错误中触发根组件凭据流程。
  *
  * @param failure 目录加载失败。
  */
@@ -75,7 +75,10 @@ private fun DefaultPaneComponent.requestRemoteCredentialsIfSupported(failure: Th
         is VfsProviderError.AuthenticationRequired -> error
         else -> return
     }
-    if (authError.protocol == VfsProtocol.SMB || authError.protocol == VfsProtocol.WEBDAV) {
+    if (authError.protocol == VfsProtocol.SMB ||
+        authError.protocol == VfsProtocol.WEBDAV ||
+        authError.protocol == VfsProtocol.S3
+    ) {
         onRemoteAuthenticationRequired(paneId, authError)
     }
 }

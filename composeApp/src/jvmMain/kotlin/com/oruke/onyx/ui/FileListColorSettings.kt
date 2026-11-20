@@ -340,13 +340,20 @@ private fun ThemePreviewCardItem(
 
 @Composable
 private fun MiniThemeWindowPreview(previewPalette: OnyxPalette) {
+    val currentPalette = LocalOnyxPalette.current
+    val outerBorder = resolveSwatchBorderColor(
+        swatchColor = previewPalette.appBackground,
+        containerSurface = currentPalette.surfaceVariant,
+        defaultOutline = previewPalette.outline,
+    )
+    val innerBorder = previewPalette.outline.copy(alpha = 0.65f)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .height(36.dp)
             .clip(MiniPreviewShape)
             .background(previewPalette.appBackground)
-            .border(1.dp, previewPalette.outlineVariant, MiniPreviewShape),
+            .border(1.dp, outerBorder, MiniPreviewShape),
     ) {
         Box(
             modifier = Modifier
@@ -354,12 +361,19 @@ private fun MiniThemeWindowPreview(previewPalette: OnyxPalette) {
                 .height(8.dp)
                 .background(previewPalette.headerBackground),
         )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(0.5.dp)
+                .background(innerBorder),
+        )
         Row(modifier = Modifier.fillMaxWidth().weight(1f).padding(3.dp)) {
             Box(
                 modifier = Modifier
                     .width(16.dp)
                     .fillMaxHeight()
-                    .background(previewPalette.surfaceVariant, RoundedCornerShape(2.dp)),
+                    .background(previewPalette.surfaceVariant, RoundedCornerShape(2.dp))
+                    .border(0.5.dp, innerBorder, RoundedCornerShape(2.dp)),
             )
             Spacer(Modifier.width(3.dp))
             Column(
@@ -367,6 +381,7 @@ private fun MiniThemeWindowPreview(previewPalette: OnyxPalette) {
                     .weight(1f)
                     .fillMaxHeight()
                     .background(previewPalette.surface, RoundedCornerShape(2.dp))
+                    .border(0.5.dp, innerBorder, RoundedCornerShape(2.dp))
                     .padding(3.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -475,6 +490,7 @@ internal fun GlobalThemeColorSettings(draft: OnyxSettings, onChange: (OnyxSettin
                     label = stringResource(Res.string.label_theme_color_app_bg),
                     value = colors.appBackgroundArgb,
                     defaultPreviewColor = palette.appBackground,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(themeColors = colors.copy(appBackgroundArgb = it)))
                 }
@@ -484,6 +500,7 @@ internal fun GlobalThemeColorSettings(draft: OnyxSettings, onChange: (OnyxSettin
                     label = stringResource(Res.string.label_theme_color_surface),
                     value = colors.surfaceArgb,
                     defaultPreviewColor = palette.surface,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(themeColors = colors.copy(surfaceArgb = it)))
                 }
@@ -498,6 +515,7 @@ internal fun GlobalThemeColorSettings(draft: OnyxSettings, onChange: (OnyxSettin
                     label = stringResource(Res.string.label_theme_color_header_bg),
                     value = colors.headerBackgroundArgb,
                     defaultPreviewColor = palette.headerBackground,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(themeColors = colors.copy(headerBackgroundArgb = it)))
                 }
@@ -507,6 +525,7 @@ internal fun GlobalThemeColorSettings(draft: OnyxSettings, onChange: (OnyxSettin
                     label = stringResource(Res.string.label_theme_color_foreground),
                     value = colors.foregroundArgb,
                     defaultPreviewColor = palette.foreground,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(themeColors = colors.copy(foregroundArgb = it)))
                 }
@@ -521,6 +540,7 @@ internal fun GlobalThemeColorSettings(draft: OnyxSettings, onChange: (OnyxSettin
                     label = stringResource(Res.string.label_theme_color_accent),
                     value = colors.accentArgb,
                     defaultPreviewColor = palette.accent,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(themeColors = colors.copy(accentArgb = it)))
                 }
@@ -530,6 +550,7 @@ internal fun GlobalThemeColorSettings(draft: OnyxSettings, onChange: (OnyxSettin
                     label = stringResource(Res.string.label_theme_color_outline),
                     value = colors.outlineArgb,
                     defaultPreviewColor = palette.outline,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(themeColors = colors.copy(outlineArgb = it)))
                 }
@@ -555,6 +576,7 @@ internal fun FileListColorSettings(draft: OnyxSettings, onChange: (OnyxSettings)
                     label = stringResource(Res.string.label_file_list_background),
                     value = colors.backgroundArgb,
                     defaultPreviewColor = palette.surface,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(fileListColors = colors.copy(backgroundArgb = it)))
                 }
@@ -564,6 +586,7 @@ internal fun FileListColorSettings(draft: OnyxSettings, onChange: (OnyxSettings)
                     label = stringResource(Res.string.label_file_name_color),
                     value = colors.nameArgb,
                     defaultPreviewColor = palette.foreground,
+                    allowAlpha = false,
                 ) {
                     onChange(draft.copy(fileListColors = colors.copy(nameArgb = it)))
                 }
@@ -578,6 +601,7 @@ internal fun FileListColorSettings(draft: OnyxSettings, onChange: (OnyxSettings)
                     label = stringResource(Res.string.label_selection_color),
                     value = colors.selectionArgb,
                     defaultPreviewColor = palette.selectionBackground,
+                    allowAlpha = true,
                 ) {
                     onChange(draft.copy(fileListColors = colors.copy(selectionArgb = it)))
                 }
@@ -587,6 +611,7 @@ internal fun FileListColorSettings(draft: OnyxSettings, onChange: (OnyxSettings)
                     label = stringResource(Res.string.label_inactive_selection_color),
                     value = colors.inactiveSelectionArgb,
                     defaultPreviewColor = palette.inactiveSelectionBackground,
+                    allowAlpha = true,
                 ) {
                     onChange(draft.copy(fileListColors = colors.copy(inactiveSelectionArgb = it)))
                 }
@@ -601,6 +626,7 @@ internal fun FileListColorSettings(draft: OnyxSettings, onChange: (OnyxSettings)
                     label = stringResource(Res.string.label_zebra_color),
                     value = colors.zebraArgb,
                     defaultPreviewColor = palette.surfaceVariant,
+                    allowAlpha = true,
                 ) {
                     onChange(draft.copy(fileListColors = colors.copy(zebraArgb = it)))
                 }

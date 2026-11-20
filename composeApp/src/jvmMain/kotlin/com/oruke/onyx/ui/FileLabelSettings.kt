@@ -116,7 +116,11 @@ private fun FileLabelRuleFields(rule: FileLabelRule, onChange: (FileLabelRule) -
             }
         }
         FileLabelSizeFields(rule.matcher) { matcher -> onChange(rule.copy(matcher = matcher)) }
-        ColorOverrideField(stringResource(Res.string.label_rule_name_color), rule.textColorArgb) {
+        ColorOverrideField(
+            label = stringResource(Res.string.label_rule_name_color),
+            value = rule.textColorArgb,
+            allowAlpha = false,
+        ) {
             onChange(
                 rule.copy(
                     textColorArgb = it
@@ -124,8 +128,9 @@ private fun FileLabelRuleFields(rule: FileLabelRule, onChange: (FileLabelRule) -
             )
         }
         ColorOverrideField(
-            stringResource(Res.string.label_rule_background),
-            rule.backgroundColorArgb
+            label = stringResource(Res.string.label_rule_background),
+            value = rule.backgroundColorArgb,
+            allowAlpha = true,
         ) { onChange(rule.copy(backgroundColorArgb = it)) }
     }
 }

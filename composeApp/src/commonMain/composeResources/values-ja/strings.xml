@@ -789,4 +789,23 @@
     <string name="label_remote_protocol_short_s3">S3</string>
     <string name="label_breadcrumb_collapsed_ancestors">折りたたまれた親フォルダーを表示</string>
     <string name="msg_trash_item_unavailable">ごみ箱にこの項目はもう存在しません：%1$s</string>
+    <string name="label_preview_tab_preview">プレビュー</string>
+    <string name="label_preview_tab_inspector">インスペクター</string>
+    <string name="label_copied_brief">コピー済み</string>
+    <string name="label_image_viewer_close">閉じる (Esc)</string>
+    <string name="label_image_viewer_error_too_large">画像サイズが %1$s の表示上限を超えています。</string>
+    <string name="label_image_viewer_error_not_found">画像ファイルが見つかりません。</string>
+    <string name="label_image_viewer_error_unsupported">この場所のプロトコルでは直接表示できません。</string>
+    <string name="label_image_viewer_error_decode_failed">画像をデコードできません。破損しているか非対応の形式です。</string>
+    <string name="action_open_externally">既定のアプリで開く</string>
+    <string name="action_close_other_tabs">他のタブを閉じる</string>
+    <string name="action_close_tabs_to_right">右側のタブを閉じる</string>
+    <string name="action_add_to_favorites">お気に入りに追加</string>
+    <string name="action_remove_from_favorites">お気に入りから削除</string>
+    <string name="label_task_errors_truncated_footer">全 %2$d 件中、先頭 %1$d 件を表示しています。完全な一覧は「すべてのエラーをコピー」をご利用ください。</string>
+    <string name="label_quick_open_recent_locations">最近の場所</string>
+    <string name="label_search_size_custom_min_mb">最小 MB</string>
+    <string name="label_search_size_custom_max_mb">最大 MB</string>
+    <string name="label_remote_credentials_s3_session_token">セッショントークン（任意）</string>
+    <string name="action_open_remote_connection_settings">接続設定を開く</string>
 </resources>

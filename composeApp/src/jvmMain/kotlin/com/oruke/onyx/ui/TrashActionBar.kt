@@ -181,6 +181,7 @@ private fun TrashActionButton(
         Icon(
             key = iconKey,
             contentDescription = null,
+            tint = textColor,
             modifier = Modifier.size(12.dp),
         )
         Text(

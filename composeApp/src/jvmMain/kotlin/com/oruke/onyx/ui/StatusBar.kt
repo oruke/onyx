@@ -136,11 +136,21 @@ internal fun ZoomSlider(
     minValue: Int = 80,
     maxValue: Int = 320,
 ) {
-    val range = (maxValue - minValue).toFloat()
+    val range = (maxValue - minValue).toFloat().coerceAtLeast(1f)
     val fraction = ((value - minValue) / range).coerceIn(0f, 1f)
     val sliderWidthDp = 120
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val sliderWidthPx = with(density) { sliderWidthDp.dp.toPx() }
+    val currentOnValueChange = androidx.compose.runtime.rememberUpdatedState(onValueChange)
+    val currentMinValue = androidx.compose.runtime.rememberUpdatedState(minValue)
+    val currentMaxValue = androidx.compose.runtime.rememberUpdatedState(maxValue)
+
+    fun dispatchForPosition(positionX: Float, widthPx: Int) {
+        val safeWidth = widthPx.toFloat().coerceAtLeast(1f)
+        val newFraction = (positionX / safeWidth).coerceIn(0f, 1f)
+        val minVal = currentMinValue.value
+        val maxVal = currentMaxValue.value
+        val span = (maxVal - minVal).toFloat().coerceAtLeast(1f)
+        currentOnValueChange.value((minVal + (newFraction * span).toInt()).coerceIn(minVal, maxVal))
+    }
 
     Box(
         modifier = Modifier
@@ -148,15 +158,12 @@ internal fun ZoomSlider(
             .height(16.dp)
             .pointerInput(Unit) {
                 detectDragGestures { change, _ ->
-                    val x = change.position.x.coerceIn(0f, sliderWidthPx)
-                    val newFraction = x / sliderWidthPx
-                    onValueChange((minValue + (newFraction * range).toInt()).coerceIn(minValue, maxValue))
+                    dispatchForPosition(change.position.x, size.width)
                 }
             }
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val newFraction = (offset.x / sliderWidthPx).coerceIn(0f, 1f)
-                    onValueChange((minValue + (newFraction * range).toInt()).coerceIn(minValue, maxValue))
+                    dispatchForPosition(offset.x, size.width)
                 }
             },
         contentAlignment = Alignment.Center,

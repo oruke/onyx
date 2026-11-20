@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
@@ -67,6 +68,10 @@ import org.jetbrains.jewel.ui.icons.AllIconsKeys
  * @param actions 快速打开面板可发出的组件层动作。
  * @param onSelectedIndexChange 选中结果下标变更回调。
  * @param onShowContextMenu 展示指定结果右键菜单的回调。
+ * @param recentLocations 查询为空时展示的最近位置列表。
+ * @param recentListState 最近位置列表的滚动状态。
+ * @param recentSelectedIndex 最近位置列表当前键盘选中下标。
+ * @param onRecentSelectedIndexChange 更新最近位置列表键盘选中下标的回调。
  * @param modifier 应用于主体容器的修饰符。
  */
 @Composable
@@ -80,6 +85,10 @@ internal fun QuickOpenDialogSurface(
     onSelectedIndexChange: (Int) -> Unit,
     onShowContextMenu: (Int, VFile, IntOffset) -> Unit,
     modifier: Modifier,
+    recentLocations: List<String> = emptyList(),
+    recentListState: LazyListState = rememberLazyListState(),
+    recentSelectedIndex: Int = QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX,
+    onRecentSelectedIndexChange: (Int) -> Unit = {},
 ) {
     val palette = LocalOnyxPalette.current
     Column(
@@ -98,6 +107,9 @@ internal fun QuickOpenDialogSurface(
                     actions = actions,
                     onSelectedIndexChange = onSelectedIndexChange,
                     query = state.query,
+                    recentLocations = if (state.status == SearchStatus.RUNNING) emptyList() else recentLocations,
+                    recentSelectedIndex = recentSelectedIndex,
+                    onRecentSelectedIndexChange = onRecentSelectedIndexChange,
                 )
             },
     ) {
@@ -113,6 +125,10 @@ internal fun QuickOpenDialogSurface(
             locationLabel = locationLabel,
             actions = actions,
             onShowContextMenu = onShowContextMenu,
+            recentLocations = recentLocations,
+            recentListState = recentListState,
+            recentSelectedIndex = recentSelectedIndex,
+            onRecentSelectedIndexChange = onRecentSelectedIndexChange,
         )
         if (state.status == SearchStatus.RUNNING && state.results.isNotEmpty()) {
             QuickOpenSearchProgress(state)

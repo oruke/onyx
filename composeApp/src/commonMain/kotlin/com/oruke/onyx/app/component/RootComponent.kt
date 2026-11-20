@@ -194,6 +194,8 @@ internal sealed interface RootDialogState {
         val entries: List<VFile>,
         /** 是否正在执行文件变更。 */
         val executing: Boolean = false,
+        /** 正在执行批量重命名的后台任务 ID，用于执行态实时取消。 */
+        val executingTaskId: String? = null,
         /** 已完成比例。 */
         val progress: Float = 0f,
         /** 已处理条目数量。 */
@@ -246,6 +248,12 @@ internal sealed interface RootDialogState {
     data class ArchivePassword(
         val archiveName: String,
         val error: I18nMessage? = null,
+        /** 失败重试计数，每次错误递增以便 UI 在保留草稿时重新全选与聚焦。 */
+        val attempt: Int = 0,
+        /** 是否正在后台校验密码（防连击重复提交）。 */
+        val verifying: Boolean = false,
+        /** 当前密码请求的唯一标识，用于隔离并发队列中同名加密压缩包的密码草稿。 */
+        val requestId: String = "",
     ) : RootDialogState
 
     data class RemoteCredentials(
@@ -444,6 +452,21 @@ internal sealed interface RootIntent {
 
     data class OpenLocationInActivePane(
         val location: String,
+    ) : RootIntent
+
+    /** 在活动面板的新标签页中打开指定位置（侧栏右键菜单等场景）。 */
+    data class OpenLocationInNewTab(
+        val location: String,
+    ) : RootIntent
+
+    /** 复制指定目录或文件路径到系统剪贴板。 */
+    data class CopyLocationPath(
+        val location: String,
+    ) : RootIntent
+
+    /** 使用系统默认应用打开指定文件（如图片查看器解码失败时外部打开）。 */
+    data class OpenExternalFile(
+        val entry: VFile,
     ) : RootIntent
 
     data class ToggleFavoriteLocation(
@@ -845,9 +868,59 @@ internal interface RootPresentationServices {
 
     suspend fun readArchiveInfo(request: ArchiveInfoRequest): ArchiveInfoResult
 
+    /** 同步查询内存缓存中的图片缩略图，避免画廊与预览命中缓存时闪屏。 */
+    fun peekCachedThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long? = null,
+        sizeBytes: Long? = null,
+    ): ImageBitmap? = null
+
+    /** 同步查询内存缓存中的压缩包封面缩略图。 */
+    fun peekCachedArchiveThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long? = null,
+        sizeBytes: Long? = null,
+    ): ImageBitmap? = null
+
     suspend fun loadThumbnail(location: String, maxDimension: Int): ImageBitmap?
 
+    /** 加载带修改时间与大小指纹的图片缩略图，同名覆盖后自动刷新缓存。 */
+    suspend fun loadThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? = loadThumbnail(location, maxDimension)
+
     suspend fun loadArchiveThumbnail(location: String, maxDimension: Int): ImageBitmap?
+
+    /** 加载带修改时间与大小指纹的压缩包封面缩略图。 */
+    suspend fun loadArchiveThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? = loadArchiveThumbnail(location, maxDimension)
+
+    /** 加载独立图片查看器位图并返回结构化失败原因。 */
+    suspend fun loadViewerImage(
+        entry: VFile,
+        maxDimension: Int,
+    ): com.oruke.onyx.app.filesystem.ImageLoadOutcome {
+        val loaded = loadThumbnail(
+            location = entry.location,
+            maxDimension = maxDimension,
+            modifiedAtEpochMillis = entry.modifiedAtEpochMillis,
+            sizeBytes = entry.sizeBytes,
+        )
+        return if (loaded != null) {
+            com.oruke.onyx.app.filesystem.ImageLoadOutcome.Loaded(loaded)
+        } else {
+            com.oruke.onyx.app.filesystem.ImageLoadOutcome.DecodeFailed()
+        }
+    }
 
     suspend fun readImageSize(entry: VFile): IntSize?
 }

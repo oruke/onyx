@@ -38,14 +38,19 @@ import com.oruke.onyx.app.component.RemoteCredentialsDialogError
 import com.oruke.onyx.app.component.RemoteCredentialsDraft
 import com.oruke.onyx.app.component.RootDialogState
 import com.oruke.onyx.vfs.api.RemoteCredentialSavePolicy
+import com.oruke.onyx.vfs.api.VfsProtocol
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.jewel.ui.component.Text
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.action_confirm
+import onyx.composeapp.generated.resources.action_open_remote_connection_settings
+import onyx.composeapp.generated.resources.label_remote_connection_s3_access_key
+import onyx.composeapp.generated.resources.label_remote_connection_s3_secret_key
 import onyx.composeapp.generated.resources.label_remote_credentials_do_not_save_hint
 import onyx.composeapp.generated.resources.label_remote_credentials_domain
+import onyx.composeapp.generated.resources.label_remote_credentials_s3_session_token
 import onyx.composeapp.generated.resources.label_remote_credentials_error_username_required
 import onyx.composeapp.generated.resources.label_remote_credentials_error_save_failed
 import onyx.composeapp.generated.resources.label_remote_credentials_hint
@@ -67,6 +72,7 @@ internal fun RemoteCredentialsDialog(
     onDraftChange: (RemoteCredentialsDraft) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    onOpenRemoteConnections: (() -> Unit)? = null,
 ) {
     val focusRequester = remember { FocusRequester() }
     val scrollState = rememberScrollState()
@@ -99,6 +105,13 @@ internal fun RemoteCredentialsDialog(
                 )
             },
             actions = {
+                if (onOpenRemoteConnections != null) {
+                    DialogTextButton(
+                        text = stringResource(Res.string.action_open_remote_connection_settings),
+                        enabled = !state.submitting,
+                        onClick = onOpenRemoteConnections,
+                    )
+                }
                 DialogTextButton(
                     text = stringResource(Res.string.action_close_window),
                     onClick = onDismiss,
@@ -140,12 +153,15 @@ private fun RemoteCredentialsBody(
             .padding(end = 6.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        val isS3 = state.protocol == VfsProtocol.S3
         RemoteCredentialHeader(
             location = state.location,
             hint = stringResource(Res.string.label_remote_credentials_hint, vfsProtocolLabel(state.protocol)),
         )
         CredentialInputField(
-            label = stringResource(Res.string.label_remote_credentials_username),
+            label = stringResource(
+                if (isS3) Res.string.label_remote_connection_s3_access_key else Res.string.label_remote_credentials_username,
+            ),
             value = state.draft.username,
             onValueChange = { value -> onDraftChange(state.draft.copy(username = value)) },
             focusRequester = focusRequester,
@@ -154,7 +170,9 @@ private fun RemoteCredentialsBody(
             enabled = !state.submitting,
         )
         CredentialInputField(
-            label = stringResource(Res.string.label_remote_credentials_password),
+            label = stringResource(
+                if (isS3) Res.string.label_remote_connection_s3_secret_key else Res.string.label_remote_credentials_password,
+            ),
             value = state.draft.password,
             onValueChange = { value -> onDraftChange(state.draft.copy(password = value)) },
             password = true,
@@ -163,7 +181,9 @@ private fun RemoteCredentialsBody(
             enabled = !state.submitting,
         )
         CredentialInputField(
-            label = stringResource(Res.string.label_remote_credentials_domain),
+            label = stringResource(
+                if (isS3) Res.string.label_remote_credentials_s3_session_token else Res.string.label_remote_credentials_domain,
+            ),
             value = state.draft.domain,
             onValueChange = { value -> onDraftChange(state.draft.copy(domain = value)) },
             onConfirm = onConfirm,

@@ -331,6 +331,21 @@ internal sealed interface PaneIntent {
         val tabId: String,
     ) : PaneIntent
 
+    /** 关闭除指定标签外的其余全部标签。 */
+    data class CloseOtherTabs(
+        val tabId: String,
+    ) : PaneIntent
+
+    /** 关闭指定标签右侧的全部标签。 */
+    data class CloseTabsToRight(
+        val tabId: String,
+    ) : PaneIntent
+
+    /** 复制指定标签对应的目录路径到系统剪贴板。 */
+    data class CopyTabPath(
+        val tabId: String,
+    ) : PaneIntent
+
     data class MoveTab(
         val tabId: String,
         val targetIndex: Int,
@@ -470,6 +485,15 @@ internal fun PaneComponent.createTab(location: String = state.value.location) = 
 internal fun PaneComponent.selectTab(tabId: String) = dispatch(PaneIntent.SelectTab(tabId))
 
 internal fun PaneComponent.closeTab(tabId: String) = dispatch(PaneIntent.CloseTab(tabId))
+
+/** 关闭除指定标签外的其余全部标签。 */
+internal fun PaneComponent.closeOtherTabs(tabId: String) = dispatch(PaneIntent.CloseOtherTabs(tabId))
+
+/** 关闭指定标签右侧的全部标签。 */
+internal fun PaneComponent.closeTabsToRight(tabId: String) = dispatch(PaneIntent.CloseTabsToRight(tabId))
+
+/** 复制指定标签路径到系统剪贴板。 */
+internal fun PaneComponent.copyTabPath(tabId: String) = dispatch(PaneIntent.CopyTabPath(tabId))
 
 internal fun PaneComponent.moveTab(
     tabId: String,

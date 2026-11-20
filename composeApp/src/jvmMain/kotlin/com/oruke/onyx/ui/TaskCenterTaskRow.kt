@@ -219,7 +219,7 @@ private fun TaskRowActions(
     ) {
         if (task.canPause) {
             when (task.status) {
-                BackgroundTaskStatus.RUNNING -> key("pause") {
+                BackgroundTaskStatus.RUNNING, BackgroundTaskStatus.QUEUED -> key("pause") {
                     TaskActionIcon(
                         onClick = onPause,
                         icon = AllIconsKeys.Actions.Pause,

@@ -174,6 +174,14 @@ internal data class GalleryThumbnailServices(
     val isImageFileName: (String) -> Boolean,
     /** 判断文件名是否为压缩包。 */
     val isArchiveFileName: (String) -> Boolean,
+    /** 同步查询内存中的图片缩略图，避免滚屏复现占位图闪屏。 */
+    val peekCachedThumbnail: (String, Int, Long?, Long?) -> ImageBitmap? = { _, _, _, _ -> null },
+    /** 同步查询内存中的压缩包封面缩略图。 */
+    val peekCachedArchiveThumbnail: (String, Int, Long?, Long?) -> ImageBitmap? = { _, _, _, _ -> null },
+    /** 读取带版本指纹（mtime+size）的图片缩略图。 */
+    val loadVersionedThumbnail: (suspend (String, Int, Long?, Long?) -> ImageBitmap?)? = null,
+    /** 读取带版本指纹（mtime+size）的压缩包封面缩略图。 */
+    val loadVersionedArchiveThumbnail: (suspend (String, Int, Long?, Long?) -> ImageBitmap?)? = null,
 )
 
 /** 保存画廊项单次组合周期内的指针交互状态。 */
@@ -314,7 +322,15 @@ internal fun GalleryItem(
         verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
     ) {
         GalleryThumbnail(state.entry, state.sizeDp, thumbnails, Modifier.weight(1f).fillMaxWidth())
-        GalleryItemName(state, actions, interaction, focusRequester, canInlineEdit)
+        GalleryItemName(
+            state = state,
+            actions = actions,
+            interaction = interaction,
+            focusRequester = focusRequester,
+            inlineEditing = canInlineEdit,
+            isDropTarget = isDropTarget,
+            hovered = isHovered,
+        )
     }
 }
 
@@ -768,7 +784,24 @@ private fun GalleryThumbnail(
  */
 @Composable
 private fun ImageGalleryThumbnail(entry: VFile, sizeDp: Int, services: GalleryThumbnailServices) {
-    val (thumbnail, _) = rememberAsyncBitmap(entry.location, GALLERY_THUMBNAIL_DIMENSION, services.loadThumbnail)
+    val versionKey = entry.modifiedAtEpochMillis to entry.sizeBytes
+    val loader = remember(entry.modifiedAtEpochMillis, entry.sizeBytes, services) {
+        val versioned = services.loadVersionedThumbnail
+        if (versioned != null) {
+            suspend { loc: String, dim: Int -> versioned(loc, dim, entry.modifiedAtEpochMillis, entry.sizeBytes) }
+        } else {
+            services.loadThumbnail
+        }
+    }
+    val (thumbnail, _) = rememberAsyncBitmap(
+        location = entry.location,
+        maxDimension = GALLERY_THUMBNAIL_DIMENSION,
+        loader = loader,
+        versionKey = versionKey,
+        peekCached = { loc, dim ->
+            services.peekCachedThumbnail(loc, dim, entry.modifiedAtEpochMillis, entry.sizeBytes)
+        },
+    )
     if (thumbnail != null) {
         GalleryBitmap(thumbnail, entry.name)
     } else {
@@ -789,10 +822,23 @@ private fun ImageGalleryThumbnail(entry: VFile, sizeDp: Int, services: GalleryTh
  */
 @Composable
 private fun ArchiveGalleryThumbnail(entry: VFile, sizeDp: Int, services: GalleryThumbnailServices) {
+    val versionKey = entry.modifiedAtEpochMillis to entry.sizeBytes
+    val loader = remember(entry.modifiedAtEpochMillis, entry.sizeBytes, services) {
+        val versioned = services.loadVersionedArchiveThumbnail
+        if (versioned != null) {
+            suspend { loc: String, dim: Int -> versioned(loc, dim, entry.modifiedAtEpochMillis, entry.sizeBytes) }
+        } else {
+            services.loadArchiveThumbnail
+        }
+    }
     val (thumbnail, _) = rememberAsyncBitmap(
-        entry.location,
-        GALLERY_THUMBNAIL_DIMENSION,
-        services.loadArchiveThumbnail,
+        location = entry.location,
+        maxDimension = GALLERY_THUMBNAIL_DIMENSION,
+        loader = loader,
+        versionKey = versionKey,
+        peekCached = { loc, dim ->
+            services.peekCachedArchiveThumbnail(loc, dim, entry.modifiedAtEpochMillis, entry.sizeBytes)
+        },
     )
     if (thumbnail == null) {
         Icon(
@@ -870,18 +916,31 @@ private fun GalleryItemName(
     interaction: GalleryInteractionState,
     focusRequester: FocusRequester,
     inlineEditing: Boolean,
+    isDropTarget: Boolean = false,
+    hovered: Boolean = false,
 ) {
     if (inlineEditing) {
         GalleryInlineEditor(state, actions, interaction, focusRequester)
     } else {
+        val palette = LocalOnyxPalette.current
+        val appearance = LocalOnyxAppearance.current
+        val baseSurface = appearance.fileListBackground ?: palette.surface
+        val activeLabelBg = if (!isDropTarget && !state.selected && !hovered) {
+            state.labelStyle?.backgroundColorArgb
+        } else {
+            null
+        }
+        val textColor = com.oruke.onyx.ui.theme.resolveLabelAutoPrimaryTextColor(
+            labelBackgroundArgb = activeLabelBg,
+            labelTextArgb = state.labelStyle?.textColorArgb,
+            baseSurface = baseSurface,
+        ) ?: appearance.fileNameColor ?: palette.foreground
         Text(
-            text = state.entry?.displayFileName(LocalOnyxAppearance.current.showFileExtensions).orEmpty(),
+            text = state.entry?.displayFileName(appearance.showFileExtensions).orEmpty(),
             modifier = Modifier.onGloballyPositioned { interaction.renameLabelCoordinates = it },
             fontWeight = if (state.entry?.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
             fontSize = 12.sp,
-            color = state.labelStyle?.textColorArgb?.let(::Color)
-                ?: LocalOnyxAppearance.current.fileNameColor
-                ?: LocalOnyxPalette.current.foreground,
+            color = textColor,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,

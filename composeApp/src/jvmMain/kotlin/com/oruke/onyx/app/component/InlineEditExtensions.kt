@@ -146,12 +146,33 @@ private fun PaneTabState.confirmValidInlineEdit(
     }
 }
 
-internal fun PaneTabState.nextCreateName(baseName: String): String {
-    val existingNames = allEntries.mapTo(mutableSetOf()) { it.name }
+/**
+ * 为内联新建文件或目录生成不重名的默认名称。
+ *
+ * 新建文件（`preserveExtension = true`）时将冲突序号插入扩展名之前（如 `New File (1).txt`），
+ * 避免落到扩展名后变成 `.txt (1)`；同时遵循当前位置的大小写敏感语义防止 Windows/SMB 撞名。
+ *
+ * @param baseName 建议的基础文件名或目录名。
+ * @param preserveExtension 是否在扩展名前插入编号；新建文件传 `true`，新建目录传 `false`。
+ * @return 当前目录内可用的不冲突名称。
+ */
+internal fun PaneTabState.nextCreateName(
+    baseName: String,
+    preserveExtension: Boolean = false,
+): String {
+    val caseInsensitive = isCaseInsensitiveVfsLocation(location)
+    val existingNames = allEntries.mapTo(mutableSetOf()) { entry ->
+        if (caseInsensitive) entry.name.lowercase() else entry.name
+    }
+    val dotIndex = if (preserveExtension) baseName.lastIndexOf('.') else -1
+    val hasExtension = dotIndex > 0 && dotIndex < baseName.lastIndex
+    val stem = if (hasExtension) baseName.substring(0, dotIndex) else baseName
+    val extension = if (hasExtension) baseName.substring(dotIndex) else ""
+
     var candidate = baseName
     var suffixIndex = 1
-    while (candidate in existingNames) {
-        candidate = "$baseName ($suffixIndex)"
+    while ((if (caseInsensitive) candidate.lowercase() else candidate) in existingNames) {
+        candidate = "$stem ($suffixIndex)$extension"
         suffixIndex += 1
     }
     return candidate

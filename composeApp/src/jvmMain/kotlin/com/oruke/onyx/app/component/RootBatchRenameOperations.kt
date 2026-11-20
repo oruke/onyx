@@ -96,7 +96,10 @@ internal fun DefaultRootComponent.updateBatchRenamePresetName(name: String) {
 /** 将当前有效表单保存为独立预设，已选中预设则覆盖该记录。 */
 internal fun DefaultRootComponent.saveBatchRenamePreset() {
     val current = dialogState.value as? RootDialogState.BatchRename ?: return
-    if (current.executing || current.validationMessage != null) return
+    if (current.executing) return
+    val blockingValidation = current.validationMessage
+        ?.takeUnless { it.key == MessageKey.MSG_RENAME_PRESET_NAME_REQUIRED }
+    if (blockingValidation != null) return
     if (current.presetName.isBlank()) {
         dialogState.value = current.copy(validationMessage = I18nMessage(MessageKey.MSG_RENAME_PRESET_NAME_REQUIRED))
         return
@@ -114,7 +117,7 @@ internal fun DefaultRootComponent.saveBatchRenamePreset() {
             batchRenamePresets = if (previous.any { it.id == id }) {
                 previous.map { if (it.id == id) preset else it }
             } else previous + preset))
-    dialogState.value = current.copy(selectedPresetId = id, presetName = preset.name)
+    dialogState.value = current.copy(selectedPresetId = id, presetName = preset.name, validationMessage = null)
 }
 
 /** 删除已选中的保存预设，当前规则输入仍可继续用于预览和执行。 */

@@ -8,6 +8,7 @@ import com.oruke.onyx.core.model.PaneLayoutMode
 import com.oruke.onyx.core.model.SidebarSectionKey
 import com.oruke.onyx.ui.mergeEditableSettingsFrom
 import com.oruke.onyx.vfs.api.TransferConflictStrategy
+import kotlinx.coroutines.launch
 
 /**
  * 当前生效的视觉与展示设置：当设置窗口处于打开状态时实时返回未提交的草稿，使主窗口与各附属视图同步预览；
@@ -99,6 +100,41 @@ internal fun DefaultRootComponent.updateSettings(nextSettings: OnyxSettings) {
 /** @param location 待打开 VFS 位置。 */
 internal fun DefaultRootComponent.openLocationInActivePane(location: String) {
     paneComponent(activePane.value).openDirectory(location)
+}
+
+/**
+ * 在活动面板的新标签页中打开指定位置。
+ *
+ * @param location 目标目录位置。
+ */
+internal fun DefaultRootComponent.openLocationInNewTab(location: String) {
+    paneComponent(activePane.value).createTab(location)
+}
+
+/**
+ * 复制指定目录或文件路径到系统剪贴板。
+ *
+ * @param location 目标路径文本。
+ */
+internal fun DefaultRootComponent.copyLocationPath(location: String) {
+    scope.launch {
+        textClipboardService.copyText(location)
+    }
+}
+
+/**
+ * 使用系统默认外部应用打开指定文件（压缩包内条目会先安全解压到临时文件后再交由外部应用打开）。
+ *
+ * @param entry 目标文件条目。
+ */
+internal fun DefaultRootComponent.openExternalFile(entry: com.oruke.onyx.core.model.VFile) {
+    scope.launch {
+        if (com.oruke.onyx.vfs.archive.ArchiveService.isArchiveLocation(entry.location)) {
+            archiveEntryOpenService.openArchiveEntry(entry)
+        } else {
+            externalOpenService.open(entry)
+        }
+    }
 }
 
 /** @param location 待切换收藏状态的位置。 */

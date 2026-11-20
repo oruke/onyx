@@ -2,6 +2,7 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,28 +10,50 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import com.oruke.onyx.app.component.SidebarTreeState
 import com.oruke.onyx.core.model.PaneId
 import com.oruke.onyx.core.model.RemoteConnectionProfile
@@ -39,14 +62,21 @@ import com.oruke.onyx.core.model.SystemQuickAccessLocation
 import com.oruke.onyx.core.model.isTrashLocation
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
+import com.oruke.onyx.ui.theme.toIntOffset
 import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_add_to_favorites
+import onyx.composeapp.generated.resources.action_copy_path
 import onyx.composeapp.generated.resources.action_edit_connection
 import onyx.composeapp.generated.resources.action_new_connection
+import onyx.composeapp.generated.resources.action_open
+import onyx.composeapp.generated.resources.action_open_in_new_tab
+import onyx.composeapp.generated.resources.action_remove_from_favorites
 import onyx.composeapp.generated.resources.label_remote_connection_empty
 import onyx.composeapp.generated.resources.label_sidebar_empty_favorites
 import onyx.composeapp.generated.resources.label_sidebar_empty_recent
 import onyx.composeapp.generated.resources.label_sidebar_section_connections
 import onyx.composeapp.generated.resources.label_sidebar_section_favorites
+import onyx.composeapp.generated.resources.label_sidebar_section_quick_access
 import onyx.composeapp.generated.resources.label_sidebar_section_recent
 import onyx.composeapp.generated.resources.label_sidebar_section_tree
 import org.jetbrains.compose.resources.stringResource
@@ -96,10 +126,23 @@ internal data class PaneSidebarActions(
     val onRetryTreeNode: (String) -> Unit,
     /** 切换侧边栏分组折叠状态。 */
     val onToggleSection: (SidebarSectionKey) -> Unit,
+    /** 在新标签页中打开指定侧栏位置。 */
+    val onOpenInNewTab: (String) -> Unit = {},
+    /** 复制指定侧栏位置路径。 */
+    val onCopyPath: (String) -> Unit = {},
+)
+
+/** 侧边栏位置右键菜单请求上下文。 */
+internal data class SidebarContextMenuRequest(
+    val location: String,
+    val favorite: Boolean,
+    val anchorWindowPosition: IntOffset,
+    val onEdit: (() -> Unit)? = null,
 )
 
 /**
- * 绘制当前活动面板的系统入口、快速访问、收藏、网络位置、最近位置和目录树侧边栏。
+ * 绘制单一 `LazyColumn` + `VerticalScrollbar` 驱动的侧边栏（消除内外嵌套滚轮争抢），
+ * 并为全部侧栏位置与目录树节点提供统一右键菜单（打开、在新标签打开、收藏/取消收藏、复制路径、编辑连接）。
  *
  * @param state 侧边栏渲染状态。
  * @param actions 侧边栏用户操作。
@@ -113,147 +156,365 @@ internal fun PaneSidebar(
     activePane: PaneId = PaneId.PRIMARY,
     dragBindings: PaneDragBindings? = null,
 ) {
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
+    var contextMenu by remember { mutableStateOf<SidebarContextMenuRequest?>(null) }
+    val visibleRecent = remember(state.recentLocations, state.location) {
+        state.recentLocations.filterNot { location -> location == state.location }
+    }
+    val visibleTreeNodes = remember(state.treeState.roots, state.showTree) {
+        if (state.showTree) flattenSidebarNodes(state.treeState.roots) else emptyList()
+    }
+
+    val openContextMenu: (SidebarContextMenuRequest) -> Unit = { request ->
+        actions.onActivate()
+        contextMenu = request
+    }
+
     Box(
         modifier = Modifier
             .width(184.dp)
             .fillMaxHeight()
             .background(LocalOnyxPalette.current.surfaceVariant),
     ) {
-        Column(
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(start = 8.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .testTag("sidebar-list"),
+            contentPadding = PaddingValues(start = 8.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            SidebarSystemLocations(
+            // 1. 系统入口（此电脑 / 回收站，回收站热区在离屏或卸载时自动注销）
+            sidebarSystemLocationItems(
                 state = state,
                 actions = actions,
                 activePane = activePane,
                 dragBindings = dragBindings,
+                onContextMenu = openContextMenu,
             )
-            SidebarQuickAccess(state, actions)
-            SidebarFavorites(state, actions)
-            SidebarConnections(state, actions)
-            SidebarRecentLocations(state, actions)
-            if (state.showTree) SidebarDirectoryTree(state, actions)
+
+            // 2. 快速访问
+            item(key = "section:quick_access") {
+                Spacer(modifier = Modifier.height(6.dp))
+                SidebarSectionHeader(
+                    section = SidebarSectionKey.QUICK_ACCESS,
+                    collapsed = state.isSectionCollapsed(SidebarSectionKey.QUICK_ACCESS),
+                    onToggle = actions.onToggleSection,
+                    title = stringResource(Res.string.label_sidebar_section_quick_access),
+                )
+            }
+            if (!state.isSectionCollapsed(SidebarSectionKey.QUICK_ACCESS)) {
+                sidebarQuickAccessItems(
+                    state = state,
+                    actions = actions,
+                    onContextMenu = openContextMenu,
+                )
+            }
+
+            // 3. 收藏位置
+            item(key = "section:favorites") {
+                Spacer(modifier = Modifier.height(6.dp))
+                SidebarSectionHeader(
+                    section = SidebarSectionKey.FAVORITES,
+                    collapsed = state.isSectionCollapsed(SidebarSectionKey.FAVORITES),
+                    onToggle = actions.onToggleSection,
+                    title = stringResource(Res.string.label_sidebar_section_favorites),
+                )
+            }
+            if (!state.isSectionCollapsed(SidebarSectionKey.FAVORITES)) {
+                if (state.favoriteLocations.isEmpty()) {
+                    item(key = "empty:favorites") {
+                        SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_favorites))
+                    }
+                } else {
+                    items(
+                        items = state.favoriteLocations,
+                        key = { location -> "favorite:$location" },
+                    ) { favoriteLocation ->
+                        SidebarLocationItem(
+                            label = desktopLocationLabel(actions.locationLabel(favoriteLocation)),
+                            selected = state.location == favoriteLocation ||
+                                (isTrashLocation(favoriteLocation) && isTrashLocation(state.location)),
+                            favorite = true,
+                            iconKey = if (isTrashLocation(favoriteLocation)) AllIconsKeys.General.Delete else null,
+                            onOpen = { actions.activateAndOpen(favoriteLocation) },
+                            onToggleFavorite = { actions.onToggleFavoriteLocation(favoriteLocation) },
+                            onContextMenu = { anchor ->
+                                openContextMenu(
+                                    SidebarContextMenuRequest(
+                                        location = favoriteLocation,
+                                        favorite = true,
+                                        anchorWindowPosition = anchor,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            // 4. 网络位置
+            item(key = "section:connections") {
+                Spacer(modifier = Modifier.height(6.dp))
+                SidebarSectionHeader(
+                    section = SidebarSectionKey.CONNECTIONS,
+                    collapsed = state.isSectionCollapsed(SidebarSectionKey.CONNECTIONS),
+                    onToggle = actions.onToggleSection,
+                    title = stringResource(Res.string.label_sidebar_section_connections),
+                    actionIcon = AllIconsKeys.General.Add,
+                    actionContentDescription = stringResource(Res.string.action_new_connection),
+                    onAction = {
+                        actions.onActivate()
+                        actions.onNewRemoteConnection()
+                    },
+                )
+            }
+            if (!state.isSectionCollapsed(SidebarSectionKey.CONNECTIONS)) {
+                if (state.remoteConnections.isEmpty()) {
+                    item(key = "empty:connections") {
+                        SidebarEmptyState(text = stringResource(Res.string.label_remote_connection_empty))
+                    }
+                } else {
+                    items(
+                        items = state.remoteConnections,
+                        key = { conn -> "connection:${conn.id}" },
+                    ) { connection ->
+                        val isFav = state.favoriteLocations.contains(connection.location)
+                        val editAction: () -> Unit = {
+                            actions.onActivate()
+                            actions.onEditRemoteConnection(connection)
+                        }
+                        SidebarLocationItem(
+                            label = connection.name,
+                            selected = state.location == connection.location,
+                            favorite = isFav,
+                            iconKey = AllIconsKeys.General.OpenDisk,
+                            onOpen = { actions.activateAndOpen(connection.location) },
+                            onToggleFavorite = { actions.onToggleFavoriteLocation(connection.location) },
+                            onEdit = editAction,
+                            onContextMenu = { anchor ->
+                                openContextMenu(
+                                    SidebarContextMenuRequest(
+                                        location = connection.location,
+                                        favorite = isFav,
+                                        anchorWindowPosition = anchor,
+                                        onEdit = editAction,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            // 5. 最近位置
+            item(key = "section:recent") {
+                Spacer(modifier = Modifier.height(6.dp))
+                SidebarSectionHeader(
+                    section = SidebarSectionKey.RECENT,
+                    collapsed = state.isSectionCollapsed(SidebarSectionKey.RECENT),
+                    onToggle = actions.onToggleSection,
+                    title = stringResource(Res.string.label_sidebar_section_recent),
+                )
+            }
+            if (!state.isSectionCollapsed(SidebarSectionKey.RECENT)) {
+                if (visibleRecent.isEmpty()) {
+                    item(key = "empty:recent") {
+                        SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_recent))
+                    }
+                } else {
+                    items(
+                        items = visibleRecent,
+                        key = { location -> "recent:$location" },
+                    ) { recentLocation ->
+                        val isFav = state.favoriteLocations.contains(recentLocation)
+                        SidebarLocationItem(
+                            label = desktopLocationLabel(actions.locationLabel(recentLocation)),
+                            selected = false,
+                            favorite = isFav,
+                            iconKey = if (isTrashLocation(recentLocation)) AllIconsKeys.General.Delete else null,
+                            onOpen = { actions.activateAndOpen(recentLocation) },
+                            onToggleFavorite = { actions.onToggleFavoriteLocation(recentLocation) },
+                            onContextMenu = { anchor ->
+                                openContextMenu(
+                                    SidebarContextMenuRequest(
+                                        location = recentLocation,
+                                        favorite = isFav,
+                                        anchorWindowPosition = anchor,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            // 6. 目录树（扁平化直接纳入同一 LazyColumn，彻底消除嵌套滚动冲突）
+            if (state.showTree) {
+                item(key = "section:tree") {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    SidebarSectionHeader(
+                        section = SidebarSectionKey.TREE,
+                        collapsed = state.isSectionCollapsed(SidebarSectionKey.TREE),
+                        onToggle = actions.onToggleSection,
+                        title = stringResource(Res.string.label_sidebar_section_tree),
+                    )
+                }
+                if (!state.isSectionCollapsed(SidebarSectionKey.TREE)) {
+                    items(
+                        items = visibleTreeNodes,
+                        key = { item -> "tree:${item.node.location}" },
+                    ) { treeItem ->
+                        val nodeLocation = treeItem.node.location
+                        val isFav = state.favoriteLocations.contains(nodeLocation)
+                        SidebarTreeItem(
+                            item = treeItem,
+                            selected = state.location == nodeLocation,
+                            onOpenLocation = actions::activateAndOpen,
+                            onToggleNode = actions.onToggleTreeNode,
+                            onRetryNode = actions.onRetryTreeNode,
+                            onContextMenu = { anchor ->
+                                openContextMenu(
+                                    SidebarContextMenuRequest(
+                                        location = nodeLocation,
+                                        favorite = isFav,
+                                        anchorWindowPosition = anchor,
+                                    ),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
         }
+
         VerticalScrollbar(
-            adapter = rememberScrollbarAdapter(scrollState),
+            adapter = rememberScrollbarAdapter(listState),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .fillMaxHeight()
                 .testTag("sidebar-scrollbar"),
         )
-    }
-}
 
-/** 绘制收藏位置区。 */
-@Composable
-private fun SidebarFavorites(state: PaneSidebarState, actions: PaneSidebarActions) {
-    SidebarSection(
-        section = SidebarSectionKey.FAVORITES,
-        collapsed = state.isSectionCollapsed(SidebarSectionKey.FAVORITES),
-        onToggle = actions.onToggleSection,
-        title = stringResource(Res.string.label_sidebar_section_favorites),
-    ) {
-        if (state.favoriteLocations.isEmpty()) {
-            SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_favorites))
-        } else {
-            state.favoriteLocations.forEach { favoriteLocation ->
-                SidebarLocationItem(
-                    label = desktopLocationLabel(actions.locationLabel(favoriteLocation)),
-                    selected = state.location == favoriteLocation ||
-                        (isTrashLocation(favoriteLocation) && isTrashLocation(state.location)),
-                    favorite = true,
-                    iconKey = if (isTrashLocation(favoriteLocation)) AllIconsKeys.General.Delete else null,
-                    onOpen = { actions.activateAndOpen(favoriteLocation) },
-                    onToggleFavorite = { actions.onToggleFavoriteLocation(favoriteLocation) },
-                )
-            }
+        contextMenu?.let { menu ->
+            SidebarContextMenuPopup(
+                request = menu,
+                onOpen = {
+                    contextMenu = null
+                    actions.activateAndOpen(menu.location)
+                },
+                onOpenInNewTab = {
+                    contextMenu = null
+                    actions.onActivate()
+                    actions.onOpenInNewTab(menu.location)
+                },
+                onToggleFavorite = {
+                    contextMenu = null
+                    actions.onToggleFavoriteLocation(menu.location)
+                },
+                onCopyPath = {
+                    contextMenu = null
+                    actions.onCopyPath(menu.location)
+                },
+                onEdit = menu.onEdit?.let { edit ->
+                    {
+                        contextMenu = null
+                        edit()
+                    }
+                },
+                onDismiss = { contextMenu = null },
+            )
         }
     }
 }
 
-/** 绘制网络位置区。 */
+/** 渲染侧边栏位置右键菜单。 */
 @Composable
-private fun SidebarConnections(state: PaneSidebarState, actions: PaneSidebarActions) {
-    SidebarSection(
-        section = SidebarSectionKey.CONNECTIONS,
-        collapsed = state.isSectionCollapsed(SidebarSectionKey.CONNECTIONS),
-        onToggle = actions.onToggleSection,
-        title = stringResource(Res.string.label_sidebar_section_connections),
-        actionIcon = AllIconsKeys.General.Add,
-        actionContentDescription = stringResource(Res.string.action_new_connection),
-        onAction = {
-            actions.onActivate()
-            actions.onNewRemoteConnection()
-        },
-    ) {
-        if (state.remoteConnections.isEmpty()) {
-            SidebarEmptyState(text = stringResource(Res.string.label_remote_connection_empty))
-        } else {
-            state.remoteConnections.forEach { connection ->
-                SidebarLocationItem(
-                    label = connection.name,
-                    selected = state.location == connection.location,
-                    favorite = state.favoriteLocations.contains(connection.location),
-                    iconKey = AllIconsKeys.General.OpenDisk,
-                    onOpen = { actions.activateAndOpen(connection.location) },
-                    onToggleFavorite = { actions.onToggleFavoriteLocation(connection.location) },
-                    onEdit = {
-                        actions.onActivate()
-                        actions.onEditRemoteConnection(connection)
-                    },
+private fun SidebarContextMenuPopup(
+    request: SidebarContextMenuRequest,
+    onOpen: () -> Unit,
+    onOpenInNewTab: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onCopyPath: () -> Unit,
+    onEdit: (() -> Unit)?,
+    onDismiss: () -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    val positionProvider = remember(request.anchorWindowPosition) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(
+                anchorBounds: IntRect,
+                windowSize: IntSize,
+                layoutDirection: LayoutDirection,
+                popupContentSize: IntSize,
+            ): IntOffset {
+                val maxX = (windowSize.width - popupContentSize.width - 8).coerceAtLeast(0)
+                val maxY = (windowSize.height - popupContentSize.height - 8).coerceAtLeast(0)
+                return IntOffset(
+                    x = request.anchorWindowPosition.x.coerceIn(0, maxX),
+                    y = request.anchorWindowPosition.y.coerceIn(0, maxY),
                 )
             }
         }
     }
-}
-
-/** 绘制最近位置区。 */
-@Composable
-private fun SidebarRecentLocations(state: PaneSidebarState, actions: PaneSidebarActions) {
-    val visibleLocations = state.recentLocations.filterNot { location -> location == state.location }
-    SidebarSection(
-        section = SidebarSectionKey.RECENT,
-        collapsed = state.isSectionCollapsed(SidebarSectionKey.RECENT),
-        onToggle = actions.onToggleSection,
-        title = stringResource(Res.string.label_sidebar_section_recent),
+    Popup(
+        popupPositionProvider = positionProvider,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
     ) {
-        if (visibleLocations.isEmpty()) {
-            SidebarEmptyState(text = stringResource(Res.string.label_sidebar_empty_recent))
-        } else {
-            visibleLocations.forEach { recentLocation ->
-                SidebarLocationItem(
-                    label = desktopLocationLabel(actions.locationLabel(recentLocation)),
-                    selected = false,
-                    favorite = state.favoriteLocations.contains(recentLocation),
-                    iconKey = if (isTrashLocation(recentLocation)) AllIconsKeys.General.Delete else null,
-                    onOpen = { actions.activateAndOpen(recentLocation) },
-                    onToggleFavorite = { actions.onToggleFavoriteLocation(recentLocation) },
-                )
+        Column(
+            modifier = Modifier
+                .testTag("sidebar-context-menu")
+                .widthIn(min = 168.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(palette.floatingSurface)
+                .border(1.dp, palette.outline, RoundedCornerShape(6.dp))
+                .padding(vertical = 4.dp),
+        ) {
+            SidebarContextMenuRow(stringResource(Res.string.action_open), onOpen)
+            SidebarContextMenuRow(stringResource(Res.string.action_open_in_new_tab), onOpenInNewTab)
+            SidebarContextMenuRow(
+                stringResource(
+                    if (request.favorite) Res.string.action_remove_from_favorites else Res.string.action_add_to_favorites,
+                ),
+                onToggleFavorite,
+            )
+            if (onEdit != null) {
+                SidebarContextMenuRow(stringResource(Res.string.action_edit_connection), onEdit)
             }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+                    .height(1.dp)
+                    .background(palette.outlineVariant),
+            )
+            SidebarContextMenuRow(stringResource(Res.string.action_copy_path), onCopyPath)
         }
     }
 }
 
-/** 绘制可展开目录树区。 */
 @Composable
-private fun SidebarDirectoryTree(state: PaneSidebarState, actions: PaneSidebarActions) {
-    SidebarSection(
-        section = SidebarSectionKey.TREE,
-        collapsed = state.isSectionCollapsed(SidebarSectionKey.TREE),
-        onToggle = actions.onToggleSection,
-        title = stringResource(Res.string.label_sidebar_section_tree),
+private fun SidebarContextMenuRow(
+    label: String,
+    onClick: () -> Unit,
+) {
+    val palette = LocalOnyxPalette.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (hovered) palette.rowHoverBackground else Color.Transparent)
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        SidebarTree(
-            selectedLocation = state.location,
-            treeState = state.treeState,
-            onOpenLocation = actions::activateAndOpen,
-            onToggleNode = actions.onToggleTreeNode,
-            onRetryNode = actions.onRetryTreeNode,
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = palette.foreground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -272,10 +533,10 @@ private fun PaneSidebarState.isSectionCollapsed(section: SidebarSectionKey): Boo
     section in collapsedSections
 
 /**
- * 绘制带折叠开关和可选尾部动作按钮的侧栏分区。
+ * 绘制带折叠开关和可选尾部动作按钮的侧栏分区标题行。
  */
 @Composable
-internal fun SidebarSection(
+internal fun SidebarSectionHeader(
     section: SidebarSectionKey,
     collapsed: Boolean,
     onToggle: (SidebarSectionKey) -> Unit,
@@ -283,56 +544,52 @@ internal fun SidebarSection(
     actionIcon: IconKey? = null,
     actionContentDescription: String? = null,
     onAction: (() -> Unit)? = null,
-    content: @Composable ColumnScope.() -> Unit,
 ) {
     val headerHoverSrc = remember { MutableInteractionSource() }
     val headerClickSrc = remember { MutableInteractionSource() }
     val headerHovered by headerHoverSrc.collectIsHoveredAsState()
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .hoverable(headerHoverSrc)
-                .background(
-                    if (headerHovered) LocalOnyxPalette.current.rowHoverBackground else Color.Transparent,
-                    RoundedCornerShape(4.dp),
-                )
-                .clickable(
-                    interactionSource = headerClickSrc,
-                    indication = null,
-                    onClick = { onToggle(section) },
-                )
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Icon(
-                key = if (collapsed) AllIconsKeys.General.ArrowRight else AllIconsKeys.General.ArrowDown,
-                contentDescription = null,
-                modifier = Modifier.size(10.dp),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .hoverable(headerHoverSrc)
+            .background(
+                if (headerHovered) LocalOnyxPalette.current.rowHoverBackground else Color.Transparent,
+                RoundedCornerShape(4.dp),
             )
-            Text(
-                text = title,
-                modifier = Modifier.weight(1f),
-                fontSize = LocalOnyxAppearance.current.headerFontSize,
-                color = if (headerHovered) {
-                    LocalOnyxPalette.current.foreground
-                } else {
-                    LocalOnyxPalette.current.mutedForeground
-                },
-                fontWeight = FontWeight.Medium,
+            .clickable(
+                interactionSource = headerClickSrc,
+                indication = null,
+                onClick = { onToggle(section) },
             )
-            if (actionIcon != null && onAction != null) {
-                IconButton(onClick = onAction) {
-                    Icon(
-                        key = actionIcon,
-                        contentDescription = actionContentDescription,
-                        modifier = Modifier.size(12.dp),
-                    )
-                }
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            key = if (collapsed) AllIconsKeys.General.ArrowRight else AllIconsKeys.General.ArrowDown,
+            contentDescription = null,
+            modifier = Modifier.size(10.dp),
+        )
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            fontSize = LocalOnyxAppearance.current.headerFontSize,
+            color = if (headerHovered) {
+                LocalOnyxPalette.current.foreground
+            } else {
+                LocalOnyxPalette.current.mutedForeground
+            },
+            fontWeight = FontWeight.Medium,
+        )
+        if (actionIcon != null && onAction != null) {
+            IconButton(onClick = onAction) {
+                Icon(
+                    key = actionIcon,
+                    contentDescription = actionContentDescription,
+                    modifier = Modifier.size(12.dp),
+                )
             }
         }
-        if (!collapsed) content()
     }
 }
 
@@ -352,18 +609,9 @@ internal fun SidebarEmptyState(
 }
 
 /**
- * 绘制可打开、收藏并按需编辑的单个侧栏位置。
- *
- * @param label 位置显示名称。
- * @param selected 是否为当前打开位置。
- * @param favorite 是否已加入应用收藏。
- * @param iconKey 可选位置图标。
- * @param onOpen 打开位置回调。
- * @param onToggleFavorite 切换收藏状态回调。
- * @param onEdit 可选编辑回调。
- * @param modifier 统一控件的外部布局与语义修饰符。
- * @param leadingIcon 可选图标渲染入口，尺寸仍由公共侧栏控件统一提供。
+ * 绘制可打开、收藏、右键菜单并按需编辑的单个侧栏位置。
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun SidebarLocationItem(
     label: String,
@@ -373,14 +621,17 @@ internal fun SidebarLocationItem(
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
     onEdit: (() -> Unit)? = null,
+    onContextMenu: ((IntOffset) -> Unit)? = null,
     modifier: Modifier = Modifier,
     leadingIcon: (@Composable (Modifier) -> Unit)? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    var itemCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .onGloballyPositioned { itemCoordinates = it }
             .hoverable(interactionSource)
             .background(
                 when {
@@ -390,6 +641,13 @@ internal fun SidebarLocationItem(
                 },
                 RoundedCornerShape(4.dp),
             )
+            .onPointerEvent(PointerEventType.Press) { event ->
+                if (event.buttons.isSecondaryPressed && onContextMenu != null) {
+                    val pointerPos = event.changes.firstOrNull()?.position ?: Offset.Zero
+                    val windowPos = itemCoordinates?.localToWindow(pointerPos)?.toIntOffset() ?: IntOffset.Zero
+                    onContextMenu(windowPos)
+                }
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onOpen)
             .padding(horizontal = 6.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,

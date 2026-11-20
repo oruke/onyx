@@ -53,6 +53,44 @@ internal fun List<PaneTabState>.withClosedTab(
     )
 }
 
+/**
+ * 关闭除 [tabId] 外的全部其他标签，并将保留标签置为活动标签。
+ *
+ * @param tabId 要保留的目标标签 ID。
+ * @return 存在其他可关闭标签时返回更新结果，否则返回 `null`。
+ */
+internal fun List<PaneTabState>.withClosedOtherTabs(
+    tabId: String,
+): PaneTabStackUpdate? {
+    if (size <= 1) return null
+    val kept = firstOrNull { it.id == tabId } ?: return null
+    return PaneTabStackUpdate(
+        tabs = listOf(kept),
+        activeTab = kept,
+    )
+}
+
+/**
+ * 关闭位于 [tabId] 右侧的全部标签；若原活动标签位于右侧被关闭，则激活 [tabId]。
+ *
+ * @param activeTabId 当前活动标签 ID。
+ * @param tabId 基准标签 ID。
+ * @return 右侧存在可关闭标签时返回更新结果，否则返回 `null`。
+ */
+internal fun List<PaneTabState>.withClosedTabsToRight(
+    activeTabId: String,
+    tabId: String,
+): PaneTabStackUpdate? {
+    val tabIndex = indexOfFirst { it.id == tabId }
+    if (tabIndex == -1 || tabIndex >= lastIndex) return null
+    val nextTabs = subList(0, tabIndex + 1).toList()
+    val nextActive = nextTabs.firstOrNull { it.id == activeTabId } ?: nextTabs.last()
+    return PaneTabStackUpdate(
+        tabs = nextTabs,
+        activeTab = nextActive,
+    )
+}
+
 internal fun List<PaneTabState>.withMovedTab(
     activeTabId: String,
     tabId: String,

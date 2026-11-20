@@ -24,6 +24,7 @@ internal val WINDOW_GLOBAL_SHORTCUT_COMMANDS: List<OnyxCommand> = listOf(
     OnyxCommand.QuickOpen,
     OnyxCommand.ShowSearchPanel,
     OnyxCommand.FocusAddressBar,
+    OnyxCommand.TogglePreviewPane,
     OnyxCommand.OpenSettings,
     OnyxCommand.UndoLastOperation,
     OnyxCommand.RedoLastOperation,
@@ -125,6 +126,11 @@ private fun executeWindowGlobalCommand(
 
         OnyxCommand.FocusAddressBar -> {
             rootComponent.dispatch(RootIntent.FocusActivePaneAddressBar)
+            true
+        }
+
+        OnyxCommand.TogglePreviewPane -> {
+            rootComponent.dispatch(RootIntent.TogglePreviewPane)
             true
         }
 

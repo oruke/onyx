@@ -47,6 +47,7 @@ import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.ui.theme.resolve
 import onyx.composeapp.generated.resources.Res
 import onyx.composeapp.generated.resources.action_apply
+import onyx.composeapp.generated.resources.action_cancel_task
 import onyx.composeapp.generated.resources.action_close_window
 import onyx.composeapp.generated.resources.label_batch_rename_after
 import onyx.composeapp.generated.resources.label_batch_rename_before
@@ -88,6 +89,13 @@ private const val BATCH_RENAME_MIN_WINDOW_HEIGHT = 480
 /** 编辑区最多占用一半弹窗余量，为预览和底部动作保留空间。 */
 private const val BATCH_RENAME_EDITOR_WEIGHT = 0.5f
 
+/**
+ * 判断批量重命名校验提示是否阻塞“应用”执行（空预设名仅属于预设保存提示，不应禁用合法的重命名应用动作）。
+ */
+internal fun isBatchRenameBlockingValidation(message: com.oruke.onyx.core.model.I18nMessage?): Boolean {
+    return message != null && message.key != com.oruke.onyx.core.model.MessageKey.MSG_RENAME_PRESET_NAME_REQUIRED
+}
+
 // ── 对话框 ──────────────────────────────────────────────────────────────
 
 /**
@@ -114,7 +122,7 @@ internal fun BatchRenameDialog(
 ) {
     val entries = state.entries
     val editor = BatchRenameEditorState(state) { onIntent(RootIntent.UpdateBatchRenameDraft(it)) }
-    val canConfirm = editor.hasChanges && state.validationMessage == null
+    val canConfirm = editor.hasChanges && !isBatchRenameBlockingValidation(state.validationMessage)
 
     val title = stringResource(Res.string.label_batch_rename_title)
 
@@ -158,7 +166,7 @@ internal fun BatchRenameDialog(
  * @param onIntent 规则草稿与预设操作的组件事件。
  */
 @Composable
-private fun BatchRenameContent(
+internal fun BatchRenameContent(
     state: RootDialogState.BatchRename,
     editor: BatchRenameEditorState,
     canConfirm: Boolean,
@@ -199,7 +207,16 @@ private fun BatchRenameContent(
             conflictEntryIds = editor.conflictEntryIds,
             modifier = Modifier.weight(1f).fillMaxWidth(),
         )
-        BatchRenameFooter(state, editor, canConfirm, onConfirm, onDismiss)
+        BatchRenameFooter(
+            state = state,
+            editor = editor,
+            canConfirm = canConfirm,
+            onConfirm = onConfirm,
+            onCancelExecution = {
+                state.executingTaskId?.let { taskId -> onIntent(RootIntent.CancelTask(taskId)) }
+            },
+            onDismiss = onDismiss,
+        )
     }
 }
 
@@ -570,6 +587,7 @@ private fun BatchRenameFooter(
     editor: BatchRenameEditorState,
     canConfirm: Boolean,
     onConfirm: (List<Pair<VFile, String>>) -> Unit,
+    onCancelExecution: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
@@ -593,7 +611,18 @@ private fun BatchRenameFooter(
                 fontSize = appearance.listFontSize,
                 onClick = onDismiss,
             )
-        } else if (!state.executing) {
+        } else if (state.executing) {
+            HoverButton(
+                text = stringResource(Res.string.action_cancel_task),
+                emphasized = false,
+                accent = palette.error,
+                surface = palette.surfaceVariant,
+                foreground = palette.foreground,
+                fontSize = appearance.listFontSize,
+                enabled = state.executingTaskId != null,
+                onClick = onCancelExecution,
+            )
+        } else {
             BatchRenameEditActions(editor, canConfirm, onConfirm, onDismiss)
         }
     }
@@ -658,6 +687,7 @@ private fun BatchRenameEditActions(
         surface = palette.surfaceVariant,
         foreground = palette.foreground,
         fontSize = fontSize,
+        enabled = canConfirm,
         onClick = {
             if (canConfirm) {
                 val validRenames = editor.renameResults.filter { (entry, newName) ->

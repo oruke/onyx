@@ -290,11 +290,17 @@ internal class FileActionDelegate(
     fun executeBatchRename(paneId: PaneId, renameMap: List<Pair<VFile, String>>) {
         if (renameMap.isEmpty()) return
 
-        // 更新对话框状态为执行中
+        // 更新对话框状态为执行中并绑定可取消任务 ID
         val currentDialog = dialogState.value as? RootDialogState.BatchRename ?: return
-        dialogState.value = currentDialog.copy(executing = true, progress = 0f, processedCount = 0, currentDetail = "")
-
         val taskId = UUID.randomUUID().toString()
+        dialogState.value = currentDialog.copy(
+            executing = true,
+            executingTaskId = taskId,
+            progress = 0f,
+            processedCount = 0,
+            currentDetail = "",
+        )
+
         taskOrchestrator.appendTask(
             BackgroundTask(
                 id = taskId,
@@ -348,6 +354,7 @@ internal class FileActionDelegate(
                     (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
                         dialogState.value = ds.copy(
                             executing = false,
+                            executingTaskId = null,
                             completed = true,
                             progress = 1f,
                             processedCount = summary.succeededPairs.size,
@@ -395,6 +402,7 @@ internal class FileActionDelegate(
                             entries = failedEntries,
                             siblingNamesByParent = updatedSiblings,
                             executing = false,
+                            executingTaskId = null,
                             completed = false,
                             processedCount = summary.succeededPairs.size,
                             errorMessage = detailMessage,
@@ -412,6 +420,7 @@ internal class FileActionDelegate(
                 (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
                     dialogState.value = ds.copy(
                         executing = false,
+                        executingTaskId = null,
                         errorMessage = I18nMessage(MessageKey.MSG_CANCELLED),
                     )
                 }
@@ -428,6 +437,7 @@ internal class FileActionDelegate(
                 (dialogState.value as? RootDialogState.BatchRename)?.let { ds ->
                     dialogState.value = ds.copy(
                         executing = false,
+                        executingTaskId = null,
                         errorMessage = e.toI18nMessage(),
                     )
                 }

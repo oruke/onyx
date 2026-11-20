@@ -37,21 +37,77 @@ internal class ZipArchiveEntryWriter(
     /** 已写入 ZIP 文件内容的原始字节数。 */
     private var writtenBytes = 0L
 
+    /** 预统计的源文件总数。 */
+    private var totalFileCount = 0
+
+    /** 预统计的源文件总字节数。 */
+    private var totalBytes = 0L
+
+    /** 上一次汇报块级进度时的已写入字节数，用于节流进度回调。 */
+    private var lastReportedBytes = 0L
+
     /**
-     * 递归写入根选择项。
+     * 递归写入根选择项，先预统计文件与字节总量以提供确定性进度。
      *
      * @param entries 待写入 ZIP 的根文件或目录。
      * @return 最终写入的文件与目录条目总数。
      */
     suspend fun writeEntries(entries: List<VFile>): Int {
+        val uniqueRoots = entries.distinctBy { entry -> entry.location }
+        val totals = estimateTotals(uniqueRoots)
+        totalFileCount = totals.first
+        totalBytes = totals.second
+        if (totalFileCount > 0 || totalBytes > 0L) {
+            progressSink.onProgress(
+                ZipArchiveCreationProgress(
+                    currentFileName = uniqueRoots.firstOrNull()?.name.orEmpty(),
+                    writtenFileCount = 0,
+                    writtenBytes = 0L,
+                    totalFileCount = totalFileCount,
+                    totalBytes = totalBytes,
+                ),
+            )
+        }
         val rootPaths = mutableSetOf<String>()
-        entries.distinctBy { entry -> entry.location }.forEach { entry ->
+        uniqueRoots.forEach { entry ->
             currentCoroutineContext().ensureActive()
             val entryPath = entry.name.nextAvailableZipArchiveRootPath(rootPaths)
             rootPaths += entryPath
             writeEntry(entry, entryPath)
         }
         return writtenEntryPaths.size
+    }
+
+    /**
+     * 预扫描待打包文件树，估算文件总数与总原始字节数。
+     *
+     * @param roots 待打包根条目列表。
+     * @return `(文件总数, 总字节数)` 二元组。
+     */
+    private suspend fun estimateTotals(roots: List<VFile>): Pair<Int, Long> {
+        var fileCount = 0
+        var bytes = 0L
+        val scannedDirectories = mutableSetOf<String>()
+
+        suspend fun visit(entry: VFile) {
+            currentCoroutineContext().ensureActive()
+            when (entry.kind) {
+                VFileKind.FILE -> {
+                    fileCount += 1
+                    bytes += (entry.sizeBytes ?: 0L).coerceAtLeast(0L)
+                }
+
+                VFileKind.DIRECTORY -> {
+                    if (!scannedDirectories.add(entry.location)) return
+                    fileRepository.list(entry.location).getOrNull().orEmpty().forEach { child ->
+                        visit(child)
+                    }
+                }
+            }
+        }
+
+        roots.forEach { root -> visit(root) }
+        return fileCount to bytes
     }
 
     /**
@@ -118,18 +174,37 @@ internal class ZipArchiveEntryWriter(
                 currentCoroutineContext().ensureActive()
                 output.write(chunk)
                 writtenBytes += chunk.size
+                if (writtenBytes - lastReportedBytes >= CHUNK_PROGRESS_STEP_BYTES) {
+                    lastReportedBytes = writtenBytes
+                    progressSink.onProgress(
+                        ZipArchiveCreationProgress(
+                            currentFileName = entry.name,
+                            writtenFileCount = writtenFileCount,
+                            writtenBytes = writtenBytes,
+                            totalFileCount = totalFileCount,
+                            totalBytes = maxOf(totalBytes, writtenBytes),
+                        ),
+                    )
+                }
             }
         } finally {
             output.closeEntry()
         }
         writtenFileCount += 1
+        lastReportedBytes = writtenBytes
         progressSink.onProgress(
             ZipArchiveCreationProgress(
                 currentFileName = entry.name,
                 writtenFileCount = writtenFileCount,
                 writtenBytes = writtenBytes,
-            )
+                totalFileCount = maxOf(totalFileCount, writtenFileCount),
+                totalBytes = maxOf(totalBytes, writtenBytes),
+            ),
         )
+    }
+
+    private companion object {
+        private const val CHUNK_PROGRESS_STEP_BYTES = 256L * 1024L
     }
 
     /**
@@ -171,17 +246,23 @@ fun interface ZipArchiveCreationProgressSink {
 }
 
 /**
- * ZIP 创建过程中的文件级进度。
+ * ZIP 创建过程中的文件与字节级进度。
  *
- * @property currentFileName 刚完成写入的源文件名称。
+ * @property currentFileName 当前正在写入或刚完成写入的源文件名称。
  * @property writtenFileCount 已完整写入 ZIP 的文件数量。
  * @property writtenBytes 已写入 ZIP 的原始内容字节数。
+ * @property totalFileCount 预统计的源文件总数；未知时为 0。
+ * @property totalBytes 预统计的源文件总字节数；未知时为 0。
  */
 data class ZipArchiveCreationProgress(
-    /** 刚完成写入的源文件名称。 */
+    /** 当前正在写入或刚完成写入的源文件名称。 */
     val currentFileName: String,
     /** 已完整写入 ZIP 的文件数量。 */
     val writtenFileCount: Int,
     /** 已写入 ZIP 的原始内容字节数。 */
     val writtenBytes: Long,
+    /** 预统计的源文件总数；未知时为 0。 */
+    val totalFileCount: Int = 0,
+    /** 预统计的源文件总字节数；未知时为 0。 */
+    val totalBytes: Long = 0L,
 )

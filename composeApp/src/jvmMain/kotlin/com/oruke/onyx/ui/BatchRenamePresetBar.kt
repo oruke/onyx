@@ -52,7 +52,10 @@ internal fun BatchRenamePresetBar(
             }
             DialogTextButton(
                 stringResource(Res.string.action_save_preset),
-                enabled = state.presetName.isNotBlank() && state.validationMessage == null
+                enabled = !state.executing && (
+                    state.validationMessage == null ||
+                        state.validationMessage.key == com.oruke.onyx.core.model.MessageKey.MSG_RENAME_PRESET_NAME_REQUIRED
+                    ),
             ) {
                 onIntent(RootIntent.SaveBatchRenamePreset)
             }

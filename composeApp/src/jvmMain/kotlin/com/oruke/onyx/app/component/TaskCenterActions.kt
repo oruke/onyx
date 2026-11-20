@@ -12,7 +12,10 @@ import com.oruke.onyx.core.model.BackgroundTaskStatus
 internal fun TaskOrchestrator.dispatchTaskCenterAction(intent: TaskCenterIntent) {
     when (intent) {
         is TaskCenterIntent.Pause -> tasks.value.find { task -> task.id == intent.id }
-            ?.takeIf { task -> task.canPause && task.status == BackgroundTaskStatus.RUNNING }
+            ?.takeIf { task ->
+                task.canPause &&
+                    (task.status == BackgroundTaskStatus.RUNNING || task.status == BackgroundTaskStatus.QUEUED)
+            }
             ?.let { task -> pauseTask(task.id) }
         is TaskCenterIntent.Resume -> tasks.value.find { task -> task.id == intent.id }
             ?.takeIf { task -> task.canPause && task.status == BackgroundTaskStatus.PAUSED }

@@ -470,7 +470,7 @@ internal class RootRemoteConnectionManager(
         error: VfsProviderError,
     ) {
         val protocol = error.protocol
-        if (protocol != VfsProtocol.SMB && protocol != VfsProtocol.WEBDAV) {
+        if (protocol != VfsProtocol.SMB && protocol != VfsProtocol.WEBDAV && protocol != VfsProtocol.S3) {
             return
         }
         val location = error.location ?: paneState(paneId).location

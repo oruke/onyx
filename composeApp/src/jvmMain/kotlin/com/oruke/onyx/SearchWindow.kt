@@ -4,6 +4,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -24,6 +28,7 @@ import com.oruke.onyx.ui.SearchPanel
 import com.oruke.onyx.ui.SearchPanelActions
 import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.TitleBarBrandTitle
+import com.oruke.onyx.ui.isSearchFocusInputShortcut
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.OnyxWindowTheme
@@ -92,6 +97,7 @@ internal fun SearchWindow(
         )
     }
     val listState = rememberLazyListState()
+    var focusRequestNonce by remember { mutableStateOf(0L) }
     if (state.activationRequest == 0L && !state.visible) return
     OnyxDecoratedWindowTheme(settings) {
         OnyxLocaleEnvironment(resourceLocale) {
@@ -102,11 +108,18 @@ internal fun SearchWindow(
                 icon = rememberOnyxWindowIconPainter(),
                 state = windowState,
                 onPreviewKeyEvent = { event ->
-                    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                        actions.onClose()
-                        true
-                    } else {
-                        false
+                    when {
+                        event.type == KeyEventType.KeyDown && event.key == Key.Escape -> {
+                            actions.onClose()
+                            true
+                        }
+
+                        isSearchFocusInputShortcut(event) -> {
+                            focusRequestNonce += 1L
+                            true
+                        }
+
+                        else -> false
                     }
                 },
             ) {
@@ -130,7 +143,15 @@ internal fun SearchWindow(
                     )
                 }
                 OnyxWindowTheme(settings) {
-                    OnyxTooltipHost { SearchPanel(state, presentation, actions, listState) }
+                    OnyxTooltipHost {
+                        SearchPanel(
+                            state = state,
+                            presentation = presentation,
+                            actions = actions,
+                            listState = listState,
+                            focusRequestNonce = focusRequestNonce,
+                        )
+                    }
                 }
             }
         }

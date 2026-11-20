@@ -710,24 +710,50 @@ internal class JvmImageMetadataService(
                 null
             } else {
                 val path = Path.of(entry.location)
-                if (!Files.exists(path)) return@withContext null
-                val readers = ImageIO.getImageReadersBySuffix(entry.name.substringAfterLast('.', ""))
-                if (!readers.hasNext()) return@withContext null
-                val reader = readers.next()
-                try {
-                    ImageIO.createImageInputStream(path.toFile()).use { stream ->
-                        reader.input = stream
-                        IntSize(reader.getWidth(0), reader.getHeight(0))
-                    }
-                } finally {
-                    reader.dispose()
-                }
+                if (!Files.exists(path) || !Files.isRegularFile(path)) return@withContext null
+                readLocalSizeViaImageIo(path, entry.name) ?: readLocalSizeViaSkia(path)
             }
         }.getOrNull()
+    }
+
+    /** 优先使用 ImageIO 仅读取图片头尺寸（避免整文件载入内存）。 */
+    private fun readLocalSizeViaImageIo(path: Path, fileName: String): IntSize? {
+        val suffix = fileName.substringAfterLast('.', "")
+        if (suffix.isBlank()) return null
+        val readers = ImageIO.getImageReadersBySuffix(suffix)
+        if (!readers.hasNext()) return null
+        val reader = readers.next()
+        return runCatching {
+            ImageIO.createImageInputStream(path.toFile())?.use { stream ->
+                reader.input = stream
+                IntSize(reader.getWidth(0), reader.getHeight(0))
+            }
+        }.also {
+            reader.dispose()
+        }.getOrNull()
+    }
+
+    /**
+     * 当 ImageIO 不支持 WebP/HEIF/ICO 等现代格式或读头失败时，回退到 Skia 解码并立即释放原生句柄。
+     */
+    private fun readLocalSizeViaSkia(path: Path): IntSize? {
+        val size = runCatching { Files.size(path) }.getOrNull() ?: return null
+        if (size <= 0L || size > MAX_LOCAL_IMAGE_METADATA_BYTES) return null
+        val bytes = Files.readAllBytes(path)
+        if (bytes.isEmpty()) return null
+        val image = Image.makeFromEncoded(bytes)
+        return try {
+            IntSize(image.width, image.height)
+        } finally {
+            image.close()
+        }
     }
 
     private companion object {
         /** 读取压缩包内图片尺寸时的最大允许字节数，防止超大归档图片触发 OOM。 */
         const val MAX_ARCHIVE_IMAGE_METADATA_BYTES = 20L * 1024 * 1024
+
+        /** Skia 回退读取本地现代格式图片尺寸的最大允许字节数。 */
+        const val MAX_LOCAL_IMAGE_METADATA_BYTES = 50L * 1024 * 1024
     }
 }

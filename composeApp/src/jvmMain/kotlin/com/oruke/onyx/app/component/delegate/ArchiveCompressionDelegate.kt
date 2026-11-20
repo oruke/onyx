@@ -75,10 +75,26 @@ internal class ArchiveCompressionDelegate(
                         // ZIP 流在 IO 线程写入，任务中心状态必须回到主线程更新。
                         withContext(Dispatchers.Main.immediate) {
                             taskOrchestrator.updateTaskFields(taskId) { task ->
+                                val resolvedTotalBytes = maxOf(task.totalBytes, progress.totalBytes)
+                                val resolvedTotalCount = maxOf(task.totalCount, progress.totalFileCount)
+                                val resolvedProgress = when {
+                                    resolvedTotalBytes > 0L ->
+                                        (progress.writtenBytes.toFloat() / resolvedTotalBytes.toFloat())
+                                            .coerceIn(0f, 0.99f)
+
+                                    resolvedTotalCount > 0 ->
+                                        (progress.writtenFileCount.toFloat() / resolvedTotalCount.toFloat())
+                                            .coerceIn(0f, 0.99f)
+
+                                    else -> task.progress
+                                }
                                 task.copy(
-                                    currentFileName = progress.currentFileName,
+                                    currentFileName = progress.currentFileName.ifBlank { task.currentFileName },
                                     processedCount = progress.writtenFileCount,
+                                    totalCount = resolvedTotalCount,
                                     processedBytes = progress.writtenBytes,
+                                    totalBytes = resolvedTotalBytes,
+                                    progress = resolvedProgress,
                                 )
                             }
                         }

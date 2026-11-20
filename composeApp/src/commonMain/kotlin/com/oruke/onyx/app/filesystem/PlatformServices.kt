@@ -170,16 +170,99 @@ internal interface ArchiveEntryOpenService {
     suspend fun openArchiveEntry(entry: VFile): Result<VFile>
 }
 
+/**
+ * 独立图片查看器加载单张原图时的结构化结果，用于精确展示失败原因与恢复操作。
+ */
+internal sealed interface ImageLoadOutcome {
+    /** 图片解码成功。 */
+    data class Loaded(val bitmap: ImageBitmap) : ImageLoadOutcome
+
+    /** 文件大小超出查看器安全解码上限。 */
+    data class TooLarge(
+        val limitBytes: Long,
+        val actualBytes: Long? = null,
+    ) : ImageLoadOutcome
+
+    /** 目标文件不存在或已移除。 */
+    data object NotFound : ImageLoadOutcome
+
+    /** 当前位置协议不支持查看器直接读取内容。 */
+    data object UnsupportedLocation : ImageLoadOutcome
+
+    /** 文件存在但解码失败或内容损坏。 */
+    data class DecodeFailed(val reason: String? = null) : ImageLoadOutcome
+}
+
 internal interface ThumbnailService {
+    /**
+     * 同步查询内存缓存中的图片缩略图，避免画廊与预览区命中缓存时闪现占位图。
+     *
+     * @param location 图片位置。
+     * @param maxDimension 最大边长像素。
+     * @param modifiedAtEpochMillis 可选文件修改时间戳（用于同名覆盖失效）。
+     * @param sizeBytes 可选文件字节数（用于同名覆盖失效）。
+     * @return 已缓存的位图；未命中返回 `null`。
+     */
+    fun peekCachedThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long? = null,
+        sizeBytes: Long? = null,
+    ): ImageBitmap? = null
+
+    /**
+     * 同步查询内存缓存中的压缩包封面缩略图。
+     *
+     * @param location 压缩包位置。
+     * @param maxDimension 最大边长像素。
+     * @param modifiedAtEpochMillis 可选文件修改时间戳。
+     * @param sizeBytes 可选文件字节数。
+     * @return 已缓存的位图；未命中返回 `null`。
+     */
+    fun peekCachedArchiveThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long? = null,
+        sizeBytes: Long? = null,
+    ): ImageBitmap? = null
+
     suspend fun loadThumbnail(
         location: String,
         maxDimension: Int,
+        modifiedAtEpochMillis: Long? = null,
+        sizeBytes: Long? = null,
     ): ImageBitmap?
 
     suspend fun loadArchiveThumbnail(
         location: String,
         maxDimension: Int,
+        modifiedAtEpochMillis: Long? = null,
+        sizeBytes: Long? = null,
     ): ImageBitmap?
+
+    /**
+     * 为图片查看器加载高分辨率位图并返回结构化失败原因。
+     *
+     * @param entry 目标图片条目。
+     * @param maxDimension 最大边长像素。
+     * @return 结构化加载结果。
+     */
+    suspend fun loadViewerImage(
+        entry: VFile,
+        maxDimension: Int,
+    ): ImageLoadOutcome {
+        val loaded = loadThumbnail(
+            location = entry.location,
+            maxDimension = maxDimension,
+            modifiedAtEpochMillis = entry.modifiedAtEpochMillis,
+            sizeBytes = entry.sizeBytes,
+        )
+        return if (loaded != null) {
+            ImageLoadOutcome.Loaded(loaded)
+        } else {
+            ImageLoadOutcome.DecodeFailed()
+        }
+    }
 
     fun clearCache()
 }

@@ -36,11 +36,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,12 +84,13 @@ private val PICKER_PRESET_SWATCHES: List<Long> = listOf(
 )
 
 /**
- * 渲染单个扁平紧凑颜色配置项：不再要求手输十六进制，点击 Jewel 默认按钮即可展开支持 Alpha 透明度的可视化 HSV 颜色选择器。
+ * 渲染单个扁平紧凑颜色配置项：点击按钮即可展开可视化 HSV 颜色选择器，按槽位语义控制是否允许调整 Alpha 透明度。
  *
  * @param label 颜色字段的本地化名称。
  * @param value 当前已设置的 ARGB 值；null 表示跟随主题预设。
  * @param defaultPreviewColor 未设置覆盖时的当前主题默认预览色。
  * @param initialExpanded 是否默认展开可视化取色器（便于预览或测试）。
+ * @param allowAlpha 是否允许调整透明度；不透明语义槽位（如全局背景、文字色、边框色）应传 false。
  * @param onChange 颜色变更回调（传入 null 恢复预设默认）。
  */
 @Composable
@@ -95,11 +99,13 @@ internal fun ColorOverrideField(
     value: Long?,
     defaultPreviewColor: Color? = null,
     initialExpanded: Boolean = false,
+    allowAlpha: Boolean = true,
     onChange: (Long?) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
     var pickerExpanded by remember { mutableStateOf(initialExpanded) }
-    val effectiveColor = value?.let(::Color) ?: defaultPreviewColor ?: palette.surfaceVariant
+    val rawEffectiveColor = value?.let(::Color) ?: defaultPreviewColor ?: palette.surfaceVariant
+    val effectiveColor = if (allowAlpha) rawEffectiveColor else rawEffectiveColor.copy(alpha = 1f)
     val hoverSrc = remember { MutableInteractionSource() }
     val clickSrc = remember { MutableInteractionSource() }
     val rowHovered by hoverSrc.collectIsHoveredAsState()
@@ -139,7 +145,7 @@ internal fun ColorOverrideField(
                 )
                 Text(
                     text = if (value != null) {
-                        formatArgbWithOpacity(value)
+                        formatColorOverrideBadge(value, allowAlpha)
                     } else {
                         stringResource(Res.string.label_color_following_preset)
                     },
@@ -170,7 +176,11 @@ internal fun ColorOverrideField(
         if (pickerExpanded) {
             OnyxHsvAlphaColorPicker(
                 initialColor = effectiveColor,
-                onColorChange = { nextColor -> onChange(colorToArgbLong(nextColor)) },
+                allowAlpha = allowAlpha,
+                onColorChange = { nextColor ->
+                    val normalized = if (allowAlpha) nextColor else nextColor.copy(alpha = 1f)
+                    onChange(colorToArgbLong(normalized))
+                },
                 onReset = {
                     onChange(null)
                     pickerExpanded = false
@@ -193,6 +203,11 @@ private fun ColorSwatchTriggerButton(
     val palette = LocalOnyxPalette.current
     val label = stringResource(Res.string.action_pick_color) + if (expanded) " ▴" else " ▾"
     if (expanded) {
+        val expandedBorder = resolveSwatchBorderColor(
+            swatchColor = color,
+            containerSurface = palette.accent,
+            defaultOutline = Color.White.copy(alpha = 0.78f),
+        )
         DefaultButton(
             onClick = onClick,
             style = rememberOnyxButtonStyle(JewelTheme.defaultButtonStyle, compact = true),
@@ -207,12 +222,17 @@ private fun ColorSwatchTriggerButton(
                         .width(16.dp)
                         .height(11.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.7f), RoundedCornerShape(2.dp)),
+                        .border(1.dp, expandedBorder, RoundedCornerShape(2.dp)),
                 )
                 Text(text = label, fontSize = 11.sp, style = LocalTextStyle.current)
             }
         }
     } else {
+        val collapsedBorder = resolveSwatchBorderColor(
+            swatchColor = color,
+            containerSurface = palette.surface,
+            defaultOutline = palette.outline,
+        )
         OutlinedButton(
             onClick = onClick,
             style = rememberOnyxButtonStyle(JewelTheme.outlinedButtonStyle, compact = true),
@@ -227,7 +247,7 @@ private fun ColorSwatchTriggerButton(
                         .width(16.dp)
                         .height(11.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .border(1.dp, palette.outline, RoundedCornerShape(2.dp)),
+                        .border(1.dp, collapsedBorder, RoundedCornerShape(2.dp)),
                 )
                 Text(text = label, fontSize = 11.sp, style = LocalTextStyle.current)
             }
@@ -236,11 +256,18 @@ private fun ColorSwatchTriggerButton(
 }
 
 /**
- * 完整支持 2D 饱和度/明度画布、360° 色相条、Alpha 透明度棋盘格滑块与精选色板的桌面取色器面板。
+ * 完整支持 2D 饱和度/明度画布、360° 色相条、可选 Alpha 透明度棋盘格滑块与精选色板的桌面取色器面板。
+ *
+ * @param initialColor 取色器初始颜色。
+ * @param allowAlpha 是否允许调整透明度；为 false 时隐藏透明度滑块并固定输出 100% 不透明色值。
+ * @param onColorChange 颜色变更回调。
+ * @param onReset 恢复默认回调。
+ * @param onClose 关闭取色器回调。
  */
 @Composable
 internal fun OnyxHsvAlphaColorPicker(
     initialColor: Color,
+    allowAlpha: Boolean = true,
     onColorChange: (Color) -> Unit,
     onReset: () -> Unit,
     onClose: () -> Unit,
@@ -250,10 +277,13 @@ internal fun OnyxHsvAlphaColorPicker(
     var hue by remember { mutableFloatStateOf(initialHsv[0]) }
     var saturation by remember { mutableFloatStateOf(initialHsv[1]) }
     var brightness by remember { mutableFloatStateOf(initialHsv[2]) }
-    var alpha by remember { mutableFloatStateOf(initialColor.alpha.coerceIn(0f, 1f)) }
+    var alpha by remember(allowAlpha) {
+        mutableFloatStateOf(if (allowAlpha) initialColor.alpha.coerceIn(0f, 1f) else 1f)
+    }
 
-    val activeColor = remember(hue, saturation, brightness, alpha) {
-        hsvToColor(hue, saturation, brightness, alpha)
+    val effectiveAlpha = if (allowAlpha) alpha else 1f
+    val activeColor = remember(hue, saturation, brightness, effectiveAlpha) {
+        hsvToColor(hue, saturation, brightness, effectiveAlpha)
     }
     val pureHueColor = remember(hue) {
         hsvToColor(hue, 1f, 1f, 1f)
@@ -274,7 +304,7 @@ internal fun OnyxHsvAlphaColorPicker(
             onChange = { nextSat, nextVal ->
                 saturation = nextSat
                 brightness = nextVal
-                onColorChange(hsvToColor(hue, nextSat, nextVal, alpha))
+                onColorChange(hsvToColor(hue, nextSat, nextVal, effectiveAlpha))
             },
         )
 
@@ -299,53 +329,61 @@ internal fun OnyxHsvAlphaColorPicker(
                 hue = hue,
                 onHueChange = { nextHue ->
                     hue = nextHue
-                    onColorChange(hsvToColor(nextHue, saturation, brightness, alpha))
+                    onColorChange(hsvToColor(nextHue, saturation, brightness, effectiveAlpha))
                 },
             )
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+        if (allowAlpha) {
+            Column(
+                modifier = Modifier.testTag("color-picker-alpha-section"),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Text(
-                    text = stringResource(Res.string.label_color_picker_alpha),
-                    fontSize = 10.sp,
-                    color = palette.mutedForeground,
-                )
-                Text(
-                    text = "${(alpha * PERCENT_MAX).roundToInt()}%",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = palette.accent,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = stringResource(Res.string.label_color_picker_alpha),
+                        fontSize = 10.sp,
+                        color = palette.mutedForeground,
+                    )
+                    Text(
+                        text = "${(alpha * PERCENT_MAX).roundToInt()}%",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = palette.accent,
+                    )
+                }
+                AlphaSliderBar(
+                    rgbColor = activeColor.copy(alpha = 1f),
+                    alpha = alpha,
+                    onAlphaChange = { nextAlpha ->
+                        alpha = nextAlpha
+                        onColorChange(hsvToColor(hue, saturation, brightness, nextAlpha))
+                    },
                 )
             }
-            AlphaSliderBar(
-                rgbColor = activeColor.copy(alpha = 1f),
-                alpha = alpha,
-                onAlphaChange = { nextAlpha ->
-                    alpha = nextAlpha
-                    onColorChange(hsvToColor(hue, saturation, brightness, nextAlpha))
-                },
-            )
         }
 
         PickerQuickSwatches(
             selectedArgb = colorToArgbLong(activeColor),
+            allowAlpha = allowAlpha,
             onSelectArgb = { swatchArgb ->
-                val picked = Color(swatchArgb)
+                val rawPicked = Color(swatchArgb)
+                val picked = if (allowAlpha) rawPicked else rawPicked.copy(alpha = 1f)
                 val hsv = colorToHsv(picked)
                 hue = hsv[0]
                 saturation = hsv[1]
                 brightness = hsv[2]
-                alpha = picked.alpha
+                alpha = if (allowAlpha) picked.alpha else 1f
                 onColorChange(picked)
             },
         )
 
         PickerFooterBar(
             activeColor = activeColor,
+            allowAlpha = allowAlpha,
             onReset = onReset,
             onClose = onClose,
         )
@@ -501,15 +539,23 @@ private fun AlphaSliderBar(
 }
 
 /**
- * 精选快捷色板（含半透明色块）。
+ * 精选快捷色板（按 [allowAlpha] 过滤半透明预设，并为浅色/近背景色块增强边框对比度）。
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun PickerQuickSwatches(
     selectedArgb: Long,
+    allowAlpha: Boolean,
     onSelectArgb: (Long) -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
+    val swatches = remember(allowAlpha) {
+        if (allowAlpha) {
+            PICKER_PRESET_SWATCHES
+        } else {
+            PICKER_PRESET_SWATCHES.filter { argb -> ((argb ushr 24) and 0xFFL) == 0xFFL }
+        }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(
             text = stringResource(Res.string.label_color_picker_presets),
@@ -521,13 +567,19 @@ private fun PickerQuickSwatches(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            PICKER_PRESET_SWATCHES.forEach { swatchArgb ->
+            swatches.forEach { swatchArgb ->
                 val hoverSrc = remember { MutableInteractionSource() }
                 val clickSrc = remember { MutableInteractionSource() }
                 val hovered by hoverSrc.collectIsHoveredAsState()
                 val isSelected = selectedArgb == swatchArgb
+                val swatchColor = Color(swatchArgb)
+                val idleBorder = resolveSwatchBorderColor(
+                    swatchColor = swatchColor,
+                    containerSurface = palette.surface,
+                    defaultOutline = palette.outline,
+                )
                 CheckerboardColorBox(
-                    color = Color(swatchArgb),
+                    color = swatchColor,
                     modifier = Modifier
                         .size(22.dp)
                         .hoverable(hoverSrc)
@@ -538,7 +590,7 @@ private fun PickerQuickSwatches(
                             color = when {
                                 isSelected -> palette.accent
                                 hovered -> palette.foreground
-                                else -> palette.outline
+                                else -> idleBorder
                             },
                             shape = CircleShape,
                         )
@@ -555,11 +607,17 @@ private fun PickerQuickSwatches(
 @Composable
 private fun PickerFooterBar(
     activeColor: Color,
+    allowAlpha: Boolean,
     onReset: () -> Unit,
     onClose: () -> Unit,
 ) {
     val palette = LocalOnyxPalette.current
     val argb = colorToArgbLong(activeColor)
+    val previewBorder = resolveSwatchBorderColor(
+        swatchColor = activeColor,
+        containerSurface = palette.surface,
+        defaultOutline = palette.outline,
+    )
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -575,10 +633,10 @@ private fun PickerFooterBar(
                     .width(42.dp)
                     .height(24.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .border(1.dp, palette.outline, RoundedCornerShape(4.dp)),
+                    .border(1.dp, previewBorder, RoundedCornerShape(4.dp)),
             )
             Text(
-                text = formatArgbWithOpacity(argb),
+                text = formatColorOverrideBadge(argb, allowAlpha),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = palette.foreground,
@@ -686,6 +744,35 @@ internal fun colorToArgbLong(color: Color): Long {
     val g = (color.green.coerceIn(0f, 1f) * 255f).roundToInt().coerceIn(0, 255).toLong()
     val b = (color.blue.coerceIn(0f, 1f) * 255f).roundToInt().coerceIn(0, 255).toLong()
     return (a shl 24) or (r shl 16) or (g shl 8) or b
+}
+
+@Suppress("MagicNumber")
+internal fun resolveSwatchBorderColor(
+    swatchColor: Color,
+    containerSurface: Color,
+    defaultOutline: Color,
+): Color {
+    val resolvedSurface = if (containerSurface.alpha < 1f) containerSurface.compositeOver(Color.White) else containerSurface
+    val resolvedSwatch = swatchColor.compositeOver(resolvedSurface)
+    val surfaceLum = resolvedSurface.luminance()
+    val swatchLum = resolvedSwatch.luminance()
+    val contrastGap = kotlin.math.abs(swatchLum - surfaceLum)
+    return when {
+        // 浅色底上的浅色/白色色块极易融于背景，增强深灰描边以保持清晰边界。
+        surfaceLum > 0.55f && (swatchLum > 0.72f || contrastGap < 0.16f) -> Color(0xFF475569)
+        // 深色底上的深黑色块同样容易融于背景，使用中性浅灰描边。
+        surfaceLum <= 0.55f && contrastGap < 0.12f -> Color(0xFF94A3B8)
+        else -> defaultOutline
+    }
+}
+
+@Suppress("MagicNumber")
+private fun formatColorOverrideBadge(argb: Long, allowAlpha: Boolean): String {
+    if (!allowAlpha) {
+        val rgb = (argb and 0xFFFFFFL).toString(HEX_RADIX).uppercase().padStart(RGB_DIGITS, '0')
+        return "#$rgb"
+    }
+    return formatArgbWithOpacity(argb)
 }
 
 @Suppress("MagicNumber")

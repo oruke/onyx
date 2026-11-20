@@ -60,6 +60,7 @@ import com.oruke.onyx.ui.FileDragOverlay
 import com.oruke.onyx.ui.BoundPaneSurface
 import com.oruke.onyx.ui.PaneDragBindings
 import com.oruke.onyx.ui.OnyxTooltipOverlay
+import com.oruke.onyx.ui.onyxTooltipPointerCleanup
 import com.oruke.onyx.ui.PaneSidebar
 import com.oruke.onyx.ui.PaneSidebarActions
 import com.oruke.onyx.ui.PaneSidebarState
@@ -119,7 +120,19 @@ internal fun DecoratedWindowScope.WindowApp(
         themeColors = visualSettings.themeColors,
     )
     val appearance = rememberOnyxAppearance(visualSettings)
-    var titleBarTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
+    var windowTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
+    var titleBarWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
+    val sharedTooltipController = remember {
+        TooltipController(
+            show = { request -> windowTooltipRequest = request },
+            hide = { owner ->
+                if (windowTooltipRequest?.owner === owner) {
+                    windowTooltipRequest = null
+                }
+            },
+            clear = { windowTooltipRequest = null },
+        )
+    }
     val onUiScaleChange: (Int) -> Unit = { value ->
         rootComponent.dispatch(
             RootIntent.UpdateSettings(state.settings.copy(uiScale = value)),
@@ -127,19 +140,23 @@ internal fun DecoratedWindowScope.WindowApp(
     }
 
     CompositionLocalProvider(
-        LocalTooltipController provides TooltipController(
-            show = { request -> titleBarTooltipRequest = request },
-            hide = { owner ->
-                if (titleBarTooltipRequest?.owner === owner) {
-                    titleBarTooltipRequest = null
-                }
-            },
-        ),
+        LocalTooltipController provides sharedTooltipController,
         LocalOnyxPalette provides palette,
         LocalOnyxAppearance provides appearance,
         LocalOnyxSettings provides visualSettings,
     ) {
-        TitleBar(modifier = Modifier.newFullscreenControls()) { _ ->
+        TitleBar(
+            modifier = Modifier
+                .newFullscreenControls()
+                .onGloballyPositioned { coordinates ->
+                    titleBarWindowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
+                }
+                .onyxTooltipPointerCleanup(
+                    requestProvider = { windowTooltipRequest },
+                    windowOriginProvider = { titleBarWindowOrigin },
+                    onClear = { windowTooltipRequest = null },
+                ),
+        ) { _ ->
             TitleBarContent(
                 rootComponent = rootComponent,
                 layoutMode = state.layoutMode,
@@ -196,7 +213,8 @@ internal fun DecoratedWindowScope.WindowApp(
                     rootComponent = rootComponent,
                     state = state,
                     externalFileDragService = externalFileDragService,
-                    externalTooltipRequest = titleBarTooltipRequest,
+                    externalTooltipRequest = windowTooltipRequest,
+                    onClearExternalTooltip = { windowTooltipRequest = null },
                     keyboardFocusRegistry = keyboardFocusRegistry,
                 )
             }
@@ -272,13 +290,18 @@ private fun AppContent(
     state: RootState,
     externalFileDragService: ExternalFileDragService,
     externalTooltipRequest: TooltipRequest? = null,
+    onClearExternalTooltip: (() -> Unit)? = null,
     externalDragController: AppDragController? = null,
     keyboardFocusRegistry: WindowKeyboardFocusRegistry = remember { WindowKeyboardFocusRegistry() },
 ) {
     val dragController = externalDragController ?: remember(rootComponent, externalFileDragService) {
         AppDragController(rootComponent, externalFileDragService)
     }
-    var tooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
+    var localTooltipRequest by remember { mutableStateOf<TooltipRequest?>(null) }
+    val useExternalTooltipHost = onClearExternalTooltip != null
+    val activeTooltipRequest = if (useExternalTooltipHost) externalTooltipRequest else (localTooltipRequest ?: externalTooltipRequest)
+    val latestTooltipRequest = androidx.compose.runtime.rememberUpdatedState(activeTooltipRequest)
+    val latestOnClearExternalTooltip = androidx.compose.runtime.rememberUpdatedState(onClearExternalTooltip)
     var appContentSize by remember { mutableStateOf(IntSize.Zero) }
     var appWindowOrigin by remember { mutableStateOf(IntOffset.Zero) }
     fun dispatch(intent: RootIntent) {
@@ -291,16 +314,24 @@ private fun AppContent(
     val dragBindings = dragController.bindings
     AppDialogHost(state, rootComponent::dispatch)
 
-    CompositionLocalProvider(
-        LocalTooltipController provides TooltipController(
-            show = { request -> tooltipRequest = request },
-            hide = { owner ->
-                if (tooltipRequest?.owner === owner) {
-                    tooltipRequest = null
-                }
-            },
-        )
-    ) {
+    val parentTooltipController = LocalTooltipController.current
+    val effectiveTooltipController = if (useExternalTooltipHost) {
+        parentTooltipController
+    } else {
+        remember {
+            TooltipController(
+                show = { request -> localTooltipRequest = request },
+                hide = { owner ->
+                    if (localTooltipRequest?.owner === owner) {
+                        localTooltipRequest = null
+                    }
+                },
+                clear = { localTooltipRequest = null },
+            )
+        }
+    }
+
+    CompositionLocalProvider(LocalTooltipController provides effectiveTooltipController) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -315,11 +346,19 @@ private fun AppContent(
                 .onGloballyPositioned { coordinates ->
                     appContentSize = coordinates.size
                     appWindowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
-                },
+                }
+                .onyxTooltipPointerCleanup(
+                    requestProvider = { latestTooltipRequest.value },
+                    windowOriginProvider = { appWindowOrigin },
+                    onClear = {
+                        localTooltipRequest = null
+                        latestOnClearExternalTooltip.value?.invoke()
+                    },
+                ),
         ) {
             AppWorkspace(state, rootComponent, dragBindings, toggleFavoriteLocation, keyboardFocusRegistry)
 
-            (tooltipRequest ?: externalTooltipRequest)?.let { request ->
+            activeTooltipRequest?.let { request ->
                 OnyxTooltipOverlay(
                     request = request,
                     appSize = appContentSize,
@@ -446,6 +485,8 @@ private fun AppSidebar(
             onToggleTreeNode = { dispatch(RootIntent.ToggleSidebarTreeNode(it)) },
             onRetryTreeNode = { dispatch(RootIntent.RetrySidebarTreeNode(it)) },
             onToggleSection = { dispatch(RootIntent.ToggleSidebarSection(it)) },
+            onOpenInNewTab = { dispatch(RootIntent.OpenLocationInNewTab(it)) },
+            onCopyPath = { dispatch(RootIntent.CopyLocationPath(it)) },
         ),
         activePane = state.activePane,
         dragBindings = dragBindings,
@@ -595,7 +636,10 @@ private fun HorizontalPaneLayout(
 private fun AppPreviewPanel(state: RootState, rootComponent: RootComponent) {
     if (!state.showPreviewPane) return
     val paneState = state.paneState(state.activePane)
-    val selectedEntry = paneState.findVisibleEntry(paneState.selectedEntryIds.firstOrNull())
+    val focusEntryId = paneState.selectionFocusId
+        ?.takeIf { focusId -> focusId in paneState.selectedEntryIds }
+        ?: paneState.selectedEntryIds.firstOrNull()
+    val selectedEntry = paneState.findVisibleEntry(focusEntryId)
     Divider(Orientation.Vertical, modifier = Modifier.fillMaxHeight().width(1.dp))
     PreviewPane(
         selectedEntry = selectedEntry,
@@ -604,6 +648,11 @@ private fun AppPreviewPanel(state: RootState, rootComponent: RootComponent) {
         loadTextPreview = rootComponent::loadTextPreview,
         isImageFileName = rootComponent::isImageFileName,
         isTextPreviewFileName = rootComponent::isTextPreviewFileName,
+        peekCachedThumbnail = rootComponent::peekCachedThumbnail,
+        loadVersionedThumbnail = rootComponent::loadThumbnail,
+        readFileHash = rootComponent::readFileHash,
+        readArchiveInfo = rootComponent::readArchiveInfo,
+        isArchiveFileName = rootComponent::isArchiveFileName,
     )
 }
 
@@ -626,6 +675,11 @@ private fun AppQuickOpenOverlay(state: RootState, rootComponent: RootComponent) 
         onOpenResult = { dispatch(RootIntent.OpenQuickOpenResult(it)) },
         onOpenResultInFolder = { dispatch(RootIntent.OpenQuickOpenResultInFolder(it)) },
         onSelectedIndexChange = { dispatch(RootIntent.SetQuickOpenSelectedIndex(it)) },
+        recentLocations = state.effectiveSettings.recentLocations,
+        onOpenLocation = { location ->
+            dispatch(RootIntent.CloseQuickOpen)
+            dispatch(RootIntent.OpenLocationInActivePane(location))
+        },
     )
 }
 
@@ -750,6 +804,9 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
         is RootDialogState.ArchivePassword -> ArchivePasswordDialog(
             archiveName = dialogState.archiveName,
             error = dialogState.error,
+            attempt = dialogState.attempt,
+            verifying = dialogState.verifying,
+            requestId = dialogState.requestId,
             onConfirm = { dispatch(RootIntent.SubmitArchivePassword(it)) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
         )
@@ -759,6 +816,7 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             onDraftChange = { dispatch(RootIntent.UpdateRemoteCredentialsDraft(it)) },
             onConfirm = { dispatch(RootIntent.SubmitRemoteCredentials) },
             onDismiss = { dispatch(RootIntent.DismissDialog) },
+            onOpenRemoteConnections = { dispatch(RootIntent.OpenRemoteConnections) },
         )
 
         null -> Unit

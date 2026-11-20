@@ -99,27 +99,38 @@ internal fun HoverButton(
     surface: Color,
     foreground: Color,
     fontSize: TextUnit = 12.sp,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
+    val palette = LocalOnyxPalette.current
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
-    val restBg = if (emphasized) accent else surface
+    val restBg = when {
+        !enabled -> surface.copy(alpha = 0.55f)
+        emphasized -> accent
+        else -> surface
+    }
     val hoverBg = if (emphasized) accent.copy(alpha = 0.85f) else accent.copy(alpha = 0.12f)
-    val contentColor = if (emphasized) contrastTextOn(accent) else foreground
+    val contentColor = when {
+        !enabled -> palette.disabledForeground
+        emphasized -> contrastTextOn(accent)
+        else -> foreground
+    }
 
     val bgColor by animateColorAsState(
-        targetValue = if (isHovered) hoverBg else restBg,
+        targetValue = if (enabled && isHovered) hoverBg else restBg,
         animationSpec = tween(150),
     )
 
     Box(
         modifier = Modifier
-            .hoverable(interactionSource)
+            .hoverable(interactionSource, enabled = enabled)
             .background(bgColor, RoundedCornerShape(6.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                enabled = enabled,
                 onClick = onClick,
             )
             .padding(horizontal = 14.dp, vertical = 8.dp),

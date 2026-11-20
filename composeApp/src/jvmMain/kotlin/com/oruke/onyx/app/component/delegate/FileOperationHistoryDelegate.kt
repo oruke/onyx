@@ -477,14 +477,19 @@ internal class FileOperationHistoryDelegate(
         parentLocation: String,
         name: String,
     ): VFile {
-        return fileRepository.list(parentLocation)
-            .getOrThrow()
-            .firstOrNull { entry -> entry.name == name }
+        val entries = fileRepository.list(parentLocation).getOrThrow()
+        val caseInsensitive = com.oruke.onyx.app.component.isCaseInsensitiveVfsLocation(parentLocation)
+        return entries.firstOrNull { entry -> entry.name == name }
+            ?: if (caseInsensitive) {
+                entries.firstOrNull { entry -> entry.name.equals(name, ignoreCase = true) }
+            } else {
+                null
+            }
             ?: error("Entry is no longer available: $parentLocation/$name")
     }
 
     /**
-     * 确认目标目录没有同名条目，避免撤销/重做产生 keep-both 副本。
+     * 确认目标目录没有同名条目，按目标 VFS 大小写语义判重，避免 Windows/SMB 仅大小写撞名产生 keep-both 副本。
      *
      * @param directoryLocation 目标目录位置。
      * @param name 文件名。
@@ -493,9 +498,10 @@ internal class FileOperationHistoryDelegate(
         directoryLocation: String,
         name: String,
     ) {
+        val caseInsensitive = com.oruke.onyx.app.component.isCaseInsensitiveVfsLocation(directoryLocation)
         val exists = fileRepository.list(directoryLocation)
             .getOrThrow()
-            .any { entry -> entry.name == name }
+            .any { entry -> entry.name.equals(name, ignoreCase = caseInsensitive) }
         check(!exists) {
             "Target already contains an entry named $name"
         }

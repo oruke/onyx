@@ -33,7 +33,10 @@ internal fun DefaultPaneComponent.beginCreateFile() {
     val tab = activeTab() ?: return
     if (isSystemVirtualLocation(tab.location) || tab.inlineEditState != null) return
     scope.launch {
-        val nextName = tab.nextCreateName(entryNameSuggestionService.newFileName())
+        val nextName = tab.nextCreateName(
+            baseName = entryNameSuggestionService.newFileName(),
+            preserveExtension = true,
+        )
         updateTab(tab.id) { currentTab -> currentTab.beginCreateFileInlineEdit(nextName) }
     }
 }
@@ -43,7 +46,10 @@ internal fun DefaultPaneComponent.beginCreateDirectory() {
     val tab = activeTab() ?: return
     if (isSystemVirtualLocation(tab.location) || tab.inlineEditState != null) return
     scope.launch {
-        val nextName = tab.nextCreateName(entryNameSuggestionService.newDirectoryName())
+        val nextName = tab.nextCreateName(
+            baseName = entryNameSuggestionService.newDirectoryName(),
+            preserveExtension = false,
+        )
         updateTab(tab.id) { currentTab -> currentTab.beginCreateDirectoryInlineEdit(nextName) }
     }
 }

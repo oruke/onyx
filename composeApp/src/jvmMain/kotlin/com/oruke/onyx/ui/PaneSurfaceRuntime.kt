@@ -90,6 +90,14 @@ internal data class PaneSurfaceServices(
     val buildBreadcrumbs: (String) -> List<VfsBreadcrumb>,
     /** 地址栏路径自动补全建议服务。 */
     val suggestAddressLocations: suspend (String, List<String>) -> List<String> = { _, _ -> emptyList() },
+    /** 同步查询内存中的图片缩略图。 */
+    val peekCachedThumbnail: (String, Int, Long?, Long?) -> ImageBitmap? = { _, _, _, _ -> null },
+    /** 同步查询内存中的压缩包封面缩略图。 */
+    val peekCachedArchiveThumbnail: (String, Int, Long?, Long?) -> ImageBitmap? = { _, _, _, _ -> null },
+    /** 加载带版本指纹的图片缩略图。 */
+    val loadVersionedThumbnail: (suspend (String, Int, Long?, Long?) -> ImageBitmap?)? = null,
+    /** 加载带版本指纹的压缩包封面缩略图。 */
+    val loadVersionedArchiveThumbnail: (suspend (String, Int, Long?, Long?) -> ImageBitmap?)? = null,
 )
 
 /**
@@ -216,6 +224,11 @@ internal class PaneSurfaceRuntime(
                 true
             }
 
+            OnyxCommand.TogglePreviewPane -> {
+                model.actions.onTogglePreviewPane()
+                true
+            }
+
             else -> false
         }
     }
@@ -242,7 +255,8 @@ internal class PaneSurfaceRuntime(
         return when (command) {
             OnyxCommand.QuickOpen,
             OnyxCommand.ShowSearchPanel,
-            OnyxCommand.FocusAddressBar -> true
+            OnyxCommand.FocusAddressBar,
+            OnyxCommand.TogglePreviewPane -> true
 
             else -> false
         }

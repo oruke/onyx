@@ -789,4 +789,23 @@
     <string name="label_remote_protocol_short_s3">S3</string>
     <string name="label_breadcrumb_collapsed_ancestors">Show hidden parent folders</string>
     <string name="msg_trash_item_unavailable">Item is no longer available in the Recycle Bin: %1$s</string>
+    <string name="label_preview_tab_preview">Preview</string>
+    <string name="label_preview_tab_inspector">Inspector</string>
+    <string name="label_copied_brief">Copied</string>
+    <string name="label_image_viewer_close">Close (Esc)</string>
+    <string name="label_image_viewer_error_too_large">Image exceeds the %1$s viewing limit.</string>
+    <string name="label_image_viewer_error_not_found">Image file could not be found.</string>
+    <string name="label_image_viewer_error_unsupported">Direct preview is not supported for this location.</string>
+    <string name="label_image_viewer_error_decode_failed">Unable to decode image file.</string>
+    <string name="action_open_externally">Open with Default App</string>
+    <string name="action_close_other_tabs">Close Other Tabs</string>
+    <string name="action_close_tabs_to_right">Close Tabs to the Right</string>
+    <string name="action_add_to_favorites">Add to Favorites</string>
+    <string name="action_remove_from_favorites">Remove from Favorites</string>
+    <string name="label_task_errors_truncated_footer">Showing first %1$d of %2$d errors. Click "Copy All Errors" for the complete list.</string>
+    <string name="label_quick_open_recent_locations">Recent Locations</string>
+    <string name="label_search_size_custom_min_mb">Min MB</string>
+    <string name="label_search_size_custom_max_mb">Max MB</string>
+    <string name="label_remote_credentials_s3_session_token">Session Token (optional)</string>
+    <string name="action_open_remote_connection_settings">Connection Settings</string>
 </resources>

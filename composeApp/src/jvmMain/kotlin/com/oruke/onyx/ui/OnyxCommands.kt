@@ -33,6 +33,7 @@ import onyx.composeapp.generated.resources.action_rename
 import onyx.composeapp.generated.resources.action_select_all
 import onyx.composeapp.generated.resources.action_show_search_panel
 import onyx.composeapp.generated.resources.action_toggle_favorite
+import onyx.composeapp.generated.resources.action_toggle_preview_pane
 import onyx.composeapp.generated.resources.action_undo
 import onyx.composeapp.generated.resources.label_with_shortcut
 import onyx.composeapp.generated.resources.shortcut_key_a
@@ -87,6 +88,7 @@ internal enum class OnyxCommand(val defaultShortcut: OnyxShortcut? = null) {
     QuickOpen(OnyxShortcut(OnyxShortcutKey.K, setOf(OnyxShortcutModifier.PRIMARY))),
     ShowSearchPanel(OnyxShortcut(OnyxShortcutKey.F, setOf(OnyxShortcutModifier.PRIMARY, OnyxShortcutModifier.SHIFT))),
     FocusAddressBar(OnyxShortcut(OnyxShortcutKey.L, setOf(OnyxShortcutModifier.PRIMARY))),
+    TogglePreviewPane(OnyxShortcut(OnyxShortcutKey.P, setOf(OnyxShortcutModifier.ALT))),
 }
 
 /**
@@ -124,7 +126,8 @@ internal fun OnyxCommand.toPaneCommand(): PaneCommand? {
         OnyxCommand.CommandPalette -> PaneCommand.COMMAND_PALETTE
         OnyxCommand.QuickOpen,
         OnyxCommand.ShowSearchPanel,
-        OnyxCommand.FocusAddressBar -> null
+        OnyxCommand.FocusAddressBar,
+        OnyxCommand.TogglePreviewPane -> null
     }
 }
 
@@ -371,6 +374,7 @@ internal object OnyxCommandRegistry {
         OnyxCommandSpec(OnyxCommand.QuickOpen, Res.string.action_quick_open, AllIconsKeys.Actions.Find),
         OnyxCommandSpec(OnyxCommand.ShowSearchPanel, Res.string.action_show_search_panel, AllIconsKeys.Actions.Find),
         OnyxCommandSpec(OnyxCommand.FocusAddressBar, Res.string.action_focus_address_bar, AllIconsKeys.Actions.Edit),
+        OnyxCommandSpec(OnyxCommand.TogglePreviewPane, Res.string.action_toggle_preview_pane, AllIconsKeys.Actions.Preview),
     )
 
     fun paneCommandStates(

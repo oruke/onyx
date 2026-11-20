@@ -187,63 +187,148 @@ internal class JvmThumbnailService(
         }
     }
 
+    override fun peekCachedThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? {
+        if (modifiedAtEpochMillis == null && sizeBytes == null) return null
+        val cacheKey = buildThumbnailCacheKey(location, maxDimension, modifiedAtEpochMillis, sizeBytes)
+        return getCached(cacheKey, maxDimension)
+    }
+
+    override fun peekCachedArchiveThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? {
+        if (modifiedAtEpochMillis == null && sizeBytes == null) return null
+        val cacheKey = buildArchiveThumbnailCacheKey(location, maxDimension, modifiedAtEpochMillis, sizeBytes)
+        return getCached(cacheKey, maxDimension)
+    }
+
     @Suppress("TooGenericExceptionCaught")
     override suspend fun loadThumbnail(
         location: String,
         maxDimension: Int,
-    ): ImageBitmap? = withContext(Dispatchers.IO) {
-        val cacheKey = "$location@$maxDimension"
-        getCached(cacheKey, maxDimension)?.let { return@withContext it }
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? {
+        return when (
+            val outcome = loadImageOutcomeInternal(
+                location = location,
+                maxDimension = maxDimension,
+                modifiedAtEpochMillis = modifiedAtEpochMillis,
+                sizeBytes = sizeBytes,
+            )
+        ) {
+            is ImageLoadOutcome.Loaded -> outcome.bitmap
+            else -> null
+        }
+    }
+
+    override suspend fun loadViewerImage(
+        entry: VFile,
+        maxDimension: Int,
+    ): ImageLoadOutcome {
+        return loadImageOutcomeInternal(
+            location = entry.location,
+            maxDimension = maxDimension,
+            modifiedAtEpochMillis = entry.modifiedAtEpochMillis,
+            sizeBytes = entry.sizeBytes,
+        )
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun loadImageOutcomeInternal(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageLoadOutcome = withContext(Dispatchers.IO) {
+        val (effectiveModified, effectiveSize) = resolveVersionMetadata(
+            location = location,
+            modifiedAtEpochMillis = modifiedAtEpochMillis,
+            sizeBytes = sizeBytes,
+        )
+        val cacheKey = buildThumbnailCacheKey(location, maxDimension, effectiveModified, effectiveSize)
+        getCached(cacheKey, maxDimension)?.let { return@withContext ImageLoadOutcome.Loaded(it) }
 
         return@withContext try {
             val bytes: ByteArray
             if (ArchiveService.isArchiveLocation(location)) {
-                // archive:// 协议 → 从压缩包中提取字节
                 val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(location)
-                    ?: return@withContext null
-                if (innerPath.isBlank()) return@withContext null
-                bytes = archiveService.extractToBytes(
+                    ?: return@withContext ImageLoadOutcome.NotFound
+                if (innerPath.isBlank()) return@withContext ImageLoadOutcome.NotFound
+                if (effectiveSize != null && effectiveSize > MAX_ARCHIVE_IMAGE_BYTES) {
+                    return@withContext ImageLoadOutcome.TooLarge(MAX_ARCHIVE_IMAGE_BYTES, effectiveSize)
+                }
+                val extracted = archiveService.extractToBytes(
                     archivePath = archivePath,
                     innerPath = innerPath,
                     maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
-                ).getOrNull() ?: return@withContext null
-                if (bytes.isEmpty()) return@withContext null
+                )
+                bytes = extracted.getOrElse { failure ->
+                    val msg = failure.message.orEmpty()
+                    return@withContext if (msg.contains("上限") || msg.contains("limit", ignoreCase = true) || msg.contains("exceed", ignoreCase = true)) {
+                        ImageLoadOutcome.TooLarge(MAX_ARCHIVE_IMAGE_BYTES, effectiveSize)
+                    } else {
+                        ImageLoadOutcome.DecodeFailed(msg.ifBlank { null })
+                    }
+                } ?: return@withContext ImageLoadOutcome.NotFound
+                if (bytes.isEmpty()) return@withContext ImageLoadOutcome.DecodeFailed()
             } else {
-                val routedBytes = readRoutedContentBytes(location)
-                if (routedBytes != null) {
-                    bytes = routedBytes
+                val contentService = contentServices.firstOrNull { service -> service.supports(location) }
+                if (contentService != null) {
+                    when (val routed = readRoutedContentOutcome(contentService, location)) {
+                        is RoutedImageBytes.Ready -> bytes = routed.bytes
+                        is RoutedImageBytes.TooLarge -> {
+                            return@withContext ImageLoadOutcome.TooLarge(MAX_FILE_SIZE_BYTES, routed.actualBytes)
+                        }
+                        is RoutedImageBytes.Failed -> {
+                            return@withContext ImageLoadOutcome.DecodeFailed(routed.reason)
+                        }
+                    }
                 } else if (location.contains("://")) {
-                    return@withContext null
+                    return@withContext ImageLoadOutcome.UnsupportedLocation
                 } else {
                     val file = File(location)
-                    if (!file.exists() || !file.isFile) return@withContext null
-                    if (file.length() > MAX_FILE_SIZE_BYTES) return@withContext null
+                    if (!file.exists() || !file.isFile) return@withContext ImageLoadOutcome.NotFound
+                    val fileLen = file.length()
+                    if (fileLen > MAX_FILE_SIZE_BYTES) {
+                        return@withContext ImageLoadOutcome.TooLarge(MAX_FILE_SIZE_BYTES, fileLen)
+                    }
                     bytes = file.readBytes()
                 }
             }
 
             val composeBitmap = decodeAndDownscale(bytes, maxDimension)
             putCache(cacheKey, maxDimension, composeBitmap)
-            composeBitmap
+            ImageLoadOutcome.Loaded(composeBitmap)
         } catch (failure: CancellationException) {
             throw failure
         } catch (failure: Exception) {
             OnyxLogger.warn("JvmThumbnailService", "缩略图加载失败: $location", failure)
-            null
+            ImageLoadOutcome.DecodeFailed(failure.message)
         }
     }
 
     /**
-     * 通过统一内容服务读取远程图片字节。
-     *
-     * @param location 图片位置。
-     * @return 可解码图片字节；没有可路由内容服务或超过大小限制时返回 `null`。
+     * 通过统一内容服务读取远程图片字节并区分超限与读取失败。
      */
-    private suspend fun readRoutedContentBytes(location: String): ByteArray? {
-        val contentService = contentServices.firstOrNull { service -> service.supports(location) } ?: return null
-        val source = contentService.readFile(location.toSyntheticVFile()).getOrNull() ?: return null
+    private suspend fun readRoutedContentOutcome(
+        contentService: RoutableVfsContentService,
+        location: String,
+    ): RoutedImageBytes {
+        val source = contentService.readFile(location.toSyntheticVFile()).getOrElse { failure ->
+            return RoutedImageBytes.Failed(failure.message)
+        }
         val sourceSize = source.sizeBytes
-        if (sourceSize != null && sourceSize > MAX_FILE_SIZE_BYTES) return null
+        if (sourceSize != null && sourceSize > MAX_FILE_SIZE_BYTES) {
+            return RoutedImageBytes.TooLarge(sourceSize)
+        }
         val buffer = ByteArrayOutputStream()
         var readBytes = 0L
         return try {
@@ -254,10 +339,57 @@ internal class JvmThumbnailService(
                 readBytes += chunk.size
                 buffer.write(chunk)
             }
-            buffer.toByteArray()
+            RoutedImageBytes.Ready(buffer.toByteArray())
         } catch (_: ThumbnailContentTooLargeException) {
-            null
+            RoutedImageBytes.TooLarge(sourceSize)
         }
+    }
+
+    private sealed interface RoutedImageBytes {
+        data class Ready(val bytes: ByteArray) : RoutedImageBytes
+        data class TooLarge(val actualBytes: Long?) : RoutedImageBytes
+        data class Failed(val reason: String?) : RoutedImageBytes
+    }
+
+    /**
+     * 解析缩略图缓存版本指纹；当调用方未提供本地文件时间戳/大小时在 IO 线程自动补采，防止覆写后命中陈旧缓存。
+     */
+    private fun resolveVersionMetadata(
+        location: String,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): Pair<Long?, Long?> {
+        if (modifiedAtEpochMillis != null && sizeBytes != null) {
+            return modifiedAtEpochMillis to sizeBytes
+        }
+        if (location.contains("://")) {
+            return modifiedAtEpochMillis to sizeBytes
+        }
+        val file = File(location)
+        if (!file.exists() || !file.isFile) {
+            return modifiedAtEpochMillis to sizeBytes
+        }
+        return (modifiedAtEpochMillis ?: file.lastModified()) to (sizeBytes ?: file.length())
+    }
+
+    /** 构造包含位置、修改时间与字节大小的图片缩略图缓存键。 */
+    private fun buildThumbnailCacheKey(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): String {
+        return "$location#${modifiedAtEpochMillis ?: -1L}#${sizeBytes ?: -1L}@$maxDimension"
+    }
+
+    /** 构造包含位置、修改时间与字节大小的压缩包封面缓存键。 */
+    private fun buildArchiveThumbnailCacheKey(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): String {
+        return "archive:$location#${modifiedAtEpochMillis ?: -1L}#${sizeBytes ?: -1L}@$maxDimension"
     }
 
     /**
@@ -295,8 +427,15 @@ internal class JvmThumbnailService(
     override suspend fun loadArchiveThumbnail(
         location: String,
         maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
     ): ImageBitmap? = withContext(Dispatchers.IO) {
-        val cacheKey = "archive:$location@$maxDimension"
+        val (effectiveModified, effectiveSize) = resolveVersionMetadata(
+            location = location,
+            modifiedAtEpochMillis = modifiedAtEpochMillis,
+            sizeBytes = sizeBytes,
+        )
+        val cacheKey = buildArchiveThumbnailCacheKey(location, maxDimension, effectiveModified, effectiveSize)
         getCached(cacheKey, maxDimension)?.let { return@withContext it }
 
         return@withContext try {

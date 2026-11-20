@@ -37,6 +37,8 @@ internal data class PaneActions(
     val onOpenSettings: () -> Unit,
     val onShowQuickOpen: () -> Unit = {},
     val onShowSearchPanel: () -> Unit = {},
+    /** 切换右侧预览/检查器面板显示状态。 */
+    val onTogglePreviewPane: () -> Unit = {},
     val supportsContextMenuOpenWith: (VFile) -> Boolean,
     val onFileContextMenuCommand: (FileContextMenuCommand, List<VFile>) -> Unit,
     val onOpenTerminal: (String) -> Unit,

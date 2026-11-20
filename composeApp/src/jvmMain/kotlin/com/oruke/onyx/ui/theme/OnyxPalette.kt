@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -133,6 +134,54 @@ data class OnyxPalette(
  */
 internal fun contrastTextOn(background: Color): Color {
     return if (background.luminance() > 0.36f) Color(0xFF14171F) else Color.White
+}
+
+/**
+ * 将可能带透明度的前景/叠加层颜色合成到不透明底色后，再计算高对比度可读文字颜色。
+ *
+ * 适用于半透明文件标签背景、半透明选中色在明暗主题切换后的自动文字对比度保护。
+ *
+ * @param overlay 叠加层颜色（可含 Alpha）。
+ * @param base 底层实际表面色。
+ * @return 合成后背景上的高对比度文字色。
+ */
+internal fun contrastTextOnComposite(overlay: Color, base: Color): Color {
+    val resolvedBase = if (base.alpha < 1f) base.compositeOver(Color.White) else base
+    val composited = overlay.compositeOver(resolvedBase)
+    return contrastTextOn(composited)
+}
+
+/**
+ * 解析文件标签背景激活时应使用的主文本颜色：用户显式设置标签文字色时优先采用，否则按合成后的实际背景色自动计算对比文字色。
+ *
+ * @param labelBackgroundArgb 文件标签背景色 ARGB（可含 Alpha）。
+ * @param labelTextArgb 文件标签显式文字色 ARGB；为 null 时自动计算对比色。
+ * @param baseSurface 当前行或卡片底层表面色。
+ * @return 应使用的主文本颜色；若无标签背景与文字覆盖则返回 null。
+ */
+internal fun resolveLabelAutoPrimaryTextColor(
+    labelBackgroundArgb: Long?,
+    labelTextArgb: Long?,
+    baseSurface: Color,
+): Color? {
+    if (labelTextArgb != null) return Color(labelTextArgb)
+    if (labelBackgroundArgb != null) return contrastTextOnComposite(Color(labelBackgroundArgb), baseSurface)
+    return null
+}
+
+/**
+ * 解析文件标签背景激活时应使用的次要元数据文本颜色。
+ *
+ * @param labelBackgroundArgb 文件标签背景色 ARGB（可含 Alpha）。
+ * @param baseSurface 当前行底层表面色。
+ * @return 合成背景上的可读次要文字色；若无标签背景则返回 null。
+ */
+internal fun resolveLabelAutoSecondaryTextColor(
+    labelBackgroundArgb: Long?,
+    baseSurface: Color,
+): Color? {
+    val bg = labelBackgroundArgb ?: return null
+    return contrastTextOnComposite(Color(bg), baseSurface).copy(alpha = 0.78f)
 }
 
 val LocalOnyxPalette = compositionLocalOf<OnyxPalette> {
@@ -373,12 +422,13 @@ private fun midnightOledDarkPalette() = defaultDarkPalette().copy(
 
 @Suppress("MagicNumber")
 private fun midnightOledLightPalette() = defaultLightPalette().copy(
-    appBackground = Color(0xFFF8FAFC),
-    titleBarBackground = Color(0xFFFFFFFF),
+    appBackground = Color(0xFFF1F5F9),
+    titleBarBackground = Color(0xFFE2E8F0),
     surface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFFF1F5F9),
-    outline = Color(0xFFCBD5E1),
-    outlineVariant = Color(0xFFE2E8F0),
+    surfaceVariant = Color(0xFFE9EFF6),
+    headerBackground = Color(0xFFE2E8F0),
+    outline = Color(0xFF94A3B8),
+    outlineVariant = Color(0xFFCBD5E1),
     foreground = Color(0xFF0F172A),
     mutedForeground = Color(0xFF475569),
     accent = Color(0xFF0284C7),

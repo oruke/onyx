@@ -64,15 +64,27 @@ class JvmVfsFileContentSearchService(
             }
             val output = ByteArrayOutputStream()
             var readBytes = 0L
+            var sniffedBytes = 0
             try {
                 source.chunks.collect { chunk ->
                     if (readBytes + chunk.size > maxBytes) {
                         throw ContentSearchLimitExceededException()
                     }
+                    if (sniffedBytes < BINARY_SNIFF_LIMIT_BYTES && chunk.isNotEmpty()) {
+                        val toInspect = minOf(chunk.size, BINARY_SNIFF_LIMIT_BYTES - sniffedBytes)
+                        for (index in 0 until toInspect) {
+                            if (chunk[index] == 0.toByte()) {
+                                throw BinaryFileSkippedException()
+                            }
+                        }
+                        sniffedBytes += toInspect
+                    }
                     readBytes += chunk.size
                     output.write(chunk)
                 }
             } catch (_: ContentSearchLimitExceededException) {
+                return@runCatching false
+            } catch (_: BinaryFileSkippedException) {
                 return@runCatching false
             }
             output.toString(Charsets.UTF_8).lowercase().contains(query)
@@ -83,4 +95,14 @@ class JvmVfsFileContentSearchService(
      * 内容搜索读取超过单文件上限时使用的内部中断信号。
      */
     private class ContentSearchLimitExceededException : RuntimeException()
+
+    /**
+     * 探测到二进制 NUL 字节后提前跳过文件读取的内部中断信号。
+     */
+    private class BinaryFileSkippedException : RuntimeException()
+
+    private companion object {
+        /** 二进制 NUL 字节嗅探窗口上限（前 8 KB）。 */
+        private const val BINARY_SNIFF_LIMIT_BYTES = 8 * 1024
+    }
 }

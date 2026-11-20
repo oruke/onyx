@@ -2,6 +2,7 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.HorizontalScrollbar
 import androidx.compose.foundation.VerticalScrollbar
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -52,6 +53,13 @@ internal fun GalleryEntriesGrid(
             inlineEdit?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     val entryIds = remember(ready.entries) { ready.entries.map { it.id } }
     val gridState = rememberPaneGridViewport(model, actions, entryIds, createInlineEntry)
+    androidx.compose.runtime.DisposableEffect(selection, gridState) {
+        val action: suspend (Float) -> Float = { delta -> gridState.scrollBy(delta) }
+        selection.scrollByAction = action
+        onDispose {
+            if (selection.scrollByAction === action) selection.scrollByAction = null
+        }
+    }
     val canScrollVertically = gridState.canScrollForward || gridState.canScrollBackward
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val fallbackColumns = ((maxWidth - 8.dp) / model.galleryItemSizeDp.dp).toInt().coerceAtLeast(1)
@@ -135,6 +143,13 @@ internal fun DetailsEntriesList(
             model.inlineEditState?.mode == PaneInlineEditMode.CREATE_DIRECTORY
     val entryIds = remember(flattenedEntries) { flattenedEntries.map { it.entry.id } }
     val listState = rememberPaneListViewport(model, actions, entryIds, createInlineEntry, horizontalScrollState)
+    androidx.compose.runtime.DisposableEffect(selection, listState) {
+        val action: suspend (Float) -> Float = { delta -> listState.scrollBy(delta) }
+        selection.scrollByAction = action
+        onDispose {
+            if (selection.scrollByAction === action) selection.scrollByAction = null
+        }
+    }
     val canScrollHorizontally = horizontalScrollState.canScrollForward || horizontalScrollState.canScrollBackward
     val canScrollVertically = listState.canScrollForward || listState.canScrollBackward
     LaunchedEffect(listState) {

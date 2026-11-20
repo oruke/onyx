@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -62,6 +63,8 @@ internal data class QuickOpenPanelActions(
     val onOpenResult: (VFile) -> Unit,
     /** 在结果所在目录中定位结果的回调。 */
     val onOpenResultInFolder: (VFile) -> Unit,
+    /** 打开最近访问位置（目录路径）的回调。 */
+    val onOpenLocation: (String) -> Unit = {},
 )
 
 /**
@@ -85,6 +88,8 @@ internal data class QuickOpenContextMenuRequest(
  * @param onOpenResult 打开选中结果的回调。
  * @param onOpenResultInFolder 在结果所在目录中定位结果的回调。
  * @param onSelectedIndexChange 将键盘或鼠标选择同步到当前快速打开会话的回调。
+ * @param recentLocations 最近打开的位置列表，查询为空时作为快捷跳转入口展示。
+ * @param onOpenLocation 打开指定最近位置的回调。
  * @param modifier 应用于全屏浮层的修饰符。
  */
 @Composable
@@ -97,11 +102,25 @@ internal fun QuickOpenPanel(
     onOpenResult: (VFile) -> Unit,
     onOpenResultInFolder: (VFile) -> Unit,
     onSelectedIndexChange: (Int) -> Unit,
+    recentLocations: List<String> = emptyList(),
+    onOpenLocation: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
+    val recentListState = rememberLazyListState()
     val selectedIndex = state.selectedIndex
+    val distinctRecentLocations = remember(recentLocations) {
+        recentLocations.asSequence().map(String::trim).filter(String::isNotBlank).distinct().toList()
+    }
+    var recentSelectedIndex by remember(state.visible) {
+        mutableIntStateOf(QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX)
+    }
+    val clampedRecentIndex = if (distinctRecentLocations.isEmpty()) {
+        QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX
+    } else {
+        recentSelectedIndex.coerceIn(QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX, distinctRecentLocations.lastIndex)
+    }
     var contextMenuRequest by remember { mutableStateOf<QuickOpenContextMenuRequest?>(null) }
     var lastTriggeredQuery by remember { mutableStateOf<String?>(null) }
     val executeSearchOnce = {
@@ -117,10 +136,17 @@ internal fun QuickOpenPanel(
         onClose = onClose,
         onOpenResult = onOpenResult,
         onOpenResultInFolder = onOpenResultInFolder,
+        onOpenLocation = onOpenLocation,
     )
 
     RequestQuickOpenInputFocus(focusRequester)
     KeepQuickOpenSelectionVisible(selectedIndex, state.results, listState)
+    KeepQuickOpenIndexVisible(
+        selectedIndex = clampedRecentIndex,
+        itemCount = distinctRecentLocations.size,
+        firstItemKey = distinctRecentLocations.firstOrNull(),
+        listState = recentListState,
+    )
     ExecuteQuickOpenSearchAfterQuerySettles(
         query = state.query,
         isRunning = state.status == SearchStatus.RUNNING,
@@ -146,6 +172,10 @@ internal fun QuickOpenPanel(
                 onSelectedIndexChange(index)
                 contextMenuRequest = QuickOpenContextMenuRequest(file, offset)
             },
+            recentLocations = distinctRecentLocations,
+            recentListState = recentListState,
+            recentSelectedIndex = clampedRecentIndex,
+            onRecentSelectedIndexChange = { recentSelectedIndex = it },
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(top = 64.dp),

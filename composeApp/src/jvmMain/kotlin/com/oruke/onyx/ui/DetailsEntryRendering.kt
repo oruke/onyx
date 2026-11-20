@@ -30,12 +30,14 @@ import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.ui.theme.FileDropZone
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 import com.oruke.onyx.ui.theme.LocalOnyxPalette
-import com.oruke.onyx.ui.theme.contrastTextOn
+import com.oruke.onyx.ui.theme.contrastTextOnComposite
 import com.oruke.onyx.ui.theme.detailsColumnWidth
 import com.oruke.onyx.ui.theme.fileDropZoneKey
 import com.oruke.onyx.ui.theme.fileIconKey
 import com.oruke.onyx.ui.theme.formatFileSize
 import com.oruke.onyx.ui.theme.formatModifiedTime
+import com.oruke.onyx.ui.theme.resolveLabelAutoPrimaryTextColor
+import com.oruke.onyx.ui.theme.resolveLabelAutoSecondaryTextColor
 import com.oruke.onyx.ui.theme.visibleDetailsColumns
 import com.oruke.onyx.ui.theme.windowBounds
 import onyx.composeapp.generated.resources.Res
@@ -110,6 +112,16 @@ internal fun entryRowBackground(
 }
 
 /**
+ * 判断当前详情行是否正以文件标签背景色作为实际行底色展示（未被拖放高亮、选中态或悬停态覆盖）。
+ */
+private fun EntryRowState.isLabelBackgroundVisible(hovered: Boolean): Boolean {
+    return fileDropTarget?.directoryEntryId != entry.id &&
+        !selected &&
+        !hovered &&
+        labelStyle?.backgroundColorArgb != null
+}
+
+/**
  * 按当前列顺序显示详情行全部单元格。
  *
  * @param state 详情行显示状态。
@@ -117,6 +129,7 @@ internal fun entryRowBackground(
  * @param onNameCoordinates 上报名称区域坐标。
  * @param onExpandCoordinates 上报展开箭头坐标。
  * @param onRenameLabelCoordinates 上报纯文件名文本标签坐标（用于精确限定慢速点击重命名命中区）。
+ * @param hovered 当前鼠标是否悬停在该行上。
  */
 @Composable
 internal fun EntryRowCells(
@@ -125,7 +138,13 @@ internal fun EntryRowCells(
     onNameCoordinates: (LayoutCoordinates) -> Unit,
     onExpandCoordinates: (LayoutCoordinates) -> Unit,
     onRenameLabelCoordinates: (LayoutCoordinates) -> Unit = {},
+    hovered: Boolean = false,
 ) {
+    val activeLabelBackgroundArgb = if (state.isLabelBackgroundVisible(hovered)) {
+        state.labelStyle?.backgroundColorArgb
+    } else {
+        null
+    }
     visibleDetailsColumns(state.columns, state.hiddenColumns).forEach { column ->
         val width = detailsColumnWidth(state.columnWidths, column).dp
         if (column == DetailsColumn.NAME) {
@@ -136,6 +155,7 @@ internal fun EntryRowCells(
                 onNameCoordinates = onNameCoordinates,
                 onExpandCoordinates = onExpandCoordinates,
                 onRenameLabelCoordinates = onRenameLabelCoordinates,
+                hovered = hovered,
             )
         } else {
             EntryMetadataCell(
@@ -144,6 +164,7 @@ internal fun EntryRowCells(
                 width = width,
                 selected = state.selected,
                 paneActive = state.paneActive,
+                activeLabelBackgroundArgb = activeLabelBackgroundArgb,
             )
         }
     }
@@ -158,6 +179,7 @@ internal fun EntryRowCells(
  * @param onNameCoordinates 上报名称区域坐标。
  * @param onExpandCoordinates 上报展开箭头坐标。
  * @param onRenameLabelCoordinates 上报纯文件名文本标签坐标。
+ * @param hovered 当前鼠标是否悬停在该行上。
  */
 @Composable
 internal fun EntryNameCell(
@@ -167,6 +189,7 @@ internal fun EntryNameCell(
     onNameCoordinates: (LayoutCoordinates) -> Unit,
     onExpandCoordinates: (LayoutCoordinates) -> Unit,
     onRenameLabelCoordinates: (LayoutCoordinates) -> Unit = {},
+    hovered: Boolean = false,
 ) {
     Row(modifier = Modifier.width(width), verticalAlignment = Alignment.CenterVertically) {
         if (state.depth > 0) Spacer(Modifier.width((state.depth * INLINE_TREE_DEPTH_INDENT_DP).dp))
@@ -190,6 +213,7 @@ internal fun EntryNameCell(
             actions = actions,
             onNameCoordinates = onNameCoordinates,
             onRenameLabelCoordinates = onRenameLabelCoordinates,
+            hovered = hovered,
             modifier = Modifier.weight(1f, fill = false),
         )
     }
@@ -202,6 +226,7 @@ internal fun EntryNameCell(
  * @param actions 详情行交互回调。
  * @param onNameCoordinates 上报名称区域坐标。
  * @param onRenameLabelCoordinates 上报纯文件名文本标签坐标。
+ * @param hovered 当前鼠标是否悬停在该行上。
  * @param modifier 名称内容布局修饰符。
  */
 @Composable
@@ -210,8 +235,17 @@ private fun EntryNameContent(
     actions: EntryRowActions,
     onNameCoordinates: (LayoutCoordinates) -> Unit,
     onRenameLabelCoordinates: (LayoutCoordinates) -> Unit,
+    hovered: Boolean,
     modifier: Modifier,
 ) {
+    val palette = LocalOnyxPalette.current
+    val appearance = LocalOnyxAppearance.current
+    val baseSurface = appearance.fileListBackground ?: palette.surface
+    val activeLabelBackgroundArgb = if (state.isLabelBackgroundVisible(hovered)) {
+        state.labelStyle?.backgroundColorArgb
+    } else {
+        null
+    }
     val currentRemoveDropZone = rememberUpdatedState(actions.onFileDropZoneRemove)
     val dropZoneKey = if (state.entry.isBrowsableDirectory()) {
         fileDropZoneKey(state.paneId, state.entry.id, state.entry.location)
@@ -244,30 +278,42 @@ private fun EntryNameContent(
     ) {
         OnyxFileIcon(
             entry = state.entry,
-            size = LocalOnyxAppearance.current.entryIconSize,
+            size = appearance.entryIconSize,
         )
+        val nameColor = resolveLabelAutoPrimaryTextColor(
+            labelBackgroundArgb = activeLabelBackgroundArgb,
+            labelTextArgb = state.labelStyle?.textColorArgb,
+            baseSurface = baseSurface,
+        ) ?: appearance.fileNameColor ?: palette.foreground
         Text(
-            text = state.entry.displayFileName(LocalOnyxAppearance.current.showFileExtensions),
+            text = state.entry.displayFileName(appearance.showFileExtensions),
             modifier = Modifier.onGloballyPositioned(onRenameLabelCoordinates),
             fontWeight = if (state.entry.kind == VFileKind.DIRECTORY) FontWeight.Medium else FontWeight.Normal,
-            fontSize = LocalOnyxAppearance.current.listFontSize,
-            color = state.labelStyle?.textColorArgb?.let(::Color)
-                ?: LocalOnyxAppearance.current.fileNameColor ?: LocalOnyxPalette.current.foreground,
+            fontSize = appearance.listFontSize,
+            color = nameColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
         val originalParent = state.entry.parentLocation
         if (isTrashItemLocation(state.entry.location) && !originalParent.isNullOrBlank()) {
-            val palette = LocalOnyxPalette.current
+            val secondaryColor = when {
+                state.selected && state.paneActive -> {
+                    val selBg = appearance.selectionBackground ?: palette.selectionBackground
+                    contrastTextOnComposite(selBg, baseSurface).copy(alpha = 0.88f)
+                }
+
+                activeLabelBackgroundArgb != null -> {
+                    resolveLabelAutoSecondaryTextColor(activeLabelBackgroundArgb, baseSurface)
+                        ?: palette.mutedForeground
+                }
+
+                else -> palette.mutedForeground
+            }
             Text(
                 text = "· $originalParent",
                 modifier = Modifier.weight(1f, fill = false),
-                fontSize = LocalOnyxAppearance.current.listFontSize,
-                color = if (state.selected && state.paneActive) {
-                    contrastTextOn(palette.selectionBackground).copy(alpha = 0.88f)
-                } else {
-                    palette.mutedForeground
-                },
+                fontSize = appearance.listFontSize,
+                color = secondaryColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -293,13 +339,14 @@ internal fun VFile.displayFileName(showExtensions: Boolean): String {
 /**
  * 显示大小、修改时间或类型元数据单元格。
  *
- * 活动选中行根据 `selectionBackground` 亮度自适应提高次要文字对比度，避免深色选中蓝底上灰字发虚。
+ * 活动选中行与自定义文件标签背景行均按合成后的实际背景亮度自适应调整次要文字对比度，避免文字发虚。
  *
  * @param column 当前元数据列。
  * @param entry 文件条目。
  * @param width 列宽度。
  * @param selected 所属行当前是否被选中。
  * @param paneActive 所属面板当前是否处于激活态。
+ * @param activeLabelBackgroundArgb 当前生效的文件标签背景色 ARGB；无标签背景时为 null。
  */
 @Composable
 internal fun EntryMetadataCell(
@@ -308,6 +355,7 @@ internal fun EntryMetadataCell(
     width: Dp,
     selected: Boolean = false,
     paneActive: Boolean = true,
+    activeLabelBackgroundArgb: Long? = null,
 ) {
     val text = when (column) {
         DetailsColumn.SIZE -> formatFileSize(entry.sizeBytes)
@@ -321,15 +369,25 @@ internal fun EntryMetadataCell(
         DetailsColumn.NAME -> return
     }
     val palette = LocalOnyxPalette.current
-    val textColor = if (selected && paneActive) {
-        contrastTextOn(palette.selectionBackground).copy(alpha = 0.88f)
-    } else {
-        palette.mutedForeground
+    val appearance = LocalOnyxAppearance.current
+    val baseSurface = appearance.fileListBackground ?: palette.surface
+    val textColor = when {
+        selected && paneActive -> {
+            val selBg = appearance.selectionBackground ?: palette.selectionBackground
+            contrastTextOnComposite(selBg, baseSurface).copy(alpha = 0.88f)
+        }
+
+        activeLabelBackgroundArgb != null -> {
+            resolveLabelAutoSecondaryTextColor(activeLabelBackgroundArgb, baseSurface)
+                ?: palette.mutedForeground
+        }
+
+        else -> palette.mutedForeground
     }
     Text(
         text = text,
         modifier = Modifier.width(width),
-        fontSize = LocalOnyxAppearance.current.listFontSize,
+        fontSize = appearance.listFontSize,
         color = textColor,
         textAlign = TextAlign.Start,
         maxLines = 1,

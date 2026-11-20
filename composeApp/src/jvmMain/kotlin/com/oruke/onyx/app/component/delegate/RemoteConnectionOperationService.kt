@@ -131,14 +131,23 @@ internal class RemoteConnectionOperationService(
         username: String,
     ): Result<RemoteCredentialSaveResult> = runSuspendCatching {
         withContext(Dispatchers.IO) {
-            remoteAuthStore.put(
-                protocol = dialog.protocol,
-                location = dialog.location,
-                authContext = VfsAuthContext.UsernamePassword(
+            val authContext = if (dialog.protocol == com.oruke.onyx.vfs.api.VfsProtocol.S3) {
+                VfsAuthContext.AwsCredentials(
+                    accessKeyId = username,
+                    secretAccessKey = dialog.draft.password,
+                    sessionToken = dialog.draft.domain.trim().ifBlank { null },
+                )
+            } else {
+                VfsAuthContext.UsernamePassword(
                     username = username,
                     password = dialog.draft.password,
                     domain = dialog.draft.domain.trim().ifBlank { null },
-                ),
+                )
+            }
+            remoteAuthStore.put(
+                protocol = dialog.protocol,
+                location = dialog.location,
+                authContext = authContext,
                 savePolicy = dialog.draft.savePolicy,
             )
         }

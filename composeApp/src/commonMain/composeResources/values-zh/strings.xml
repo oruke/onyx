@@ -787,4 +787,23 @@
     <string name="label_remote_protocol_short_s3">S3</string>
     <string name="label_breadcrumb_collapsed_ancestors">展开已折叠的上级目录</string>
     <string name="msg_trash_item_unavailable">回收站中已找不到该项目：%1$s</string>
+    <string name="label_preview_tab_preview">预览</string>
+    <string name="label_preview_tab_inspector">检查器</string>
+    <string name="label_copied_brief">已复制</string>
+    <string name="label_image_viewer_close">关闭 (Esc)</string>
+    <string name="label_image_viewer_error_too_large">图片体积超过 %1$s 查看上限。</string>
+    <string name="label_image_viewer_error_not_found">找不到该图片文件，可能已被移动或删除。</string>
+    <string name="label_image_viewer_error_unsupported">当前位置协议暂不支持查看器直接读取。</string>
+    <string name="label_image_viewer_error_decode_failed">无法解码该图片，文件可能已损坏或格式不受支持。</string>
+    <string name="action_open_externally">用系统默认应用打开</string>
+    <string name="action_close_other_tabs">关闭其他标签</string>
+    <string name="action_close_tabs_to_right">关闭右侧标签</string>
+    <string name="action_add_to_favorites">加入收藏</string>
+    <string name="action_remove_from_favorites">取消收藏</string>
+    <string name="label_task_errors_truncated_footer">仅展示前 %1$d 条错误（共 %2$d 条），完整清单请点击「复制全部错误」。</string>
+    <string name="label_quick_open_recent_locations">最近访问位置</string>
+    <string name="label_search_size_custom_min_mb">最小 MB</string>
+    <string name="label_search_size_custom_max_mb">最大 MB</string>
+    <string name="label_remote_credentials_s3_session_token">会话令牌（可选）</string>
+    <string name="action_open_remote_connection_settings">网络位置设置</string>
 </resources>

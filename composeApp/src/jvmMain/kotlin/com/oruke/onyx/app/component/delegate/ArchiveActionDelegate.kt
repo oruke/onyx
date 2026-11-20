@@ -55,14 +55,16 @@ internal class ArchiveActionDelegate(
     private val fileCommandService: FileCommandService? = null,
     private val fileRepository: FileRepository? = null,
 ) {
-    /** 密码排队请求记录。 */
-    private data class PendingPasswordRequest(
+    /** 密码排队请求记录（所有可变字段仅在持有 [passwordQueueLock] 时读写）。 */
+    private class PendingPasswordRequest(
         val id: String,
         val taskId: String?,
         val archivePath: String,
         val archiveName: String,
-        val deferred: CompletableDeferred<String>,
-        val error: I18nMessage?,
+        var deferred: CompletableDeferred<String>,
+        var error: I18nMessage? = null,
+        var attempt: Int = 0,
+        var verifying: Boolean = false,
     )
 
     /** 多任务并发密码请求队列同步锁。 */
@@ -323,10 +325,14 @@ internal class ArchiveActionDelegate(
      * @return 无返回值。
      */
     fun submitArchivePassword(password: String) {
-        val current = synchronized(passwordQueueLock) {
-            passwordQueue.firstOrNull()
+        val targetDeferred = synchronized(passwordQueueLock) {
+            val head = passwordQueue.firstOrNull() ?: return
+            if (head.verifying) return
+            head.verifying = true
+            syncPasswordDialogLocked()
+            head.deferred
         }
-        current?.deferred?.complete(password)
+        targetDeferred.complete(password)
     }
 
     /**
@@ -401,41 +407,58 @@ internal class ArchiveActionDelegate(
         archivePath: String,
         archiveName: String,
     ): String {
-        var errorMsg: I18nMessage? = null
-        while (true) {
-            kotlin.coroutines.coroutineContext.ensureActive()
-            if (archiveService.hasRememberedPassword(archivePath)) {
-                return archiveService.rememberedPasswordOrNull(archivePath).orEmpty()
-            }
-            val requestId = UUID.randomUUID().toString()
-            val deferred = CompletableDeferred<String>()
-            val pending = PendingPasswordRequest(
-                id = requestId,
-                taskId = taskId,
-                archivePath = archivePath,
-                archiveName = archiveName,
-                deferred = deferred,
-                error = errorMsg,
-            )
-            synchronized(passwordQueueLock) {
-                passwordQueue.addLast(pending)
-                syncPasswordDialogLocked()
-            }
-            val candidatePassword = try {
-                deferred.await()
-            } finally {
-                synchronized(passwordQueueLock) {
-                    val removed = passwordQueue.removeAll { it.id == requestId }
-                    if (removed) {
-                        syncPasswordDialogLocked()
+        val requestId = UUID.randomUUID().toString()
+        val pending = PendingPasswordRequest(
+            id = requestId,
+            taskId = taskId,
+            archivePath = archivePath,
+            archiveName = archiveName,
+            deferred = CompletableDeferred(),
+        )
+        var enqueued = false
+        try {
+            while (true) {
+                kotlin.coroutines.coroutineContext.ensureActive()
+                if (archiveService.hasRememberedPassword(archivePath)) {
+                    return archiveService.rememberedPasswordOrNull(archivePath).orEmpty()
+                }
+                val currentDeferred = synchronized(passwordQueueLock) {
+                    if (!enqueued) {
+                        passwordQueue.addLast(pending)
+                        enqueued = true
                     }
+                    syncPasswordDialogLocked()
+                    pending.deferred
+                }
+                val candidatePassword = currentDeferred.await()
+                val valid = archiveService.verifyAndRememberPassword(archivePath, candidatePassword)
+                if (valid) {
+                    val stillActive = synchronized(passwordQueueLock) {
+                        passwordQueue.any { it.id == requestId }
+                    }
+                    if (!stillActive) {
+                        throw CancellationException("Archive password request cancelled during verification")
+                    }
+                    return candidatePassword
+                }
+                synchronized(passwordQueueLock) {
+                    // 若在校验期间请求已被外部取消移出队列，直接中止循环。
+                    if (passwordQueue.none { it.id == requestId }) {
+                        throw CancellationException("Archive password request cancelled")
+                    }
+                    pending.error = I18nMessage(MessageKey.MSG_ARCHIVE_PASSWORD_INVALID)
+                    pending.attempt += 1
+                    pending.verifying = false
+                    pending.deferred = CompletableDeferred()
+                    syncPasswordDialogLocked()
                 }
             }
-            val valid = archiveService.verifyAndRememberPassword(archivePath, candidatePassword)
-            if (valid) {
-                return candidatePassword
-            } else {
-                errorMsg = I18nMessage(MessageKey.MSG_ARCHIVE_PASSWORD_INVALID)
+        } finally {
+            synchronized(passwordQueueLock) {
+                val removed = passwordQueue.removeAll { it.id == requestId }
+                if (removed) {
+                    syncPasswordDialogLocked()
+                }
             }
         }
     }
@@ -447,6 +470,9 @@ internal class ArchiveActionDelegate(
             dialogState.value = RootDialogState.ArchivePassword(
                 archiveName = head.archiveName,
                 error = head.error,
+                attempt = head.attempt,
+                verifying = head.verifying,
+                requestId = head.id,
             )
         } else if (dialogState.value is RootDialogState.ArchivePassword) {
             dialogState.value = null

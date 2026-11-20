@@ -518,6 +518,30 @@ internal class DefaultRootComponent(
         return archiveInfoService.readInfo(request)
     }
 
+    override fun peekCachedThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? = thumbnailService.peekCachedThumbnail(
+        location = location,
+        maxDimension = maxDimension,
+        modifiedAtEpochMillis = modifiedAtEpochMillis,
+        sizeBytes = sizeBytes,
+    )
+
+    override fun peekCachedArchiveThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? = thumbnailService.peekCachedArchiveThumbnail(
+        location = location,
+        maxDimension = maxDimension,
+        modifiedAtEpochMillis = modifiedAtEpochMillis,
+        sizeBytes = sizeBytes,
+    )
+
     /**
      * @param location 文件位置。
      * @param maxDimension 最大像素边长。
@@ -527,6 +551,20 @@ internal class DefaultRootComponent(
         return thumbnailService.loadThumbnail(location, maxDimension)
     }
 
+    override suspend fun loadThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? {
+        return thumbnailService.loadThumbnail(
+            location = location,
+            maxDimension = maxDimension,
+            modifiedAtEpochMillis = modifiedAtEpochMillis,
+            sizeBytes = sizeBytes,
+        )
+    }
+
     /**
      * @param location 压缩包位置。
      * @param maxDimension 最大像素边长。
@@ -534,6 +572,27 @@ internal class DefaultRootComponent(
      */
     override suspend fun loadArchiveThumbnail(location: String, maxDimension: Int): ImageBitmap? {
         return thumbnailService.loadArchiveThumbnail(location, maxDimension)
+    }
+
+    override suspend fun loadArchiveThumbnail(
+        location: String,
+        maxDimension: Int,
+        modifiedAtEpochMillis: Long?,
+        sizeBytes: Long?,
+    ): ImageBitmap? {
+        return thumbnailService.loadArchiveThumbnail(
+            location = location,
+            maxDimension = maxDimension,
+            modifiedAtEpochMillis = modifiedAtEpochMillis,
+            sizeBytes = sizeBytes,
+        )
+    }
+
+    override suspend fun loadViewerImage(
+        entry: VFile,
+        maxDimension: Int,
+    ): com.oruke.onyx.app.filesystem.ImageLoadOutcome {
+        return thumbnailService.loadViewerImage(entry, maxDimension)
     }
 
     /** @param entry 图片条目。 @return 图片像素尺寸。 */

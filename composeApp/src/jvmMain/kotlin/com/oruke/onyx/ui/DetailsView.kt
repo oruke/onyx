@@ -299,31 +299,60 @@ internal class PaneRubberBandState {
     /** 空白区域点击与双击返回上级状态机。 */
     val blankClickController = BlankAreaClickController()
 
-    /** 结束框选并清理起止点。 */
+    /** 框选开始以来列表/网格纵向已自动滚动的累计像素位移。 */
+    var cumulativeScrollY by mutableStateOf(0f)
+
+    /** 框选过程中曾进入视口的条目的内容坐标系边界快照，防止边缘滚屏后丢失已滚出视口的命中项。 */
+    private val seenItemBoundsInContent = mutableMapOf<String, androidx.compose.ui.geometry.Rect>()
+
+    /** 由 DetailsEntriesList / GalleryEntriesGrid 注册的纵向滚动驱动回调。 */
+    var scrollByAction: (suspend (Float) -> Float)? = null
+
+    /** 重置本轮框选的累计自动滚屏偏移与历史条目边界快照，防止异常中断后残留幽灵命中项。 */
+    fun resetRubberBandScrollTracking() {
+        cumulativeScrollY = 0f
+        seenItemBoundsInContent.clear()
+    }
+
+    /** 结束框选并清理起止点与累计滚屏缓存。 */
     fun finishRubberBand() {
         active = false
         start = null
         end = null
+        resetRubberBandScrollTracking()
+    }
+
+    /** 框选边缘自动滚屏消费像素后同步修正框选起点，使起点始终锚定在原始内容位置。 */
+    fun onAutoScrolled(consumedY: Float) {
+        if (consumedY == 0f) return
+        cumulativeScrollY += consumedY
+        start = start?.let { origin -> origin.copy(y = origin.y - consumedY) }
     }
 
     /**
-     * 计算当前框选矩形命中的条目标识。
+     * 计算当前框选矩形命中的条目标识（在内容坐标系下结合已滚动出视口的快照边界计算）。
      *
-     * @param current 当前框选终点。
+     * @param current 当前框选终点（容器局部坐标）。
      * @return 与框选矩形相交的条目标识。
      */
     fun hitEntryIds(current: androidx.compose.ui.geometry.Offset): Set<String> {
         val origin = start ?: return emptySet()
         val container = containerCoordinates ?: return emptySet()
-        val selectionRect = androidx.compose.ui.geometry.Rect(
+        val scrollOffset = cumulativeScrollY
+        itemCoordinates.forEach { (id, coordinates) ->
+            if (coordinates.isAttached) {
+                val localBox = container.localBoundingBoxOf(coordinates, clipBounds = false)
+                seenItemBoundsInContent[id] = localBox.translate(0f, scrollOffset)
+            }
+        }
+        val selectionRectInContent = androidx.compose.ui.geometry.Rect(
             left = minOf(origin.x, current.x),
-            top = minOf(origin.y, current.y),
+            top = minOf(origin.y + scrollOffset, current.y + scrollOffset),
             right = maxOf(origin.x, current.x),
-            bottom = maxOf(origin.y, current.y),
+            bottom = maxOf(origin.y + scrollOffset, current.y + scrollOffset),
         )
-        return itemCoordinates.filter { (_, coordinates) ->
-            coordinates.isAttached &&
-                    container.localBoundingBoxOf(coordinates, clipBounds = false).overlaps(selectionRect)
+        return seenItemBoundsInContent.filterValues { contentBox ->
+            contentBox.overlaps(selectionRectInContent)
         }.keys
     }
 
@@ -395,6 +424,8 @@ internal fun InlineEditEntryRow(
     selectNameWithoutExtension: Boolean = true,
     hiddenColumns: Set<DetailsColumn> = emptySet(),
     minRowWidth: Dp = Dp.Unspecified,
+    depth: Int = 0,
+    reserveExpanderSlot: Boolean = true,
 ) {
     val focusRequester = remember { FocusRequester() }
     var hasFocused by remember { mutableStateOf(false) }
@@ -455,6 +486,12 @@ internal fun InlineEditEntryRow(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        if (depth > 0) {
+                            Spacer(modifier = Modifier.width((depth * 20).dp))
+                        }
+                        if (reserveExpanderSlot) {
+                            Box(modifier = Modifier.size(16.dp))
+                        }
                         Icon(key = iconKey, contentDescription = null)
                         BasicTextField(
                             value = fieldValue,
@@ -520,6 +557,8 @@ internal fun DetailsHeader(
     val borderColor = palette.outlineVariant
     val currentOnActivate = rememberUpdatedState(onActivate)
     val visibleColumns = remember(columns, hiddenColumns) { visibleDetailsColumns(columns, hiddenColumns) }
+    var headerCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var columnMenuAnchor by remember { mutableStateOf<IntOffset?>(null) }
     var showColumnMenu by remember { mutableStateOf(false) }
 
     Box(
@@ -527,6 +566,7 @@ internal fun DetailsHeader(
             .fillMaxWidth()
             .height(headerHeight)
             .background(palette.headerBackground)
+            .onGloballyPositioned { headerCoordinates = it }
             .drawBehind {
                 val strokePx = 1.dp.toPx()
                 val y = size.height - strokePx / 2f
@@ -541,16 +581,19 @@ internal fun DetailsHeader(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { currentOnActivate.value() },
-                    onLongPress = {
+                    onLongPress = { offset ->
                         currentOnActivate.value()
+                        columnMenuAnchor = headerCoordinates?.localToWindow(offset)?.toIntOffset()
                         showColumnMenu = true
                     },
                 )
             }
             .onPointerEvent(PointerEventType.Press) {
                 currentOnActivate.value()
-                // 右键点击打开列可见性菜单
+                // 右键点击按指针窗口坐标打开列可见性菜单
                 if (it.buttons.isSecondaryPressed) {
+                    val pointerPos = it.changes.firstOrNull()?.position ?: androidx.compose.ui.geometry.Offset.Zero
+                    columnMenuAnchor = headerCoordinates?.localToWindow(pointerPos)?.toIntOffset()
                     showColumnMenu = true
                 }
             },
@@ -611,6 +654,7 @@ internal fun DetailsHeader(
 
         DetailsColumnVisibilityMenu(
             visible = showColumnMenu,
+            anchorWindowOffset = columnMenuAnchor,
             columns = columns,
             hiddenColumns = hiddenColumns,
             onDismiss = { showColumnMenu = false },
@@ -620,9 +664,10 @@ internal fun DetailsHeader(
 }
 
 /**
- * 渲染明细列可见性弹出菜单。
+ * 渲染明细列可见性弹出菜单，优先按指针窗口坐标锚定并自动钳位在窗口边界内。
  *
  * @param visible 是否展示菜单。
+ * @param anchorWindowOffset 触发时的窗口坐标；为空时回退左上角。
  * @param columns 全部明细列。
  * @param hiddenColumns 当前隐藏列。
  * @param onDismiss 关闭菜单回调。
@@ -631,13 +676,35 @@ internal fun DetailsHeader(
 @Composable
 private fun DetailsColumnVisibilityMenu(
     visible: Boolean,
+    anchorWindowOffset: IntOffset?,
     columns: List<DetailsColumn>,
     hiddenColumns: Set<DetailsColumn>,
     onDismiss: () -> Unit,
     onToggleColumnVisibility: (DetailsColumn) -> Unit,
 ) {
     if (visible) {
-        androidx.compose.ui.window.Popup(onDismissRequest = onDismiss, alignment = Alignment.TopStart) {
+        val positionProvider = remember(anchorWindowOffset) {
+            object : androidx.compose.ui.window.PopupPositionProvider {
+                override fun calculatePosition(
+                    anchorBounds: androidx.compose.ui.unit.IntRect,
+                    windowSize: androidx.compose.ui.unit.IntSize,
+                    layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+                    popupContentSize: androidx.compose.ui.unit.IntSize,
+                ): IntOffset {
+                    val anchor = anchorWindowOffset ?: IntOffset(anchorBounds.left, anchorBounds.bottom)
+                    val maxX = (windowSize.width - popupContentSize.width - 8).coerceAtLeast(0)
+                    val maxY = (windowSize.height - popupContentSize.height - 8).coerceAtLeast(0)
+                    return IntOffset(
+                        x = anchor.x.coerceIn(0, maxX),
+                        y = anchor.y.coerceIn(0, maxY),
+                    )
+                }
+            }
+        }
+        androidx.compose.ui.window.Popup(
+            popupPositionProvider = positionProvider,
+            onDismissRequest = onDismiss,
+        ) {
             Column(
                 modifier = Modifier
                     .background(LocalOnyxPalette.current.floatingSurface, RoundedCornerShape(4.dp))
@@ -972,6 +1039,39 @@ private fun ReadyPaneEntries(
         return
     }
     val selection = remember { PaneRubberBandState() }
+    val currentOnSelectEntries = rememberUpdatedState(actions.onSelectEntries)
+    LaunchedEffect(selection.active) {
+        if (!selection.active) return@LaunchedEffect
+        val edgeThresholdPx = 36f
+        val maxStepPx = 22f
+        while (selection.active) {
+            kotlinx.coroutines.delay(16L)
+            val endPos = selection.end ?: continue
+            val container = selection.containerCoordinates?.takeIf { it.isAttached } ?: continue
+            val height = container.size.height.toFloat()
+            if (height <= edgeThresholdPx * 2f) continue
+            val deltaY = when {
+                endPos.y < edgeThresholdPx -> {
+                    val ratio = ((edgeThresholdPx - endPos.y) / edgeThresholdPx).coerceIn(0.2f, 1.5f)
+                    -maxStepPx * ratio
+                }
+
+                endPos.y > height - edgeThresholdPx -> {
+                    val ratio = ((endPos.y - (height - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.2f, 1.5f)
+                    maxStepPx * ratio
+                }
+
+                else -> 0f
+            }
+            if (deltaY != 0f) {
+                val consumed = selection.scrollByAction?.invoke(deltaY) ?: 0f
+                if (consumed != 0f) {
+                    selection.onAutoScrolled(consumed)
+                    currentOnSelectEntries.value(selection.baseSelection + selection.hitEntryIds(endPos))
+                }
+            }
+        }
+    }
     val doubleClickSlopPx = with(LocalDensity.current) { ENTRY_DOUBLE_CLICK_SLOP_DP.dp.toPx() }
     val childDragActions = paneChildDragActions(model, actions, selection)
     val horizontalScrollState = rememberPaneHorizontalScroll(model)
@@ -1079,6 +1179,7 @@ private fun paneChildDragActions(
             val current = container.windowToLocal(currentWindowPosition)
             selection.pendingOrigin = null
             selection.blankClickController.reset()
+            selection.resetRubberBandScrollTracking()
             selection.active = true
             selection.start = start
             selection.end = current
@@ -1303,6 +1404,7 @@ internal fun DetailsFileEntry(
                 selectNameWithoutExtension = entry.kind != VFileKind.DIRECTORY,
                 hiddenColumns = model.hiddenColumns,
                 minRowWidth = minRowWidth,
+                depth = item.depth,
                 onUpdateInlineEditDraft = actions.onUpdateInlineEditDraft,
                 onConfirmInlineEdit = actions.onConfirmInlineEdit,
                 onCancelInlineEdit = actions.onCancelInlineEdit,
@@ -1434,8 +1536,8 @@ private fun handlePaneSelectionPress(
         } else {
             actions.onActivate()
             actions.onDismissContextMenu()
+            selection.finishRubberBand()
             selection.pendingOrigin = position
-            selection.active = false
             selection.fileDragging = false
             selection.blankClickController.onPrimaryPress(primaryChange.uptimeMillis, position)
         }
@@ -1473,6 +1575,7 @@ private fun handlePaneSelectionMove(
         val dy = position.y - origin.y
         if (dx * dx + dy * dy > DRAG_START_DISTANCE_SQUARED) {
             selection.blankClickController.reset()
+            selection.resetRubberBandScrollTracking()
             selection.active = true
             selection.start = origin
             selection.additive = event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isMetaPressed
@@ -1680,6 +1783,7 @@ internal fun EntryRow(
             onNameCoordinates = { interaction.nameCoordinates = it },
             onExpandCoordinates = { interaction.expandCoordinates = it },
             onRenameLabelCoordinates = { interaction.renameLabelCoordinates = it },
+            hovered = isHovered,
         )
     }
 }

@@ -5,10 +5,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.RootApplicationRuntime
@@ -211,6 +214,7 @@ private fun ImageViewerWindow(
         }
         OnyxLocaleEnvironment(resourceLocale) {
             OnyxWindowTheme(visualSettings) {
+                var placementBeforeFullscreen by remember { mutableStateOf(WindowPlacement.Floating) }
                 ImageViewerContent(
                     state = imageViewerState,
                     onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
@@ -221,6 +225,16 @@ private fun ImageViewerWindow(
                     onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
                     loadThumbnail = rootComponent::loadThumbnail,
                     readImageSize = rootComponent::readImageSize,
+                    loadViewerImage = rootComponent::loadViewerImage,
+                    onOpenExternally = { entry -> rootComponent.dispatch(RootIntent.OpenExternalFile(entry)) },
+                    onToggleFullscreen = {
+                        if (windowState.placement == WindowPlacement.Fullscreen) {
+                            windowState.placement = placementBeforeFullscreen
+                        } else {
+                            placementBeforeFullscreen = windowState.placement
+                            windowState.placement = WindowPlacement.Fullscreen
+                        }
+                    },
                 )
             }
         }

@@ -54,6 +54,48 @@ private const val TOOLTIP_ANCHOR_SLOP_PX = 4
 private const val TOOLTIP_HOVER_DELAY_MILLIS = 350L
 
 /**
+ * 在容器上挂载统一的指针清理监听，点击、滚轮、移出容器或指针离开提示锚点时立即清除残留 Tooltip。
+ *
+ * @param requestProvider 读取当前激活的提示请求。
+ * @param windowOriginProvider 读取容器左上角在窗口中的坐标。
+ * @param onClear 清空提示请求的回调。
+ */
+internal fun Modifier.onyxTooltipPointerCleanup(
+    requestProvider: () -> TooltipRequest?,
+    windowOriginProvider: () -> IntOffset,
+    onClear: () -> Unit,
+): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            when (event.type) {
+                PointerEventType.Exit,
+                PointerEventType.Press,
+                PointerEventType.Scroll -> onClear()
+
+                PointerEventType.Move -> {
+                    val active = requestProvider()
+                    val localPos = event.changes.firstOrNull()?.position
+                    if (active != null && localPos != null) {
+                        val origin = windowOriginProvider()
+                        val windowPos = IntOffset(
+                            x = origin.x + localPos.x.roundToInt(),
+                            y = origin.y + localPos.y.roundToInt(),
+                        )
+                        val paddedBounds = active.anchorBounds.inflate(TOOLTIP_ANCHOR_SLOP_PX)
+                        if (!paddedBounds.containsPoint(windowPos)) {
+                            onClear()
+                        }
+                    }
+                }
+
+                else -> Unit
+            }
+        }
+    }
+}
+
+/**
  * 为独立窗口提供跟随指针的 Onyx 提示浮层，并在点击、滚动、移出窗口或锚点越界时立即清理残留浮层。
  *
  * @param content 需要提示能力的窗口内容。
@@ -78,33 +120,11 @@ internal fun OnyxTooltipHost(content: @Composable () -> Unit) {
                     contentSize = coordinates.size
                     windowOrigin = coordinates.localToWindow(Offset.Zero).toIntOffset()
                 }
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            when (event.type) {
-                                PointerEventType.Exit,
-                                PointerEventType.Press,
-                                PointerEventType.Scroll -> request = null
-                                PointerEventType.Move -> {
-                                    val active = request
-                                    val localPos = event.changes.firstOrNull()?.position
-                                    if (active != null && localPos != null) {
-                                        val windowPos = IntOffset(
-                                            x = windowOrigin.x + localPos.x.roundToInt(),
-                                            y = windowOrigin.y + localPos.y.roundToInt(),
-                                        )
-                                        val paddedBounds = active.anchorBounds.inflate(TOOLTIP_ANCHOR_SLOP_PX)
-                                        if (!paddedBounds.containsPoint(windowPos)) {
-                                            request = null
-                                        }
-                                    }
-                                }
-                                else -> Unit
-                            }
-                        }
-                    }
-                },
+                .onyxTooltipPointerCleanup(
+                    requestProvider = { request },
+                    windowOriginProvider = { windowOrigin },
+                    onClear = { request = null },
+                ),
         ) {
             content()
             request?.let { OnyxTooltipOverlay(it, contentSize, windowOrigin) }

@@ -74,6 +74,14 @@ internal const val TASK_WINDOW_AUTO_CLOSE_DELAY_MILLIS = 2_400L
  * @param autoCloseDelayMillis 自动打开的任务窗口在全部成功完成后的停留毫秒数。
  * @return 无返回值。
  */
+/** 非快照容器：跟踪任务窗口可见性切换与自动弹出前焦点窗口，避免组合期直接写 MutableState 触发多余重组。 */
+private class TaskCenterWindowFocusTracker(
+    var hasOpenedOnce: Boolean = false,
+    var wasVisible: Boolean = false,
+    var lastCapturedAutoRevealRequest: Long = 0L,
+    var previousFocusedWindow: Window? = null,
+)
+
 @Composable
 internal fun TaskCenterWindow(
     taskCenter: TaskCenterComponent,
@@ -87,14 +95,26 @@ internal fun TaskCenterWindow(
     val preferences by settings.collectAsState()
     val windowState = rememberSyncedTaskWindowState(preferences, state.visible, onWindowSizeChanged)
     val listState = rememberLazyListState()
-    var hasOpenedOnce by remember { mutableStateOf(false) }
-    var previousFocusedWindow by remember { mutableStateOf<Window?>(null) }
-    if (state.visible && !hasOpenedOnce) {
-        hasOpenedOnce = true
-        previousFocusedWindow = capturePreviousFocusedWindow(state.openedAutomatically)
+    val focusTracker = remember { TaskCenterWindowFocusTracker() }
+    if (state.visible) {
+        val becameVisible = !focusTracker.wasVisible
+        val newAutoReveal = state.openedAutomatically &&
+            autoRevealRequest != focusTracker.lastCapturedAutoRevealRequest
+        if (!focusTracker.hasOpenedOnce || becameVisible || newAutoReveal) {
+            focusTracker.hasOpenedOnce = true
+            if (state.openedAutomatically) {
+                capturePreviousFocusedWindow(true)?.let { captured ->
+                    focusTracker.previousFocusedWindow = captured
+                }
+                focusTracker.lastCapturedAutoRevealRequest = autoRevealRequest
+            } else if (becameVisible) {
+                focusTracker.previousFocusedWindow = null
+            }
+        }
     }
+    focusTracker.wasVisible = state.visible
     LaunchedEffect(state.filter) { listState.scrollToItem(0) }
-    if (!hasOpenedOnce) return
+    if (!focusTracker.hasOpenedOnce) return
 
     var pointerHovered by remember { mutableStateOf(false) }
     LaunchedEffect(state.visible) {
@@ -103,7 +123,9 @@ internal fun TaskCenterWindow(
 
     val tasks by taskCenter.tasks.collectAsState()
     val shouldAutoClose = shouldAutoCloseTaskCenter(state, tasks, preferences.autoCloseTaskCenterWhenFinished)
-    val completionKey = remember(tasks) { tasks.firstOrNull()?.let { "${it.id}:${it.status}" }.orEmpty() }
+    val completionKey = remember(tasks) {
+        tasks.joinToString("|") { task -> "${task.id}:${task.status}" }
+    }
     LaunchedEffect(shouldAutoClose, pointerHovered, completionKey, autoCloseDelayMillis) {
         if (!shouldAutoClose || pointerHovered) return@LaunchedEffect
         delay(autoCloseDelayMillis)
@@ -134,7 +156,7 @@ internal fun TaskCenterWindow(
                     state = state,
                     autoRevealRequest = autoRevealRequest,
                     uiScale = preferences.uiScale,
-                    previousFocusedWindow = previousFocusedWindow,
+                    previousFocusedWindow = focusTracker.previousFocusedWindow,
                 )
                 TitleBar { _ ->
                     TitleBarBrandTitle(

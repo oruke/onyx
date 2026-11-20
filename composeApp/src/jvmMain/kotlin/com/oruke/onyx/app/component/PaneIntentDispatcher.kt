@@ -146,6 +146,9 @@ private fun DefaultPaneComponent.dispatchTabIntent(intent: PaneIntent): Boolean 
         is PaneIntent.CreateTab -> true.also { createTab(intent.location ?: state.value.location) }
         is PaneIntent.SelectTab -> true.also { selectTab(intent.tabId) }
         is PaneIntent.CloseTab -> true.also { closeTab(intent.tabId) }
+        is PaneIntent.CloseOtherTabs -> true.also { closeOtherTabs(intent.tabId) }
+        is PaneIntent.CloseTabsToRight -> true.also { closeTabsToRight(intent.tabId) }
+        is PaneIntent.CopyTabPath -> true.also { copyTabPath(intent.tabId) }
         is PaneIntent.MoveTab -> true.also { moveTab(intent.tabId, intent.targetIndex) }
         else -> false
     }

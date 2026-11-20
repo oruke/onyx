@@ -74,13 +74,65 @@ internal suspend fun DefaultRootComponent.restorePersistedState() {
     }
 }
 
+/** 组件销毁时同步落盘的最大等待上限（毫秒），防止慢 I/O 或锁竞争永久卡死窗口退出。 */
+internal const val FLUSH_ON_DESTROY_TIMEOUT_MS = 1_500L
+
+/** 独立于组件生命周期的后台落盘作用域，使超时放行窗口退出后 SQLite 写入仍可安全完成不产生半写。 */
+private val destroyFlushScope = kotlinx.coroutines.CoroutineScope(
+    kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+)
+
 /**
- * 组件销毁前同步刷新尚未落盘的设置与会话，避免 500ms 防抖在关闭窗口时被取消而丢失尺寸或标签变更。
+ * 在独立 IO 协程（[kotlinx.coroutines.NonCancellable]）中执行落盘，同时在调用线程上以可取消的
+ * `join()` 进行有界超时等待；即使底层 JDBC/SQLite 阻塞超过 [timeoutMillis]，调用方也能准时返回。
+ *
+ * @param timeoutMillis 最长阻塞等待毫秒数。
+ * @param persistBlock 实际执行落盘的挂起块。
+ * @return 在超时内完成落盘返回 `true`，超时放行返回 `false`。
+ */
+internal fun flushPersistedStateWithBoundedTimeout(
+    timeoutMillis: Long = FLUSH_ON_DESTROY_TIMEOUT_MS,
+    persistBlock: suspend () -> Unit,
+): Boolean {
+    val flushJob = destroyFlushScope.launch {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+            runCatching { persistBlock() }.onFailure { failure ->
+                OnyxLogger.warn("Shutdown", "窗口销毁后台落盘失败", failure)
+            }
+        }
+    }
+    val completed = runBlocking {
+        kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
+            flushJob.join()
+            true
+        }
+    }
+    if (completed == null) {
+        OnyxLogger.warn("Shutdown", "窗口销毁落盘超过 ${timeoutMillis}ms，已放弃阻塞等待以避免退出卡死")
+        return false
+    }
+    return true
+}
+
+/**
+ * 组件销毁前在有界超时内刷新尚未落盘的设置与会话：
+ * 先在当前线程捕获不可变快照，再派发至独立 IO 协程落盘并有界等待 `join()`，
+ * 既避免丢失最后时刻的窗口尺寸/标签变更，也防止磁盘阻塞或 SQLite 锁竞争拖死 AWT 主线程。
  */
 internal fun DefaultRootComponent.flushPersistedStateOnDestroy() {
     if (!persistenceReady) return
-    runBlocking {
-        persistCurrentState()
+    val settingsSnapshot = settings.value
+    val sessionSnapshot = if (launchConfiguration.persistsMainSession) {
+        buildSessionSnapshot()
+    } else {
+        null
+    }
+    flushPersistedStateWithBoundedTimeout(FLUSH_ON_DESTROY_TIMEOUT_MS) {
+        if (sessionSnapshot != null) {
+            sessionManager.persist(settingsSnapshot, sessionSnapshot)
+        } else {
+            sessionManager.saveSettings(settingsSnapshot)
+        }
     }
 }
 

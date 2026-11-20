@@ -265,6 +265,10 @@ private fun PaneSurfaceRuntime.toGalleryThumbnailServices(): GalleryThumbnailSer
         loadArchiveThumbnail = services.loadArchiveThumbnail,
         isImageFileName = model.actions.isImageFileName,
         isArchiveFileName = model.actions.isArchiveFileName,
+        peekCachedThumbnail = services.peekCachedThumbnail,
+        peekCachedArchiveThumbnail = services.peekCachedArchiveThumbnail,
+        loadVersionedThumbnail = services.loadVersionedThumbnail,
+        loadVersionedArchiveThumbnail = services.loadVersionedArchiveThumbnail,
     )
 }
 
