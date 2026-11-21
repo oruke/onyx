@@ -413,11 +413,6 @@
     <string name="action_open_terminal">ここでターミナルを開く</string>
     <string name="action_system_menu">&#12471;&#12473;&#12486;&#12512;&#12513;&#12491;&#12517;&#12540;</string>
 
-    <string name="action_image_fit_window">フィット</string>
-    <string name="action_image_actual_size">1:1</string>
-    <string name="action_image_rotate_cw">↻</string>
-    <string name="action_image_rotate_ccw">↺</string>
-
     <string name="action_filter">フィルター</string>
     <string name="action_focus_address_bar">アドレスバーにフォーカス</string>
     <string name="action_search">検索</string>
@@ -858,4 +853,12 @@
     <string name="label_audio_channel_stereo">ステレオ</string>
     <string name="label_audio_channel_surround">%1$s ch</string>
     <string name="label_audio_channel_count">%1$d ch</string>
+    <string name="action_image_viewer_previous">前の画像 (←)</string>
+    <string name="action_image_viewer_next">次の画像 (→)</string>
+    <string name="action_image_viewer_fit_window">ウィンドウに合わせる (0)</string>
+    <string name="action_image_viewer_actual_size">実際のサイズ 1:1 (1)</string>
+    <string name="action_image_viewer_zoom_out">縮小 (-)</string>
+    <string name="action_image_viewer_zoom_in">拡大 (+)</string>
+    <string name="action_image_viewer_rotate_ccw">左に回転 (Shift+R)</string>
+    <string name="action_image_viewer_rotate_cw">右に回転 (R)</string>
 </resources>

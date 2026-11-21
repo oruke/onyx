@@ -413,11 +413,6 @@
     <string name="action_open_terminal">Open Terminal Here</string>
     <string name="action_system_menu">System Menu</string>
 
-    <string name="action_image_fit_window">Fit</string>
-    <string name="action_image_actual_size">1:1</string>
-    <string name="action_image_rotate_cw">↻</string>
-    <string name="action_image_rotate_ccw">↺</string>
-
     <string name="action_filter">Filter</string>
     <string name="action_focus_address_bar">Focus Address Bar</string>
     <string name="action_search">Search</string>
@@ -858,4 +853,12 @@
     <string name="label_audio_channel_stereo">Stereo</string>
     <string name="label_audio_channel_surround">%1$s ch</string>
     <string name="label_audio_channel_count">%1$d ch</string>
+    <string name="action_image_viewer_previous">Previous Image (←)</string>
+    <string name="action_image_viewer_next">Next Image (→)</string>
+    <string name="action_image_viewer_fit_window">Fit to Window (0)</string>
+    <string name="action_image_viewer_actual_size">Actual Size 1:1 (1)</string>
+    <string name="action_image_viewer_zoom_out">Zoom Out (-)</string>
+    <string name="action_image_viewer_zoom_in">Zoom In (+)</string>
+    <string name="action_image_viewer_rotate_ccw">Rotate Left (Shift+R)</string>
+    <string name="action_image_viewer_rotate_cw">Rotate Right (R)</string>
 </resources>

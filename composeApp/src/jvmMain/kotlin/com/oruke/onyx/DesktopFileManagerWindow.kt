@@ -34,6 +34,7 @@ import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.OnyxSettings
 import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.ui.ImageViewerContent
+import com.oruke.onyx.ui.OnyxTooltipHost
 import com.oruke.onyx.ui.SearchPanelPresentation
 import com.oruke.onyx.ui.TitleBarBrandTitle
 import com.oruke.onyx.ui.WindowKeyboardFocusRegistry
@@ -214,28 +215,30 @@ private fun ImageViewerWindow(
         }
         OnyxLocaleEnvironment(resourceLocale) {
             OnyxWindowTheme(visualSettings) {
-                var placementBeforeFullscreen by remember { mutableStateOf(WindowPlacement.Floating) }
-                ImageViewerContent(
-                    state = imageViewerState,
-                    onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
-                    onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
-                    onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
-                    onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
-                    onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
-                    onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
-                    loadThumbnail = rootComponent::loadThumbnail,
-                    readImageSize = rootComponent::readImageSize,
-                    loadViewerImage = rootComponent::loadViewerImage,
-                    onOpenExternally = { entry -> rootComponent.dispatch(RootIntent.OpenExternalFile(entry)) },
-                    onToggleFullscreen = {
-                        if (windowState.placement == WindowPlacement.Fullscreen) {
-                            windowState.placement = placementBeforeFullscreen
-                        } else {
-                            placementBeforeFullscreen = windowState.placement
-                            windowState.placement = WindowPlacement.Fullscreen
-                        }
-                    },
-                )
+                OnyxTooltipHost {
+                    var placementBeforeFullscreen by remember { mutableStateOf(WindowPlacement.Floating) }
+                    ImageViewerContent(
+                        state = imageViewerState,
+                        onClose = { rootComponent.dispatch(RootIntent.CloseImageViewer) },
+                        onNext = { rootComponent.dispatch(RootIntent.ImageViewerNext) },
+                        onPrevious = { rootComponent.dispatch(RootIntent.ImageViewerPrevious) },
+                        onSetZoom = { factor -> rootComponent.dispatch(RootIntent.ImageViewerSetZoom(factor)) },
+                        onSetFitMode = { mode -> rootComponent.dispatch(RootIntent.ImageViewerSetFitMode(mode)) },
+                        onRotate = { clockwise -> rootComponent.dispatch(RootIntent.ImageViewerRotate(clockwise)) },
+                        loadThumbnail = rootComponent::loadThumbnail,
+                        readImageSize = rootComponent::readImageSize,
+                        loadViewerImage = rootComponent::loadViewerImage,
+                        onOpenExternally = { entry -> rootComponent.dispatch(RootIntent.OpenExternalFile(entry)) },
+                        onToggleFullscreen = {
+                            if (windowState.placement == WindowPlacement.Fullscreen) {
+                                windowState.placement = placementBeforeFullscreen
+                            } else {
+                                placementBeforeFullscreen = windowState.placement
+                                windowState.placement = WindowPlacement.Fullscreen
+                            }
+                        },
+                    )
+                }
             }
         }
     }

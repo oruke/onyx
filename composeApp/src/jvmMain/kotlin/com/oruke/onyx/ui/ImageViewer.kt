@@ -2,23 +2,14 @@ package com.oruke.onyx.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -65,13 +56,8 @@ import com.oruke.onyx.core.model.decodeSfmDisplayText
 import com.oruke.onyx.ui.theme.formatFileSize
 import kotlinx.coroutines.launch
 import onyx.composeapp.generated.resources.Res
-import onyx.composeapp.generated.resources.action_image_actual_size
-import onyx.composeapp.generated.resources.action_image_fit_window
-import onyx.composeapp.generated.resources.action_image_rotate_ccw
-import onyx.composeapp.generated.resources.action_image_rotate_cw
 import onyx.composeapp.generated.resources.action_open_externally
 import onyx.composeapp.generated.resources.action_retry_task
-import onyx.composeapp.generated.resources.label_image_viewer_close
 import onyx.composeapp.generated.resources.label_image_viewer_error_decode_failed
 import onyx.composeapp.generated.resources.label_image_viewer_error_not_found
 import onyx.composeapp.generated.resources.label_image_viewer_error_too_large
@@ -358,15 +344,17 @@ internal fun ImageViewerContent(
             displayZoomPercent = displayZoomPercent,
             fitActive = fitActive,
             actualActive = actualActive,
-            onPrevious = onPrevious,
-            onNext = onNext,
-            onFitWindow = ::applyFitWindow,
-            onActualSize = ::applyActualSize,
-            onZoomOut = { applyZoomStep(1f / ZOOM_STEP_FACTOR) },
-            onZoomIn = { applyZoomStep(ZOOM_STEP_FACTOR) },
-            onRotateCcw = { applyRotate(clockwise = false) },
-            onRotateCw = { applyRotate(clockwise = true) },
-            onClose = onClose,
+            actions = ImageViewerToolbarActions(
+                onPrevious = onPrevious,
+                onNext = onNext,
+                onFitWindow = ::applyFitWindow,
+                onActualSize = ::applyActualSize,
+                onZoomOut = { applyZoomStep(1f / ZOOM_STEP_FACTOR) },
+                onZoomIn = { applyZoomStep(ZOOM_STEP_FACTOR) },
+                onRotateCcw = { applyRotate(clockwise = false) },
+                onRotateCw = { applyRotate(clockwise = true) },
+                onClose = onClose,
+            ),
         )
         ImageViewerInfoBar(state, currentFile, nativeResolution ?: bitmapSize)
         if (state.allImages.size > 1 && pointerHovered) {
@@ -478,202 +466,5 @@ private fun ImageViewerErrorCard(
                 modifier = Modifier.testTag("image-viewer-open-external-button"),
             )
         }
-    }
-}
-
-/**
- * 渲染查看器导航、缩放、旋转与显式关闭工具栏。
- */
-@Composable
-private fun BoxScope.ImageViewerToolbar(
-    displayZoomPercent: Int,
-    fitActive: Boolean,
-    actualActive: Boolean,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onFitWindow: () -> Unit,
-    onActualSize: () -> Unit,
-    onZoomOut: () -> Unit,
-    onZoomIn: () -> Unit,
-    onRotateCcw: () -> Unit,
-    onRotateCw: () -> Unit,
-    onClose: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .align(Alignment.TopCenter)
-            .background(Color.Black.copy(alpha = 0.65f))
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ViewerToolbarButton("←", onPrevious)
-        Spacer(Modifier.width(4.dp))
-        ViewerToolbarButton("→", onNext)
-        Spacer(Modifier.width(16.dp))
-        ViewerToolbarButton(
-            label = stringResource(Res.string.action_image_fit_window),
-            onClick = onFitWindow,
-            active = fitActive,
-            modifier = Modifier.testTag("image-viewer-fit-button"),
-        )
-        Spacer(Modifier.width(4.dp))
-        ViewerToolbarButton(
-            label = stringResource(Res.string.action_image_actual_size),
-            onClick = onActualSize,
-            active = actualActive,
-            modifier = Modifier.testTag("image-viewer-actual-button"),
-        )
-        Spacer(Modifier.width(16.dp))
-        Text(
-            "$displayZoomPercent%",
-            color = Color.White.copy(alpha = 0.85f),
-            fontSize = 12.sp,
-            modifier = Modifier.widthIn(min = 48.dp),
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.width(4.dp))
-        ViewerToolbarButton(label = "−", onClick = onZoomOut)
-        Spacer(Modifier.width(4.dp))
-        ViewerToolbarButton(label = "+", onClick = onZoomIn)
-        Spacer(Modifier.width(16.dp))
-        ViewerToolbarButton(
-            label = stringResource(Res.string.action_image_rotate_ccw),
-            onClick = onRotateCcw,
-        )
-        Spacer(Modifier.width(4.dp))
-        ViewerToolbarButton(
-            label = stringResource(Res.string.action_image_rotate_cw),
-            onClick = onRotateCw,
-        )
-        Spacer(Modifier.weight(1f))
-        ViewerToolbarButton(
-            label = stringResource(Res.string.label_image_viewer_close),
-            onClick = onClose,
-            modifier = Modifier.testTag("image-viewer-close-button"),
-        )
-    }
-}
-
-/**
- * 渲染当前图片名称、分辨率、大小和索引。
- */
-@Composable
-private fun BoxScope.ImageViewerInfoBar(
-    state: ImageViewerState,
-    file: VFile,
-    resolution: IntSize?,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .align(Alignment.BottomCenter)
-            .background(Color.Black.copy(alpha = 0.65f))
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            file.name.decodeSfmDisplayText(),
-            color = Color.White.copy(alpha = 0.9f),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false).widthIn(max = 400.dp),
-        )
-        Spacer(Modifier.width(16.dp))
-        resolution?.let { value ->
-            Text("${value.width} × ${value.height}", color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp)
-            Spacer(Modifier.width(16.dp))
-        }
-        Text(formatFileSize(file.sizeBytes), color = Color.White.copy(alpha = 0.65f), fontSize = 11.sp)
-        Spacer(Modifier.width(16.dp))
-        if (state.allImages.isNotEmpty()) {
-            Text(
-                "${state.currentIndex + 1} / ${state.allImages.size}",
-                color = Color.White.copy(alpha = 0.65f),
-                fontSize = 11.sp,
-            )
-        }
-    }
-}
-
-/**
- * 仅在鼠标悬停窗口时显示的紧凑居中边缘翻页箭头按钮，避免大面积遮罩劫持放大后的拖拽平移与双击缩放。
- */
-@Composable
-private fun BoxScope.ImageViewerEdgeArrows(
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-) {
-    listOf(
-        Triple(Alignment.CenterStart, "‹", "image-viewer-edge-prev" to onPrevious),
-        Triple(Alignment.CenterEnd, "›", "image-viewer-edge-next" to onNext),
-    ).forEach { (alignment, glyph, tagAndAction) ->
-        val (tag, action) = tagAndAction
-        val interactionSource = remember { MutableInteractionSource() }
-        val hovered by interactionSource.collectIsHoveredAsState()
-        Box(
-            modifier = Modifier
-                .align(alignment)
-                .padding(horizontal = 12.dp)
-                .size(width = 36.dp, height = 56.dp)
-                .testTag(tag)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.Black.copy(alpha = if (hovered) 0.72f else 0.45f))
-                .border(1.dp, Color.White.copy(alpha = if (hovered) 0.35f else 0.16f), RoundedCornerShape(8.dp))
-                .hoverable(interactionSource)
-                .clickable(onClick = action),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = glyph,
-                color = Color.White.copy(alpha = if (hovered) 1f else 0.85f),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
-/**
- * 查看器工具栏按钮。
- */
-@Composable
-private fun ViewerToolbarButton(
-    label: String,
-    onClick: () -> Unit,
-    active: Boolean = false,
-    modifier: Modifier = Modifier,
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(
-                when {
-                    active -> Color.White.copy(alpha = 0.24f)
-                    isHovered -> Color.White.copy(alpha = 0.14f)
-                    else -> Color.Transparent
-                },
-            )
-            .border(
-                width = 1.dp,
-                color = if (active) Color.White.copy(alpha = 0.4f) else Color.Transparent,
-                shape = RoundedCornerShape(4.dp),
-            )
-            .hoverable(interactionSource)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = if (active) 1f else 0.85f),
-            fontSize = 12.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-        )
     }
 }

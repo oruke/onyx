@@ -132,48 +132,67 @@ class Batch4UiAndVisualVerificationTest {
             var externalOpenedFile by mutableStateOf<VFile?>(null)
             var failFirstLoad by mutableStateOf(false)
             var loadAttempts by mutableIntStateOf(0)
+            val rotateCalls = mutableListOf<Boolean>()
 
             setContent {
                 OnyxLocaleEnvironment(locale) {
                     OnyxWindowTheme(OnyxSettings(themeMode = OnyxThemeMode.DARK)) {
-                        val activeFile = if (currentIndex == 0) file1 else file2
-                        ImageViewerContent(
-                            state = ImageViewerState(
-                                visible = true,
-                                currentFile = activeFile,
-                                allImages = listOf(file1, file2),
-                                currentIndex = currentIndex,
-                            ),
-                            onClose = { closedCount += 1 },
-                            onNext = { currentIndex = (currentIndex + 1).coerceAtMost(1) },
-                            onPrevious = { currentIndex = (currentIndex - 1).coerceAtLeast(0) },
-                            onSetZoom = {},
-                            onSetFitMode = {},
-                            onRotate = {},
-                            loadThumbnail = { _, _ -> sampleBitmap },
-                            readImageSize = { IntSize(1920, 1200) },
-                            loadViewerImage = { _, _ ->
-                                loadAttempts += 1
-                                if (failFirstLoad) {
-                                    ImageLoadOutcome.TooLarge(
-                                        limitBytes = 50L * 1024 * 1024,
-                                        actualBytes = 68L * 1024 * 1024,
-                                    )
-                                } else {
-                                    ImageLoadOutcome.Loaded(sampleBitmap)
-                                }
-                            },
-                            onOpenExternally = { externalOpenedFile = it },
-                            onToggleFullscreen = { fullscreenToggled += 1 },
-                        )
+                        OnyxTooltipHost {
+                            val activeFile = if (currentIndex == 0) file1 else file2
+                            ImageViewerContent(
+                                state = ImageViewerState(
+                                    visible = true,
+                                    currentFile = activeFile,
+                                    allImages = listOf(file1, file2),
+                                    currentIndex = currentIndex,
+                                ),
+                                onClose = { closedCount += 1 },
+                                onNext = { currentIndex = (currentIndex + 1).coerceAtMost(1) },
+                                onPrevious = { currentIndex = (currentIndex - 1).coerceAtLeast(0) },
+                                onSetZoom = {},
+                                onSetFitMode = {},
+                                onRotate = { clockwise -> rotateCalls += clockwise },
+                                loadThumbnail = { _, _ -> sampleBitmap },
+                                readImageSize = { IntSize(1920, 1200) },
+                                loadViewerImage = { _, _ ->
+                                    loadAttempts += 1
+                                    if (failFirstLoad) {
+                                        ImageLoadOutcome.TooLarge(
+                                            limitBytes = 50L * 1024 * 1024,
+                                            actualBytes = 68L * 1024 * 1024,
+                                        )
+                                    } else {
+                                        ImageLoadOutcome.Loaded(sampleBitmap)
+                                    }
+                                },
+                                onOpenExternally = { externalOpenedFile = it },
+                                onToggleFullscreen = { fullscreenToggled += 1 },
+                            )
+                        }
                     }
                 }
             }
             waitForIdle()
 
-            onNodeWithTag("image-viewer-close-button").assertIsDisplayed()
+            onNodeWithTag("image-viewer-prev-button").assertIsDisplayed()
+            onNodeWithTag("image-viewer-next-button").assertIsDisplayed()
             onNodeWithTag("image-viewer-fit-button").assertIsDisplayed()
             onNodeWithTag("image-viewer-actual-button").assertIsDisplayed()
+            onNodeWithTag("image-viewer-zoom-out-button").assertIsDisplayed()
+            onNodeWithTag("image-viewer-zoom-percent").assertIsDisplayed()
+            onNodeWithTag("image-viewer-zoom-in-button").assertIsDisplayed()
+            onNodeWithTag("image-viewer-rotate-ccw-button").assertIsDisplayed()
+            onNodeWithTag("image-viewer-rotate-cw-button").assertIsDisplayed()
+            onNodeWithTag("image-viewer-close-button").assertIsDisplayed()
+
+            // 验证缩放百分比严格位于缩小(-)与放大(+)图标按钮之间
+            val zoomOutBounds = onNodeWithTag("image-viewer-zoom-out-button").getBoundsInRoot()
+            val zoomPercentBounds = onNodeWithTag("image-viewer-zoom-percent").getBoundsInRoot()
+            val zoomInBounds = onNodeWithTag("image-viewer-zoom-in-button").getBoundsInRoot()
+            assertTrue(
+                zoomOutBounds.right <= zoomPercentBounds.left && zoomPercentBounds.right <= zoomInBounds.left,
+                "百分比应位于缩小(-)与放大(+)之间: out=$zoomOutBounds percent=$zoomPercentBounds in=$zoomInBounds",
+            )
 
             // 鼠标悬停到画布以展示边缘翻页箭头后抓取新版图片查看器真实截图
             onRoot().performMouseInput { moveTo(Offset(550f, 340f)) }
@@ -184,7 +203,12 @@ class Batch4UiAndVisualVerificationTest {
                 "01-image-viewer-upgraded-dark-100-after.png",
             )
 
-            // 验证显式关闭按钮与 F11 全屏快捷键
+            // 验证图标按钮交互（旋转）与显式关闭按钮、F11 全屏快捷键
+            onNodeWithTag("image-viewer-rotate-ccw-button").performClick()
+            onNodeWithTag("image-viewer-rotate-cw-button").performClick()
+            waitForIdle()
+            assertEquals(listOf(false, true), rotateCalls)
+
             onNodeWithTag("image-viewer-close-button").performClick()
             waitForIdle()
             assertEquals(1, closedCount)

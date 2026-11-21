@@ -411,11 +411,6 @@
     <string name="action_open_terminal">在此打开终端</string>
     <string name="action_system_menu">&#31995;&#32479;&#33756;&#21333;</string>
 
-    <string name="action_image_fit_window">适应</string>
-    <string name="action_image_actual_size">1:1</string>
-    <string name="action_image_rotate_cw">↻</string>
-    <string name="action_image_rotate_ccw">↺</string>
-
     <string name="action_filter">筛选</string>
     <string name="action_focus_address_bar">聚焦地址栏</string>
     <string name="action_search">搜索</string>
@@ -856,4 +851,12 @@
     <string name="label_audio_channel_stereo">立体声</string>
     <string name="label_audio_channel_surround">%1$s 声道</string>
     <string name="label_audio_channel_count">%1$d 声道</string>
+    <string name="action_image_viewer_previous">上一张 (←)</string>
+    <string name="action_image_viewer_next">下一张 (→)</string>
+    <string name="action_image_viewer_fit_window">适应窗口 (0)</string>
+    <string name="action_image_viewer_actual_size">原始大小 1:1 (1)</string>
+    <string name="action_image_viewer_zoom_out">缩小 (-)</string>
+    <string name="action_image_viewer_zoom_in">放大 (+)</string>
+    <string name="action_image_viewer_rotate_ccw">逆时针旋转 (Shift+R)</string>
+    <string name="action_image_viewer_rotate_cw">顺时针旋转 (R)</string>
 </resources>
