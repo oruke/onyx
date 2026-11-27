@@ -275,16 +275,16 @@ class Batch4CoreRegressionTest {
     }
 
     /**
-     * F-16: 校验内联新建文件将碰撞编号插入扩展名之前并遵守大小写不敏感位置碰撞检测。
+     * F-16: 校验内联新建文件将碰撞编号插入扩展名之前并遵守大小写不敏感位置（如 SMB）碰撞检测。
      */
     @Test
     fun nextCreateNamePreservesExtensionAndRespectsCaseInsensitiveCollisions() {
         val existing = listOf(
-            sampleFile("C:\\work\\new file.txt", "new file.txt"),
-            sampleFile("C:\\work\\New File (1).TXT", "New File (1).TXT"),
-            sampleFile("C:\\work\\New Folder", "New Folder"),
+            sampleFile("smb://nas/share/work/new file.txt", "new file.txt", parent = "smb://nas/share/work"),
+            sampleFile("smb://nas/share/work/New File (1).TXT", "New File (1).TXT", parent = "smb://nas/share/work"),
+            sampleFile("smb://nas/share/work/New Folder", "New Folder", parent = "smb://nas/share/work"),
         )
-        val tab = createDefaultPaneTabState("t1", "work", "C:\\work", ViewMode.DETAILS).copy(
+        val tab = createDefaultPaneTabState("t1", "work", "smb://nas/share/work", ViewMode.DETAILS).copy(
             allEntries = existing,
         )
         assertEquals("New File (2).txt", tab.nextCreateName("New File.txt", preserveExtension = true))

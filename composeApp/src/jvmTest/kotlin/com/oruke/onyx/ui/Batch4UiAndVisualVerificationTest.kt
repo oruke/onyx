@@ -86,6 +86,15 @@ import com.oruke.onyx.ui.theme.LocalOnyxPalette
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.OnyxWindowTheme
 import kotlinx.coroutines.flow.MutableStateFlow
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.action_apply
+import onyx.composeapp.generated.resources.action_cancel_task
+import onyx.composeapp.generated.resources.action_close_other_tabs
+import onyx.composeapp.generated.resources.action_close_tabs_to_right
+import onyx.composeapp.generated.resources.action_copy_path
+import onyx.composeapp.generated.resources.action_open_in_new_tab
+import onyx.composeapp.generated.resources.search_filter_size
+import org.jetbrains.compose.resources.getString
 import java.awt.Color as AwtColor
 import java.awt.GradientPaint
 import java.awt.RenderingHints
@@ -543,24 +552,28 @@ class Batch4UiAndVisualVerificationTest {
             assertEquals(listOf("t2"), closedTabs)
 
             // 右键点击 Alpha 标签并点击「复制路径」
+            val copyPathLabel = getString(Res.string.action_copy_path)
+            val closeRightLabel = getString(Res.string.action_close_tabs_to_right)
+            val closeOtherLabel = getString(Res.string.action_close_other_tabs)
+
             onNodeWithText("Alpha").performMouseInput { rightClick() }
             waitForIdle()
             onNodeWithTag("tab-context-menu").assertIsDisplayed()
-            onNodeWithText("复制路径").performClick()
+            onNodeWithText(copyPathLabel).performClick()
             waitForIdle()
             assertEquals(listOf("t1"), copiedTabIds)
 
             // 再次右键点击 Alpha 并点击「关闭右侧标签」
             onNodeWithText("Alpha").performMouseInput { rightClick() }
             waitForIdle()
-            onNodeWithText("关闭右侧标签").performClick()
+            onNodeWithText(closeRightLabel).performClick()
             waitForIdle()
             assertEquals(listOf("t1"), closedRight)
 
             // 再次右键点击 Beta 并点击「关闭其他标签」
             onNodeWithText("Beta").performMouseInput { rightClick() }
             waitForIdle()
-            onNodeWithText("关闭其他标签").performClick()
+            onNodeWithText(closeOtherLabel).performClick()
             waitForIdle()
             assertEquals(listOf("t2"), closedOthers)
         }
@@ -679,16 +692,18 @@ class Batch4UiAndVisualVerificationTest {
             onNodeWithTag("sidebar-list").assertIsDisplayed()
             onNodeWithTag("sidebar-scrollbar", useUnmergedTree = true).assertIsDisplayed()
 
+            val openInNewTabLabel = getString(Res.string.action_open_in_new_tab)
+            val copyPathLabel = getString(Res.string.action_copy_path)
             onNodeWithText("Projects").performMouseInput { rightClick() }
             waitForIdle()
             onNodeWithTag("sidebar-context-menu").assertIsDisplayed()
-            onNodeWithText("在新标签页打开").performClick()
+            onNodeWithText(openInNewTabLabel).performClick()
             waitForIdle()
             assertEquals(listOf("D:\\Projects"), openedNewTabs)
 
             onNodeWithText("Projects").performMouseInput { rightClick() }
             waitForIdle()
-            onNodeWithText("复制路径").performClick()
+            onNodeWithText(copyPathLabel).performClick()
             waitForIdle()
             assertEquals(listOf("D:\\Projects"), copiedPaths)
         }
@@ -731,8 +746,11 @@ class Batch4UiAndVisualVerificationTest {
             }
             waitForIdle()
 
+            val applyLabel = getString(Res.string.action_apply)
+            val cancelLabel = getString(Res.string.action_cancel_task)
+
             // 无变更时「应用」按钮禁用，点击不会触发 onConfirm
-            onNodeWithText("应用").performClick()
+            onNodeWithText(applyLabel).performClick()
             waitForIdle()
             assertEquals(0, confirmedCount)
 
@@ -746,14 +764,14 @@ class Batch4UiAndVisualVerificationTest {
                 validationMessage = I18nMessage(MessageKey.MSG_RENAME_PRESET_NAME_REQUIRED),
             )
             waitForIdle()
-            onNodeWithText("应用").performClick()
+            onNodeWithText(applyLabel).performClick()
             waitForIdle()
             assertEquals(1, confirmedCount, "空预设名保存提示不应禁用本身合法的批量重命名应用按钮")
 
             // 切换到执行中并绑定任务 ID -> 显示取消按钮并派发 CancelTask
             renameState = renameState.copy(executing = true, executingTaskId = "task-rename-99")
             waitForIdle()
-            onNodeWithText("取消").performClick()
+            onNodeWithText(cancelLabel).performClick()
             waitForIdle()
             assertTrue(RootIntent.CancelTask("task-rename-99") in intents)
         }
@@ -918,7 +936,7 @@ class Batch4UiAndVisualVerificationTest {
             waitForIdle()
 
             // 打开「大小」筛选面板
-            onNodeWithText("大小").performClick()
+            onNodeWithText(getString(Res.string.search_filter_size)).performClick()
             waitForIdle()
 
             // 点击 < 1MB -> 严格上限 1_048_575，再次点击取消

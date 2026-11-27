@@ -48,6 +48,9 @@ import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import com.oruke.onyx.ui.theme.OnyxWindowTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import onyx.composeapp.generated.resources.Res
+import onyx.composeapp.generated.resources.label_audio_channel_stereo
+import org.jetbrains.compose.resources.getString
 import java.awt.Color as AwtColor
 import java.awt.GradientPaint
 import java.awt.RenderingHints
@@ -250,10 +253,11 @@ class PreviewAndMetadataUiVerificationTest {
             mainClock.advanceTimeBy(300L)
             waitForIdle()
 
-            // 默认绝对不自动播放，且音频声道已本地化为中文「立体声」（无硬编码英文 Stereo）
+            // 默认绝对不自动播放，且音频声道通过官方字符串资源本地化渲染
+            val stereoLabel = getString(Res.string.label_audio_channel_stereo)
             assertEquals(0, fakePlayer.toggleCount)
             onNodeWithText("1番輝く星").assertIsDisplayed()
-            onNodeWithText("FLAC · 980 kbps · 44.1 kHz · 立体声").assertIsDisplayed()
+            onNodeWithText("FLAC · 980 kbps · 44.1 kHz · $stereoLabel").assertIsDisplayed()
             onNodeWithTag("preview-audio-play-button").assertIsDisplayed()
 
             // 手动点击播放后更新播放态并截图
