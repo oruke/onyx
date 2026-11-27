@@ -14,6 +14,10 @@ internal class PlatformMenuCacheMaintenanceService(
     private val pollIntervalMillis: Long = DEFAULT_POLL_INTERVAL_MILLIS,
     private val initialDelayMillis: Long = DEFAULT_INITIAL_DELAY_MILLIS,
 ) {
+    /** 标记是否已完成首次启动初始化，窗口隐藏再唤醒重入维护循环时跳过重复建表与冷启动退让。 */
+    @Volatile
+    private var initializedOnce: Boolean = false
+
     /**
      * 在当前协程中运行缓存维护循环。
      *
@@ -22,14 +26,17 @@ internal class PlatformMenuCacheMaintenanceService(
      * @return 只有协程被取消时才会正常返回。
      */
     suspend fun runUntilCancelled() {
-        if (initialDelayMillis > 0L) {
-            delay(initialDelayMillis)
+        if (!initializedOnce) {
+            if (initialDelayMillis > 0L) {
+                delay(initialDelayMillis)
+            }
+            cacheService.initialize().onFailure { error ->
+                OnyxLogger.warn(TAG, "初始化平台菜单缓存数据库失败", error)
+            }
+            refreshInvalidationState()
+            warmUpCommonScopes()
+            initializedOnce = true
         }
-        cacheService.initialize().onFailure { error ->
-            OnyxLogger.warn(TAG, "初始化平台菜单缓存数据库失败", error)
-        }
-        refreshInvalidationState()
-        warmUpCommonScopes()
         while (currentCoroutineContext().isActive) {
             if (sourceWatchService.awaitChange(pollIntervalMillis) && refreshInvalidationState()) {
                 warmUpCommonScopes()

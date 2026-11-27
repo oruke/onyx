@@ -88,6 +88,7 @@ internal fun rememberRootComponent(
                     terminalLauncherService = koin.get<TerminalLauncherService>(),
                     systemQuickAccessService = koin.get<SystemQuickAccessService>(),
                     storageDevices = koin.get<com.oruke.onyx.vfs.api.StorageDeviceService>(),
+                    memoryConfigService = koin.get<com.oruke.onyx.app.filesystem.MemoryConfigService>(),
                 ),
                 inspection = RootInspectionDependencies(
                     previewService = koin.get<PreviewService>(),

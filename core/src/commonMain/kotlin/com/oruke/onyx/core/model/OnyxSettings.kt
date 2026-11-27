@@ -123,7 +123,21 @@ data class OnyxSettings(
     val previewPaneWidthDp: Int = 320,
     /** 右侧预览与元数据面板上次打开的模式。 */
     val previewPaneMode: PreviewPaneMode = PreviewPaneMode.PREVIEW,
-)
+    /** 手动配置的 JVM 最大堆内存上限（单位 MB，重启后通过 Onyx.cfg 生效）。 */
+    val maxHeapMemoryMb: Int = DEFAULT_MAX_HEAP_MEMORY_MB,
+) {
+    /** 应用设置的默认阈值与堆内存合法边界常量。 */
+    companion object {
+        /** 默认 JVM 最大堆内存上限（MB）。 */
+        const val DEFAULT_MAX_HEAP_MEMORY_MB: Int = 768
+
+        /** 允许配置的最小 JVM 最大堆内存上限（MB）。 */
+        const val MIN_MAX_HEAP_MEMORY_MB: Int = 256
+
+        /** 允许配置的最大 JVM 最大堆内存上限（MB）。 */
+        const val MAX_MAX_HEAP_MEMORY_MB: Int = 16_384
+    }
+}
 
 @Serializable
 /** 右侧预览与元数据面板当前展示模式。 */

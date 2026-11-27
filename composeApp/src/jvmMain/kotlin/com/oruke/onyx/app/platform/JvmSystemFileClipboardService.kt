@@ -33,18 +33,72 @@ internal data class SystemFileClipboardSnapshot(
     val ownerId: String?,
 )
 
-/** JVM 系统文件剪贴板桥接，将平台格式读写隔离在 I/O 线程中。 */
-internal class JvmSystemFileClipboardService {
+/** JVM 系统文件剪贴板桥接，将平台格式读写隔离在 I/O 线程中，并在 Windows 下通过无锁探测避免拷贝非文件大数据。 */
+internal class JvmSystemFileClipboardService(
+    /** 平台剪贴板无锁变更与格式探测器。 */
+    private val changeProbe: ClipboardChangeProbe = WindowsClipboardProbe,
+) {
+    /** 最近一次成功观察到的系统剪贴板序号，用于跳过未变更时的重复 AWT 读取。 */
+    @Volatile
+    private var lastObservedSequence: Long? = null
+
+    /** 最近一次由当前 Onyx 进程写入剪贴板后的序号，用于区分本进程纯远端 VFS 载荷与外部非文件数据。 */
+    @Volatile
+    private var lastWrittenSequence: Long? = null
+
     init {
         FileClipboardFormats.registerPlatformFormats()
     }
 
     /**
+     * 仅在系统剪贴板序号发生变化（或平台不支持序号探测）时才执行读取，供定时监控低开销复用。
+     *
+     * @return 发生变化时返回最新快照；序号未变化返回 `Result.success(null)`；访问异常返回明确失败。
+     */
+    suspend fun readIfChanged(): Result<SystemFileClipboardSnapshot?> {
+        val currentSequence = withContext(Dispatchers.IO) { changeProbe.sequenceNumber() }
+        if (currentSequence != null && currentSequence == lastObservedSequence) {
+            return Result.success(null)
+        }
+        return readInternal(prefetchedSequence = currentSequence)
+    }
+
+    /**
      * 读取当前系统文件载荷；普通文本、图片或空剪贴板返回空文件快照。
+     *
+     * 在 Windows 下若无锁探测确认当前不含 `CF_HDROP` 且非本进程刚写入的纯远端 VFS 载荷，
+     * 直接返回空快照而不调用 AWT `getContents(null)`，彻底避免反复拷贝大截图或触发剪贴板锁冲突。
+     *
      * @return 当前快照或可本地化的系统访问错误，失败时绝不提供旧载荷。
      */
-    suspend fun read(): Result<SystemFileClipboardSnapshot> = withSystemFileClipboardAccess {
-        Toolkit.getDefaultToolkit().systemClipboard.getContents(null).fileSnapshot()
+    suspend fun read(): Result<SystemFileClipboardSnapshot> = readInternal(prefetchedSequence = null)
+
+    /**
+     * 执行带无锁格式快速短路的系统剪贴板读取，复用已查询的变更序号以减少多余原生调用。
+     *
+     * @param prefetchedSequence 调用方已查询的剪贴板序号；为空时在本方法内查询。
+     * @return 当前文件快照或明确访问失败。
+     */
+    private suspend fun readInternal(prefetchedSequence: Long?): Result<SystemFileClipboardSnapshot> {
+        val (sequenceBeforeRead, hasNativeFiles) = withContext(Dispatchers.IO) {
+            val sequence = prefetchedSequence ?: changeProbe.sequenceNumber()
+            sequence to changeProbe.hasNativeFileList()
+        }
+        // 非本进程写入且不含原生文件列表（如大尺寸截图、富文本、纯文本）时直接跳过 AWT 全量拷贝。
+        if (hasNativeFiles == false && (sequenceBeforeRead == null || sequenceBeforeRead != lastWrittenSequence)) {
+            if (sequenceBeforeRead != null) {
+                lastObservedSequence = sequenceBeforeRead
+            }
+            return Result.success(SystemFileClipboardSnapshot(emptyList(), isCut = false, ownerId = null))
+        }
+        return withSystemFileClipboardAccess {
+            Toolkit.getDefaultToolkit().systemClipboard.getContents(null).fileSnapshot()
+        }.onSuccess {
+            val sequenceAfterRead = changeProbe.sequenceNumber() ?: sequenceBeforeRead
+            if (sequenceAfterRead != null) {
+                lastObservedSequence = sequenceAfterRead
+            }
+        }
     }
 
     /**
@@ -59,6 +113,9 @@ internal class JvmSystemFileClipboardService {
             val files = entries.mapNotNull { it.systemLocalPathOrNull()?.toFile() }
             val contents = FileTransferable(files, isCut, ownerId)
             Toolkit.getDefaultToolkit().systemClipboard.setContents(contents, null)
+            val seq = changeProbe.sequenceNumber()
+            lastWrittenSequence = seq
+            lastObservedSequence = seq
             contents.fileSnapshot()
         }
 
@@ -69,9 +126,14 @@ internal class JvmSystemFileClipboardService {
      */
     suspend fun clearIfUnchanged(expected: SystemFileClipboardSnapshot): Result<Boolean> =
         withSystemFileClipboardAccess {
+            if (expected.locations.isNotEmpty() && changeProbe.hasNativeFileList() == false) {
+                return@withSystemFileClipboardAccess false
+            }
             val clipboard = Toolkit.getDefaultToolkit().systemClipboard
             if (clipboard.getContents(null).fileSnapshot() == expected) {
                 clipboard.setContents(StringSelection(""), null)
+                lastWrittenSequence = null
+                lastObservedSequence = changeProbe.sequenceNumber()
                 true
             } else {
                 false

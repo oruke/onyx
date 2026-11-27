@@ -1,0 +1,29 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:ArchiveService.kt$ArchiveService$suspend fun extractPrefixBytes( archivePath: String, innerPath: String, maxBytes: Long, password: String? = null, ): Result&lt;ArchivePrefixBytes&gt;</ID>
+    <ID>CyclomaticComplexMethod:ArchiveService.kt$ArchiveService$suspend fun extractToBytesBounded( archivePath: String, innerPath: String, maxBytes: Long?, password: String? = null, ): Result&lt;ArchiveBoundedBytes&gt;</ID>
+    <ID>CyclomaticComplexMethod:ArchiveService.kt$ArchiveService$suspend fun streamEntryBytes( archivePath: String, innerPath: String, maxBytes: Long?, password: String? = null, onChunk: (ByteArray, Int) -&gt; Unit, ): Result&lt;ArchiveStreamOutcome&gt;</ID>
+    <ID>InstanceOfCheckForException:ArchiveMutationService.kt$ZipArchiveSource.Companion$failure !is IllegalArgumentException</ID>
+    <ID>InstanceOfCheckForException:ArchiveMutationService.kt$ZipArchiveSource.Companion$failure !is java.util.zip.ZipException</ID>
+    <ID>InstanceOfCheckForException:ArchiveService.kt$ArchiveService$failure is CancellationException</ID>
+    <ID>LoopWithTooManyJumpStatements:ArchiveService.kt$ArchiveService$for</ID>
+    <ID>LoopWithTooManyJumpStatements:TarZstdArchiveService.kt$TarZstdArchiveService$for</ID>
+    <ID>MagicNumber:ArchiveExtractCallbacks.kt$0x20</ID>
+    <ID>MagicNumber:TarZstdArchiveService.kt$0x20</ID>
+    <ID>ReturnCount:ArchiveExtractCallbacks.kt$FileExtractCallback$private fun outputStreamFor( index: Int, itemPath: String, ): ISequentialOutStream?</ID>
+    <ID>ReturnCount:ArchiveExtractCallbacks.kt$internal fun resolveSafeArchiveOutputFile( targetDirectory: File, relativePath: String, ): File?</ID>
+    <ID>ReturnCount:ArchiveExtractCallbacks.kt$internal fun verifyArchiveOutputParentContained( targetDirectory: File, outputFile: File, ): Boolean</ID>
+    <ID>ReturnCount:TarZstdArchiveService.kt$TarZstdArchiveService$fun extractEntryToBytes( archivePath: String, innerPath: String, maxBytes: Long? = null, ): ByteArray?</ID>
+    <ID>ReturnCount:TarZstdArchiveService.kt$internal fun String.toSafeTarEntryNameOrNull(): String?</ID>
+    <ID>ReturnCount:TarZstdArchiveService.kt$private fun stripTarEntryComponents( unifiedPath: String, stripComponents: Int, ): String?</ID>
+    <ID>SwallowedException:TarZstdArchiveService.kt$failure: ExecutionException</ID>
+    <ID>ThrowsCount:ArchiveService.kt$ArchiveService$private fun validateSevenZipExtractionBatch( archive: IInArchive, indices: List&lt;Int&gt;, targetDirectory: File, prefix: String, )</ID>
+    <ID>ThrowsCount:TarZstdArchiveService.kt$internal fun validateTarRawEntries( rawEntries: List&lt;String&gt;, verboseLines: List&lt;String&gt;, targetDir: File, filterEntries: List&lt;String&gt;?, stripComponents: Int, )</ID>
+    <ID>ThrowsCount:TarZstdArchiveService.kt$private fun runTarCommand( command: List&lt;String&gt;, timeoutSeconds: Long?, maxStdoutBytes: Long? = null, ): ByteArray</ID>
+    <ID>TooGenericExceptionCaught:ArchiveMutationService.kt$ZipArchiveSource.Companion$failure: Exception</ID>
+    <ID>TooGenericExceptionCaught:ArchiveMutationService.kt$ZipArchiveSource.Companion$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:ArchiveService.kt$ArchiveService$failure: Throwable</ID>
+  </CurrentIssues>
+</SmellBaseline>

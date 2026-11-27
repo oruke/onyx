@@ -20,42 +20,66 @@ import java.nio.file.attribute.BasicFileAttributes
 import kotlin.io.path.name
 import kotlin.io.path.pathString
 
+/** 本地可列举目录共享的不可变能力集合，避免万级条目重复分配集合实例。 */
+private val LOCAL_LISTABLE_DIR_CAPABILITIES: Set<VFileCapability> = setOf(
+    VFileCapability.READ_METADATA,
+    VFileCapability.RENAME,
+    VFileCapability.DELETE,
+    VFileCapability.LIST_CHILDREN,
+)
+
+/** 本地普通文件共享的不可变能力集合，避免万级条目重复分配集合实例。 */
+private val LOCAL_REGULAR_FILE_CAPABILITIES: Set<VFileCapability> = setOf(
+    VFileCapability.READ_METADATA,
+    VFileCapability.RENAME,
+    VFileCapability.DELETE,
+    VFileCapability.READ_CONTENT,
+    VFileCapability.WRITE_CONTENT,
+)
+
+/** 本地不可列举目录或特殊条目共享的不可变能力集合。 */
+private val LOCAL_BASE_ENTRY_CAPABILITIES: Set<VFileCapability> = setOf(
+    VFileCapability.READ_METADATA,
+    VFileCapability.RENAME,
+    VFileCapability.DELETE,
+)
+
 /**
  * 使用入口自身的元数据构造统一文件对象，挂载目标失效不影响父目录列项。
  *
  * @param parent 父目录路径。
+ * @param normalizedParentLocation 可选预先规范化的父目录字符串，批量列举目录时传入以复用同一字符串对象。
  * @return 对应的 VFS 文件对象。
  */
-internal fun Path.toLocalVFile(parent: Path): VFile {
+internal fun Path.toLocalVFile(
+    parent: Path,
+    normalizedParentLocation: String = parent.toAbsolutePath().normalize().pathString,
+): VFile {
     // Junction 的目标可能离线，不能用跟随目标的 size、时间或存在性判断替代入口属性。
     val attributes = Files.readAttributes(this, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
     val directory = attributes.isDirectory || (attributes.isSymbolicLink && Files.isDirectory(this))
     val isListableDirectory = directory && LocalDirectoryAccess.isListable(this)
     val normalizedPath = toAbsolutePath().normalize()
+    val normalizedLocation = normalizedPath.pathString
+    val fileName = name.ifBlank { normalizedLocation }
+    val capabilities = when {
+        isListableDirectory -> LOCAL_LISTABLE_DIR_CAPABILITIES
+        attributes.isRegularFile || (attributes.isSymbolicLink && Files.isRegularFile(this)) ->
+            LOCAL_REGULAR_FILE_CAPABILITIES
+        else -> LOCAL_BASE_ENTRY_CAPABILITIES
+    }
     return VFile(
-        id = normalizedPath.pathString,
+        id = normalizedLocation,
         // 使用文件系统对象身份追踪路径变化；硬链接歧义由共享目录层排除。
         identityKey = normalizedPath.readLocalIdentityKey(attributes),
-        name = name.ifBlank { pathString },
-        location = normalizedPath.pathString,
-        parentLocation = parent.toAbsolutePath().normalize().pathString,
+        name = fileName,
+        location = normalizedLocation,
+        parentLocation = normalizedParentLocation,
         kind = if (directory) VFileKind.DIRECTORY else VFileKind.FILE,
         sizeBytes = if (directory || attributes.isSymbolicLink || attributes.isOther) null else attributes.size(),
         modifiedAtEpochMillis = attributes.lastModifiedTime().toMillis(),
-        hidden = runCatching { Files.isHidden(this) }.getOrDefault(false) || name.startsWith("."),
-        capabilities = buildSet {
-            add(VFileCapability.READ_METADATA)
-            add(VFileCapability.RENAME)
-            add(VFileCapability.DELETE)
-            if (isListableDirectory) {
-                add(VFileCapability.LIST_CHILDREN)
-            } else if (
-                attributes.isRegularFile || (attributes.isSymbolicLink && Files.isRegularFile(this@toLocalVFile))
-            ) {
-                add(VFileCapability.READ_CONTENT)
-                add(VFileCapability.WRITE_CONTENT)
-            }
-        },
+        hidden = runCatching { Files.isHidden(this) }.getOrDefault(false) || fileName.startsWith("."),
+        capabilities = capabilities,
     )
 }
 

@@ -54,17 +54,24 @@ internal class JvmMediaPreviewService(
         }
     }
 
-    private val frameCache = object : LinkedHashMap<String, ImageBitmap>(32, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>?): Boolean {
-            return size > MAX_FRAME_CACHE_ENTRIES
-        }
-    }
+    /** 视频抽帧与音频内嵌封面的字节与条数双重封顶 LRU 缓存，淘汰时联动引用计数显式释放原生 Skia 位图。 */
+    private val frameCache = ByteBoundedBitmapLruCache(
+        maxEntries = MAX_FRAME_CACHE_ENTRIES,
+        maxBytes = MAX_FRAME_CACHE_BYTES,
+        onEvict = ManagedBitmapRegistry::release,
+    )
 
     override val isProbeAvailable: Boolean
         get() = probeCommand != null
 
     override val isFrameExtractionAvailable: Boolean
         get() = ffmpegCommand != null
+
+    /** 清空内存中的媒体探测元数据与抽帧/封面位图缓存。 */
+    override fun clearCache() {
+        synchronized(metadataCache) { metadataCache.clear() }
+        frameCache.clear()
+    }
 
     @Suppress("TooGenericExceptionCaught")
     override suspend fun readMediaMetadata(entry: VFile): MediaMetadataResult = withContext(Dispatchers.IO) {
@@ -118,7 +125,7 @@ internal class JvmMediaPreviewService(
 
         val safeRatio = positionRatio.coerceIn(0f, 0.95f)
         val cacheKey = "video|${entry.location}|${(safeRatio * 100).toInt()}|$maxDimension|${entry.modifiedAtEpochMillis}|${entry.sizeBytes}"
-        synchronized(frameCache) { frameCache[cacheKey] }?.let { return@withContext it }
+        frameCache.get(cacheKey)?.let { return@withContext it }
 
         val seekSeconds = computeSeekSeconds(safeRatio, durationMillis)
         val bitmap = try {
@@ -134,7 +141,8 @@ internal class JvmMediaPreviewService(
             null
         }
         if (bitmap != null) {
-            synchronized(frameCache) { frameCache[cacheKey] = bitmap }
+            ManagedBitmapRegistry.register(bitmap)
+            frameCache.put(cacheKey, bitmap)
         }
         bitmap
     }
@@ -151,7 +159,7 @@ internal class JvmMediaPreviewService(
         if (!Files.exists(path) || !Files.isRegularFile(path)) return@withContext null
 
         val cacheKey = "cover|${entry.location}|$maxDimension|${entry.modifiedAtEpochMillis}|${entry.sizeBytes}"
-        synchronized(frameCache) { frameCache[cacheKey] }?.let { return@withContext it }
+        frameCache.get(cacheKey)?.let { return@withContext it }
 
         val scaleFilter = buildScaleFilter(maxDimension)
         val command = listOf(
@@ -181,7 +189,8 @@ internal class JvmMediaPreviewService(
             null
         } ?: return@withContext null
         val bitmap = decodePngBytes(bytes) ?: return@withContext null
-        synchronized(frameCache) { frameCache[cacheKey] = bitmap }
+        ManagedBitmapRegistry.register(bitmap)
+        frameCache.put(cacheKey, bitmap)
         bitmap
     }
 
@@ -298,7 +307,8 @@ internal class JvmMediaPreviewService(
 
     internal companion object {
         private const val MAX_METADATA_CACHE_ENTRIES = 256
-        private const val MAX_FRAME_CACHE_ENTRIES = 48
+        private const val MAX_FRAME_CACHE_ENTRIES = 16
+        private const val MAX_FRAME_CACHE_BYTES = 16L * 1024 * 1024
         private const val PROBE_TIMEOUT_MILLIS = 6_000L
         private const val FRAME_TIMEOUT_MILLIS = 8_000L
         private const val MAX_PROBE_JSON_BYTES = 2 * 1024 * 1024

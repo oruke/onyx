@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ThrowsCount:KtorS3Client.kt$KtorS3Client$private inline fun &lt;T&gt; runS3Request(location: String, block: () -&gt; T): T</ID>
+  </CurrentIssues>
+</SmellBaseline>

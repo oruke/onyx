@@ -8,7 +8,11 @@ import com.oruke.onyx.core.model.VFileCapability
 import com.oruke.onyx.core.model.VFileKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.FilterMipmap
 import org.jetbrains.skia.FilterMode
@@ -40,29 +44,38 @@ import com.oruke.onyx.vfs.archive.ArchiveService
 internal class JvmThumbnailService(
     private val contentServices: List<RoutableVfsContentService> = emptyList(),
     private val archiveService: ArchiveService = ArchiveService(),
+    /** 可选本地磁盘缩略图缓存；生产 DI 默认注入 512 MB 缓存，隔离单测可为空。 */
+    private val diskCache: DiskThumbnailCache? = null,
 ) : ThumbnailService {
 
     private companion object {
         /** 缩略图与查看器大图缓存分池阈值（超过 1024px 归入查看器大图池）。 */
         const val VIEWER_DIMENSION_THRESHOLD = 1024
-        const val MAX_THUMBNAIL_CACHE_ENTRIES = 500
-        const val MAX_THUMBNAIL_CACHE_BYTES = 96L * 1024 * 1024
-        const val MAX_VIEWER_CACHE_ENTRIES = 6
-        const val MAX_VIEWER_CACHE_BYTES = 128L * 1024 * 1024
+        const val MAX_THUMBNAIL_CACHE_ENTRIES = 256
+        const val MAX_THUMBNAIL_CACHE_BYTES = 32L * 1024 * 1024
+        const val MAX_VIEWER_CACHE_ENTRIES = 3
+        const val MAX_VIEWER_CACHE_BYTES = 48L * 1024 * 1024
         const val MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024
         const val MAX_ARCHIVE_IMAGE_BYTES = 20L * 1024 * 1024
+        /** 缩略图与压缩包封面同时解码的最大并发数，防止快速滚动画廊时 64 个 IO 线程并发撑爆堆与原生内存。 */
+        val MAX_CONCURRENT_DECODES: Int = Runtime.getRuntime().availableProcessors().coerceIn(2, 4)
     }
 
-    /** 画廊与预览缩略图专用字节封顶 LRU 池。 */
+    /** 限制并发解码数量的信号量，保护高分辨率图片与 7-Zip 提取期间的峰值内存。 */
+    private val decodeSemaphore = Semaphore(MAX_CONCURRENT_DECODES)
+
+    /** 画廊与预览缩略图专用字节封顶 LRU 池，淘汰时联动引用计数显式释放原生 Skia 位图。 */
     internal val thumbnailCache = ByteBoundedBitmapLruCache(
         maxEntries = MAX_THUMBNAIL_CACHE_ENTRIES,
         maxBytes = MAX_THUMBNAIL_CACHE_BYTES,
+        onEvict = ManagedBitmapRegistry::release,
     )
 
-    /** 独立图片查看器全尺寸大图专用字节封顶 LRU 池，避免挤占画廊缩略图或造成 OOM。 */
+    /** 独立图片查看器全尺寸大图专用字节封顶 LRU 池，淘汰时联动引用计数显式释放原生 Skia 位图。 */
     internal val viewerCache = ByteBoundedBitmapLruCache(
         maxEntries = MAX_VIEWER_CACHE_ENTRIES,
         maxBytes = MAX_VIEWER_CACHE_BYTES,
+        onEvict = ManagedBitmapRegistry::release,
     )
 
     private fun cachePoolFor(maxDimension: Int): ByteBoundedBitmapLruCache {
@@ -74,13 +87,19 @@ internal class JvmThumbnailService(
     }
 
     private fun putCache(key: String, maxDimension: Int, bitmap: ImageBitmap) {
+        ManagedBitmapRegistry.register(bitmap)
         cachePoolFor(maxDimension).put(key, bitmap)
     }
 
     override fun clearCache() {
         thumbnailCache.clear()
         viewerCache.clear()
+        ManagedBitmapRegistry.flushPendingCloses()
     }
+
+    override suspend fun readDiskCacheUsageBytes(): Long = diskCache?.readUsageBytes() ?: 0L
+
+    override suspend fun clearDiskCache(): Result<Unit> = diskCache?.clear() ?: Result.success(Unit)
 
     /**
      * 使用纯 Skia 管线将 [skImage] 逐步缩放到 [targetW] x [targetH]。
@@ -156,15 +175,18 @@ internal class JvmThumbnailService(
     }
 
     /**
-     * 解码图片字节、按目标边界高质量缩放并转换为 [ImageBitmap]，确保及时释放所有原生 [SkiaImage]。
+     * 解码图片字节、按目标边界高质量缩放并转换为 [ImageBitmap]，确保及时释放所有原生 [SkiaImage]，
+     * 并在启用磁盘缩略图缓存时同步落盘缩放后的缩略图。
      *
      * @param bytes 原始编码图片字节。
      * @param maxDimension 最大宽高边界像素。
+     * @param diskCacheKey 可选磁盘缓存键；非空且属于缩略图尺寸时写入磁盘缓存。
      * @return 可供 Compose 绘制的独立位图副本。
      */
     private fun decodeAndDownscale(
         bytes: ByteArray,
         maxDimension: Int,
+        diskCacheKey: String? = null,
     ): ImageBitmap {
         val skImage = SkiaImage.makeFromEncoded(bytes)
         try {
@@ -176,6 +198,9 @@ internal class JvmThumbnailService(
             val targetHeight = max(1, (height * scale).toInt())
             val scaled = progressiveDownscale(skImage, targetWidth, targetHeight)
             try {
+                if (diskCacheKey != null && maxDimension <= VIEWER_DIMENSION_THRESHOLD) {
+                    diskCache?.putImage(diskCacheKey, scaled)
+                }
                 return scaled.toComposeImageBitmap()
             } finally {
                 if (scaled !== skImage) {
@@ -184,6 +209,28 @@ internal class JvmThumbnailService(
             }
         } finally {
             skImage.close()
+        }
+    }
+
+    /**
+     * 尝试从本地磁盘缓存解码缩略图；仅用于非看图器尺寸，命中后直接装入内存池避免重读原图或压缩包。
+     *
+     * @param cacheKey 版本化缓存键。
+     * @param maxDimension 目标最大边长。
+     * @return 解码成功的位图；未命中或损坏时返回 `null`。
+     */
+    private fun tryLoadFromDiskCache(cacheKey: String, maxDimension: Int): ImageBitmap? {
+        if (maxDimension > VIEWER_DIMENSION_THRESHOLD) return null
+        val cachedBytes = diskCache?.getBytes(cacheKey) ?: return null
+        return runCatching {
+            val skImage = SkiaImage.makeFromEncoded(cachedBytes)
+            try {
+                skImage.toComposeImageBitmap()
+            } finally {
+                skImage.close()
+            }
+        }.getOrNull()?.also { bitmap ->
+            putCache(cacheKey, maxDimension, bitmap)
         }
     }
 
@@ -256,62 +303,68 @@ internal class JvmThumbnailService(
         val cacheKey = buildThumbnailCacheKey(location, maxDimension, effectiveModified, effectiveSize)
         getCached(cacheKey, maxDimension)?.let { return@withContext ImageLoadOutcome.Loaded(it) }
 
-        return@withContext try {
-            val bytes: ByteArray
-            if (ArchiveService.isArchiveLocation(location)) {
-                val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(location)
-                    ?: return@withContext ImageLoadOutcome.NotFound
-                if (innerPath.isBlank()) return@withContext ImageLoadOutcome.NotFound
-                if (effectiveSize != null && effectiveSize > MAX_ARCHIVE_IMAGE_BYTES) {
-                    return@withContext ImageLoadOutcome.TooLarge(MAX_ARCHIVE_IMAGE_BYTES, effectiveSize)
-                }
-                val extracted = archiveService.extractToBytes(
-                    archivePath = archivePath,
-                    innerPath = innerPath,
-                    maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
-                )
-                bytes = extracted.getOrElse { failure ->
-                    val msg = failure.message.orEmpty()
-                    return@withContext if (msg.contains("上限") || msg.contains("limit", ignoreCase = true) || msg.contains("exceed", ignoreCase = true)) {
-                        ImageLoadOutcome.TooLarge(MAX_ARCHIVE_IMAGE_BYTES, effectiveSize)
-                    } else {
-                        ImageLoadOutcome.DecodeFailed(msg.ifBlank { null })
+        return@withContext decodeSemaphore.withPermit {
+            currentCoroutineContext().ensureActive()
+            getCached(cacheKey, maxDimension)?.let { return@withPermit ImageLoadOutcome.Loaded(it) }
+            tryLoadFromDiskCache(cacheKey, maxDimension)?.let { return@withPermit ImageLoadOutcome.Loaded(it) }
+            try {
+                val bytes: ByteArray
+                if (ArchiveService.isArchiveLocation(location)) {
+                    val (archivePath, innerPath) = ArchiveService.parseArchiveLocation(location)
+                        ?: return@withPermit ImageLoadOutcome.NotFound
+                    if (innerPath.isBlank()) return@withPermit ImageLoadOutcome.NotFound
+                    if (effectiveSize != null && effectiveSize > MAX_ARCHIVE_IMAGE_BYTES) {
+                        return@withPermit ImageLoadOutcome.TooLarge(MAX_ARCHIVE_IMAGE_BYTES, effectiveSize)
                     }
-                } ?: return@withContext ImageLoadOutcome.NotFound
-                if (bytes.isEmpty()) return@withContext ImageLoadOutcome.DecodeFailed()
-            } else {
-                val contentService = contentServices.firstOrNull { service -> service.supports(location) }
-                if (contentService != null) {
-                    when (val routed = readRoutedContentOutcome(contentService, location)) {
-                        is RoutedImageBytes.Ready -> bytes = routed.bytes
-                        is RoutedImageBytes.TooLarge -> {
-                            return@withContext ImageLoadOutcome.TooLarge(MAX_FILE_SIZE_BYTES, routed.actualBytes)
+                    val extracted = archiveService.extractToBytes(
+                        archivePath = archivePath,
+                        innerPath = innerPath,
+                        maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
+                    )
+                    bytes = extracted.getOrElse { failure ->
+                        val msg = failure.message.orEmpty()
+                        return@withPermit if (msg.contains("上限") || msg.contains("limit", ignoreCase = true) || msg.contains("exceed", ignoreCase = true)) {
+                            ImageLoadOutcome.TooLarge(MAX_ARCHIVE_IMAGE_BYTES, effectiveSize)
+                        } else {
+                            ImageLoadOutcome.DecodeFailed(msg.ifBlank { null })
                         }
-                        is RoutedImageBytes.Failed -> {
-                            return@withContext ImageLoadOutcome.DecodeFailed(routed.reason)
-                        }
-                    }
-                } else if (location.contains("://")) {
-                    return@withContext ImageLoadOutcome.UnsupportedLocation
+                    } ?: return@withPermit ImageLoadOutcome.NotFound
+                    if (bytes.isEmpty()) return@withPermit ImageLoadOutcome.DecodeFailed()
                 } else {
-                    val file = File(location)
-                    if (!file.exists() || !file.isFile) return@withContext ImageLoadOutcome.NotFound
-                    val fileLen = file.length()
-                    if (fileLen > MAX_FILE_SIZE_BYTES) {
-                        return@withContext ImageLoadOutcome.TooLarge(MAX_FILE_SIZE_BYTES, fileLen)
+                    val contentService = contentServices.firstOrNull { service -> service.supports(location) }
+                    if (contentService != null) {
+                        when (val routed = readRoutedContentOutcome(contentService, location)) {
+                            is RoutedImageBytes.Ready -> bytes = routed.bytes
+                            is RoutedImageBytes.TooLarge -> {
+                                return@withPermit ImageLoadOutcome.TooLarge(MAX_FILE_SIZE_BYTES, routed.actualBytes)
+                            }
+                            is RoutedImageBytes.Failed -> {
+                                return@withPermit ImageLoadOutcome.DecodeFailed(routed.reason)
+                            }
+                        }
+                    } else if (location.contains("://")) {
+                        return@withPermit ImageLoadOutcome.UnsupportedLocation
+                    } else {
+                        val file = File(location)
+                        if (!file.exists() || !file.isFile) return@withPermit ImageLoadOutcome.NotFound
+                        val fileLen = file.length()
+                        if (fileLen > MAX_FILE_SIZE_BYTES) {
+                            return@withPermit ImageLoadOutcome.TooLarge(MAX_FILE_SIZE_BYTES, fileLen)
+                        }
+                        bytes = file.readBytes()
                     }
-                    bytes = file.readBytes()
                 }
-            }
 
-            val composeBitmap = decodeAndDownscale(bytes, maxDimension)
-            putCache(cacheKey, maxDimension, composeBitmap)
-            ImageLoadOutcome.Loaded(composeBitmap)
-        } catch (failure: CancellationException) {
-            throw failure
-        } catch (failure: Exception) {
-            OnyxLogger.warn("JvmThumbnailService", "缩略图加载失败: $location", failure)
-            ImageLoadOutcome.DecodeFailed(failure.message)
+                currentCoroutineContext().ensureActive()
+                val composeBitmap = decodeAndDownscale(bytes, maxDimension, diskCacheKey = cacheKey)
+                putCache(cacheKey, maxDimension, composeBitmap)
+                ImageLoadOutcome.Loaded(composeBitmap)
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (failure: Exception) {
+                OnyxLogger.warn("JvmThumbnailService", "缩略图加载失败: $location", failure)
+                ImageLoadOutcome.DecodeFailed(failure.message)
+            }
         }
     }
 
@@ -438,19 +491,25 @@ internal class JvmThumbnailService(
         val cacheKey = buildArchiveThumbnailCacheKey(location, maxDimension, effectiveModified, effectiveSize)
         getCached(cacheKey, maxDimension)?.let { return@withContext it }
 
-        return@withContext try {
-            val imageBytes = archiveService.extractFirstImageToBytes(
-                archivePath = location,
-                maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
-            ).getOrNull() ?: return@withContext null
-            val composeBitmap = decodeAndDownscale(imageBytes, maxDimension)
-            putCache(cacheKey, maxDimension, composeBitmap)
-            composeBitmap
-        } catch (failure: CancellationException) {
-            throw failure
-        } catch (failure: Exception) {
-            OnyxLogger.warn("JvmThumbnailService", "压缩包缩略图加载失败: $location", failure)
-            null
+        return@withContext decodeSemaphore.withPermit {
+            currentCoroutineContext().ensureActive()
+            getCached(cacheKey, maxDimension)?.let { return@withPermit it }
+            tryLoadFromDiskCache(cacheKey, maxDimension)?.let { return@withPermit it }
+            try {
+                val imageBytes = archiveService.extractFirstImageToBytes(
+                    archivePath = location,
+                    maxBytes = MAX_ARCHIVE_IMAGE_BYTES,
+                ).getOrNull() ?: return@withPermit null
+                currentCoroutineContext().ensureActive()
+                val composeBitmap = decodeAndDownscale(imageBytes, maxDimension, diskCacheKey = cacheKey)
+                putCache(cacheKey, maxDimension, composeBitmap)
+                composeBitmap
+            } catch (failure: CancellationException) {
+                throw failure
+            } catch (failure: Exception) {
+                OnyxLogger.warn("JvmThumbnailService", "压缩包缩略图加载失败: $location", failure)
+                null
+            }
         }
     }
 }

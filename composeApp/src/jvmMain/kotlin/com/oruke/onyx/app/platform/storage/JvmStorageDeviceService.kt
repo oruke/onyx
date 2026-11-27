@@ -25,10 +25,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.shareIn
@@ -58,6 +60,8 @@ internal class JvmStorageDeviceService(
     private val operationLocks = ConcurrentHashMap<String, Mutex>()
     /** 用户完成设备操作后立即触发完整清单校验。 */
     private val refreshes = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    /** 应用是否处于前台可见状态；隐藏到托盘时挂起周期盘符与容量轮询，回到前台立即补扫一次。 */
+    private val foregroundActive = MutableStateFlow(true)
     /** 仅用于同步名称展示的最近成功清单，不允许界面据此执行过期设备操作。 */
     @Volatile private var cachedDevices: List<StorageDevice> = emptyList()
     /** 双面板和多个窗口共享同一原生观察，在最后一个订阅释放后停止。 */
@@ -155,6 +159,15 @@ internal class JvmStorageDeviceService(
             }
         }
 
+    /**
+     * 更新应用前台可见态；转入后台托盘时暂停周期设备与容量查询，恢复前台时自动补扫最新卷状态。
+     *
+     * @param active 当前是否存在可见主窗口。
+     */
+    fun setForegroundActive(active: Boolean) {
+        foregroundActive.value = active
+    }
+
     /** 停止共享通知、容量查询与平台资源，重复关闭不会影响其他应用状态。 */
     override fun close() {
         scope.cancel()
@@ -170,12 +183,16 @@ internal class JvmStorageDeviceService(
             }
         val periodic = flow {
             while (currentCoroutineContext().isActive) {
+                if (!foregroundActive.value) {
+                    foregroundActive.first { active -> active }
+                }
                 emit(Unit)
                 delay(DEVICE_RESCAN_MILLIS)
             }
         }
         launch { merge(native, periodic, refreshes).conflate().collect { wakeups.trySend(Unit) } }
         for (ignored in wakeups) {
+            if (!foregroundActive.value) continue
             val found = snapshot()
             send(found)
             val devices = found.getOrNull() ?: continue

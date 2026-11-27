@@ -42,6 +42,9 @@ internal object WindowsFileIdentityAccess {
     /** 不透明身份字符串使用十六进制表示。 */
     private const val IDENTITY_RADIX = 16
 
+    /** 按线程复用的 Win32 `FILE_ID_INFO` 结构体缓冲区，避免每次列举为每个文件分配 JNA 原生内存与 Cleaner。 */
+    private val threadLocalFileIdInfo = ThreadLocal.withInitial { WinBase.FILE_ID_INFO() }
+
     /** 可选身份查询被文件系统或访问策略明确拒绝时保留普通列项能力。 */
     private val unavailableErrors = setOf(WinError.ERROR_INVALID_FUNCTION, WinError.ERROR_NOT_SUPPORTED,
         WinError.ERROR_INVALID_PARAMETER, WinError.ERROR_ACCESS_DENIED, WinError.ERROR_SHARING_VIOLATION)
@@ -73,7 +76,9 @@ internal object WindowsFileIdentityAccess {
      * @return 可用的对象身份，不支持时为空。
      */
     private fun readIdentity(handle: WinNT.HANDLE, path: Path): String? {
-        val information = WinBase.FILE_ID_INFO()
+        val information = threadLocalFileIdInfo.get()
+        // 复用线程局部原生缓冲区前必须清零，防止上一次调用的卷序列号或文件 ID 残留。
+        information.clear()
         val api = Kernel32.INSTANCE
         if (!api.GetFileInformationByHandleEx(handle, FILE_ID_INFORMATION_CLASS,
                 information.pointer, DWORD(information.size().toLong()))) {

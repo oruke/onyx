@@ -14,14 +14,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** 文件格式相同的剪贴板重写不会触发 FlavorListener，因此定期刷新按钮可用状态。 */
+/** 文件格式相同的剪贴板重写不会触发 FlavorListener，因此在前台定期通过无锁序号检测刷新状态。 */
 private const val CLIPBOARD_REFRESH_INTERVAL_MS = 500L
 
 /**
@@ -62,15 +64,25 @@ internal class ClipboardManager(
 
     /**
      * 在应用级主线程作用域中持续观察系统文件载荷，不执行目录遍历。
+     *
+     * 当应用全部窗口隐藏到系统托盘（`activeFlow == false`）时彻底挂起轮询，待唤醒回前台后立即恢复检测。
+     *
      * @param scope 应用共享作用域，关闭最后一个窗口后负责取消观察任务。
+     * @param activeFlow 应用前台可见状态流；为 `false` 时暂停后台轮询。
      * @return 无返回值。
      */
-    fun bind(scope: CoroutineScope) {
+    fun bind(
+        scope: CoroutineScope,
+        activeFlow: StateFlow<Boolean> = MutableStateFlow(true),
+    ) {
         check(monitorJob == null) { "Clipboard manager is already bound" }
         monitorJob = scope.launch {
             var readFailed = false
             while (isActive) {
-                refresh().onSuccess { readFailed = false }.onFailure { failure ->
+                if (!activeFlow.value) {
+                    activeFlow.first { active -> active }
+                }
+                refreshIfChanged().onSuccess { readFailed = false }.onFailure { failure ->
                     if (!readFailed) OnyxLogger.warn("ClipboardManager", "系统剪贴板读取失败", failure)
                     readFailed = true
                 }
@@ -82,6 +94,7 @@ internal class ClipboardManager(
     /**
      * 发布复制条目，只有系统写入成功后才暴露新载荷。
      * @param entries 本次明确选择的复制条目。
+     * @param sourceBaseLocation 应用内复制的来源面板根位置；外部载荷为空。
      * @return 发布结果，失败由组件显示本地化反馈。
      */
     suspend fun stageCopy(
@@ -92,6 +105,7 @@ internal class ClipboardManager(
     /**
      * 发布剪切条目，使用唯一标识区分随后发生的外部同路径复制。
      * @param entries 本次明确选择的剪切条目。
+     * @param sourceBaseLocation 应用内剪切的来源面板根位置；外部载荷为空。
      * @return 发布结果，失败时不会保留可误执行的内部剪切载荷。
      */
     suspend fun stageCut(
@@ -106,6 +120,21 @@ internal class ClipboardManager(
     suspend fun refresh(): Result<Unit> = withContext(Dispatchers.Main.immediate) {
         accessMutex.withLock {
             systemClipboard.read().map { snapshot -> updateAvailability(snapshot) }.onFailure { invalidate() }
+        }
+    }
+
+    /**
+     * 仅在系统剪贴板变更序号发生变化时刷新粘贴状态，未变化时直接跳过读取以消除空转与内存分配。
+     *
+     * @return 增量检查结果；系统读取失败时清除旧载荷并禁用粘贴。
+     */
+    internal suspend fun refreshIfChanged(): Result<Unit> = withContext(Dispatchers.Main.immediate) {
+        accessMutex.withLock {
+            systemClipboard.readIfChanged().map { snapshot ->
+                if (snapshot != null) {
+                    updateAvailability(snapshot)
+                }
+            }.onFailure { invalidate() }
         }
     }
 
@@ -149,6 +178,7 @@ internal class ClipboardManager(
      * 串行发布当前完整业务载荷，纯远端文件也以唯一标识占有系统剪贴板。
      * @param entries 本次用户选择的完整条目。
      * @param operation 明确的复制或剪切操作。
+     * @param sourceBaseLocation 来源面板根位置。
      * @return 发布结果，不在写入失败后回退到旧载荷。
      */
     private suspend fun stage(

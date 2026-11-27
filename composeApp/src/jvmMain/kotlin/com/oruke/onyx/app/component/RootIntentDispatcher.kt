@@ -57,6 +57,10 @@ private fun DefaultRootComponent.dispatchRootSettingsIntent(intent: RootIntent):
             cleanupInvalidLocations(); true
         }
 
+        RootIntent.ClearThumbnailDiskCache -> {
+            clearThumbnailDiskCache(); true
+        }
+
         is RootIntent.UpdateSettings -> {
             updateSettings(intent.settings); true
         }

@@ -73,6 +73,10 @@ private fun OnyxSettings.sanitizeWindowSizes(): OnyxSettings {
         taskCenterWindowHeight = taskCenterWindowHeight.takeIf { it >= MIN_PERSISTED_WINDOW_HEIGHT }
             ?: defaults.taskCenterWindowHeight,
         previewPaneWidthDp = previewPaneWidthDp.coerceIn(MIN_PREVIEW_PANE_WIDTH_DP, MAX_PREVIEW_PANE_WIDTH_DP),
+        maxHeapMemoryMb = maxHeapMemoryMb.coerceIn(
+            OnyxSettings.MIN_MAX_HEAP_MEMORY_MB,
+            OnyxSettings.MAX_MAX_HEAP_MEMORY_MB,
+        ),
     )
 }
 

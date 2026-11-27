@@ -117,9 +117,10 @@ class JvmLocalFileProvider :
             require(Files.isDirectory(directory)) { "$location is not a directory" }
             val listingDirectory = LocalDirectoryAccess.resolveForListing(directory)
                 .getOrElse { directory }
+            val normalizedParentLocation = directory.pathString
             Files.newDirectoryStream(listingDirectory).use { stream ->
                 stream
-                    .map { child -> child.toLocalVFile(directory) }
+                    .map { child -> child.toLocalVFile(directory, normalizedParentLocation) }
                     .sortedWith(
                         compareByDescending<VFile> { it.kind == VFileKind.DIRECTORY }
                             .thenBy { it.name.lowercase() }

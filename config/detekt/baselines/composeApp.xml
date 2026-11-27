@@ -1,0 +1,194 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:FileLabelSizeFields.kt$okMin &amp;&amp; okMax &amp;&amp; (parsedMin == null || parsedMax == null || parsedMin &lt;= parsedMax)</ID>
+    <ID>ComplexCondition:InspectorPanel.kt$!isTrashEntry &amp;&amp; entry.kind == VFileKind.FILE &amp;&amp; !isImageFileName(entry.name) &amp;&amp; !isTextPreviewFileName(entry.name) &amp;&amp; (isAudioFileName(entry.name) || isVideoFileName(entry.name)) &amp;&amp; readMediaMetadata != null</ID>
+    <ID>ComplexCondition:InspectorPanel.kt$!isTrashEntry &amp;&amp; entry.kind == VFileKind.FILE &amp;&amp; isImageFileName(entry.name) &amp;&amp; readImageSize != null</ID>
+    <ID>ComplexCondition:TaskCenterErrorSection.kt$index &lt; visibleItems.lastIndex || (canExpand &amp;&amp; !expanded) || expandedTruncated</ID>
+    <ID>ComplexCondition:TextPreviewDecoder.kt$TextPreviewDecoder$bytes.size &gt;= 2 &amp;&amp; ((bytes[0] == 0xFF.toByte() &amp;&amp; bytes[1] == 0xFE.toByte()) || (bytes[0] == 0xFE.toByte() &amp;&amp; bytes[1] == 0xFF.toByte()))</ID>
+    <ID>ComplexCondition:TextPreviewDecoder.kt$TextPreviewDecoder$bytes.size &gt;= 3 &amp;&amp; bytes[0] == 0xEF.toByte() &amp;&amp; bytes[1] == 0xBB.toByte() &amp;&amp; bytes[2] == 0xBF.toByte()</ID>
+    <ID>ComplexCondition:TextPreviewDecoder.kt$TextPreviewDecoder$stripBom &amp;&amp; length &gt;= 3 &amp;&amp; bytes[0] == 0xEF.toByte() &amp;&amp; bytes[1] == 0xBB.toByte() &amp;&amp; bytes[2] == 0xBF.toByte()</ID>
+    <ID>CyclomaticComplexMethod:AddressBar.kt$@Composable internal fun BreadcrumbAddressBar( location: String, onActivate: () -&gt; Unit, onEdit: () -&gt; Unit, onOpenLocation: (String) -&gt; Unit, buildBreadcrumbs: (String) -&gt; List&lt;VfsBreadcrumb&gt;, )</ID>
+    <ID>CyclomaticComplexMethod:AddressBar.kt$@Composable private fun AddressBarEditor( location: String, draftValue: TextFieldValue, knownLocations: List&lt;String&gt;, suggestLocations: (suspend (String, List&lt;String&gt;) -&gt; List&lt;String&gt;)?, onDraftChange: (TextFieldValue) -&gt; Unit, onSubmit: (String) -&gt; Unit, onCancel: () -&gt; Unit, onBlur: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:AddressBarLocationSuggester.kt$@Suppress("TooGenericExceptionCaught") // 路径补全属于尽力而为辅助能力，任何文件系统权限或路径异常都应静默忽略。 private suspend fun listMatchingLocalDirectories(query: String, maxCount: Int): List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:CommandPalette.kt$@Composable internal fun CommandPalettePopup( items: List&lt;CommandPaletteItem&gt;, onExecute: (CommandPaletteTarget) -&gt; Unit, onClose: () -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:DetailsView.kt$@Composable private fun ReadyPaneEntries( model: PaneEntriesViewModel, actions: PaneEntriesActions, thumbnails: GalleryThumbnailServices, ready: PaneEntriesState.Ready, )</ID>
+    <ID>CyclomaticComplexMethod:DetailsView.kt$@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class) @Composable internal fun InlineEditEntryRow( columns: List&lt;DetailsColumn&gt;, columnWidths: Map&lt;DetailsColumn, Float&gt;, draftName: String, iconKey: org.jetbrains.jewel.ui.icon.IconKey, selected: Boolean, zebra: Boolean, onUpdateInlineEditDraft: (String) -&gt; Unit, onConfirmInlineEdit: () -&gt; Unit, onCancelInlineEdit: () -&gt; Unit, onDismissContextMenu: () -&gt; Unit, scrollState: androidx.compose.foundation.ScrollState = rememberScrollState(), selectNameWithoutExtension: Boolean = true, hiddenColumns: Set&lt;DetailsColumn&gt; = emptySet(), minRowWidth: Dp = Dp.Unspecified, depth: Int = 0, reserveExpanderSlot: Boolean = true, )</ID>
+    <ID>CyclomaticComplexMethod:FileActionDelegate.kt$FileActionDelegate$@Suppress("TooGenericExceptionCaught") // 批量任务边界统一将逐项异常写入任务与对话框状态。 fun executeBatchRename(paneId: PaneId, renameMap: List&lt;Pair&lt;VFile, String&gt;&gt;)</ID>
+    <ID>CyclomaticComplexMethod:FileLabelSizeFields.kt$@Composable internal fun FileLabelSizeFields( matcher: FileLabelMatcher, onChange: (FileLabelMatcher) -&gt; Unit, )</ID>
+    <ID>CyclomaticComplexMethod:ImageViewer.kt$@OptIn(ExperimentalComposeUiApi::class) @Composable internal fun ImageViewerContent( state: ImageViewerState, onClose: () -&gt; Unit, onNext: () -&gt; Unit, onPrevious: () -&gt; Unit, onSetZoom: (Float) -&gt; Unit, onSetFitMode: (ImageFitMode) -&gt; Unit, onRotate: (Boolean) -&gt; Unit, loadThumbnail: suspend (String, Int) -&gt; ImageBitmap?, readImageSize: suspend (VFile) -&gt; IntSize?, loadViewerImage: (suspend (VFile, Int) -&gt; ImageLoadOutcome)? = null, onOpenExternally: (VFile) -&gt; Unit = {}, onToggleFullscreen: () -&gt; Unit = {}, )</ID>
+    <ID>CyclomaticComplexMethod:InspectorPanel.kt$@Composable internal fun InspectorDetailsContent( entry: VFile, readFileHash: suspend (FileHashRequest) -&gt; FileHashResult, readArchiveInfo: suspend (ArchiveInfoRequest) -&gt; ArchiveInfoResult, isArchiveFileName: (String) -&gt; Boolean, isImageFileName: (String) -&gt; Boolean = { false }, isTextPreviewFileName: (String) -&gt; Boolean = { false }, isAudioFileName: (String) -&gt; Boolean = { false }, isVideoFileName: (String) -&gt; Boolean = { false }, readImageSize: (suspend (VFile) -&gt; IntSize?)? = null, readMediaMetadata: (suspend (VFile) -&gt; MediaMetadataResult)? = null, )</ID>
+    <ID>CyclomaticComplexMethod:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer$@Suppress("TooGenericExceptionCaught") private fun kotlinx.coroutines.CoroutineScope.runPlaybackSession( sessionId: Long, entry: VFile, safeStartMillis: Long, durationMillis: Long, )</ID>
+    <ID>CyclomaticComplexMethod:JvmMediaPreviewService.kt$JvmMediaPreviewService.Companion$internal suspend fun runProcessCapturingStdout( command: List&lt;String&gt;, timeoutMillis: Long, maxOutputBytes: Int, ): ByteArray?</ID>
+    <ID>CyclomaticComplexMethod:JvmThumbnailService.kt$JvmThumbnailService$@Suppress("TooGenericExceptionCaught") private suspend fun loadImageOutcomeInternal( location: String, maxDimension: Int, modifiedAtEpochMillis: Long?, sizeBytes: Long?, ): ImageLoadOutcome</ID>
+    <ID>CyclomaticComplexMethod:PaneSurface.kt$@Composable private fun PaneSurfaceFocusEffects(runtime: PaneSurfaceRuntime)</ID>
+    <ID>CyclomaticComplexMethod:PaneSurface.kt$private fun handlePaneNavigationKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean</ID>
+    <ID>CyclomaticComplexMethod:PreviewAudioContent.kt$@Composable internal fun PreviewAudioContent( entry: VFile, readMediaMetadata: suspend (VFile) -&gt; MediaMetadataResult, loadAudioCover: suspend (VFile, Int) -&gt; ImageBitmap?, audioPlayer: AudioPreviewPlayer, onOpenExternal: ((VFile) -&gt; Unit)? = null, )</ID>
+    <ID>CyclomaticComplexMethod:PreviewTextContent.kt$@Composable internal fun PreviewTextContent( entry: VFile, loadTextPreview: suspend (PreviewTextRequest) -&gt; PreviewTextResult, onOpenExternal: ((VFile) -&gt; Unit)? = null, )</ID>
+    <ID>CyclomaticComplexMethod:PreviewVideoContent.kt$@Composable internal fun PreviewVideoContent( entry: VFile, readMediaMetadata: suspend (VFile) -&gt; MediaMetadataResult, loadVideoFrame: suspend (VFile, Float, Long?, Int) -&gt; ImageBitmap?, onOpenExternal: ((VFile) -&gt; Unit)? = null, )</ID>
+    <ID>CyclomaticComplexMethod:QuickOpenKeyboard.kt$internal fun handleQuickOpenKeyboardEvent( event: KeyEvent, results: List&lt;VFile&gt;, selectedIndex: Int, actions: QuickOpenPanelActions, onSelectedIndexChange: (Int) -&gt; Unit, query: String = "", recentLocations: List&lt;String&gt; = emptyList(), recentSelectedIndex: Int = QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX, onRecentSelectedIndexChange: (Int) -&gt; Unit = {}, ): Boolean</ID>
+    <ID>CyclomaticComplexMethod:QuickOpenResultList.kt$internal fun extractQuickOpenHighlightTokens(query: String): List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:RootRemoteConnectionManager.kt$RootRemoteConnectionManager$fun saveRemoteConnectionDraft()</ID>
+    <ID>CyclomaticComplexMethod:TabBar.kt$@Composable internal fun PaneTabBar( state: PaneTabBarState, active: Boolean, onActivate: () -&gt; Unit, onSelectTab: (String) -&gt; Unit, onCloseTab: (String) -&gt; Unit, onCreateTab: () -&gt; Unit, onDropTab: (String, IntOffset) -&gt; Unit, onDragPositionChange: (IntOffset) -&gt; Unit, onDragEnd: () -&gt; Unit, onDropZoneChange: (TabDropZone) -&gt; Unit, dropIndicatorIndex: Int?, onCloseOtherTabs: (String) -&gt; Unit = {}, onCloseTabsToRight: (String) -&gt; Unit = {}, onCopyTabPath: (String) -&gt; Unit = {}, )</ID>
+    <ID>CyclomaticComplexMethod:TextPreviewDecoder.kt$TextPreviewDecoder$private fun detectAndDecode( bytes: ByteArray, bytesTruncated: Boolean, ): Pair&lt;PreviewTextEncoding, String&gt;?</ID>
+    <ID>LongMethod:AddressBar.kt$@Composable internal fun BreadcrumbAddressBar( location: String, onActivate: () -&gt; Unit, onEdit: () -&gt; Unit, onOpenLocation: (String) -&gt; Unit, buildBreadcrumbs: (String) -&gt; List&lt;VfsBreadcrumb&gt;, )</ID>
+    <ID>LongMethod:AddressBar.kt$@Composable private fun AddressBarEditor( location: String, draftValue: TextFieldValue, knownLocations: List&lt;String&gt;, suggestLocations: (suspend (String, List&lt;String&gt;) -&gt; List&lt;String&gt;)?, onDraftChange: (TextFieldValue) -&gt; Unit, onSubmit: (String) -&gt; Unit, onCancel: () -&gt; Unit, onBlur: () -&gt; Unit, )</ID>
+    <ID>LongMethod:ColorOverrideField.kt$@Composable internal fun OnyxHsvAlphaColorPicker( initialColor: Color, allowAlpha: Boolean = true, onColorChange: (Color) -&gt; Unit, onReset: () -&gt; Unit, onClose: () -&gt; Unit, )</ID>
+    <ID>LongMethod:CommandPalette.kt$@Composable internal fun CommandPalettePopup( items: List&lt;CommandPaletteItem&gt;, onExecute: (CommandPaletteTarget) -&gt; Unit, onClose: () -&gt; Unit, )</ID>
+    <ID>LongMethod:DetailsView.kt$@Composable private fun ReadyPaneEntries( model: PaneEntriesViewModel, actions: PaneEntriesActions, thumbnails: GalleryThumbnailServices, ready: PaneEntriesState.Ready, )</ID>
+    <ID>LongMethod:FileActionDelegate.kt$FileActionDelegate$@Suppress("TooGenericExceptionCaught") // 批量任务边界统一将逐项异常写入任务与对话框状态。 fun executeBatchRename(paneId: PaneId, renameMap: List&lt;Pair&lt;VFile, String&gt;&gt;)</ID>
+    <ID>LongMethod:ImageViewer.kt$@OptIn(ExperimentalComposeUiApi::class) @Composable internal fun ImageViewerContent( state: ImageViewerState, onClose: () -&gt; Unit, onNext: () -&gt; Unit, onPrevious: () -&gt; Unit, onSetZoom: (Float) -&gt; Unit, onSetFitMode: (ImageFitMode) -&gt; Unit, onRotate: (Boolean) -&gt; Unit, loadThumbnail: suspend (String, Int) -&gt; ImageBitmap?, readImageSize: suspend (VFile) -&gt; IntSize?, loadViewerImage: (suspend (VFile, Int) -&gt; ImageLoadOutcome)? = null, onOpenExternally: (VFile) -&gt; Unit = {}, onToggleFullscreen: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:MetadataSections.kt$@Composable internal fun MetadataChecksumSection( entry: VFile, readFileHash: suspend (FileHashRequest) -&gt; FileHashResult, )</ID>
+    <ID>LongMethod:PreviewAudioContent.kt$@Composable internal fun PreviewAudioContent( entry: VFile, readMediaMetadata: suspend (VFile) -&gt; MediaMetadataResult, loadAudioCover: suspend (VFile, Int) -&gt; ImageBitmap?, audioPlayer: AudioPreviewPlayer, onOpenExternal: ((VFile) -&gt; Unit)? = null, )</ID>
+    <ID>LongMethod:PreviewImageAndArchiveContent.kt$@Composable internal fun PreviewArchiveContent( entry: VFile, loadArchiveThumbnail: (suspend (String, Int, Long?, Long?) -&gt; ImageBitmap?)?, peekCachedArchiveThumbnail: (String, Int, Long?, Long?) -&gt; ImageBitmap?, readArchiveInfo: (suspend (ArchiveInfoRequest) -&gt; ArchiveInfoResult)?, onOpenExternal: ((VFile) -&gt; Unit)?, )</ID>
+    <ID>LongMethod:PreviewImageAndArchiveContent.kt$@Composable internal fun PreviewImageContent( entry: VFile, loadThumbnail: suspend (String, Int) -&gt; ImageBitmap?, loadVersionedThumbnail: (suspend (String, Int, Long?, Long?) -&gt; ImageBitmap?)?, peekCachedThumbnail: (String, Int, Long?, Long?) -&gt; ImageBitmap?, readImageSize: (suspend (VFile) -&gt; IntSize?)?, onOpenImageViewer: ((VFile) -&gt; Unit)?, onOpenExternal: ((VFile) -&gt; Unit)?, )</ID>
+    <ID>LongMethod:PreviewTextContent.kt$@Composable internal fun PreviewTextContent( entry: VFile, loadTextPreview: suspend (PreviewTextRequest) -&gt; PreviewTextResult, onOpenExternal: ((VFile) -&gt; Unit)? = null, )</ID>
+    <ID>LongMethod:PreviewVideoContent.kt$@Composable internal fun PreviewVideoContent( entry: VFile, readMediaMetadata: suspend (VFile) -&gt; MediaMetadataResult, loadVideoFrame: suspend (VFile, Float, Long?, Int) -&gt; ImageBitmap?, onOpenExternal: ((VFile) -&gt; Unit)? = null, )</ID>
+    <ID>LongMethod:SettingsDialog.kt$@Suppress("LongParameterList") @Composable internal fun SettingsDialogLayout( title: String, draft: OnyxSettings, category: SettingsCategory, onCategoryChange: (SettingsCategory) -&gt; Unit, onDraftChange: (OnyxSettings) -&gt; Unit, onCleanupInvalidLocations: () -&gt; Unit, onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit, bodyFontSize: TextUnit, labelFontSize: TextUnit, searchQuery: String = "", onSearchQueryChange: (String) -&gt; Unit = {}, showTitlePrefix: Boolean = true, recordingCommand: OnyxCommand? = null, onRecordingCommandChange: ((OnyxCommand?) -&gt; Unit)? = null, shortcutFeedback: ShortcutRecordingFeedback? = null, onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -&gt; Unit)? = null, confirmDiscardVisible: Boolean = false, onConfirmDiscard: () -&gt; Unit = onDismiss, onCancelDiscard: () -&gt; Unit = {}, memoryStatus: com.oruke.onyx.app.filesystem.JvmMemoryStatus = com.oruke.onyx.app.filesystem.JvmMemoryStatus(), onClearThumbnailDiskCache: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:Sidebar.kt$@Composable internal fun PaneSidebar( state: PaneSidebarState, actions: PaneSidebarActions, activePane: PaneId = PaneId.PRIMARY, dragBindings: PaneDragBindings? = null, )</ID>
+    <ID>LongMethod:TabBar.kt$@Composable internal fun PaneTabBar( state: PaneTabBarState, active: Boolean, onActivate: () -&gt; Unit, onSelectTab: (String) -&gt; Unit, onCloseTab: (String) -&gt; Unit, onCreateTab: () -&gt; Unit, onDropTab: (String, IntOffset) -&gt; Unit, onDragPositionChange: (IntOffset) -&gt; Unit, onDragEnd: () -&gt; Unit, onDropZoneChange: (TabDropZone) -&gt; Unit, dropIndicatorIndex: Int?, onCloseOtherTabs: (String) -&gt; Unit = {}, onCloseTabsToRight: (String) -&gt; Unit = {}, onCopyTabPath: (String) -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:TabBar.kt$@OptIn(ExperimentalComposeUiApi::class) @Composable private fun PaneTabChip( state: PaneTabChipState, actions: PaneTabChipActions, )</ID>
+    <ID>LongMethod:TrashActionDelegate.kt$TrashActionDelegate$@Suppress("TooGenericExceptionCaught") fun deletePermanently( paneId: PaneId, entries: List&lt;VFile&gt;, entryIds: Set&lt;String&gt;, )</ID>
+    <ID>LongMethod:TrashActionDelegate.kt$TrashActionDelegate$@Suppress("TooGenericExceptionCaught") fun restoreItems( paneId: PaneId, entries: List&lt;VFile&gt;, entryIds: Set&lt;String&gt;, )</ID>
+    <ID>LongMethod:main.kt$OnyxDesktopRuntime$private fun launchOnyxApplication( args: Array&lt;String&gt;, singleInstanceRelay: OnyxSingleInstanceRelay, )</ID>
+    <ID>LongParameterList:ContextMenu.kt$( item: PaneContextMenuNode.Item, depth: Int, itemPath: List&lt;String&gt;, pathPrefix: List&lt;String&gt;, navigationState: ContextMenuNavigationState, keyboardFocused: Boolean, expanded: Boolean, commandShortcuts: OnyxCommandShortcutMap, onFocusPlainItem: (itemPath: List&lt;String&gt;, prefix: List&lt;String&gt;) -&gt; Unit, onOpenSubmenu: (itemPath: List&lt;String&gt;) -&gt; Unit, onCloseSubmenuIfCurrent: (itemPath: List&lt;String&gt;, prefix: List&lt;String&gt;) -&gt; Unit, onCommand: (PaneContextMenuCommand) -&gt; Unit, )</ID>
+    <ID>LongParameterList:PreviewPane.kt$( entry: VFile, loadThumbnail: suspend (String, Int) -&gt; ImageBitmap?, loadVersionedThumbnail: (suspend (String, Int, Long?, Long?) -&gt; ImageBitmap?)?, peekCachedThumbnail: (String, Int, Long?, Long?) -&gt; ImageBitmap?, loadArchiveThumbnail: (suspend (String, Int, Long?, Long?) -&gt; ImageBitmap?)?, peekCachedArchiveThumbnail: (String, Int, Long?, Long?) -&gt; ImageBitmap?, loadTextPreview: suspend (PreviewTextRequest) -&gt; PreviewTextResult, readImageSize: (suspend (VFile) -&gt; IntSize?)?, readArchiveInfo: (suspend (ArchiveInfoRequest) -&gt; ArchiveInfoResult)?, isImageFileName: (String) -&gt; Boolean, isTextPreviewFileName: (String) -&gt; Boolean, isAudioFileName: (String) -&gt; Boolean, isVideoFileName: (String) -&gt; Boolean, isArchiveFileName: (String) -&gt; Boolean, readMediaMetadata: (suspend (VFile) -&gt; MediaMetadataResult)?, loadVideoFrame: (suspend (VFile, Float, Long?, Int) -&gt; ImageBitmap?)?, loadAudioCover: (suspend (VFile, Int) -&gt; ImageBitmap?)?, audioPreviewPlayer: AudioPreviewPlayer, onOpenImageViewer: ((VFile) -&gt; Unit)?, onOpenExternal: ((VFile) -&gt; Unit)?, )</ID>
+    <ID>LoopWithTooManyJumpStatements:AddressBarLocationSuggester.kt$for</ID>
+    <ID>LoopWithTooManyJumpStatements:DetailsView.kt$while</ID>
+    <ID>LoopWithTooManyJumpStatements:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer$while</ID>
+    <ID>LoopWithTooManyJumpStatements:JvmMediaPreviewService.kt$JvmMediaPreviewService.Companion$while</ID>
+    <ID>LoopWithTooManyJumpStatements:JvmStorageDeviceService.kt$JvmStorageDeviceService$for</ID>
+    <ID>LoopWithTooManyJumpStatements:QuickOpenResultList.kt$for</ID>
+    <ID>MagicNumber:AddressBarLocationSuggester.kt$4</ID>
+    <ID>MagicNumber:DetailsView.kt$16L</ID>
+    <ID>MagicNumber:DetailsView.kt$20</ID>
+    <ID>MagicNumber:ImageViewer.kt$0.01f</ID>
+    <ID>MagicNumber:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer.Companion$0.001f</ID>
+    <ID>MagicNumber:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer.Companion$0.999f</ID>
+    <ID>MagicNumber:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer.Companion$0xFF</ID>
+    <ID>MagicNumber:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer.Companion$8</ID>
+    <ID>MagicNumber:JvmMediaPreviewService.kt$JvmMediaPreviewService$0.15f</ID>
+    <ID>MagicNumber:JvmMediaPreviewService.kt$JvmMediaPreviewService$0.45f</ID>
+    <ID>MagicNumber:JvmMediaPreviewService.kt$JvmMediaPreviewService$10.0</ID>
+    <ID>MagicNumber:JvmMediaPreviewService.kt$JvmMediaPreviewService$1000.0</ID>
+    <ID>MagicNumber:JvmMediaPreviewService.kt$JvmMediaPreviewService$1_000L</ID>
+    <ID>MagicNumber:JvmMediaPreviewService.kt$JvmMediaPreviewService$5.0</ID>
+    <ID>MagicNumber:JvmMediaPreviewService.kt$JvmMediaPreviewService.Companion$240.0</ID>
+    <ID>MagicNumber:OnyxPalette.kt$0.36f</ID>
+    <ID>MagicNumber:OnyxPalette.kt$0xFF14171F</ID>
+    <ID>MagicNumber:PreviewAudioContent.kt$0.3f</ID>
+    <ID>MagicNumber:PreviewAudioContent.kt$480</ID>
+    <ID>MagicNumber:PreviewFormattingExtensions.kt$0.01</ID>
+    <ID>MagicNumber:PreviewFormattingExtensions.kt$0.05</ID>
+    <ID>MagicNumber:PreviewFormattingExtensions.kt$1000.0</ID>
+    <ID>MagicNumber:PreviewFormattingExtensions.kt$1024L</ID>
+    <ID>MagicNumber:PreviewFormattingExtensions.kt$32</ID>
+    <ID>MagicNumber:PreviewPane.kt$0.30f</ID>
+    <ID>MagicNumber:PreviewPane.kt$0.46f</ID>
+    <ID>MagicNumber:PreviewPane.kt$0.73f</ID>
+    <ID>MagicNumber:PreviewTextContent.kt$24</ID>
+    <ID>MagicNumber:RemoteConnectionList.kt$9f</ID>
+    <ID>MagicNumber:RootShellOperations.kt$0x20</ID>
+    <ID>MagicNumber:TabBar.kt$4</ID>
+    <ID>MagicNumber:TabBar.kt$8</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x0020</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x007E</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x09</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x0E</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x1B</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x20</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x3000</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x303F</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x3040</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x309F</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x30A0</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x30FF</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x4E00</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x80</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0x9FFF</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0xC0</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0xE000</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0xF8FF</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0xFF01</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$0xFF5E</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$10</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$12</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$3</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$40</ID>
+    <ID>MagicNumber:TextPreviewDecoder.kt$TextPreviewDecoder$8</ID>
+    <ID>MatchingDeclarationName:CommandShortcutSettings.kt$ShortcutRecordingFeedback</ID>
+    <ID>MatchingDeclarationName:ContextMenu.kt$ContextMenuNavigationState</ID>
+    <ID>MaxLineLength:AddressBar.kt$color = if (overflowHovered || overflowExpanded) palette.foreground else palette.mutedForeground</ID>
+    <ID>MaxLineLength:AddressBar.kt$if (overflowHovered || overflowExpanded) palette.rowHoverBackground else Color.Transparent</ID>
+    <ID>MaxLineLength:App.kt$.</ID>
+    <ID>MaxLineLength:App.kt$val activeTooltipRequest = if (useExternalTooltipHost) externalTooltipRequest else (localTooltipRequest ?: externalTooltipRequest)</ID>
+    <ID>MaxLineLength:ArchiveActionDelegate.kt$ArchiveActionDelegate$if</ID>
+    <ID>MaxLineLength:BatchRenameDialog.kt$Text("→", fontSize = fontSize, color = if (hasConflict) palette.errorForeground else palette.mutedForeground, modifier = Modifier.width(24.dp))</ID>
+    <ID>MaxLineLength:BatchRenamePresetBar.kt$state.validationMessage.key == com.oruke.onyx.core.model.MessageKey.MSG_RENAME_PRESET_NAME_REQUIRED</ID>
+    <ID>MaxLineLength:ColorOverrideField.kt$val resolvedSurface = if (containerSurface.alpha &lt; 1f) containerSurface.compositeOver(Color.White) else containerSurface</ID>
+    <ID>MaxLineLength:FileOperationHistoryDelegate.kt$FileOperationHistoryDelegate$rename(parentLocation = step.parentLocation, currentName = step.newName, targetName = step.oldName)</ID>
+    <ID>MaxLineLength:FileOperationHistoryDelegate.kt$FileOperationHistoryDelegate$rename(parentLocation = step.parentLocation, currentName = step.oldName, targetName = step.newName)</ID>
+    <ID>MaxLineLength:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer$val bytesToSkip = ((startPositionMillis / 1000.0) * targetFormat.sampleRate * targetFormat.frameSize).toLong()</ID>
+    <ID>MaxLineLength:JvmMediaPreviewService.kt$JvmMediaPreviewService$val cacheKey = "video|${entry.location}|${(safeRatio * 100).toInt()}|$maxDimension|${entry.modifiedAtEpochMillis}|${entry.sizeBytes}"</ID>
+    <ID>MaxLineLength:JvmPathAndPreviewServices.kt$JvmFileTypeService.Companion$"py"</ID>
+    <ID>MaxLineLength:JvmPathAndPreviewServices.kt$JvmPreviewService$val</ID>
+    <ID>MaxLineLength:JvmThumbnailService.kt$JvmThumbnailService$return</ID>
+    <ID>MaxLineLength:OnyxCommands.kt$OnyxCommandRegistry$OnyxCommandSpec(OnyxCommand.TogglePreviewPane, Res.string.action_toggle_preview_pane, AllIconsKeys.Actions.Preview)</ID>
+    <ID>MaxLineLength:PaneEntriesLists.kt$DetailsFileEntry(model, actions, dragActions, selection, horizontalScrollState, index, item, minRowWidth)</ID>
+    <ID>MaxLineLength:PaneSurface.kt$!extendSelection &amp;&amp; !hasNonShiftModifier -&gt; handleDetailsTreeHorizontalKey(expand = false, runtime = runtime)</ID>
+    <ID>MaxLineLength:PreviewAudioContent.kt$AudioPlaybackError.UNSUPPORTED_FORMAT -&gt; stringResource(Res.string.label_preview_audio_unavailable)</ID>
+    <ID>MaxLineLength:QuickOpenResultList.kt$listState.scrollToItem((selectedIndex - (lastVisibleIndex - firstVisibleIndex)).coerceAtLeast(0))</ID>
+    <ID>MaxLineLength:RemoteCredentialsDialog.kt$if (isS3) Res.string.label_remote_connection_s3_access_key else Res.string.label_remote_credentials_username</ID>
+    <ID>MaxLineLength:RemoteCredentialsDialog.kt$if (isS3) Res.string.label_remote_connection_s3_secret_key else Res.string.label_remote_credentials_password</ID>
+    <ID>MaxLineLength:RemoteCredentialsDialog.kt$if (isS3) Res.string.label_remote_credentials_s3_session_token else Res.string.label_remote_credentials_domain</ID>
+    <ID>MaxLineLength:RootRemoteConnectionManager.kt$RootRemoteConnectionManager$val otherConnections = remoteConnections().filterNot { connection -&gt; connection.id == profile.id }</ID>
+    <ID>MaxLineLength:SettingsCategory.kt$val autoCloseChangedInSettings = draft.autoCloseTaskCenterWhenFinished != initialDraft.autoCloseTaskCenterWhenFinished</ID>
+    <ID>MaxLineLength:Sidebar.kt$if (request.favorite) Res.string.action_remove_from_favorites else Res.string.action_add_to_favorites</ID>
+    <ID>MaxLineLength:TextPreviewDecoder.kt$TextPreviewDecoder$PreviewTextEncoding.SHIFT_JIS to decodeLenient(bytes, shiftJisCharset, offset = 0, length = sjisValidLen)</ID>
+    <ID>MaxLineLength:TextPreviewDecoder.kt$TextPreviewDecoder$private</ID>
+    <ID>MaxLineLength:TextPreviewDecoder.kt$TextPreviewDecoder$return decodeLenient(bytes, StandardCharsets.UTF_8, offset = offset, length = (length - offset).coerceAtLeast(0))</ID>
+    <ID>NestedBlockDepth:AddressBarLocationSuggester.kt$@Suppress("TooGenericExceptionCaught") // 路径补全属于尽力而为辅助能力，任何文件系统权限或路径异常都应静默忽略。 private suspend fun listMatchingLocalDirectories(query: String, maxCount: Int): List&lt;String&gt;</ID>
+    <ID>NestedBlockDepth:ArchiveActionDelegate.kt$ArchiveActionDelegate$internal suspend fun requestArchivePassword( taskId: String?, archivePath: String, archiveName: String, ): String</ID>
+    <ID>NestedBlockDepth:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer$private fun openNativePcmStream(file: File, startPositionMillis: Long): Pair&lt;AudioFormat, InputStream&gt;</ID>
+    <ID>NestedBlockDepth:QuickOpenKeyboard.kt$internal fun handleQuickOpenKeyboardEvent( event: KeyEvent, results: List&lt;VFile&gt;, selectedIndex: Int, actions: QuickOpenPanelActions, onSelectedIndexChange: (Int) -&gt; Unit, query: String = "", recentLocations: List&lt;String&gt; = emptyList(), recentSelectedIndex: Int = QuickOpenPanelDefaults.INITIAL_SELECTED_INDEX, onRecentSelectedIndexChange: (Int) -&gt; Unit = {}, ): Boolean</ID>
+    <ID>NestedBlockDepth:QuickOpenResultList.kt$internal fun extractQuickOpenHighlightTokens(query: String): List&lt;String&gt;</ID>
+    <ID>NestedBlockDepth:TaskCenterWindow.kt$@Composable internal fun TaskCenterWindow( taskCenter: TaskCenterComponent, settings: StateFlow&lt;OnyxSettings&gt;, resourceLocale: StateFlow&lt;AppLocale&gt;, onWindowSizeChanged: ((width: Int, height: Int, maximized: Boolean?) -&gt; Unit)? = null, autoCloseDelayMillis: Long = TASK_WINDOW_AUTO_CLOSE_DELAY_MILLIS, )</ID>
+    <ID>RethrowCaughtException:MetadataSections.kt$throw cancelled</ID>
+    <ID>ReturnCount:AddressBarLocationSuggester.kt$@Suppress("TooGenericExceptionCaught") // 路径补全属于尽力而为辅助能力，任何文件系统权限或路径异常都应静默忽略。 private suspend fun listMatchingLocalDirectories(query: String, maxCount: Int): List&lt;String&gt;</ID>
+    <ID>ReturnCount:ImageViewer.kt$internal fun resolveActualSizeTargetScale( nativeSize: IntSize?, bitmapSize: IntSize?, containerSize: IntSize, minScale: Float, maxScale: Float, rotationDegrees: Int = 0, ): Float</ID>
+    <ID>ReturnCount:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer$@Suppress("TooGenericExceptionCaught") private fun kotlinx.coroutines.CoroutineScope.runPlaybackSession( sessionId: Long, entry: VFile, safeStartMillis: Long, durationMillis: Long, )</ID>
+    <ID>ReturnCount:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer$override fun canPlay(entry: VFile): Boolean</ID>
+    <ID>ReturnCount:JvmMediaPreviewService.kt$JvmMediaPreviewService$private suspend fun probeWithFfprobe( ffprobe: String, path: Path, kind: MediaKind, ): MediaMetadataResult</ID>
+    <ID>ReturnCount:JvmMediaPreviewService.kt$JvmMediaPreviewService.Companion$internal fun parseFrameRate(raw: String?): Double?</ID>
+    <ID>ReturnCount:JvmPathAndPreviewServices.kt$JvmFileTypeService$override fun isTextPreviewFileName(fileName: String): Boolean</ID>
+    <ID>ReturnCount:JvmPathAndPreviewServices.kt$JvmImageMetadataService$private fun readLocalSizeViaImageIo(path: Path, fileName: String): IntSize?</ID>
+    <ID>ReturnCount:JvmPathAndPreviewServices.kt$JvmPreviewService$private suspend fun loadArchivePrefixPreview( request: PreviewTextRequest, maxBytes: Int, ): PreviewTextResult</ID>
+    <ID>ReturnCount:JvmPathAndPreviewServices.kt$JvmPreviewService$private suspend fun loadTextPreviewFromContentService( request: PreviewTextRequest, maxBytes: Int, ): PreviewTextResult?</ID>
+    <ID>ReturnCount:JvmThumbnailService.kt$JvmThumbnailService$private suspend fun readRoutedContentOutcome( contentService: RoutableVfsContentService, location: String, ): RoutedImageBytes</ID>
+    <ID>ReturnCount:OnyxUiUtils.kt$internal fun resolveEffectiveDetailsColumnWidths( columns: List&lt;DetailsColumn&gt;, columnWeights: Map&lt;DetailsColumn, Float&gt;, hiddenColumns: Set&lt;DetailsColumn&gt;, viewportWidthDp: Float, ): Map&lt;DetailsColumn, Float&gt;</ID>
+    <ID>ReturnCount:PaneSurface.kt$private fun handleDetailsTreeHorizontalKey(expand: Boolean, runtime: PaneSurfaceRuntime): Boolean</ID>
+    <ID>ReturnCount:PaneSurface.kt$private fun handleRegularPaneKey(event: KeyEvent, runtime: PaneSurfaceRuntime): Boolean</ID>
+    <ID>ReturnCount:PaneSurfaceEntries.kt$private fun confirmFilterSelection(runtime: PaneSurfaceRuntime)</ID>
+    <ID>ReturnCount:QuickOpenResultList.kt$internal fun highlightMatchText( text: String, query: String, normalColor: Color, highlightColor: Color, highlightBackground: Color = Color.Unspecified, ): AnnotatedString</ID>
+    <ID>ReturnCount:RootShellOperations.kt$internal fun validateCreateDirectoriesDraft(draft: String): CreateDirectoriesValidationResult</ID>
+    <ID>ReturnCount:SearchFiltersToCriteria.kt$private fun formatContentSearchToken(trimmed: String): String</ID>
+    <ID>ReturnCount:SearchPanelFilters.kt$internal fun parseMbTextToBytes(input: String): Long?</ID>
+    <ID>ReturnCount:TextPreviewDecoder.kt$TextPreviewDecoder$private fun trimIncompleteUtf8TailLength(bytes: ByteArray): Int</ID>
+    <ID>ReturnCount:WindowShortcutDispatcher.kt$internal fun handleWindowGlobalKeyEvent( event: KeyEvent, state: RootState, rootComponent: RootComponent, focusRegistry: WindowKeyboardFocusRegistry, ): Boolean</ID>
+    <ID>ReturnCount:WindowShortcutDispatcher.kt$private fun executeWindowGlobalCommand( command: OnyxCommand, state: RootState, rootComponent: RootComponent, ): Boolean</ID>
+    <ID>ThrowsCount:FileOperationHistoryDelegate.kt$FileOperationHistoryDelegate$private suspend fun FileOperationRecord.redo()</ID>
+    <ID>ThrowsCount:FileOperationHistoryDelegate.kt$FileOperationHistoryDelegate$private suspend fun FileOperationRecord.undo()</ID>
+    <ID>ThrowsCount:UserCommandLauncherService.kt$JvmUserCommandLauncherService$private fun resolveLocalWorkingDirectory(rawDirectory: String?): Path?</ID>
+    <ID>TooGenericExceptionCaught:FileOperationHistoryDelegate.kt$FileOperationHistoryDelegate$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:JvmAudioPreviewPlayer.kt$JvmAudioPreviewPlayer$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:JvmSystemFileMaterializer.kt$JvmSystemFileMaterializer$failure: Throwable</ID>
+    <ID>TooGenericExceptionCaught:JvmThumbnailService.kt$JvmThumbnailService$failure: Throwable</ID>
+    <ID>TooManyFunctions:DefaultRootComponent.kt$DefaultRootComponent : RootComponentRootCustomizationServicesComponentContext</ID>
+    <ID>TooManyFunctions:PaneComponent.kt$com.oruke.onyx.app.component.PaneComponent.kt</ID>
+    <ID>TooManyFunctions:RootComponent.kt$RootPresentationServices</ID>
+    <ID>TooManyFunctions:TextPreviewDecoder.kt$TextPreviewDecoder</ID>
+    <ID>UnusedParameter:AddressBar.kt$location: String</ID>
+    <ID>UnusedPrivateProperty:TrashActionDelegate.kt$TrashActionDelegate$val targetIds = restorableEntries.mapTo(linkedSetOf()) { entry -&gt; entry.id }</ID>
+  </CurrentIssues>
+</SmellBaseline>

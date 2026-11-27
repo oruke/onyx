@@ -861,4 +861,17 @@
     <string name="action_image_viewer_zoom_in">Zoom In (+)</string>
     <string name="action_image_viewer_rotate_ccw">Rotate Left (Shift+R)</string>
     <string name="action_image_viewer_rotate_cw">Rotate Right (R)</string>
+    <string name="label_section_memory_performance">Memory &amp; Performance</string>
+    <string name="label_max_heap_memory">Maximum JVM Heap (-Xmx)</string>
+    <string name="label_max_heap_custom_input">Custom</string>
+    <string name="label_max_heap_unit_mb">MB (%1$d–%2$d MB)</string>
+    <string name="label_max_heap_range_error">Enter an integer between %1$d and %2$d MB.</string>
+    <string name="label_max_heap_active_summary">Active heap limit: %1$d MB (currently used: %2$d MB)</string>
+    <string name="label_max_heap_restart_hint">Saved to Onyx.cfg; restart Onyx to take effect.</string>
+    <string name="label_max_heap_readonly_hint">Onyx.cfg is not writable (%1$s). Edit -Xmx manually with elevated permissions.</string>
+    <string name="label_max_heap_dev_hint">Takes effect after packaging (Onyx.cfg), or override via gradle.properties / -Papp.jvm.xmx.</string>
+    <string name="label_max_heap_write_error">Failed to update Onyx.cfg: %1$s</string>
+    <string name="label_thumbnail_disk_cache">Thumbnail Disk Cache</string>
+    <string name="label_thumbnail_disk_cache_usage">Disk usage: %1$s / %2$s</string>
+    <string name="action_clear_thumbnail_disk_cache">Clear Thumbnail Cache</string>
 </resources>

@@ -101,6 +101,9 @@ import onyx.composeapp.generated.resources.label_theme_preset
 import onyx.composeapp.generated.resources.label_ui_scale
 import onyx.composeapp.generated.resources.label_verbose_logging
 import onyx.composeapp.generated.resources.label_verbose_logging_hint
+import onyx.composeapp.generated.resources.label_section_memory_performance
+import onyx.composeapp.generated.resources.label_max_heap_memory
+import onyx.composeapp.generated.resources.label_thumbnail_disk_cache
 import onyx.composeapp.generated.resources.label_zebra_stripe
 import onyx.composeapp.generated.resources.search_empty_result
 import org.jetbrains.compose.resources.StringResource
@@ -124,6 +127,8 @@ internal fun SettingsCategoryContent(
     onRecordingCommandChange: ((OnyxCommand?) -> Unit)? = null,
     shortcutFeedback: ShortcutRecordingFeedback? = null,
     onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -> Unit)? = null,
+    memoryStatus: com.oruke.onyx.app.filesystem.JvmMemoryStatus = com.oruke.onyx.app.filesystem.JvmMemoryStatus(),
+    onClearThumbnailDiskCache: () -> Unit = {},
 ) {
     val trimmedQuery = searchQuery.trim()
     if (trimmedQuery.isEmpty()) {
@@ -138,6 +143,8 @@ internal fun SettingsCategoryContent(
             onRecordingCommandChange = onRecordingCommandChange,
             shortcutFeedback = shortcutFeedback,
             onShortcutFeedbackChange = onShortcutFeedbackChange,
+            memoryStatus = memoryStatus,
+            onClearThumbnailDiskCache = onClearThumbnailDiskCache,
         )
         return
     }
@@ -165,6 +172,8 @@ internal fun SettingsCategoryContent(
             onRecordingCommandChange = onRecordingCommandChange,
             shortcutFeedback = shortcutFeedback,
             onShortcutFeedbackChange = onShortcutFeedbackChange,
+            memoryStatus = memoryStatus,
+            onClearThumbnailDiskCache = onClearThumbnailDiskCache,
         )
     }
 }
@@ -185,6 +194,8 @@ private fun RenderCategoryPage(
     onRecordingCommandChange: ((OnyxCommand?) -> Unit)?,
     shortcutFeedback: ShortcutRecordingFeedback?,
     onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -> Unit)?,
+    memoryStatus: com.oruke.onyx.app.filesystem.JvmMemoryStatus,
+    onClearThumbnailDiskCache: () -> Unit,
 ) {
     when (category) {
         SettingsCategory.GENERAL -> GeneralSettingsContent(
@@ -229,6 +240,8 @@ private fun RenderCategoryPage(
             onRecordingCommandChange = onRecordingCommandChange,
             shortcutFeedback = shortcutFeedback,
             onShortcutFeedbackChange = onShortcutFeedbackChange,
+            memoryStatus = memoryStatus,
+            onClearThumbnailDiskCache = onClearThumbnailDiskCache,
         )
     }
 }
@@ -645,6 +658,8 @@ private fun ShortcutsAdvancedSettingsContent(
     onRecordingCommandChange: ((OnyxCommand?) -> Unit)?,
     shortcutFeedback: ShortcutRecordingFeedback?,
     onShortcutFeedbackChange: ((ShortcutRecordingFeedback?) -> Unit)?,
+    memoryStatus: com.oruke.onyx.app.filesystem.JvmMemoryStatus,
+    onClearThumbnailDiskCache: () -> Unit,
 ) {
     SettingsGroupCard(
         title = stringResource(Res.string.label_settings_shortcuts),
@@ -661,6 +676,15 @@ private fun ShortcutsAdvancedSettingsContent(
             onFeedbackChange = onShortcutFeedbackChange,
         )
     }
+
+    MemorySettingsCard(
+        draft = draft,
+        memoryStatus = memoryStatus,
+        onDraftChange = onDraftChange,
+        bodyFontSize = bodyFontSize,
+        labelFontSize = labelFontSize,
+        onClearThumbnailDiskCache = onClearThumbnailDiskCache,
+    )
 
     SettingsGroupCard(
         title = stringResource(Res.string.label_section_diagnostics_maintenance),
@@ -859,9 +883,13 @@ private fun categoryMatchesQuery(category: SettingsCategory, query: String): Boo
         SettingsCategory.SHORTCUTS_ADVANCED -> listOf(
             stringResource(Res.string.label_settings_cat_shortcuts),
             stringResource(Res.string.label_settings_shortcuts),
+            stringResource(Res.string.label_section_memory_performance),
+            stringResource(Res.string.label_max_heap_memory),
+            stringResource(Res.string.label_thumbnail_disk_cache),
             stringResource(Res.string.label_section_diagnostics_maintenance),
             stringResource(Res.string.label_verbose_logging),
             stringResource(Res.string.action_restore_factory_defaults),
+            "xmx",
         )
     }
     return keywords.any { keyword -> keyword.contains(query, ignoreCase = true) }

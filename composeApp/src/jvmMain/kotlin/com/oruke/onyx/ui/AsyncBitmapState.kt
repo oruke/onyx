@@ -1,12 +1,14 @@
 package com.oruke.onyx.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
+import com.oruke.onyx.app.filesystem.ManagedBitmapRegistry
 
 /**
  * 记住并加载异步位图；若提供同步内存缓存探测函数 [peekCached]，命中时首帧即直接返回位图而不闪烁占位图标。
@@ -39,6 +41,17 @@ internal fun rememberAsyncBitmap(
         loading = true
         bitmap = loader(location, maxDimension)
         loading = false
+    }
+    DisposableEffect(bitmap) {
+        val current = bitmap
+        if (current != null) {
+            ManagedBitmapRegistry.retain(current)
+        }
+        onDispose {
+            if (current != null) {
+                ManagedBitmapRegistry.release(current)
+            }
+        }
     }
     return bitmap to loading
 }

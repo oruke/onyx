@@ -3,13 +3,19 @@ package com.oruke.onyx.app.component
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import com.oruke.onyx.app.OnyxLogger
 import com.oruke.onyx.app.component.delegate.ClipboardManager
 import com.oruke.onyx.app.component.delegate.SessionManager
 import com.oruke.onyx.app.component.delegate.TaskOrchestrator
+import com.oruke.onyx.app.filesystem.ManagedBitmapRegistry
+import com.oruke.onyx.app.filesystem.MediaPreviewService
+import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.platform.JvmApplicationLocaleController
 import com.oruke.onyx.app.filesystem.JvmTextClipboardService
 import com.oruke.onyx.app.filesystem.VfsPathService
 import com.oruke.onyx.core.model.OnyxSettings
+import com.oruke.onyx.ui.SystemFileIconLoader
+import com.oruke.onyx.ui.SystemMenuIconBitmapLoader
 import com.oruke.onyx.vfs.api.SessionRepository
 import com.oruke.onyx.vfs.api.SettingsRepository
 import com.oruke.onyx.vfs.api.TaskPersistenceRepository
@@ -20,6 +26,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
 
@@ -45,6 +53,12 @@ internal class RootApplicationRuntime(
     /** 所有窗口共享的目录内容存储，按实际依赖首次创建。 */
     private var sharedDirectoryStore: com.oruke.onyx.shared.filesystem.DirectoryContentStore? = null
 
+    /** 当前是否存在任意可见窗口；为 `false` 表示所有窗口已隐藏到托盘进入低功耗热驻留。 */
+    private val mutableForeground = MutableStateFlow(true)
+
+    /** 供剪贴板、目录校验等应用级后台循环共享的前台活跃态流。 */
+    val isForeground: StateFlow<Boolean> = mutableForeground.asStateFlow()
+
     /**
      * 获取应用级目录存储，窗口关闭不会终止其他窗口的观察和读取。
      * @param repository 当前应用统一文件仓储。
@@ -54,7 +68,12 @@ internal class RootApplicationRuntime(
     fun directories(repository: FileRepository, pathService: VfsPathService):
         com.oruke.onyx.shared.filesystem.DirectoryContentStore {
         return sharedDirectoryStore ?: com.oruke.onyx.shared.filesystem.DirectoryContentStore(
-            repository, scope, com.oruke.onyx.app.filesystem.JvmDirectoryObservationService(pathService),
+            repository,
+            scope,
+            com.oruke.onyx.app.filesystem.JvmDirectoryObservationService(
+                pathService = pathService,
+                isForeground = isForeground,
+            ),
         ).also { sharedDirectoryStore = it }
     }
     /** 唯一负责更新 JVM 资源语言的应用级控制器。 */
@@ -66,7 +85,35 @@ internal class RootApplicationRuntime(
     init {
         // 在恢复设置和创建窗口前绑定唯一语言入口，旧窗口重组不能覆盖最新偏好。
         localeController.bind(scope)
-        clipboardManager.bind(scope)
+        clipboardManager.bind(scope, isForeground)
+    }
+
+    /**
+     * 更新应用级前台活跃状态，驱动剪贴板监控与目录定期校验在后台托盘驻留时自动休眠。
+     *
+     * @param active 是否仍有任意可见的文件管理器窗口。
+     */
+    fun setForegroundActive(active: Boolean) {
+        mutableForeground.value = active
+    }
+
+    /**
+     * 当所有窗口隐藏到系统托盘后主动清理可重建的位图与历史目录缓存，降低常驻堆与原生 Skia 内存占用。
+     *
+     * @param thumbnailService 缩略图与看图器位图缓存服务。
+     * @param mediaPreviewService 音视频抽帧与元数据缓存服务。
+     */
+    fun trimCachesForBackground(
+        thumbnailService: ThumbnailService,
+        mediaPreviewService: MediaPreviewService,
+    ) {
+        thumbnailService.clearCache()
+        mediaPreviewService.clearCache()
+        ManagedBitmapRegistry.flushPendingCloses()
+        sharedDirectoryStore?.trimInactiveCaches()
+        SystemFileIconLoader.trimInstanceCache()
+        SystemMenuIconBitmapLoader.clearCache()
+        OnyxLogger.info("Startup", "应用进入后台热驻留，已暂停后台轮询并释放可重建位图与历史目录缓存")
     }
 
     /** 所有窗口共享的任务中心，不随任何单个文件管理器窗口关闭。 */

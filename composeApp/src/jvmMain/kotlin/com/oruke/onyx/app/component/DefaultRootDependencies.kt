@@ -90,6 +90,9 @@ internal data class RootPlatformDependencies(
     val systemQuickAccessService: SystemQuickAccessService,
     /** 应用级设备服务；隔离测试未注入时由面板管理自身实例。 */
     val storageDevices: com.oruke.onyx.vfs.api.StorageDeviceService? = null,
+    /** JVM 最大堆内存启动配置读写服务。 */
+    val memoryConfigService: com.oruke.onyx.app.filesystem.MemoryConfigService =
+        com.oruke.onyx.app.filesystem.NoOpMemoryConfigService,
 )
 
 /** 根组件的预览、元数据与远程认证依赖。 */

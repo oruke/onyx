@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:LocalPathOperations.kt$LocalPathOperations$'/' in targetName || '\\' in targetName || ':' in targetName || targetName == "." || targetName == ".." || windowsAbsolutePathPattern.matches(targetName)</ID>
+    <ID>ReturnCount:LocalPathOperations.kt$LocalPathOperations$fun renamePath( source: Path, sanitizedTargetName: String, ): Path</ID>
+    <ID>ThrowsCount:LocalPathOperations.kt$LocalPathOperations$fun renamePath( source: Path, sanitizedTargetName: String, ): Path</ID>
+    <ID>ThrowsCount:LocalPathOperations.kt$LocalPathOperations$fun resolveCreateTarget( parentDirectory: Path, name: String, ): Path</ID>
+    <ID>TooGenericExceptionCaught:LocalPathOperations.kt$LocalPathOperations$failure: Throwable</ID>
+    <ID>TooManyFunctions:LocalPathOperations.kt$LocalPathOperations</ID>
+  </CurrentIssues>
+</SmellBaseline>

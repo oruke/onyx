@@ -40,6 +40,7 @@ import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -1275,7 +1276,21 @@ internal fun GalleryFileEntry(
 ) {
     val editing = model.inlineEditState?.mode == PaneInlineEditMode.RENAME &&
             model.inlineEditState.targetEntryId == entry.id
-    Box(modifier = Modifier.onGloballyPositioned { selection.itemCoordinates[entry.id] = it }) {
+    val registeredCoordinates = remember(selection, entry.id) { arrayOfNulls<LayoutCoordinates>(1) }
+    DisposableEffect(selection, entry.id) {
+        onDispose {
+            val ownCoordinates = registeredCoordinates[0]
+            if (ownCoordinates == null || selection.itemCoordinates[entry.id] === ownCoordinates) {
+                selection.itemCoordinates.remove(entry.id)
+            }
+        }
+    }
+    Box(
+        modifier = Modifier.onGloballyPositioned { coordinates ->
+            registeredCoordinates[0] = coordinates
+            selection.itemCoordinates[entry.id] = coordinates
+        },
+    ) {
         GalleryItem(
             state = GalleryItemState(
                 entry = entry,
@@ -1388,7 +1403,21 @@ internal fun DetailsFileEntry(
     val entry = item.entry
     val editing = model.inlineEditState?.mode == PaneInlineEditMode.RENAME &&
             model.inlineEditState.targetEntryId == entry.id
-    Box(modifier = Modifier.fillMaxWidth().onGloballyPositioned { selection.itemCoordinates[entry.id] = it }) {
+    val registeredCoordinates = remember(selection, entry.id) { arrayOfNulls<LayoutCoordinates>(1) }
+    DisposableEffect(selection, entry.id) {
+        onDispose {
+            val ownCoordinates = registeredCoordinates[0]
+            if (ownCoordinates == null || selection.itemCoordinates[entry.id] === ownCoordinates) {
+                selection.itemCoordinates.remove(entry.id)
+            }
+        }
+    }
+    Box(
+        modifier = Modifier.fillMaxWidth().onGloballyPositioned { coordinates ->
+            registeredCoordinates[0] = coordinates
+            selection.itemCoordinates[entry.id] = coordinates
+        },
+    ) {
         if (editing) {
             InlineEditEntryRow(
                 columns = model.columns,

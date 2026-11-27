@@ -38,27 +38,57 @@ interface FileCollectionRepository {
 }
 
 /**
- * 内存文件集合仓库，适合运行期搜索结果和临时集合。
+ * 内存文件集合仓库，适合运行期搜索结果和临时集合，采用有界 LRU 淘汰避免旧搜索快照无限堆积。
+ *
+ * @param maxCollections 内存中最多保留的集合数量上限。
  */
-class InMemoryFileCollectionRepository : FileCollectionRepository {
-    private val collections = mutableMapOf<String, FileCollection>()
+class InMemoryFileCollectionRepository(
+    /** 内存中最多保留的集合数量。 */
+    private val maxCollections: Int = DEFAULT_MAX_COLLECTIONS,
+) : FileCollectionRepository {
+    /** 按最近使用顺序维护的集合映射。 */
+    private val collections = LinkedHashMap<String, FileCollection>()
 
+    /**
+     * 保存或刷新文件集合；超出容量上限时淘汰最久未访问的旧集合。
+     *
+     * @param collection 待保存的文件集合。
+     * @return 保存后的集合定位信息。
+     */
     override fun save(collection: FileCollection): FileCollectionLocation {
+        collections.remove(collection.id)
         collections[collection.id] = collection
+        while (collections.size > maxCollections.coerceAtLeast(1)) {
+            val eldestKey = collections.keys.firstOrNull() ?: break
+            collections.remove(eldestKey)
+        }
         return FileCollectionLocation(
             collectionId = collection.id,
             location = collection.location(),
         )
     }
 
+    /**
+     * 按集合 ID 查询并刷新其最近使用顺序。
+     *
+     * @param id 集合唯一标识。
+     * @return 命中的集合；不存在时返回 `null`。
+     */
     override fun findById(id: String): FileCollection? {
-        return collections[id]
+        val found = collections.remove(id) ?: return null
+        collections[id] = found
+        return found
     }
 
     override fun findByLocation(location: String): FileCollection? {
         val id = location.removePrefix(COLLECTION_SCHEME).takeIf { value -> value != location }
             ?: return null
         return findById(id.substringBefore('/'))
+    }
+
+    private companion object {
+        /** 默认内存中最多保留的搜索/临时集合数量。 */
+        const val DEFAULT_MAX_COLLECTIONS = 32
     }
 }
 

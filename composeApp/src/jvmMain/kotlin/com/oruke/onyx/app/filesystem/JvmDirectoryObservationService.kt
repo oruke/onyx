@@ -12,7 +12,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
@@ -22,12 +25,15 @@ import kotlinx.coroutines.launch
  * JVM 目录观察适配：本地使用 NIO，其他位置及监听失败使用有预算的轮询。
  * @param pathService 统一路径解析服务，保留逻辑入口与实际挂载路径之间的映射。
  * @param pollingPolicy 无通知校验和失败重试使用的统一频率与预算。
+ * @param isForeground 应用前台可见态流；隐藏到托盘期间自动暂停定期 `Verify` 轮询以消除后台空转与 NAS 句柄分配。
  */
 internal class JvmDirectoryObservationService(
     /** 统一路径解析与逻辑入口映射服务。 */
     private val pathService: VfsPathService,
     /** 当前应用使用的后台校验频率与读取预算。 */
     private val pollingPolicy: DirectoryPollingPolicy = DirectoryPollingPolicy(),
+    /** 应用是否处于前台可见状态；后台驻留时挂起低频校验循环。 */
+    private val isForeground: StateFlow<Boolean> = MutableStateFlow(true),
 ) : DirectoryObservationService {
     /** 每个活动目录共享一个校验计划，最后一个观察释放时移除。 */
     private val polling = ConcurrentHashMap<String, DirectoryPollingSchedule>()
@@ -45,8 +51,15 @@ internal class JvmDirectoryObservationService(
                 if (location.contains("://")) {
                     emit(DirectoryWatchEvent.Ready)
                     while (currentCoroutineContext().isActive) {
+                        if (!isForeground.value) {
+                            isForeground.first { active -> active }
+                            emit(DirectoryWatchEvent.Verify)
+                            continue
+                        }
                         delay(schedule.delayMillis)
-                        emit(DirectoryWatchEvent.Verify)
+                        if (isForeground.value) {
+                            emit(DirectoryWatchEvent.Verify)
+                        }
                     }
                 } else {
                     observeLocal(location, schedule).collect { emit(it) }
@@ -82,9 +95,19 @@ internal class JvmDirectoryObservationService(
             try {
                 val directory = Path.of(location)
                 val watched = LocalDirectoryAccess.resolveForListing(directory).getOrThrow()
-                // 系统挂载盘可能不发送事件；活动目录保留低频校验，不能把本地路径等同于可靠观察。
+                // 系统挂载盘可能不发送事件；活动目录在前台保留低频校验，应用隐藏到托盘期间彻底挂起以避免后台持续轮询 NAS。
                 val verification = launch {
-                    while (isActive) { delay(schedule.delayMillis); send(DirectoryWatchEvent.Verify) }
+                    while (isActive) {
+                        if (!isForeground.value) {
+                            isForeground.first { active -> active }
+                            send(DirectoryWatchEvent.Verify)
+                            continue
+                        }
+                        delay(schedule.delayMillis)
+                        if (isForeground.value) {
+                            send(DirectoryWatchEvent.Verify)
+                        }
+                    }
                 }
                 try {
                     FileWatcher().watch(watched) { trySend(DirectoryWatchEvent.Ready) }.collect { event ->

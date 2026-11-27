@@ -62,6 +62,7 @@ import org.jetbrains.jewel.ui.component.Text
  * @param initialWidth 窗口初始宽度。
  * @param initialHeight 窗口初始高度。
  * @param onWindowSizeChanged 窗口尺寸变化持久化回调。
+ * @param onClearThumbnailDiskCache 清理缩略图磁盘缓存回调。
  */
 @Composable
 internal fun SettingsDialog(
@@ -73,6 +74,7 @@ internal fun SettingsDialog(
     initialWidth: Int = DEFAULT_SETTINGS_WIDTH,
     initialHeight: Int = DEFAULT_SETTINGS_HEIGHT,
     onWindowSizeChanged: ((width: Int, height: Int) -> Unit)? = null,
+    onClearThumbnailDiskCache: () -> Unit = {},
 ) {
     val title = stringResource(Res.string.label_settings_title)
     var category by remember { mutableStateOf(SettingsCategory.GENERAL) }
@@ -175,6 +177,8 @@ internal fun SettingsDialog(
                 onDismiss()
             },
             onCancelDiscard = { confirmDiscardVisible = false },
+            memoryStatus = state.memoryStatus,
+            onClearThumbnailDiskCache = onClearThumbnailDiskCache,
         )
     }
 }
@@ -206,6 +210,8 @@ internal fun SettingsDialogLayout(
     confirmDiscardVisible: Boolean = false,
     onConfirmDiscard: () -> Unit = onDismiss,
     onCancelDiscard: () -> Unit = {},
+    memoryStatus: com.oruke.onyx.app.filesystem.JvmMemoryStatus = com.oruke.onyx.app.filesystem.JvmMemoryStatus(),
+    onClearThumbnailDiskCache: () -> Unit = {},
 ) {
     val palette = LocalOnyxPalette.current
     val navScrollState = rememberScrollState()
@@ -299,6 +305,8 @@ internal fun SettingsDialogLayout(
                         onRecordingCommandChange = onRecordingCommandChange,
                         shortcutFeedback = shortcutFeedback,
                         onShortcutFeedbackChange = onShortcutFeedbackChange,
+                        memoryStatus = memoryStatus,
+                        onClearThumbnailDiskCache = onClearThumbnailDiskCache,
                     )
                 }
                 VerticalScrollbar(

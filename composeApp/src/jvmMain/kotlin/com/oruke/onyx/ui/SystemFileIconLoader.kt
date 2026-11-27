@@ -21,7 +21,6 @@ import java.awt.image.BufferedImage
 import java.io.File
 import java.util.Collections
 import java.util.Optional
-import java.util.concurrent.ConcurrentHashMap
 import javax.swing.filechooser.FileSystemView
 
 /**
@@ -39,6 +38,7 @@ internal object SystemFileIconLoader {
     private const val SHGFI_USEFILEATTRIBUTES = 0x00000010
     private const val SHGFI_LARGEICON = 0x00000000
     private const val SHGFI_SMALLICON = 0x00000001
+    private const val MAX_EXTENSION_CACHE_SIZE = 512
     private const val MAX_INSTANCE_CACHE_SIZE = 512
     private const val CACHE_SCHEMA_VERSION = "v2"
     private const val UNASSOCIATED_PROBE_EXT = ".__onyx_unassociated_probe__"
@@ -51,8 +51,15 @@ internal object SystemFileIconLoader {
         "exe", "lnk", "ico", "cur", "ani", "scr", "appref-ms", "url",
     )
 
-    /** 扩展名级图标缓存（键为 `v2:ext:large`），避免同类型文件重复调用原生接口。 */
-    private val extensionCache = ConcurrentHashMap<String, Optional<ImageBitmap>>()
+    /** 扩展名级有界 LRU 图标缓存（键为 `v2:ext:large`），避免海量非常规扩展名无限增长。 */
+    private val extensionCache: MutableMap<String, Optional<ImageBitmap>> =
+        Collections.synchronizedMap(
+            object : LinkedHashMap<String, Optional<ImageBitmap>>(128, 0.75f, true) {
+                override fun removeEldestEntry(
+                    eldest: MutableMap.MutableEntry<String, Optional<ImageBitmap>>?,
+                ): Boolean = size > MAX_EXTENSION_CACHE_SIZE
+            },
+        )
 
     /** 实例路径级有界 LRU 图标缓存（键为 `v2:location:large`）。 */
     private val instanceCache: MutableMap<String, Optional<ImageBitmap>> =
@@ -63,6 +70,11 @@ internal object SystemFileIconLoader {
                 ): Boolean = size > MAX_INSTANCE_CACHE_SIZE
             },
         )
+
+    /** 清空按具体路径缓存的实例图标，供窗口隐藏入系统托盘时主动降低位图占用。 */
+    fun trimInstanceCache() {
+        instanceCache.clear()
+    }
 
     /** Windows 系统图像列表中“未关联未知文件类型”的基准图标索引（smallIconIndex to largeIconIndex）。 */
     private val unknownIconIndices: Pair<Int, Int> by lazy {
@@ -369,22 +381,23 @@ private fun readBitmapPixels(hBitmap: WinDef.HBITMAP, width: Int, height: Int): 
     bmi.bmiHeader.biPlanes = 1
     bmi.bmiHeader.biBitCount = 32
     bmi.bmiHeader.biCompression = WinGDI.BI_RGB
-    val buffer = Memory(width.toLong() * height.toLong() * 4L)
-    val screenDc = User32.INSTANCE.GetDC(null)
-    val copied = try {
-        GDI32.INSTANCE.GetDIBits(
-            screenDc,
-            hBitmap,
-            0,
-            height,
-            buffer,
-            bmi,
-            WinGDI.DIB_RGB_COLORS,
-        )
-    } finally {
-        User32.INSTANCE.ReleaseDC(null, screenDc)
+    return Memory(width.toLong() * height.toLong() * 4L).use { buffer ->
+        val screenDc = User32.INSTANCE.GetDC(null)
+        val copied = try {
+            GDI32.INSTANCE.GetDIBits(
+                screenDc,
+                hBitmap,
+                0,
+                height,
+                buffer,
+                bmi,
+                WinGDI.DIB_RGB_COLORS,
+            )
+        } finally {
+            User32.INSTANCE.ReleaseDC(null, screenDc)
+        }
+        if (copied == 0) null else buffer.getIntArray(0, width * height)
     }
-    return if (copied == 0) null else buffer.getIntArray(0, width * height)
 }
 
 @Suppress("MagicNumber")

@@ -148,6 +148,9 @@ internal class DefaultRootComponent(
     /** 所有面板共享的平台设备发现与操作服务。 */
     internal val storageDevices = dependencies.platform.storageDevices
 
+    /** JVM 启动内存配置读写服务。 */
+    internal val memoryConfigService = dependencies.platform.memoryConfigService
+
     /** 文本预览服务。 */
     internal val previewService = dependencies.inspection.previewService
 

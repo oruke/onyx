@@ -809,6 +809,7 @@ private fun AppDialogHost(state: RootState, dispatch: (RootIntent) -> Unit) {
             onWindowSizeChanged = { width, height ->
                 dispatch(RootIntent.UpdateWindowSize(RootWindowKind.SETTINGS, width, height))
             },
+            onClearThumbnailDiskCache = { dispatch(RootIntent.ClearThumbnailDiskCache) },
         )
 
         is RootDialogState.RemoteConnections -> RemoteConnectionsDialog(

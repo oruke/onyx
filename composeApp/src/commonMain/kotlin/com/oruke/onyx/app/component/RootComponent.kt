@@ -170,9 +170,13 @@ internal sealed interface RootDialogState {
     ) : RootDialogState
 
     data class Settings(
+        /** 当前设置草稿。 */
         val draft: OnyxSettings,
         /** 打开设置窗口瞬间的原始快照，用于未保存脏态检测与按字段精准合并。 */
         val initialDraft: OnyxSettings = draft,
+        /** 当前进程 JVM 堆内存快照与启动配置状态。 */
+        val memoryStatus: com.oruke.onyx.app.filesystem.JvmMemoryStatus =
+            com.oruke.onyx.app.filesystem.JvmMemoryStatus(),
     ) : RootDialogState
 
     /**
@@ -396,6 +400,9 @@ internal sealed interface RootIntent {
     ) : RootIntent
 
     data object CleanupInvalidLocations : RootIntent
+
+    /** 清空缩略图磁盘缓存并刷新设置页占用显示。 */
+    data object ClearThumbnailDiskCache : RootIntent
 
     data object OpenRemoteConnections : RootIntent
 

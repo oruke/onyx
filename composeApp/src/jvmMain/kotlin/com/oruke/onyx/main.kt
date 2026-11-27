@@ -15,7 +15,10 @@ import com.oruke.onyx.app.cache.OnyxStartupPreloader
 import com.oruke.onyx.app.cache.PlatformMenuCacheMaintenanceService
 import com.oruke.onyx.app.component.RootWindowKind
 import com.oruke.onyx.app.component.rememberRootApplicationRuntime
+import com.oruke.onyx.app.filesystem.MediaPreviewService
+import com.oruke.onyx.app.filesystem.ThumbnailService
 import com.oruke.onyx.app.platform.DesktopWindowManager
+import com.oruke.onyx.app.platform.JvmProcessMemoryTrimmer
 import com.oruke.onyx.app.platform.OnyxSingleInstanceManager
 import com.oruke.onyx.app.platform.OnyxSingleInstanceRelay
 import com.oruke.onyx.app.platform.OnyxStartupSplash
@@ -25,6 +28,8 @@ import com.oruke.onyx.app.platform.StartupSplashStage
 import com.oruke.onyx.app.platform.TrayMenuLabels
 import com.oruke.onyx.app.platform.WindowsShortcutAppIdReconciler
 import com.oruke.onyx.app.platform.WindowsTaskbarGroupingService
+import com.oruke.onyx.app.platform.storage.JvmStorageDeviceService
+import com.oruke.onyx.vfs.api.StorageDeviceService
 import com.oruke.onyx.ui.theme.OnyxDecoratedWindowTheme
 import com.oruke.onyx.ui.theme.OnyxLocaleEnvironment
 import onyx.composeapp.generated.resources.Res
@@ -190,9 +195,36 @@ private object OnyxDesktopRuntime {
                 val platformMenuCacheMaintenanceService = remember {
                     koin.get<PlatformMenuCacheMaintenanceService>()
                 }
+                val storageDeviceService = remember {
+                    koin.get<StorageDeviceService>()
+                }
+                val thumbnailService = remember {
+                    koin.get<ThumbnailService>()
+                }
+                val mediaPreviewService = remember {
+                    koin.get<MediaPreviewService>()
+                }
+                val hasVisibleWindow = windowManager.windows.any { request -> request.visible }
 
-                LaunchedEffect(platformMenuCacheMaintenanceService) {
-                    platformMenuCacheMaintenanceService.runUntilCancelled()
+                // 所有窗口隐藏转入托盘常驻时暂停剪贴板、目录校验、盘符轮询并裁剪可重建缓存；
+                // 延迟触发一次 GC 与 Windows 工作集回收（唤醒回前台时协程自动取消，不影响响应）。
+                LaunchedEffect(hasVisibleWindow) {
+                    applicationRuntime.setForegroundActive(hasVisibleWindow)
+                    (storageDeviceService as? JvmStorageDeviceService)?.setForegroundActive(hasVisibleWindow)
+                    if (!hasVisibleWindow) {
+                        applicationRuntime.trimCachesForBackground(
+                            thumbnailService = thumbnailService,
+                            mediaPreviewService = mediaPreviewService,
+                        )
+                        JvmProcessMemoryTrimmer.reclaimAfterEnteringBackground()
+                    }
+                }
+
+                // 仅在前台存在可见窗口时运行平台右键菜单注册表/目录监听，隐藏入托盘后立即释放监听句柄与唤醒循环。
+                LaunchedEffect(platformMenuCacheMaintenanceService, hasVisibleWindow) {
+                    if (hasVisibleWindow) {
+                        platformMenuCacheMaintenanceService.runUntilCancelled()
+                    }
                 }
 
                 TaskCenterWindow(

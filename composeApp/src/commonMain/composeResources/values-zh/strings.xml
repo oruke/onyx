@@ -859,4 +859,17 @@
     <string name="action_image_viewer_zoom_in">放大 (+)</string>
     <string name="action_image_viewer_rotate_ccw">逆时针旋转 (Shift+R)</string>
     <string name="action_image_viewer_rotate_cw">顺时针旋转 (R)</string>
+    <string name="label_section_memory_performance">内存与性能</string>
+    <string name="label_max_heap_memory">最大 JVM 堆内存 (-Xmx)</string>
+    <string name="label_max_heap_custom_input">手动输入</string>
+    <string name="label_max_heap_unit_mb">MB（范围 %1$d–%2$d MB）</string>
+    <string name="label_max_heap_range_error">请输入 %1$d 到 %2$d MB 之间的整数。</string>
+    <string name="label_max_heap_active_summary">当前进程生效上限：%1$d MB（当前已用：%2$d MB）</string>
+    <string name="label_max_heap_restart_hint">应用后自动写入启动配置 Onyx.cfg，重启 Onyx 后生效。</string>
+    <string name="label_max_heap_readonly_hint">启动配置不可写（%1$s），请手动修改其中的 -Xmx 参数。</string>
+    <string name="label_max_heap_dev_hint">打包安装后将自动写入 Onyx.cfg；开发运行可通过 gradle.properties 或 -Papp.jvm.xmx 指定。</string>
+    <string name="label_max_heap_write_error">写入 Onyx.cfg 失败：%1$s</string>
+    <string name="label_thumbnail_disk_cache">缩略图磁盘缓存</string>
+    <string name="label_thumbnail_disk_cache_usage">当前占用：%1$s / %2$s</string>
+    <string name="action_clear_thumbnail_disk_cache">清理缩略图缓存</string>
 </resources>

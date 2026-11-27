@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ReturnCount:WebDavMultiStatusParser.kt$WebDavMultiStatusParser$private fun Element.toWebDavVFile( requestUri: ParsedVfsUri, requestDecodedPath: String, sourceScheme: String, parentLocation: String, ): VFile?</ID>
+    <ID>ReturnCount:WebDavMultiStatusParser.kt$WebDavMultiStatusParser$private fun resolveHref( requestUri: ParsedVfsUri, href: String, ): ParsedVfsUri?</ID>
+    <ID>ThrowsCount:KtorWebDavClient.kt$KtorWebDavClient$private inline fun &lt;T&gt; runWebDavRequest(location: String, block: () -&gt; T): T</ID>
+  </CurrentIssues>
+</SmellBaseline>

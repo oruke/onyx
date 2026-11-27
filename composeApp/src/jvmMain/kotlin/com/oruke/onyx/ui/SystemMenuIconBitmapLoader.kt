@@ -2,6 +2,7 @@ package com.oruke.onyx.ui
 
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import com.oruke.onyx.app.filesystem.ByteBoundedBitmapLruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.awt.Component
@@ -9,7 +10,6 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import java.io.File
-import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Icon
 import javax.swing.filechooser.FileSystemView
 
@@ -20,8 +20,16 @@ import javax.swing.filechooser.FileSystemView
  * UI 层只消费抽象后的字符串，不接触平台菜单对象；本加载器负责把可解析路径转成 Compose 位图并缓存。
  */
 internal object SystemMenuIconBitmapLoader {
-    /** 已成功解析的图标位图缓存，避免每次展开菜单都访问系统图标服务。 */
-    private val bitmapCache = ConcurrentHashMap<String, ImageBitmap>()
+    /** 已成功解析的图标位图有界 LRU 缓存，限制条数与总像素字节数避免长期常驻无限堆积。 */
+    private val bitmapCache = ByteBoundedBitmapLruCache(
+        maxEntries = MAX_MENU_ICON_CACHE_ENTRIES,
+        maxBytes = MAX_MENU_ICON_CACHE_BYTES,
+    )
+
+    /** 清空菜单图标位图缓存，供窗口隐藏入系统托盘时主动释放内存。 */
+    fun clearCache() {
+        bitmapCache.clear()
+    }
 
     /**
      * 读取平台图标位图。
@@ -32,11 +40,11 @@ internal object SystemMenuIconBitmapLoader {
     suspend fun load(iconPath: String): ImageBitmap? = withContext(Dispatchers.IO) {
         val spec = parseIconLocationSpec(iconPath) ?: return@withContext null
         val cacheKey = "${spec.filePath}:${spec.iconIndex ?: "default"}"
-        bitmapCache[cacheKey] ?: (
+        bitmapCache.get(cacheKey) ?: (
             SystemFileIconLoader.extractIndexedOrFileIcon(spec.filePath, spec.iconIndex, large = true)
                 ?: loadSystemIcon(spec.filePath)
             )?.also { bitmap ->
-            bitmapCache[cacheKey] = bitmap
+            bitmapCache.put(cacheKey, bitmap)
         }
     }
 
@@ -132,6 +140,12 @@ internal object SystemMenuIconBitmapLoader {
     }
 
     private const val DEFAULT_ICON_SIZE = 16
+
+    /** 菜单图标缓存允许保留的最大条目数。 */
+    private const val MAX_MENU_ICON_CACHE_ENTRIES = 256
+
+    /** 菜单图标缓存允许占用的最大估算像素字节数（16 MB）。 */
+    private const val MAX_MENU_ICON_CACHE_BYTES = 16L * 1024 * 1024
 
     /** 用于 Swing `Icon.paintIcon` 的空组件。 */
     private val NULL_COMPONENT = object : Component() {}

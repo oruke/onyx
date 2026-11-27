@@ -19,8 +19,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.time.TimeSource
 
-/** 非活动目录快照的默认估算内存预算，单位字节。 */
-private const val DEFAULT_CACHED_BYTES = 67_108_864L
+/** 非活动目录快照的默认估算内存预算，单位字节（16 MiB）。 */
+private const val DEFAULT_CACHED_BYTES = 16_777_216L
+
+/** 非活动目录快照的默认最大目录数量。 */
+private const val DEFAULT_MAX_CACHED_DIRECTORIES = 16
+
+/** 非活动目录快照的默认最大条目总数。 */
+private const val DEFAULT_MAX_CACHED_ENTRIES = 30_000
 
 /**
  * 应用级目录内容存储；状态入口在所属主线程调用，I/O 在后台执行。
@@ -36,9 +42,9 @@ class DirectoryContentStore(
     /** 可选平台观察服务，测试和无观察平台可以只做按需校验。 */
     private val observationService: DirectoryObservationService? = null,
     /** 非活动目录的数量上限。 */
-    private val maxCachedDirectories: Int = 32,
+    private val maxCachedDirectories: Int = DEFAULT_MAX_CACHED_DIRECTORIES,
     /** 非活动快照的条目数量上限。 */
-    private val maxCachedEntries: Int = 100_000,
+    private val maxCachedEntries: Int = DEFAULT_MAX_CACHED_ENTRIES,
     /** 非活动快照估算内存上限，包含元数据字符串和对象固定开销。 */
     private val maxCachedBytes: Long = DEFAULT_CACHED_BYTES,
 ) {
@@ -369,6 +375,22 @@ class DirectoryContentStore(
             record.pendingLocations.clear()
         }
         if (records[location] === record) trimCache()
+    }
+
+    /**
+     * 主动清空全部无活跃订阅的历史目录快照，供窗口隐藏到托盘转入后台低功耗模式时释放内存。
+     *
+     * 当前仍有面板显示的活动目录（`references > 0`）不受影响，确保窗口秒起唤醒后首帧立即可用。
+     */
+    fun trimInactiveCaches() {
+        val iterator = records.entries.iterator()
+        while (iterator.hasNext()) {
+            val (_, record) = iterator.next()
+            if (record.references == 0) {
+                iterator.remove()
+                record.loading?.cancel()
+            }
+        }
     }
 
     /** 按非活动目录数量与条目总数淘汰快照，不影响可见目录。 */

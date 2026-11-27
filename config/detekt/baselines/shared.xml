@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:FileSearchCriteria.kt$SearchCriteriaParser.Companion$ch == '\\' &amp;&amp; index + 1 &lt; inner.length &amp;&amp; (inner[index + 1] == '"' || inner[index + 1] == '\\')</ID>
+    <ID>CyclomaticComplexMethod:FileSearchUseCase.kt$FileSearchUseCase$fun search(request: FileSearchRequest): Flow&lt;FileSearchEvent&gt;</ID>
+    <ID>CyclomaticComplexMethod:FileTaskUseCases.kt$BatchRenameUseCase$@Suppress("TooGenericExceptionCaught") private suspend fun executeBatch( request: BatchRenameRequest, continueOnError: Boolean, onProgress: suspend (TaskProgress) -&gt; Unit, ): BatchRenameExecutionSummary</ID>
+    <ID>LongMethod:FileTaskUseCases.kt$BatchRenameUseCase$@Suppress("TooGenericExceptionCaught") private suspend fun executeBatch( request: BatchRenameRequest, continueOnError: Boolean, onProgress: suspend (TaskProgress) -&gt; Unit, ): BatchRenameExecutionSummary</ID>
+    <ID>MagicNumber:BatchRenameDraftPlanner.kt$BatchRenameDraftPlanner$0x20</ID>
+    <ID>MagicNumber:FileSearchCriteria.kt$3</ID>
+    <ID>MaxLineLength:FileTaskUseCases.kt$BatchRenameUseCase.BatchRenameRequest$val</ID>
+    <ID>NestedBlockDepth:BatchRenameDraftPlanner.kt$BatchRenameDraftPlanner$fun findConflicts( renameResults: List&lt;Pair&lt;VFile, String&gt;&gt;, siblingNamesByParent: Map&lt;String, Set&lt;String&gt;&gt; = emptyMap(), caseInsensitive: Boolean = true, ): Map&lt;String, BatchRenameConflictKind&gt;</ID>
+    <ID>NestedBlockDepth:FileSearchCriteria.kt$private fun parseDateFilter(token: String): NumericFilter?</ID>
+    <ID>NestedBlockDepth:FileTaskUseCases.kt$BatchRenameUseCase$@Suppress("TooGenericExceptionCaught") private suspend fun executeBatch( request: BatchRenameRequest, continueOnError: Boolean, onProgress: suspend (TaskProgress) -&gt; Unit, ): BatchRenameExecutionSummary</ID>
+    <ID>ReturnCount:FileSearchCriteria.kt$private fun parseIsoOffsetDateTimeEpochMillis(value: String): Long?</ID>
+    <ID>ReturnCount:FileSearchCriteria.kt$private fun parseZoneOffsetMillis(zonePart: String): Long?</ID>
+    <ID>ReturnCount:FileTaskUseCases.kt$BatchRenameUseCase$@Suppress("TooGenericExceptionCaught") private suspend fun executeBatch( request: BatchRenameRequest, continueOnError: Boolean, onProgress: suspend (TaskProgress) -&gt; Unit, ): BatchRenameExecutionSummary</ID>
+    <ID>ThrowsCount:FileTaskUseCases.kt$BatchRenameUseCase$@Suppress("TooGenericExceptionCaught") private suspend fun executeBatch( request: BatchRenameRequest, continueOnError: Boolean, onProgress: suspend (TaskProgress) -&gt; Unit, ): BatchRenameExecutionSummary</ID>
+  </CurrentIssues>
+</SmellBaseline>

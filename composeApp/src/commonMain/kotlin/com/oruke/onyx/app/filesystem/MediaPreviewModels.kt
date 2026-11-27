@@ -113,6 +113,9 @@ internal interface MediaPreviewService {
         entry: VFile,
         maxDimension: Int,
     ): ImageBitmap?
+
+    /** 清空内存中的媒体元数据与视频帧/封面位图缓存，供窗口隐藏入托盘时主动降内存。 */
+    fun clearCache() {}
 }
 
 /** 空实现媒体服务，用于无媒体能力环境或单元测试兜底。 */

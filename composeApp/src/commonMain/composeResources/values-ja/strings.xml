@@ -861,4 +861,17 @@
     <string name="action_image_viewer_zoom_in">拡大 (+)</string>
     <string name="action_image_viewer_rotate_ccw">左に回転 (Shift+R)</string>
     <string name="action_image_viewer_rotate_cw">右に回転 (R)</string>
+    <string name="label_section_memory_performance">メモリとパフォーマンス</string>
+    <string name="label_max_heap_memory">最大 JVM ヒープメモリ (-Xmx)</string>
+    <string name="label_max_heap_custom_input">手動入力</string>
+    <string name="label_max_heap_unit_mb">MB（範囲 %1$d〜%2$d MB）</string>
+    <string name="label_max_heap_range_error">%1$d〜%2$d MB の整数を入力してください。</string>
+    <string name="label_max_heap_active_summary">現在の有効上限：%1$d MB（使用中：%2$d MB）</string>
+    <string name="label_max_heap_restart_hint">Onyx.cfg に保存されます。Onyx の再起動後に反映されます。</string>
+    <string name="label_max_heap_readonly_hint">Onyx.cfg に書き込めません（%1$s）。管理者権限で -Xmx を手動編集してください。</string>
+    <string name="label_max_heap_dev_hint">パッケージ版では Onyx.cfg に自動保存されます。開発時は gradle.properties または -Papp.jvm.xmx で指定してください。</string>
+    <string name="label_max_heap_write_error">Onyx.cfg の更新に失敗しました：%1$s</string>
+    <string name="label_thumbnail_disk_cache">サムネイルディスクキャッシュ</string>
+    <string name="label_thumbnail_disk_cache_usage">使用量：%1$s / %2$s</string>
+    <string name="action_clear_thumbnail_disk_cache">サムネイルキャッシュを削除</string>
 </resources>

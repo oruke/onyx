@@ -88,8 +88,36 @@ import com.oruke.onyx.core.model.FileLabelStyle
 import com.oruke.onyx.core.model.isTrashItemLocation
 import com.oruke.onyx.ui.theme.LocalOnyxAppearance
 
-/** 画廊缩略图读取时请求的最大边长。 */
-private const val GALLERY_THUMBNAIL_DIMENSION = 512
+/** 画廊缩略图分档像素档位（小/中/大/超大），按卡片实际物理像素向上取档减少原生位图占用。 */
+private const val GALLERY_THUMBNAIL_BUCKET_SMALL = 128
+
+/** 画廊缩略图分档像素档位：中档。 */
+private const val GALLERY_THUMBNAIL_BUCKET_MEDIUM = 256
+
+/** 画廊缩略图分档像素档位：大档。 */
+private const val GALLERY_THUMBNAIL_BUCKET_LARGE = 384
+
+/** 画廊缩略图分档像素档位：最大档。 */
+private const val GALLERY_THUMBNAIL_BUCKET_XLARGE = 512
+
+/**
+ * 根据画廊项逻辑尺寸与屏幕缩放倍率，将请求的缩略图最大边长量化到固定像素档位（128 / 256 / 384 / 512）。
+ *
+ * 量化后既能保证在 HiDPI 屏幕下画面清晰，又能避免细微拖动缩放滑块导致缓存键碎片化或始终按 512px 解码浪费内存。
+ *
+ * @param sizeDp 画廊项逻辑边长（单位 dp）。
+ * @param density 当前屏幕密度倍率。
+ * @return 量化后的缩略图最大边长像素值。
+ */
+internal fun resolveGalleryThumbnailDimension(sizeDp: Int, density: Float): Int {
+    val targetPx = (sizeDp.coerceAtLeast(1) * density.coerceAtLeast(1f)).roundToInt()
+    return when {
+        targetPx <= GALLERY_THUMBNAIL_BUCKET_SMALL -> GALLERY_THUMBNAIL_BUCKET_SMALL
+        targetPx <= GALLERY_THUMBNAIL_BUCKET_MEDIUM -> GALLERY_THUMBNAIL_BUCKET_MEDIUM
+        targetPx <= GALLERY_THUMBNAIL_BUCKET_LARGE -> GALLERY_THUMBNAIL_BUCKET_LARGE
+        else -> GALLERY_THUMBNAIL_BUCKET_XLARGE
+    }
+}
 
 /** 画廊项高度相对宽度的比例。 */
 private const val GALLERY_ITEM_HEIGHT_FACTOR = 1.15f
@@ -784,6 +812,7 @@ private fun GalleryThumbnail(
  */
 @Composable
 private fun ImageGalleryThumbnail(entry: VFile, sizeDp: Int, services: GalleryThumbnailServices) {
+    val requestDimension = resolveGalleryThumbnailDimension(sizeDp, LocalDensity.current.density)
     val versionKey = entry.modifiedAtEpochMillis to entry.sizeBytes
     val loader = remember(entry.modifiedAtEpochMillis, entry.sizeBytes, services) {
         val versioned = services.loadVersionedThumbnail
@@ -795,7 +824,7 @@ private fun ImageGalleryThumbnail(entry: VFile, sizeDp: Int, services: GalleryTh
     }
     val (thumbnail, _) = rememberAsyncBitmap(
         location = entry.location,
-        maxDimension = GALLERY_THUMBNAIL_DIMENSION,
+        maxDimension = requestDimension,
         loader = loader,
         versionKey = versionKey,
         peekCached = { loc, dim ->
@@ -822,6 +851,7 @@ private fun ImageGalleryThumbnail(entry: VFile, sizeDp: Int, services: GalleryTh
  */
 @Composable
 private fun ArchiveGalleryThumbnail(entry: VFile, sizeDp: Int, services: GalleryThumbnailServices) {
+    val requestDimension = resolveGalleryThumbnailDimension(sizeDp, LocalDensity.current.density)
     val versionKey = entry.modifiedAtEpochMillis to entry.sizeBytes
     val loader = remember(entry.modifiedAtEpochMillis, entry.sizeBytes, services) {
         val versioned = services.loadVersionedArchiveThumbnail
@@ -833,7 +863,7 @@ private fun ArchiveGalleryThumbnail(entry: VFile, sizeDp: Int, services: Gallery
     }
     val (thumbnail, _) = rememberAsyncBitmap(
         location = entry.location,
-        maxDimension = GALLERY_THUMBNAIL_DIMENSION,
+        maxDimension = requestDimension,
         loader = loader,
         versionKey = versionKey,
         peekCached = { loc, dim ->

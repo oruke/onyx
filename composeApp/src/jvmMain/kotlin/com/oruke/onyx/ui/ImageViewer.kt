@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -49,6 +50,7 @@ import com.github.panpf.zoomimage.ZoomImage
 import com.github.panpf.zoomimage.compose.ZoomState
 import com.github.panpf.zoomimage.compose.rememberZoomState
 import com.oruke.onyx.app.filesystem.ImageLoadOutcome
+import com.oruke.onyx.app.filesystem.ManagedBitmapRegistry
 import com.oruke.onyx.core.model.ImageFitMode
 import com.oruke.onyx.core.model.ImageViewerState
 import com.oruke.onyx.core.model.VFile
@@ -209,6 +211,16 @@ internal fun ImageViewerContent(
         isLoading = false
     }
     val bitmap = (loadOutcome as? ImageLoadOutcome.Loaded)?.bitmap
+    DisposableEffect(bitmap) {
+        if (bitmap != null) {
+            ManagedBitmapRegistry.retain(bitmap)
+        }
+        onDispose {
+            if (bitmap != null) {
+                ManagedBitmapRegistry.release(bitmap)
+            }
+        }
+    }
 
     // 原图分辨率（含 ImageIO + Skia 现代格式回退）
     var nativeResolution by remember(currentFile.location, retryToken) { mutableStateOf<IntSize?>(null) }

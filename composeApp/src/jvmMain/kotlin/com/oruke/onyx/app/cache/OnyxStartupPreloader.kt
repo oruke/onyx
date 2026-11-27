@@ -24,8 +24,6 @@ import com.oruke.onyx.vfs.api.StorageDeviceService
 import com.oruke.onyx.vfs.api.SystemMenuService
 import com.oruke.onyx.vfs.api.TaskPersistenceRepository
 import com.oruke.onyx.vfs.api.VfsProviderRegistry
-import com.oruke.onyx.vfs.archive.ArchiveService
-import com.oruke.onyx.vfs.archive.ZipArchiveCreationService
 import com.oruke.onyx.vfs.local.JvmLocalFileProvider
 import com.oruke.onyx.vfs.local.LocalVfsProvider
 import kotlinx.coroutines.CoroutineScope
@@ -276,8 +274,6 @@ private fun warmUpKoinAndThemeClasses(): KoinApplication {
         koin.get<VfsProviderRegistry>()
         koin.get<FileRepository>()
         koin.get<FileCommandService>()
-        koin.get<ArchiveService>()
-        koin.get<ZipArchiveCreationService>()
         koin.get<OpenWithService>()
         koin.get<SystemMenuService>()
         koin.get<FileContextMenuService>()

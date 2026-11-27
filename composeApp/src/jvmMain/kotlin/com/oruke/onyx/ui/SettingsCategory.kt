@@ -81,6 +81,7 @@ internal fun OnyxSettings.resetCategoryToDefaults(category: SettingsCategory): O
         SettingsCategory.SHORTCUTS_ADVANCED -> copy(
             commandShortcutOverrides = defaults.commandShortcutOverrides,
             verboseLoggingEnabled = defaults.verboseLoggingEnabled,
+            maxHeapMemoryMb = defaults.maxHeapMemoryMb,
         )
     }
 }
@@ -162,6 +163,7 @@ internal fun OnyxSettings.mergeEditableSettingsFrom(
         userCommands = draft.userCommands,
         commandShortcutOverrides = draft.commandShortcutOverrides,
         verboseLoggingEnabled = draft.verboseLoggingEnabled,
+        maxHeapMemoryMb = draft.maxHeapMemoryMb,
         favoriteLocations = if (removedFavorites.isEmpty()) {
             favoriteLocations
         } else {

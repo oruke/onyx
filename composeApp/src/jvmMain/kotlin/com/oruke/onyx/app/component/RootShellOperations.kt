@@ -39,11 +39,64 @@ internal fun DefaultRootComponent.setPaneSplitFraction(fraction: Float) {
     syncImmediateRootState()
 }
 
-/** 打开设置对话框，同时保存打开瞬间的基准快照供脏态判断与三路字段合并。 */
+/** 打开设置对话框，同时保存打开瞬间的基准快照并异步读取运行期 JVM 堆内存、缩略图磁盘缓存占用与 Onyx.cfg 状态。 */
 internal fun DefaultRootComponent.openSettings() {
     val snapshot = settings.value
     dialogState.value = RootDialogState.Settings(draft = snapshot, initialDraft = snapshot)
     syncImmediateRootState()
+    scope.launch {
+        val diskCacheBytes = thumbnailService.readDiskCacheUsageBytes()
+        val status = memoryConfigService.readStatus().copy(thumbnailDiskCacheBytes = diskCacheBytes)
+        val currentDialog = dialogState.value as? RootDialogState.Settings ?: return@launch
+        val configuredMb = status.configuredMaxHeapMb
+        // 若用户曾手动编辑 Onyx.cfg 且尚未在设置窗口改动草稿，则同步草稿与基准值以避免被旧配置覆盖。
+        val shouldSyncConfigured = configuredMb != null &&
+            currentDialog.draft == currentDialog.initialDraft &&
+            currentDialog.draft.maxHeapMemoryMb != configuredMb
+        dialogState.value = if (shouldSyncConfigured) {
+            val synced = currentDialog.draft.copy(maxHeapMemoryMb = configuredMb).sanitizeRootSettings()
+            currentDialog.copy(draft = synced, initialDraft = synced, memoryStatus = status)
+        } else {
+            currentDialog.copy(memoryStatus = status)
+        }
+        syncImmediateRootState()
+    }
+}
+
+/**
+ * 异步清空缩略图磁盘缓存并刷新设置对话框中展示的缓存占用；失败时展示可见错误提示。
+ */
+internal fun DefaultRootComponent.clearThumbnailDiskCache() {
+    scope.launch {
+        thumbnailService.clearDiskCache().fold(
+            onSuccess = {
+                val remainingBytes = thumbnailService.readDiskCacheUsageBytes()
+                val currentDialog = dialogState.value as? RootDialogState.Settings ?: return@fold
+                dialogState.value = currentDialog.copy(
+                    memoryStatus = currentDialog.memoryStatus.copy(thumbnailDiskCacheBytes = remainingBytes),
+                )
+                syncImmediateRootState()
+            },
+            onFailure = { failure ->
+                OnyxLogger.warn("ThumbnailDiskCache", "清理缩略图磁盘缓存失败", failure)
+                showActivePaneOperationFailure(failure)
+            },
+        )
+    }
+}
+
+/**
+ * 异步将最大堆内存上限写入 `Onyx.cfg`，失败时记录日志并向活动面板展示可见错误。
+ *
+ * @param maxHeapMb 目标最大堆内存（单位 MB）。
+ */
+internal fun DefaultRootComponent.persistMaxHeapMemoryConfig(maxHeapMb: Int) {
+    scope.launch {
+        memoryConfigService.applyMaxHeapMemoryMb(maxHeapMb).onFailure { failure ->
+            OnyxLogger.warn("MemoryConfig", "写入 Onyx.cfg 的 -Xmx 参数失败", failure)
+            showActivePaneOperationFailure(failure)
+        }
+    }
 }
 
 /** @param draft 最新设置草稿。 */
@@ -275,11 +328,18 @@ internal fun DefaultRootComponent.confirmDialog() {
         is RootDialogState.CreateZipArchive -> confirmCreateZipArchive(currentDialog)
         is RootDialogState.Settings -> {
             dialogState.value = null
-            val merged = settings.value.mergeEditableSettingsFrom(
+            val previousSettings = settings.value
+            val merged = previousSettings.mergeEditableSettingsFrom(
                 draft = currentDialog.draft,
                 initialDraft = currentDialog.initialDraft,
             )
+            val previousConfiguredMb = currentDialog.memoryStatus.configuredMaxHeapMb
+            val shouldPersistXmx = merged.maxHeapMemoryMb != previousSettings.maxHeapMemoryMb ||
+                (previousConfiguredMb != null && previousConfiguredMb != merged.maxHeapMemoryMb)
             updateSettings(merged)
+            if (shouldPersistXmx) {
+                persistMaxHeapMemoryConfig(merged.maxHeapMemoryMb)
+            }
         }
 
         else -> Unit

@@ -289,6 +289,20 @@ internal interface ThumbnailService {
     }
 
     fun clearCache()
+
+    /**
+     * 读取本地磁盘缩略图缓存的当前总占用字节数。
+     *
+     * @return 缓存目录总字节数；未启用磁盘缓存时返回 `0L`。
+     */
+    suspend fun readDiskCacheUsageBytes(): Long = 0L
+
+    /**
+     * 清空本地磁盘缩略图缓存。
+     *
+     * @return 清空结果；失败时携带显式错误。
+     */
+    suspend fun clearDiskCache(): Result<Unit> = Result.success(Unit)
 }
 
 internal interface ImageMetadataService {

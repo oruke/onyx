@@ -42,7 +42,6 @@ kotlin {
                 exclude(group = "org.jetbrains.compose.material")
             }
             implementation(libs.kotlinx.coroutinesSwing)
-            implementation(libs.coil.compose)
             implementation(libs.sevenzipjbinding)
             implementation(libs.sevenzipjbinding.all.platforms)
             implementation(libs.jewel.ui)
@@ -99,11 +98,23 @@ tasks.withType<Test>().configureEach {
 
 
 val appVersion: String = project.property("app.version") as String
+// 支持通过 gradle.properties 或命令行 -Papp.jvm.xmx=2048m 手动配置最大堆内存，默认 768m 兼顾大图预览与低常驻内存。
+val appJvmXmx: String = (project.findProperty("app.jvm.xmx") as? String)
+    ?.trim()
+    ?.takeIf { it.isNotEmpty() }
+    ?: "768m"
 
 compose.desktop {
     application {
         mainClass = "com.oruke.onyx.MainKt"
-        jvmArgs("-XX:TieredStopAtLevel=1")
+        jvmArgs(
+            "-Xmx$appJvmXmx",
+            "-XX:+UseShenandoahGC",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-XX:ShenandoahUncommitDelay=15000",
+            "-XX:ShenandoahGuaranteedGCInterval=60000",
+            "-XX:+UseStringDeduplication",
+        )
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)

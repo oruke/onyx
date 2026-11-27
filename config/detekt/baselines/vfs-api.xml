@@ -1,0 +1,23 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:VfsPathText.kt$ch == '%' &amp;&amp; index + 2 &lt; segment.length &amp;&amp; hexValue(segment[index + 1]) &gt;= 0 &amp;&amp; hexValue(segment[index + 2]) &gt;= 0</ID>
+    <ID>ComplexCondition:VfsPathText.kt$host.isBlank() || host.any { ch -&gt; ch.isWhitespace() || ch == '?' || ch == '#' }</ID>
+    <ID>ComplexCondition:VfsPathText.kt$scheme.isEmpty() || !scheme.all { ch -&gt; ch.isLetterOrDigit() || ch == '+' || ch == '-' || ch == '.' }</ID>
+    <ID>CyclomaticComplexMethod:VfsPathText.kt$fun parseVfsUriOrNull(location: String): ParsedVfsUri?</ID>
+    <ID>CyclomaticComplexMethod:VfsPathText.kt$private fun isSafePathSegmentByte(unsigned: Int): Boolean</ID>
+    <ID>MagicNumber:VfsPathText.kt$0xFF</ID>
+    <ID>MagicNumber:VfsPathText.kt$10</ID>
+    <ID>MagicNumber:VfsPathText.kt$128</ID>
+    <ID>MagicNumber:VfsPathText.kt$3</ID>
+    <ID>MagicNumber:VfsPathText.kt$4</ID>
+    <ID>MagicNumber:VfsPathText.kt$65535</ID>
+    <ID>MatchingDeclarationName:VfsPathText.kt$ParsedVfsUri</ID>
+    <ID>MaxLineLength:VfsPathText.kt$val</ID>
+    <ID>NestedBlockDepth:VfsPathText.kt$fun decodeVfsPercentEncoding(encoded: String): String</ID>
+    <ID>NestedBlockDepth:VfsPathText.kt$private fun encodeSegmentPreservingPercent(segment: String): String</ID>
+    <ID>ReturnCount:RemoteAuthStore.kt$fun candidateRemoteAuthScopes( protocol: VfsProtocol, location: String, ): List&lt;RemoteAuthScope&gt;</ID>
+    <ID>ReturnCount:VfsPathText.kt$fun parseVfsUriOrNull(location: String): ParsedVfsUri?</ID>
+  </CurrentIssues>
+</SmellBaseline>
