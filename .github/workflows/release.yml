@@ -178,7 +178,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Build packages
-        run: ./gradlew ${{ matrix.task }}
+        run: ./gradlew ${{ matrix.task }} --no-configuration-cache
 
       - name: Create portable ZIP
         shell: pwsh

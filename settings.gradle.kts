@@ -10,7 +10,6 @@ pluginManagement {
                 includeGroupAndSubgroups("com.google")
             }
         }
-        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
         mavenCentral()
         gradlePluginPortal()
     }
@@ -25,9 +24,9 @@ dependencyResolutionManagement {
                 includeGroupAndSubgroups("com.google")
             }
         }
-        maven("https://packages.jetbrains.team/maven/p/kpm/public/")
-        maven("https://www.jetbrains.com/intellij-repository/releases")
         mavenCentral()
+        maven("https://www.jetbrains.com/intellij-repository/releases")
+        maven("https://packages.jetbrains.team/maven/p/kpm/public/")
     }
 }
 
